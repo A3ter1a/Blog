@@ -40,9 +40,12 @@ export function Navbar() {
         {/* Logo */}
         <Link
           href="/"
-          className="text-2xl font-bold font-headline text-primary-container hover:text-primary transition-colors duration-300"
+          className="flex items-center gap-3 hover:opacity-80 transition-opacity duration-300"
         >
-          Asteroid
+          <img src="/logo.png" alt="Asteroid Logo" className="w-10 h-10" />
+          <span className="text-2xl font-bold font-headline text-primary-container">
+            Asteroid
+          </span>
         </Link>
 
         {/* Desktop Navigation */}
