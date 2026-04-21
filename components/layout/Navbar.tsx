@@ -40,10 +40,10 @@ export function Navbar() {
         {/* Logo */}
         <Link
           href="/"
-          className="flex items-center gap-3 hover:opacity-80 transition-opacity duration-300"
+          className="flex items-center gap-2 hover:opacity-80 transition-opacity duration-300"
         >
-          <img src="/logo.png" alt="Asteroid Logo" className="w-10 h-10" />
-          <span className="text-2xl font-bold font-headline text-primary-container">
+          <img src="/logo.png" alt="Asteroid Logo" className="w-12 h-12 object-contain" />
+          <span className="text-2xl font-bold font-headline text-primary-container translate-y-[1px]">
             Asteroid
           </span>
         </Link>
