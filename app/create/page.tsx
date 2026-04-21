@@ -55,10 +55,12 @@ export default function CreatePage() {
   const tagInputRef = useRef<HTMLInputElement>(null);
   const editorRef = useRef<RichTextEditorRef>(null);
 
-  // Load note data if in edit mode
+  // Load note data if in edit mode or import mode
   useEffect(() => {
     const searchParams = new URLSearchParams(window.location.search);
     const editId = searchParams.get("edit");
+    const importMode = searchParams.get("import");
+    
     if (editId) {
       const existingNote = mockNotes.find((n) => n.id === editId);
       if (existingNote) {
@@ -72,6 +74,28 @@ export default function CreatePage() {
         setVideos(existingNote.videos || []);
         setProblems(existingNote.problems || []);
         setCoverImage(existingNote.coverImage || "");
+      }
+    } else if (importMode) {
+      // Import mode: load data from sessionStorage
+      const importData = sessionStorage.getItem('pendingImport');
+      if (importData) {
+        try {
+          const parsed = JSON.parse(importData);
+          setTitle(parsed.title || "");
+          setContent(parsed.content || "");
+          setSelectedTags(parsed.tags || []);
+          
+          if (parsed.noteType) setNoteType(parsed.noteType);
+          if (parsed.subject) setSubject(parsed.subject);
+          if (parsed.problems && parsed.problems.length > 0) {
+            setProblems(parsed.problems);
+          }
+          
+          toast.success('已自动填充导入内容，请检查后发布');
+          sessionStorage.removeItem('pendingImport');
+        } catch (e) {
+          console.error('Failed to parse import data:', e);
+        }
       }
     }
   }, []);

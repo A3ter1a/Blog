@@ -9,13 +9,14 @@ import { preprocessLatex } from "@/lib/utils";
 interface MarkdownContentProps {
   content: string;
   className?: string;
+  style?: React.CSSProperties;
 }
 
-export function MarkdownContent({ content, className = "" }: MarkdownContentProps) {
+export function MarkdownContent({ content, className = "", style }: MarkdownContentProps) {
   const processedContent = preprocessLatex(content);
 
   return (
-    <div className={`markdown-content ${className}`}>
+    <div className={`markdown-content ${className}`} style={{ fontSize: style?.fontSize || 'inherit' }}>
       <ReactMarkdown
         remarkPlugins={[remarkMath]}
         rehypePlugins={[rehypeSlug, rehypeKatex]}
@@ -53,17 +54,17 @@ export function MarkdownContent({ content, className = "" }: MarkdownContentProp
               {children}
             </pre>
           ),
-          h1: ({ children }) => (
-            <h1 className="text-3xl font-bold mt-8 mb-4 font-headline scroll-mt-24">{children}</h1>
+          h1: ({ children, ...props }) => (
+            <h1 {...props} className="text-3xl font-bold mt-8 mb-4 font-headline scroll-mt-24">{children}</h1>
           ),
-          h2: ({ children }) => (
-            <h2 className="text-2xl font-bold mt-6 mb-3 font-headline scroll-mt-24">{children}</h2>
+          h2: ({ children, ...props }) => (
+            <h2 {...props} className="text-2xl font-bold mt-6 mb-3 font-headline scroll-mt-24">{children}</h2>
           ),
-          h3: ({ children }) => (
-            <h3 className="text-xl font-bold mt-5 mb-2 font-headline scroll-mt-24">{children}</h3>
+          h3: ({ children, ...props }) => (
+            <h3 {...props} className="text-xl font-bold mt-5 mb-2 font-headline scroll-mt-24">{children}</h3>
           ),
-          h4: ({ children }) => (
-            <h4 className="text-lg font-bold mt-4 mb-2 scroll-mt-24">{children}</h4>
+          h4: ({ children, ...props }) => (
+            <h4 {...props} className="text-lg font-bold mt-4 mb-2 scroll-mt-24">{children}</h4>
           ),
           blockquote: ({ children }) => (
             <blockquote className="border-l-4 border-primary/30 pl-4 py-2 mb-4 text-on-surface-variant italic">

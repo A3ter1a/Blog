@@ -97,72 +97,6 @@ h1, h2, h3, h4, h5, h6 {
   letter-spacing: -0.02em;
 }
 
-/* Dark Mode - Pure Black Elegant Mode */
-.dark {
-  /* Primary - Soft blue for dark mode */
-  --color-primary: #6BA3D6;
-  --color-primary-container: #1E3A5F;
-  --color-on-primary: #000000;
-  --color-on-primary-container: #B8D4E8;
-  
-  /* Secondary */
-  --color-secondary: #8B95A5;
-  --color-secondary-container: #1C2333;
-  --color-on-secondary: #F0F2F5;
-  --color-on-secondary-container: #C8CDD5;
-  
-  /* Tertiary */
-  --color-tertiary: #8B95A5;
-  --color-tertiary-container: #1C2333;
-  --color-on-tertiary: #F0F2F5;
-  --color-on-tertiary-container: #C8CDD5;
-  
-  /* Surface - Pure black based */
-  --color-surface: #0A0A0A;
-  --color-surface-bright: #141414;
-  --color-surface-dim: #050505;
-  --color-surface-variant: #1A1A1A;
-  --color-surface-container: #111111;
-  --color-surface-container-low: #0D0D0D;
-  --color-surface-container-lowest: #000000;
-  --color-surface-container-high: #161616;
-  --color-surface-container-highest: #1C1C1C;
-  
-  /* Background */
-  --color-background: #000000;
-  --color-on-background: #FFFFFF;
-  --color-on-surface: #FFFFFF;
-  --color-on-surface-variant: #A0A0A0;
-  --color-inverse-surface: #F5F5F5;
-  --color-inverse-on-surface: #0A0A0A;
-  --color-inverse-primary: #002549;
-  
-  /* Outline */
-  --color-outline: #333333;
-  --color-outline-variant: #1A1A1A;
-  
-  /* Error */
-  --color-error: #FF6B6B;
-  --color-error-container: #2A1515;
-  --color-on-error: #000000;
-  --color-on-error-container: #FFE5E5;
-
-  /* Shadows - softer for dark mode */
-  --shadow-ambient: 0 32px 64px -12px rgba(0, 0, 0, 0.8);
-  --shadow-float: 0 40px 80px -16px rgba(0, 0, 0, 0.9);
-  --shadow-elevated: 0 48px 96px -20px rgba(0, 0, 0, 0.95);
-}
-
-.dark body {
-  background-color: var(--color-surface);
-  color: var(--color-on-surface);
-}
-
-.dark .editorial-gradient {
-  background: linear-gradient(135deg, #6BA3D6 0%, #4A8BBF 100%);
-  color: #000000;
-}
-
 /* Editorial Gradient */
 .editorial-gradient {
   background: linear-gradient(135deg, #002549 0%, #003b6e 100%);
@@ -193,61 +127,8 @@ h1, h2, h3, h4, h5, h6 {
   background-color: var(--color-surface-container-lowest);
 }
 
-.dark .input-soft {
-  background-color: var(--color-surface-container-high);
-  border-bottom-color: var(--color-outline-variant);
-}
-
-.dark .input-soft:focus {
-  background-color: var(--color-surface-container-highest);
-}
-
-/* Additional dark mode refinements */
-.dark .bg-surface-container-low {
-  background-color: var(--color-surface-container-low);
-}
-
-.dark .bg-surface-container-lowest {
-  background-color: var(--color-surface-container-lowest);
-}
-
-.dark .border-outline-variant\/10 {
-  border-color: rgba(255, 255, 255, 0.05);
-}
-
-.dark .border-outline-variant\/15 {
-  border-color: rgba(255, 255, 255, 0.08);
-}
-
-.dark .border-outline-variant\/20 {
-  border-color: rgba(255, 255, 255, 0.1);
-}
-
-/* Markdown content dark mode */
-.dark .markdown-content pre {
-  background-color: var(--color-surface-container-high);
-}
-
-.dark .markdown-content code:not(pre code) {
-  background-color: rgba(255, 255, 255, 0.08);
-}
-
-/* Table dark mode */
-.dark table {
-  border-color: var(--color-outline-variant);
-}
-
-.dark th, .dark td {
-  border-color: var(--color-outline-variant);
-}
-
 /* Selection */
 ::selection {
-  background-color: var(--color-primary-container);
-  color: var(--color-on-primary-container);
-}
-
-.dark ::selection {
   background-color: var(--color-primary-container);
   color: var(--color-on-primary-container);
 }
@@ -269,14 +150,6 @@ h1, h2, h3, h4, h5, h6 {
 
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(115, 119, 128, 0.5);
-}
-
-.dark ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.15);
-}
-
-.dark ::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.25);
 }
 
 /* Prose Styling for Article Content */

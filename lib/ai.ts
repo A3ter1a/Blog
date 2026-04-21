@@ -295,3 +295,122 @@ export async function extractFromImage(
 
   throw new Error("OCR 功能需要配置 Google Gemini API、DeepSeek API 或 Qwen VL API");
 }
+
+/**
+ * AI analysis for imported notes
+ * Analyzes content and returns classification (type, subject, tags, problems)
+ */
+export async function analyzeImportedNote(
+  title: string,
+  content: string,
+  existingTags?: string[]
+): Promise<{
+  type: 'note' | 'problem' | 'essay';
+  subject: 'math' | 'english' | 'politics' | 'economics' | null;
+  tags: string[];
+  problems?: any[];
+  confidence: number;
+}> {
+  const config = getActiveConfig();
+  
+  const systemPrompt = `你是一个学术笔记分类助手。请分析以下笔记内容，返回 JSON 格式的分类结果：
+
+分类规则：
+- type: 如果是题目集合→"problem"，如果是感想/随笔→"essay"，否则→"note"
+- subject: 根据内容判断科目，无法判断时返回 null
+- tags: 从内容中提取 3-8 个关键标签
+- problems: 如果内容包含题目，请提取结构化题目数据（仅当 type 为 problem 时）
+- confidence: 0-1 的置信度
+
+返回格式（严格 JSON）：
+{
+  "type": "note" | "problem" | "essay",
+  "subject": "math" | "english" | "politics" | "economics" | null,
+  "tags": ["标签1", "标签2", ...],
+  "problems": [
+    {
+      "question": "题目内容",
+      "answer": "答案",
+      "explanation": "解析",
+      "type": "choice" | "fill" | "calculation" | "proof" | "proofEssay",
+      "difficulty": "easy" | "medium" | "hard",
+      "options": [{"label": "A", "content": "..."}]
+    }
+  ],
+  "confidence": 0.85
+}`;
+
+  const userPrompt = `标题: ${title}
+内容: ${content.substring(0, 1500)}
+已有标签: ${(existingTags || []).join(', ')}`;
+
+  try {
+    if (!config) {
+      const envApiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
+      if (envApiKey) {
+        const genAI = new GoogleGenerativeAI(envApiKey);
+        const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+        const result = await model.generateContent(`${systemPrompt}\n\n${userPrompt}`);
+        const text = result.response.text();
+        return parseAnalysisResponse(text);
+      }
+    }
+
+    if (config?.provider === "gemini") {
+      const genAI = new GoogleGenerativeAI(config.apiKey);
+      const model = genAI.getGenerativeModel({ model: config.model || "gemini-2.0-flash" });
+      const result = await model.generateContent(`${systemPrompt}\n\n${userPrompt}`);
+      const text = result.response.text();
+      return parseAnalysisResponse(text);
+    }
+
+    if (config?.provider === "openai" || config?.provider === "deepseek" || config?.provider === "qwen") {
+      const baseUrl = config.baseUrl || aiProviders.find(p => p.value === config.provider)?.defaultUrl;
+      const response = await fetch(`${baseUrl}/chat/completions`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${config.apiKey}`,
+        },
+        body: JSON.stringify({
+          model: config.model || aiProviders.find(p => p.value === config.provider)?.defaultModel,
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: userPrompt },
+          ],
+          max_tokens: 2048,
+        }),
+      });
+      
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error?.message || "API 错误");
+      const text = data.choices[0].message.content;
+      return parseAnalysisResponse(text);
+    }
+  } catch (error) {
+    console.error("AI analysis failed:", error);
+  }
+
+  // Fallback: return defaults
+  return {
+    type: 'note',
+    subject: null,
+    tags: existingTags || [],
+    confidence: 0,
+  };
+}
+
+function parseAnalysisResponse(text: string) {
+  try {
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (jsonMatch) return JSON.parse(jsonMatch[0]);
+    throw new Error("Failed to parse JSON");
+  } catch {
+    return {
+      type: 'note' as const,
+      subject: null,
+      tags: [],
+      confidence: 0,
+    };
+  }
+}

@@ -3,18 +3,28 @@
 import { motion } from "framer-motion";
 import Link from "next/link";
 import { Note, subjectMap, typeMap, NoteType } from "@/lib/types";
-import { FileText, BookOpen, Calendar, Eye, Bookmark, ChevronDown } from "lucide-react";
+import { FileText, BookOpen, Calendar, Eye, Bookmark, ChevronDown, Check } from "lucide-react";
 import { useState } from "react";
 
 interface NoteCardProps {
   note: Note;
   index: number;
+  isSelected?: boolean;
+  onToggleSelect?: (noteId: string) => void;
+  selectMode?: boolean;
 }
 
-export function NoteCard({ note, index }: NoteCardProps) {
+export function NoteCard({ note, index, isSelected = false, onToggleSelect, selectMode = false }: NoteCardProps) {
   const isProblem = note.type === "problem";
   const isEssay = note.type === "essay";
   const [isCoverExpanded, setIsCoverExpanded] = useState(false);
+
+  const handleClick = (e: React.MouseEvent) => {
+    if (selectMode && onToggleSelect) {
+      e.preventDefault();
+      onToggleSelect(note.id);
+    }
+  };
 
   return (
     <motion.article
@@ -22,9 +32,16 @@ export function NoteCard({ note, index }: NoteCardProps) {
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: index * 0.1, duration: 0.4 }}
       whileHover={{ y: -8, transition: { duration: 0.2 } }}
-      className="group bg-surface-container-low rounded-xl overflow-hidden hover:bg-surface-container-high transition-all duration-300 cursor-pointer"
+      onClick={handleClick}
+      className={`group rounded-xl overflow-hidden transition-all duration-300 cursor-pointer ${
+        selectMode
+          ? isSelected
+            ? "bg-surface-container-high ring-2 ring-primary"
+            : "bg-surface-container-low hover:bg-surface-container-high"
+          : "bg-surface-container-low hover:bg-surface-container-high"
+      }`}
     >
-      <Link href={`/notes/${note.id}`} className="block">
+      <Link href={`/notes/${note.id}`} className="block" onClick={selectMode ? (e) => e.preventDefault() : undefined}>
         {/* Cover Image or Placeholder */}
         <div className="relative">
           {note.coverImage ? (
@@ -45,6 +62,7 @@ export function NoteCard({ note, index }: NoteCardProps) {
               <button
                 onClick={(e) => {
                   e.preventDefault();
+                  e.stopPropagation();
                   setIsCoverExpanded(!isCoverExpanded);
                 }}
                 className="absolute bottom-2 right-2 p-1.5 rounded-full bg-surface-container-lowest/80 backdrop-blur-sm text-on-surface-variant hover:text-primary transition-colors"
@@ -73,20 +91,42 @@ export function NoteCard({ note, index }: NoteCardProps) {
             </div>
           )}
           
-          {/* Type Badge */}
-          <div className="absolute top-4 left-4">
-            <span
-              className={`px-3 py-1 rounded-full text-xs font-medium ${
-                isProblem
-                  ? "bg-primary-container text-on-primary"
-                  : isEssay
-                  ? "bg-amber-100 text-amber-800"
-                  : "bg-surface-container-highest text-on-surface"
-              }`}
-            >
-              {typeMap[note.type]}
-            </span>
-          </div>
+          {/* Selection Checkbox (visible in select mode) */}
+          {selectMode && (
+            <div className="absolute top-4 left-4 z-10">
+              <button
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onToggleSelect?.(note.id);
+                }}
+                className={`w-6 h-6 rounded-full flex items-center justify-center transition-all duration-200 ${
+                  isSelected
+                    ? "bg-primary text-on-primary"
+                    : "bg-surface-container-lowest/80 backdrop-blur-sm border-2 border-outline-variant"
+                }`}
+              >
+                {isSelected && <Check className="w-4 h-4" />}
+              </button>
+            </div>
+          )}
+
+          {/* Type Badge (hidden in select mode, replaced by checkbox) */}
+          {!selectMode && (
+            <div className="absolute top-4 left-4">
+              <span
+                className={`px-3 py-1 rounded-full text-xs font-medium ${
+                  isProblem
+                    ? "bg-primary-container text-on-primary"
+                    : isEssay
+                    ? "bg-amber-100 text-amber-800"
+                    : "bg-surface-container-highest text-on-surface"
+                }`}
+              >
+                {typeMap[note.type]}
+              </span>
+            </div>
+          )}
           {/* Subject Badge */}
           {!isEssay && note.subject && (
             <div className="absolute top-4 right-4">

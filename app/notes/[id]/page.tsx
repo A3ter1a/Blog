@@ -14,10 +14,13 @@ import { ProblemStats } from "@/components/problems/ProblemStats";
 import { ProblemList } from "@/components/problems/ProblemList";
 import { MarkdownContent } from "@/components/ui/MarkdownContent";
 import { TableOfContents } from "@/components/ui/TableOfContents";
+import { useReadingPreferences } from "@/lib/useReadingPreferences";
+import { ReadingProgress } from "@/components/ui/ReadingProgress";
 
 export default function NoteReaderPage() {
   const router = useRouter();
   const params = useParams();
+  const { preferences, isLoaded } = useReadingPreferences();
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isCoverExpanded, setIsCoverExpanded] = useState(false);
   const [isAIPanelOpen, setIsAIPanelOpen] = useState(false);
@@ -119,6 +122,9 @@ export default function NoteReaderPage() {
 
   return (
     <main className="pt-24 pb-20 min-h-screen">
+      {/* Reading Progress Bar */}
+      {preferences.showProgressBar && <ReadingProgress />}
+
       {/* Top Bar with Breadcrumb and Immersive Mode Button */}
       <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
         <Link
@@ -182,7 +188,7 @@ export default function NoteReaderPage() {
       {/* Main Layout: Content + Sidebar */}
       <div className="max-w-7xl mx-auto px-6 grid grid-cols-1 lg:grid-cols-12 gap-8">
         {/* Article Content */}
-        <div className="lg:col-span-9">
+        <div className={preferences.tocPosition === "hidden" ? "lg:col-span-12" : "lg:col-span-9"}>
           {/* Article Header */}
           <motion.header
             initial={{ opacity: 0, y: 20 }}
@@ -362,52 +368,58 @@ export default function NoteReaderPage() {
                 </div>
               </>
             ) : (
-              <MarkdownContent content={note.content} className="text-on-surface-variant" />
+              <MarkdownContent 
+                content={note.content} 
+                className="text-on-surface-variant" 
+                style={{ fontSize: `${preferences.fontSize}px` }}
+              />
             )}
           </motion.article>
         </div>
 
-        {/* Sidebar: Video Player + TOC/Problem Stats (hidden when AI panel open) */}
-        <aside className="lg:col-span-3 space-y-6 min-w-[280px]">
-          <AnimatePresence>
-            {note.videos && note.videos.length > 0 && !isAIPanelOpen && (
-              <motion.section
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -20 }}
-                transition={{ delay: 0.3, duration: 0.5 }}
-                className="lg:sticky lg:top-24 bg-surface-container-lowest rounded-xl p-4 shadow-ambient overscroll-contain"
-              >
-                <Playlist videos={note.videos} editable={false} />
-              </motion.section>
-            )}
-          </AnimatePresence>
+        {/* Sidebar: Video Player + TOC/Problem Stats (hidden when TOC is hidden or AI panel open) */}
+        {preferences.tocPosition !== "hidden" && (
+          <aside className="lg:col-span-3 space-y-6 min-w-[280px]">
+            <AnimatePresence>
+              {note.videos && note.videos.length > 0 && !isAIPanelOpen && (
+                <motion.section
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -20 }}
+                  transition={{ delay: 0.3, duration: 0.5 }}
+                  className="lg:sticky lg:top-24 bg-surface-container-lowest rounded-xl p-4 shadow-ambient overscroll-contain"
+                >
+                  <Playlist videos={note.videos} editable={false} />
+                </motion.section>
+              )}
+            </AnimatePresence>
 
-          {/* Table of Contents for notes/essays, or Problem Stats for problems */}
-          <AnimatePresence>
-            {!isAIPanelOpen && (
-              <motion.section
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -20 }}
-                transition={{ delay: 0.35, duration: 0.5 }}
-                className="lg:sticky lg:top-24 bg-surface-container-lowest rounded-xl p-4 shadow-ambient"
-              >
-                {isProblem && note.problems && note.problems.length > 0 ? (
-                  <ProblemList problems={note.problems} />
-                ) : (
-                  <>
-                    <div className="flex items-center gap-2 mb-3 pb-3 border-b border-outline-variant/10">
-                      <BookOpen className="w-4 h-4 text-on-surface-variant" />
-                      <h3 className="text-sm font-bold text-on-surface">目录</h3>
-                    </div>
-                    <TableOfContents content={note.content} />
-                  </>
-                )}
-              </motion.section>
-            )}
-          </AnimatePresence>
-        </aside>
+            {/* Table of Contents for notes/essays, or Problem Stats for problems */}
+            <AnimatePresence>
+              {!isAIPanelOpen && (
+                <motion.section
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -20 }}
+                  transition={{ delay: 0.35, duration: 0.5 }}
+                  className="lg:sticky lg:top-24 bg-surface-container-lowest rounded-xl p-4 shadow-ambient"
+                >
+                  {isProblem && note.problems && note.problems.length > 0 ? (
+                    <ProblemList problems={note.problems} />
+                  ) : (
+                    <>
+                      <div className="flex items-center gap-2 mb-3 pb-3 border-b border-outline-variant/10">
+                        <BookOpen className="w-4 h-4 text-on-surface-variant" />
+                        <h3 className="text-sm font-bold text-on-surface">目录</h3>
+                      </div>
+                      <TableOfContents content={note.content} />
+                    </>
+                  )}
+                </motion.section>
+              )}
+            </AnimatePresence>
+          </aside>
+        )}
       </div>
 
       {/* AI Trigger Button - Fixed on right edge */}
