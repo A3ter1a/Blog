@@ -4,9 +4,9 @@ import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import { useRouter, useParams } from "next/navigation";
-import { ArrowLeft, Calendar, Tag, Edit2, Trash2, AlertTriangle, ChevronDown, ChevronUp, Plus, X, BookOpen, BookMarked, Brain } from "lucide-react";
-import { mockNotes } from "@/lib/mock-data";
-import { subjectMap, typeMap } from "@/lib/types";
+import { ArrowLeft, Calendar, Tag, Edit2, Trash2, AlertTriangle, ChevronDown, ChevronUp, Plus, X, BookOpen, BookMarked, Brain, Loader2 } from "lucide-react";
+import { notesApi } from "@/lib/supabase";
+import { subjectMap, typeMap, Note } from "@/lib/types";
 import { Playlist } from "@/components/video/Playlist";
 import { AIPanel } from "@/components/ai-assistant/AIPanel";
 import { ProblemCard } from "@/components/problems/ProblemCard";
@@ -20,7 +20,9 @@ import { ReadingProgress } from "@/components/ui/ReadingProgress";
 export default function NoteReaderPage() {
   const router = useRouter();
   const params = useParams();
-  const { preferences, isLoaded } = useReadingPreferences();
+  const { preferences } = useReadingPreferences();
+  const [note, setNote] = useState<Note | null>(null);
+  const [loading, setLoading] = useState(true);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isCoverExpanded, setIsCoverExpanded] = useState(false);
   const [isAIPanelOpen, setIsAIPanelOpen] = useState(false);
@@ -29,7 +31,22 @@ export default function NoteReaderPage() {
   const [newTagInput, setNewTagInput] = useState("");
   const [isImmersiveMode, setIsImmersiveMode] = useState(false);
 
-  const note = mockNotes.find((n) => n.id === params.id) ?? null;
+  // Load note from Supabase
+  useEffect(() => {
+    loadNote();
+  }, [params.id]);
+
+  const loadNote = async () => {
+    try {
+      setLoading(true);
+      const data = await notesApi.getById(params.id as string);
+      setNote(data);
+    } catch (error) {
+      console.error("Failed to load note:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // Initialize editableTags when note is loaded
   useEffect(() => {
@@ -42,13 +59,14 @@ export default function NoteReaderPage() {
     }
   }, [note]);
 
-  const handleDelete = () => {
-    const idx = mockNotes.findIndex((n) => n.id === params.id);
-    if (idx !== -1) {
-      mockNotes.splice(idx, 1);
+  const handleDelete = async () => {
+    try {
+      await notesApi.delete(params.id as string);
+      setShowDeleteConfirm(false);
+      router.push("/notes");
+    } catch (error) {
+      console.error("Failed to delete note:", error);
     }
-    setShowDeleteConfirm(false);
-    router.push("/notes");
   };
 
   const handleAddTag = () => {
@@ -78,6 +96,17 @@ export default function NoteReaderPage() {
     setIsEditingTags(false);
     setNewTagInput("");
   };
+
+  if (loading) {
+    return (
+      <main className="pt-32 pb-20 px-6 min-h-screen flex items-center justify-center">
+        <div className="flex items-center gap-3">
+          <Loader2 className="w-8 h-8 animate-spin text-primary" />
+          <span className="text-on-surface-variant">加载笔记中...</span>
+        </div>
+      </main>
+    );
+  }
 
   if (!note) {
     return (

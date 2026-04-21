@@ -1,14 +1,14 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { SearchBar } from "@/components/notes/SearchBar";
 import { TagFilter } from "@/components/notes/TagFilter";
 import { NoteCard } from "@/components/notes/NoteCard";
 import { ExportDialog } from "@/components/export/ExportDialog";
-import { mockNotes } from "@/lib/mock-data";
+import { notesApi } from "@/lib/supabase";
 import { NoteType, Subject, Difficulty, ProblemType, Note } from "@/lib/types";
-import { CheckSquare, Square, Download, X, Trash2, AlertTriangle } from "lucide-react";
+import { CheckSquare, Square, Download, X, Trash2, AlertTriangle, Loader2 } from "lucide-react";
 
 export default function NotesPage() {
   const [searchQuery, setSearchQuery] = useState("");
@@ -17,14 +17,35 @@ export default function NotesPage() {
   const [selectedDifficulty, setSelectedDifficulty] = useState<Difficulty | "all">("all");
   const [selectedProblemType, setSelectedProblemType] = useState<ProblemType | "all">("all");
   
+  // Data state
+  const [notes, setNotes] = useState<Note[]>([]);
+  const [loading, setLoading] = useState(true);
+  
   // Selection state
   const [selectMode, setSelectMode] = useState(false);
   const [selectedNoteIds, setSelectedNoteIds] = useState<Set<string>>(new Set());
   const [showExportDialog, setShowExportDialog] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
+  // Load notes from Supabase
+  useEffect(() => {
+    loadNotes();
+  }, []);
+
+  const loadNotes = async () => {
+    try {
+      setLoading(true);
+      const data = await notesApi.getAll();
+      setNotes(data);
+    } catch (error) {
+      console.error("Failed to load notes:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const filteredNotes = useMemo(() => {
-    return mockNotes.filter((note) => {
+    return notes.filter((note) => {
       const matchesSearch =
         searchQuery === "" ||
         note.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -74,13 +95,15 @@ export default function NotesPage() {
     }
   };
 
-  const handleBatchDelete = () => {
+  const handleBatchDelete = async () => {
     const idsToDelete = Array.from(selectedNoteIds);
-    for (const id of idsToDelete) {
-      const idx = mockNotes.findIndex((n) => n.id === id);
-      if (idx !== -1) {
-        mockNotes.splice(idx, 1);
+    try {
+      for (const id of idsToDelete) {
+        await notesApi.delete(id);
       }
+      await loadNotes();
+    } catch (error) {
+      console.error("Failed to delete notes:", error);
     }
     setSelectedNoteIds(new Set());
     setSelectMode(false);
@@ -88,8 +111,8 @@ export default function NotesPage() {
   };
 
   const selectedNotes = useMemo(() => {
-    return mockNotes.filter((n) => selectedNoteIds.has(n.id));
-  }, [selectedNoteIds]);
+    return notes.filter((n) => selectedNoteIds.has(n.id));
+  }, [notes, selectedNoteIds]);
 
   return (
     <main className="pt-32 pb-20 px-6 min-h-screen">
@@ -196,7 +219,12 @@ export default function NotesPage() {
 
         {/* Notes Grid */}
         <section>
-          {filteredNotes.length > 0 ? (
+          {loading ? (
+            <div className="flex items-center justify-center py-20">
+              <Loader2 className="w-8 h-8 animate-spin text-primary" />
+              <span className="ml-3 text-on-surface-variant">加载笔记中...</span>
+            </div>
+          ) : filteredNotes.length > 0 ? (
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
               {filteredNotes.map((note, index) => (
                 <NoteCard
