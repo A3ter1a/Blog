@@ -5,7 +5,7 @@ import { motion } from "framer-motion";
 import { useRouter } from "next/navigation";
 import { Save, RotateCcw, X, Image as ImageIcon, Sparkles, Plus } from "lucide-react";
 import { Subject, subjectMap, NoteType, typeMap, Video, Problem } from "@/lib/types";
-import { mockNotes } from "@/lib/mock-data";
+import { notesApi } from "@/lib/supabase";
 import { Playlist } from "@/components/video/Playlist";
 import { ProblemEditor } from "@/components/problems/ProblemEditor";
 import { chatWithAI } from "@/lib/ai";
@@ -62,19 +62,23 @@ export default function CreatePage() {
     const importMode = searchParams.get("import");
     
     if (editId) {
-      const existingNote = mockNotes.find((n) => n.id === editId);
-      if (existingNote) {
-        setIsEditMode(true);
-        setEditingId(editId);
-        setNoteType(existingNote.type);
-        setTitle(existingNote.title);
-        setSubject(existingNote.subject || "math");
-        setSelectedTags(existingNote.tags);
-        setContent(existingNote.content);
-        setVideos(existingNote.videos || []);
-        setProblems(existingNote.problems || []);
-        setCoverImage(existingNote.coverImage || "");
-      }
+      notesApi.getById(editId).then((existingNote) => {
+        if (existingNote) {
+          setIsEditMode(true);
+          setEditingId(editId);
+          setNoteType(existingNote.type);
+          setTitle(existingNote.title);
+          setSubject(existingNote.subject || "math");
+          setSelectedTags(existingNote.tags || []);
+          setContent(existingNote.content);
+          setVideos(existingNote.videos || []);
+          setProblems(existingNote.problems || []);
+          setCoverImage(existingNote.coverImage || "");
+        }
+      }).catch((error) => {
+        console.error("Failed to load note:", error);
+        toast.error("加载笔记失败");
+      });
     } else if (importMode) {
       // Import mode: load data from sessionStorage
       const importData = sessionStorage.getItem('pendingImport');
@@ -159,7 +163,12 @@ export default function CreatePage() {
     setNewTagInput("");
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
+    if (!title.trim()) {
+      toast.error("请输入标题");
+      return;
+    }
+
     const noteData = {
       noteType,
       title,
@@ -171,39 +180,38 @@ export default function CreatePage() {
       coverImage: coverImage || undefined,
     };
 
-    if (isEditMode) {
-      const existingNote = mockNotes.find((n) => n.id === editingId);
-      if (existingNote) {
-        existingNote.type = noteData.noteType;
-        existingNote.title = noteData.title;
-        existingNote.subject = noteData.subject;
-        existingNote.tags = noteData.tags;
-        existingNote.content = noteData.content;
-        existingNote.videos = noteData.videos;
-        existingNote.problems = noteData.problems;
-        existingNote.coverImage = noteData.coverImage;
-        existingNote.updatedAt = new Date();
+    try {
+      if (isEditMode) {
+        await notesApi.update(editingId, {
+          type: noteData.noteType,
+          title: noteData.title,
+          subject: noteData.subject,
+          tags: noteData.tags,
+          content: noteData.content,
+          videos: noteData.videos,
+          problems: noteData.problems,
+          coverImage: noteData.coverImage,
+        });
+        toast.success("笔记已更新！");
+        router.push(`/notes/${editingId}`);
+      } else {
+        const newNote = await notesApi.create({
+          type: noteData.noteType,
+          title: noteData.title,
+          subject: noteData.subject,
+          tags: noteData.tags,
+          content: noteData.content,
+          videos: noteData.videos,
+          problems: noteData.problems,
+          coverImage: noteData.coverImage,
+          isPublished: true,
+        });
+        toast.success("笔记已创建！");
+        router.push(`/notes/${newNote.id}`);
       }
-      toast.success("笔记已更新！");
-      router.push(`/notes/${editingId}`);
-    } else {
-      const newNote = {
-        id: Date.now().toString(),
-        type: noteData.noteType,
-        title: noteData.title,
-        content: noteData.content,
-        subject: noteData.subject,
-        tags: noteData.tags,
-        videos: noteData.videos,
-        problems: noteData.problems,
-        coverImage: noteData.coverImage,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-        isPublished: true,
-      };
-      mockNotes.unshift(newNote);
-      toast.success("笔记已创建！");
-      router.push(`/notes/${newNote.id}`);
+    } catch (error: any) {
+      console.error("Failed to save note:", error);
+      toast.error(`保存失败：${error.message || "未知错误"}`);
     }
   };
 
