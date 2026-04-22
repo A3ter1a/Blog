@@ -214,31 +214,6 @@ h1, h2, h3, h4, h5, h6 {
   font-family: 'XITS Math', KaTeX_Main, 'Times New Roman', serif !important;
 }
 
-.katex .katex-html {
-  white-space: normal !important;
-}
-
-.katex .katex-mathml {
-  display: none !important;
-}
-
-/* Protect math symbols from being styled as italic */
-.katex .mord,
-.katex .mbin,
-.katex .mrel,
-.katex .mopen,
-.katex .mclose,
-.katex .mpunct,
-.katex .minner {
-  font-style: normal !important;
-}
-
-/* Integral sign and other operators */
-.katex .mop {
-  font-family: KaTeX_Main, 'Times New Roman', serif !important;
-  font-style: normal !important;
-}
-
 /* Highlight styles for editor */
 .ProseMirror mark {
   border-radius: 2px;
