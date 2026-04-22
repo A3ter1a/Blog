@@ -49,6 +49,17 @@ export default function CreatePage() {
     }
   }, [content]);
 
+  // Check editor readiness on mount
+  useEffect(() => {
+    const timer = setInterval(() => {
+      if (editorRef.current?.editor) {
+        setEditorReady(true);
+        clearInterval(timer);
+      }
+    }, 100);
+    return () => clearInterval(timer);
+  }, []);
+
   // Load note data if in edit mode or import mode
   useEffect(() => {
     const searchParams = new URLSearchParams(window.location.search);

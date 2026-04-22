@@ -11,6 +11,7 @@ const navItems = [
   { name: "首页", href: "/" },
   { name: "笔记", href: "/notes" },
   { name: "创建", href: "/create" },
+  { name: "工具", href: "/tools" },
   { name: "关于", href: "/about" },
 ];
 
