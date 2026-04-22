@@ -254,26 +254,6 @@ export default function NoteReaderPage() {
             </div>
           </motion.header>
 
-          {/* Inline Video Player (shown when clicking play in sidebar) */}
-          <AnimatePresence>
-            {inlineVideoIndex !== null && note.videos && note.videos[inlineVideoIndex] && (
-              <motion.section
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -20 }}
-                transition={{ duration: 0.3 }}
-                className="mb-8"
-              >
-                <VideoPlayer 
-                  video={note.videos[inlineVideoIndex]} 
-                  autoPlay={true}
-                  inlineMode={true}
-                  onExitInline={() => setInlineVideoIndex(null)}
-                />
-              </motion.section>
-            )}
-          </AnimatePresence>
-
           {/* Delete Confirmation Modal */}
           <AnimatePresence>
             {showDeleteConfirm && (
@@ -316,6 +296,26 @@ export default function NoteReaderPage() {
                   </div>
                 </motion.div>
               </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* Inline Video Player (shown when clicking play in sidebar) */}
+          <AnimatePresence>
+            {inlineVideoIndex !== null && note.videos && note.videos[inlineVideoIndex] && (
+              <motion.section
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+                transition={{ duration: 0.3 }}
+                className="mb-8"
+              >
+                <VideoPlayer 
+                  video={note.videos[inlineVideoIndex]} 
+                  autoPlay={true}
+                  inlineMode={true}
+                  onExitInline={() => setInlineVideoIndex(null)}
+                />
+              </motion.section>
             )}
           </AnimatePresence>
 

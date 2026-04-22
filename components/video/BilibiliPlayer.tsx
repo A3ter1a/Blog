@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef } from "react";
-import { Maximize2, Minimize2, ExternalLink, Play } from "lucide-react";
+import { Maximize2, Minimize2, ExternalLink } from "lucide-react";
 
 interface BilibiliPlayerProps {
   bvid: string;
