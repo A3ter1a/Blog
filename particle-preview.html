@@ -1,17 +1,8 @@
 <style>
-  :root {
-    --canvas-size: 500px;
-    --bg-color: #0a0a0a;
-    --primary-color: #ffffff;
-    --secondary-color: #888888;
-    --accent-color: #00ff88;
-    --tail-color: #00aaff;
-  }
-
   #particle-container {
     width: 100%;
-    height: 100vh;
-    background: var(--bg-color);
+    height: 500px;
+    background: #ffffff;
     display: flex;
     justify-content: center;
     align-items: center;
@@ -20,8 +11,8 @@
   }
 
   #particle-canvas {
-    width: var(--canvas-size);
-    height: var(--canvas-size);
+    width: 500px;
+    height: 500px;
   }
 
   .controls {
@@ -36,9 +27,9 @@
 
   .control-btn {
     padding: 8px 16px;
-    background: rgba(255, 255, 255, 0.1);
-    color: var(--primary-color);
-    border: 1px solid var(--secondary-color);
+    background: rgba(0, 0, 0, 0.1);
+    color: #000000;
+    border: 1px solid #888888;
     border-radius: 6px;
     cursor: pointer;
     font-size: 14px;
@@ -46,50 +37,50 @@
   }
 
   .control-btn:hover {
-    background: var(--accent-color);
-    color: var(--bg-color);
-    border-color: var(--accent-color);
+    background: #000000;
+    color: #ffffff;
+    border-color: #000000;
   }
 
   .control-btn.active {
-    background: var(--accent-color);
-    color: var(--bg-color);
-    border-color: var(--accent-color);
+    background: #000000;
+    color: #ffffff;
+    border-color: #000000;
   }
 
   .slider-container {
     display: flex;
     align-items: center;
     gap: 10px;
-    background: rgba(255, 255, 255, 0.1);
+    background: rgba(0, 0, 0, 0.1);
     padding: 8px 12px;
     border-radius: 6px;
   }
 
   .slider-container label {
-    color: var(--primary-color);
+    color: #000000;
     font-size: 12px;
     white-space: nowrap;
   }
 
   .slider-container input[type="range"] {
     width: 80px;
-    accent-color: var(--accent-color);
+    accent-color: #000000;
   }
 </style>
 
 <div id="particle-container">
   <canvas id="particle-canvas"></canvas>
   <div class="controls">
-    <button class="control-btn active" id="btn-reset">重置动画</button>
+    <button class="control-btn active" id="btn-reset">重置</button>
     <button class="control-btn" id="btn-pause">暂停</button>
     <div class="slider-container">
-      <label>粒子密度</label>
-      <input type="range" id="density-slider" min="50" max="300" step="10" value="150">
+      <label>粒子数</label>
+      <input type="range" id="density-slider" min="100" max="800" step="50" value="300">
     </div>
     <div class="slider-container">
-      <label>速度</label>
-      <input type="range" id="speed-slider" min="0.5" max="3" step="0.1" value="1">
+      <label>转速</label>
+      <input type="range" id="speed-slider" min="0.2" max="2" step="0.1" value="0.8">
     </div>
   </div>
 </div>
@@ -99,164 +90,174 @@
     const canvas = document.getElementById('particle-canvas');
     const ctx = canvas.getContext('2d');
     
-    const container = document.getElementById('particle-container');
     const btnReset = document.getElementById('btn-reset');
     const btnPause = document.getElementById('btn-pause');
     const densitySlider = document.getElementById('density-slider');
     const speedSlider = document.getElementById('speed-slider');
     
-    let width, height;
-    let centerX, centerY;
-    let radius;
-    
-    let asteroidParticles = [];
+    let width, height, centerX, centerY, sphereRadius;
+    let particles = [];
     let tailLines = [];
-    let streamingParticles = [];
-    
     let animationId = null;
     let isPaused = false;
     let time = 0;
-    let particleDensity = 150;
-    let speedMultiplier = 1;
+    let particleCount = 300;
+    let rotationSpeed = 0.8;
+    let rotX = 0, rotY = 0, rotZ = 0;
+    
+    const tailAngle = Math.PI * 1.25;
     
     function resize() {
-      const size = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--canvas-size'));
-      canvas.width = size * window.devicePixelRatio;
-      canvas.height = size * window.devicePixelRatio;
-      canvas.style.width = size + 'px';
-      canvas.style.height = size + 'px';
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = 500 * dpr;
+      canvas.height = 500 * dpr;
+      canvas.style.width = '500px';
+      canvas.style.height = '500px';
       
       width = canvas.width;
       height = canvas.height;
       centerX = width / 2;
       centerY = height / 2;
-      radius = width * 0.35;
+      sphereRadius = width * 0.32;
     }
     
-    function initAsteroidParticles() {
-      asteroidParticles = [];
+    function fibonacciSphere(samples) {
+      const points = [];
+      const goldenAngle = Math.PI * (3 - Math.sqrt(5));
       
-      const count = particleDensity;
-      const asteroidRadius = radius;
-      
-      for (let i = 0; i < count; i++) {
-        const theta = Math.random() * Math.PI * 2;
-        const r = Math.random() * asteroidRadius;
+      for (let i = 0; i < samples; i++) {
+        const y = 1 - (i / (samples - 1)) * 2;
+        const radiusAtY = Math.sqrt(1 - y * y);
+        const theta = goldenAngle * i;
         
-        const x = centerX + Math.cos(theta) * r;
-        const y = centerY + Math.sin(theta) * r;
-        
-        const size = Math.random() * 2 + 1;
-        const opacity = Math.random() * 0.5 + 0.5;
-        const speed = Math.random() * 0.02 + 0.01;
-        const angle = Math.random() * Math.PI * 2;
-        
-        asteroidParticles.push({
-          x, y,
-          baseX: x,
-          baseY: y,
-          size,
-          opacity,
-          speed,
-          angle,
-          oscillation: Math.random() * 0.5 + 0.5
+        points.push({
+          x: Math.cos(theta) * radiusAtY,
+          y: y,
+          z: Math.sin(theta) * radiusAtY
         });
       }
+      
+      return points;
+    }
+    
+    function initParticles() {
+      particles = [];
+      const spherePoints = fibonacciSphere(particleCount);
+      
+      spherePoints.forEach((point) => {
+        particles.push({
+          x: point.x * sphereRadius,
+          y: point.y * sphereRadius,
+          z: point.z * sphereRadius,
+          size: Math.random() * 1.2 + 0.8,
+          brightness: Math.random() * 0.3 + 0.7,
+          projX: 0,
+          projY: 0,
+          projZ: 0
+        });
+      });
+    }
+    
+    function rotateX(p, angle) {
+      const c = Math.cos(angle), s = Math.sin(angle);
+      return { x: p.x, y: p.y * c - p.z * s, z: p.y * s + p.z * c };
+    }
+    
+    function rotateY(p, angle) {
+      const c = Math.cos(angle), s = Math.sin(angle);
+      return { x: p.x * c + p.z * s, y: p.y, z: -p.x * s + p.z * c };
+    }
+    
+    function rotateZ(p, angle) {
+      const c = Math.cos(angle), s = Math.sin(angle);
+      return { x: p.x * c - p.y * s, y: p.x * s + p.y * c, z: p.z };
+    }
+    
+    function project(p) {
+      const fov = 500;
+      const distance = fov + p.z;
+      const scale = fov / distance;
+      
+      return {
+        x: centerX + p.x * scale,
+        y: centerY + p.y * scale,
+        z: p.z,
+        scale
+      };
     }
     
     function initTailLines() {
       tailLines = [];
       
-      const tailAngle = Math.PI * 1.25;
-      const startX = centerX - Math.cos(tailAngle) * (radius + 20);
-      const startY = centerY + Math.sin(tailAngle) * (radius + 20);
+      const offsetX = 30;
+      const offsetY = 30;
+      const startX = centerX - Math.cos(tailAngle) * (sphereRadius + 15) - offsetX;
+      const startY = centerY + Math.sin(tailAngle) * (sphereRadius + 15) + offsetY;
       
-      const tailCount = 12;
+      const lineCount = 8;
       
-      for (let i = 0; i < tailCount; i++) {
-        const t = i / tailCount;
-        const length = (1 - t) * 120 + 30;
-        const spread = (Math.random() - 0.5) * 8;
-        const angleOffset = (Math.random() - 0.5) * 0.15;
+      for (let i = 0; i < lineCount; i++) {
+        const t = i / (lineCount - 1);
+        const length = (1 - t) * 100 + 40;
+        const spread = (Math.random() - 0.5) * 6;
+        const angleVar = (Math.random() - 0.5) * 0.2;
         
-        const lineAngle = tailAngle + angleOffset;
-        const lineStartX = startX - Math.cos(tailAngle) * t * 150 + Math.sin(tailAngle) * spread;
-        const lineStartY = startY + Math.sin(tailAngle) * t * 150 + Math.cos(tailAngle) * spread;
-        
-        const lineEndX = lineStartX - Math.cos(lineAngle) * length;
-        const lineEndY = lineStartY + Math.sin(lineAngle) * length;
+        const lineAngle = tailAngle + angleVar;
+        const lineStartX = startX - Math.cos(tailAngle) * t * 120 + Math.sin(tailAngle) * spread;
+        const lineStartY = startY + Math.sin(tailAngle) * t * 120 + Math.cos(tailAngle) * spread;
         
         tailLines.push({
           x1: lineStartX,
           y1: lineStartY,
-          x2: lineEndX,
-          y2: lineEndY,
+          x2: lineStartX - Math.cos(lineAngle) * length,
+          y2: lineStartY + Math.sin(lineAngle) * length,
           baseX1: lineStartX,
           baseY1: lineStartY,
-          baseX2: lineEndX,
-          baseY2: lineEndY,
+          baseX2: lineStartX - Math.cos(lineAngle) * length,
+          baseY2: lineStartY + Math.sin(lineAngle) * length,
           opacity: (1 - t) * 0.6,
-          width: Math.max(0.5, (1 - t * 0.8) * 1.5),
-          delay: t * 1.5,
-          speed: 0.8 + Math.random() * 0.4
+          width: Math.max(0.5, (1 - t * 0.7) * 1.2),
+          delay: t * 2,
+          speed: 0.6 + Math.random() * 0.5
         });
       }
     }
     
-    function initStreamingParticles() {
-      streamingParticles = [];
-      
-      const count = particleDensity / 2;
-      const tailAngle = Math.PI / 4;
-      const startX = centerX - Math.cos(tailAngle) * (radius + 30);
-      const startY = centerY + Math.sin(tailAngle) * (radius + 30);
-      
-      for (let i = 0; i < count; i++) {
-        const offset = Math.random() * 150;
-        const spread = (Math.random() - 0.5) * 20;
-        
-        streamingParticles.push({
-          baseX: startX - Math.cos(tailAngle) * offset + Math.sin(tailAngle) * spread,
-          baseY: startY + Math.sin(tailAngle) * offset + Math.cos(tailAngle) * spread,
-          size: Math.random() * 1.5 + 0.5,
-          opacity: Math.random() * 0.6 + 0.2,
-          speed: Math.random() * 0.03 + 0.01,
-          angle: Math.random() * Math.PI * 2,
-          offset: offset
-        });
-      }
-    }
-    
-    function updateParticles(deltaTime) {
-      const dt = deltaTime * speedMultiplier;
+    function update(dt) {
       time += dt;
       
-      asteroidParticles.forEach(p => {
-        p.x = p.baseX + Math.sin(time * p.speed * 10 + p.angle) * p.oscillation * 2;
-        p.y = p.baseY + Math.cos(time * p.speed * 10 + p.angle) * p.oscillation * 2;
+      rotX += dt * 0.25 * rotationSpeed;
+      rotY += dt * 0.4 * rotationSpeed;
+      rotZ += dt * 0.1 * rotationSpeed;
+      
+      particles.forEach(p => {
+        let rotated = { x: p.x, y: p.y, z: p.z };
+        rotated = rotateX(rotated, rotX);
+        rotated = rotateY(rotated, rotY);
+        rotated = rotateZ(rotated, rotZ);
+        
+        const projected = project(rotated);
+        p.projX = projected.x;
+        p.projY = projected.y;
+        p.projZ = projected.z;
+        p.scale = projected.scale;
       });
       
       tailLines.forEach(line => {
-        const delay = line.delay;
-        const wave = Math.sin(time * line.speed - delay * 3) * 4;
-        const wave2 = Math.cos(time * line.speed * 0.7 - delay * 2) * 2;
+        const wave = Math.sin(time * line.speed - line.delay * 2) * 3;
+        const wave2 = Math.cos(time * line.speed * 0.8 - line.delay * 1.5) * 2;
         
         line.x1 = line.baseX1 + wave;
         line.y1 = line.baseY1 + wave2;
-        line.x2 = line.baseX2 + wave * 1.2;
-        line.y2 = line.baseY2 + wave2 * 1.2;
-      });
-      
-      streamingParticles.forEach(p => {
-        p.x = p.baseX + Math.sin(time * p.speed * 10 + p.angle) * 1;
-        p.y = p.baseY + Math.cos(time * p.speed * 10 + p.angle) * 1;
+        line.x2 = line.baseX2 + wave * 1.3;
+        line.y2 = line.baseY2 + wave2 * 1.3;
       });
     }
     
-    function drawParticles() {
+    function draw() {
       ctx.clearRect(0, 0, width, height);
       
-      ctx.strokeStyle = '#00aaff';
+      ctx.strokeStyle = '#4488cc';
       tailLines.forEach(line => {
         ctx.globalAlpha = line.opacity;
         ctx.lineWidth = line.width;
@@ -267,52 +268,45 @@
       });
       
       ctx.globalAlpha = 1;
-      ctx.fillStyle = '#ffffff';
-      asteroidParticles.forEach(p => {
-        ctx.globalAlpha = p.opacity;
+      particles.sort((a, b) => b.projZ - a.projZ);
+      
+      particles.forEach(p => {
+        const depthNorm = (p.projZ + sphereRadius) / (2 * sphereRadius);
+        const opacity = p.brightness * (0.25 + depthNorm * 0.75);
+        const size = p.size * (0.5 + depthNorm * 0.5) * p.scale;
+        
+        const val = Math.floor(180 + depthNorm * 75);
+        ctx.fillStyle = `rgba(${val}, ${val}, ${Math.floor(val + 20)}, ${opacity})`;
         ctx.beginPath();
-        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+        ctx.arc(p.projX, p.projY, size, 0, Math.PI * 2);
         ctx.fill();
       });
-      
-      ctx.fillStyle = '#88aacc';
-      streamingParticles.forEach(p => {
-        ctx.globalAlpha = p.opacity;
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
-        ctx.fill();
-      });
-      
-      ctx.globalAlpha = 1;
     }
     
-    function animate(currentTime) {
+    let lastTime = 0;
+    function animate(timestamp) {
+      if (!lastTime) lastTime = timestamp;
+      const dt = Math.min((timestamp - lastTime) / 1000, 0.05);
+      lastTime = timestamp;
+      
       if (!isPaused) {
-        const deltaTime = 0.016;
-        updateParticles(deltaTime);
-        drawParticles();
+        update(dt);
+        draw();
       }
       animationId = requestAnimationFrame(animate);
     }
     
     function init() {
       resize();
-      initAsteroidParticles();
+      initParticles();
       initTailLines();
-      initStreamingParticles();
-      drawParticles();
+      rotX = 0; rotY = 0; rotZ = 0;
+      draw();
+      lastTime = 0;
       animationId = requestAnimationFrame(animate);
     }
     
-    function reset() {
-      if (animationId) {
-        cancelAnimationFrame(animationId);
-      }
-      time = 0;
-      init();
-    }
-    
-    btnReset.addEventListener('click', reset);
+    btnReset.addEventListener('click', init);
     
     btnPause.addEventListener('click', () => {
       isPaused = !isPaused;
@@ -321,17 +315,15 @@
     });
     
     densitySlider.addEventListener('input', (e) => {
-      particleDensity = parseInt(e.target.value);
-      reset();
+      particleCount = parseInt(e.target.value);
+      init();
     });
     
     speedSlider.addEventListener('input', (e) => {
-      speedMultiplier = parseFloat(e.target.value);
+      rotationSpeed = parseFloat(e.target.value);
     });
     
-    window.addEventListener('resize', () => {
-      reset();
-    });
+    window.addEventListener('resize', init);
     
     init();
   })();

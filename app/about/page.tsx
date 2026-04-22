@@ -10,10 +10,10 @@ const defaultProfile = {
   tagline: "博观而约取，厚积而薄发。在这场孤独的修行中，我们终将听见远方的回响。",
   badges: ["星月女神 Asteria", "考研人 | 数学 · 英语 · 政治 · 经济学"],
   links: [
-    { name: "QQ", icon: "qq", href: "#", variant: "default" as const },
-    { name: "微信", icon: "wechat", href: "#", variant: "secondary" as const },
-    { name: "B站", icon: "bilibili", href: "#", variant: "dark" as const },
-    { name: "Github", icon: "github", href: "#", variant: "primary" as const },
+    { name: "QQ", icon: "qq", href: "", variant: "default" as const, linkType: "number" as const },
+    { name: "微信", icon: "wechat", href: "", variant: "secondary" as const, linkType: "number" as const },
+    { name: "B站", icon: "bilibili", href: "#", variant: "dark" as const, linkType: "link" as const },
+    { name: "Github", icon: "github", href: "#", variant: "primary" as const, linkType: "link" as const },
   ],
   footer: "Asteroid — 知识的沉淀与共鸣",
 };
@@ -114,32 +114,62 @@ export default function About() {
         <div className="bg-surface-container-lowest rounded-2xl shadow-ambient overflow-hidden divide-y divide-outline-variant/10">
           {profile.links.map((link, index) => {
             const iconSrc = iconMap[link.icon] || "/icons/email.svg";
+            const isLink = (link as any).linkType !== "number";
 
-            return (
-              <motion.a
-                key={`${link.name}-${index}`}
-                href={link.href}
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: 0.6 + index * 0.1, duration: 0.4 }}
-                whileHover={{ backgroundColor: "rgba(234,232,231,0.8)" }}
-                className="group flex items-center justify-between p-4 transition-all duration-200 text-on-surface"
-              >
+            const Content = (
+              <>
                 <div className="flex items-center gap-4">
                   <div className="w-10 h-10 flex items-center justify-center">
                     <img src={iconSrc} alt={link.name} className="w-7 h-7" />
                   </div>
-                  <span className="font-medium">{link.name}</span>
+                  <div className="flex flex-col">
+                    <span className="font-medium">{link.name}</span>
+                    {(link as any).linkType === "number" && link.href && (
+                      <span className="text-xs text-on-surface-variant/60">{link.href}</span>
+                    )}
+                  </div>
                 </div>
-                <svg
-                  className="w-5 h-5 text-outline-variant transition-transform duration-200 group-hover:translate-x-0.5"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
+                {isLink && (
+                  <svg
+                    className="w-5 h-5 text-outline-variant transition-transform duration-200 group-hover:translate-x-0.5"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  </svg>
+                )}
+              </>
+            );
+
+            if (isLink) {
+              return (
+                <motion.a
+                  key={`${link.name}-${index}`}
+                  href={link.href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: 0.6 + index * 0.1, duration: 0.4 }}
+                  whileHover={{ backgroundColor: "rgba(234,232,231,0.8)" }}
+                  className="group flex items-center justify-between p-4 transition-all duration-200 text-on-surface"
                 >
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                </svg>
-              </motion.a>
+                  {Content}
+                </motion.a>
+              );
+            }
+
+            return (
+              <motion.div
+                key={`${link.name}-${index}`}
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: 0.6 + index * 0.1, duration: 0.4 }}
+                className="flex items-center justify-between p-4 text-on-surface"
+              >
+                {Content}
+              </motion.div>
             );
           })}
         </div>

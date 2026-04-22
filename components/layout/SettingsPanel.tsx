@@ -22,18 +22,28 @@ interface ProfileLink {
   icon: string;
   href: string;
   variant: LinkVariant;
+  linkType?: "link" | "number";
 }
 
-const defaultProfile = {
+interface Profile {
+  name: string;
+  avatar: string;
+  tagline: string;
+  badges: string[];
+  links: ProfileLink[];
+  footer: string;
+}
+
+const defaultProfile: Profile = {
   name: "A3ter1a",
   avatar: "",
   tagline: "博观而约取，厚积而薄发。在这场孤独的修行中，我们终将听见远方的回响。",
   badges: ["星月女神 Asteria", "考研人 | 数学 · 英语 · 政治 · 经济学"],
   links: [
-    { name: "QQ", icon: "qq", href: "#", variant: "default" as LinkVariant },
-    { name: "微信", icon: "wechat", href: "#", variant: "secondary" as LinkVariant },
-    { name: "B站", icon: "bilibili", href: "#", variant: "dark" as LinkVariant },
-    { name: "Github", icon: "github", href: "#", variant: "primary" as LinkVariant },
+    { name: "QQ", icon: "qq", href: "", variant: "default" as LinkVariant, linkType: "number" },
+    { name: "微信", icon: "wechat", href: "", variant: "secondary" as LinkVariant, linkType: "number" },
+    { name: "B站", icon: "bilibili", href: "", variant: "dark" as LinkVariant, linkType: "number" },
+    { name: "Github", icon: "github", href: "", variant: "primary" as LinkVariant, linkType: "link" },
   ],
   footer: "Asteroid — 知识的沉淀与共鸣",
 };
@@ -50,14 +60,14 @@ const iconMap: Record<string, string> = {
 };
 
 const iconOptions = [
-  { value: "qq", label: "QQ" },
-  { value: "wechat", label: "微信" },
-  { value: "bilibili", label: "B站" },
-  { value: "github", label: "Github" },
-  { value: "weibo", label: "微博" },
-  { value: "zhihu", label: "知乎" },
-  { value: "tiktok", label: "抖音" },
-  { value: "mail", label: "邮箱" },
+  { value: "qq", label: "QQ", linkType: "number" as const, displayName: "QQ" },
+  { value: "wechat", label: "微信", linkType: "number" as const, displayName: "微信" },
+  { value: "bilibili", label: "B站", linkType: "link" as const, displayName: "B站" },
+  { value: "github", label: "Github", linkType: "link" as const, displayName: "Github" },
+  { value: "weibo", label: "微博", linkType: "link" as const, displayName: "微博" },
+  { value: "zhihu", label: "知乎", linkType: "link" as const, displayName: "知乎" },
+  { value: "tiktok", label: "抖音", linkType: "link" as const, displayName: "抖音" },
+  { value: "mail", label: "邮箱", linkType: "link" as const, displayName: "邮箱" },
 ];
 
 export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
@@ -277,7 +287,7 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
   const addLink = () => {
     setEditForm({
       ...editForm,
-      links: [...editForm.links, { name: "新链接", icon: "globe", href: "#", variant: "default" as LinkVariant }],
+      links: [...editForm.links, { name: "QQ", icon: "qq", href: "", variant: "default" as LinkVariant, linkType: "number" }],
     });
   };
 
@@ -288,6 +298,16 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
   const updateLink = (index: number, field: keyof ProfileLink, value: string) => {
     const newLinks = [...editForm.links];
     newLinks[index] = { ...newLinks[index], [field]: value };
+    
+    // 当更改图标时，自动更新名称和链接类型
+    if (field === "icon") {
+      const iconOption = iconOptions.find(opt => opt.value === value);
+      if (iconOption) {
+        newLinks[index].name = iconOption.displayName;
+        newLinks[index].linkType = iconOption.linkType;
+      }
+    }
+    
     setEditForm({ ...editForm, links: newLinks });
   };
 
@@ -815,19 +835,24 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
                                   <ChevronDown className="w-3 h-3" />
                                 </button>
                               </div>
-                              {/* Link Info */}
-                              <div className="flex items-center gap-2 flex-1">
+                              {/* Brand Icon & Name */}
+                              <div className="flex items-center gap-2 flex-1 min-w-0">
                                 <div className="w-8 h-8 flex items-center justify-center flex-shrink-0">
                                   <img src={iconMap[link.icon] || "/icons/email.svg"} alt={link.name} className="w-6 h-6" />
                                 </div>
-                                <input
-                                  type="text"
-                                  value={link.name}
-                                  onChange={(e) => updateLink(i, "name", e.target.value)}
-                                  placeholder="名称"
-                                  className="flex-1 px-2 py-1.5 bg-surface-container-highest rounded-md input-soft text-on-surface text-xs min-w-0"
-                                />
+                                <span className="text-sm font-medium text-on-surface truncate">{link.name}</span>
                               </div>
+                              {/* Link Type Toggle */}
+                              <button
+                                onClick={() => updateLink(i, "linkType", link.linkType === "link" ? "number" : "link")}
+                                className={`px-2 py-1 rounded-md text-xs font-medium flex-shrink-0 transition-colors ${
+                                  link.linkType === "link" 
+                                    ? "bg-primary text-on-primary" 
+                                    : "bg-surface-container-highest text-on-surface-variant"
+                                }`}
+                              >
+                                {link.linkType === "link" ? "跳转" : "号码"}
+                              </button>
                               <CustomSelect
                                 options={iconOptions}
                                 value={link.icon}
@@ -845,7 +870,7 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
                               type="text"
                               value={link.href}
                               onChange={(e) => updateLink(i, "href", e.target.value)}
-                              placeholder="链接地址"
+                              placeholder={link.linkType === "link" ? "链接地址 (https://...)" : "号码/ID"}
                               className="w-full px-2 py-1.5 bg-surface-container-highest rounded-md input-soft text-on-surface text-xs"
                             />
                           </div>
