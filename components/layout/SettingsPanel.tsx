@@ -30,20 +30,35 @@ const defaultProfile = {
   tagline: "博观而约取，厚积而薄发。在这场孤独的修行中，我们终将听见远方的回响。",
   badges: ["星月女神 Asteria", "考研人 | 数学 · 英语 · 政治 · 经济学"],
   links: [
-    { name: "微博", icon: "globe", href: "#", variant: "default" as LinkVariant },
-    { name: "知乎", icon: "messageCircle", href: "#", variant: "secondary" as LinkVariant },
-    { name: "Github", icon: "gitFork", href: "#", variant: "dark" as LinkVariant },
-    { name: "联系我", icon: "mail", href: "mailto:your@email.com", variant: "primary" as LinkVariant },
+    { name: "QQ", icon: "qq", href: "#", variant: "default" as LinkVariant },
+    { name: "微信", icon: "wechat", href: "#", variant: "secondary" as LinkVariant },
+    { name: "B站", icon: "bilibili", href: "#", variant: "dark" as LinkVariant },
+    { name: "Github", icon: "github", href: "#", variant: "primary" as LinkVariant },
   ],
   footer: "Asteroid — 知识的沉淀与共鸣",
 };
 
-const iconMap: Record<string, any> = {
-  mail: Mail,
-  gitFork: GitFork,
-  globe: Globe,
-  messageCircle: MessageCircle,
+const iconMap: Record<string, string> = {
+  mail: "/icons/email.svg",
+  github: "/icons/github.svg",
+  weibo: "/icons/weibo.svg",
+  zhihu: "/icons/zhihu.svg",
+  qq: "/icons/qq.svg",
+  wechat: "/icons/wechat.svg",
+  bilibili: "/icons/bilibili.svg",
+  tiktok: "/icons/tiktok.svg",
 };
+
+const iconOptions = [
+  { value: "qq", label: "QQ" },
+  { value: "wechat", label: "微信" },
+  { value: "bilibili", label: "B站" },
+  { value: "github", label: "Github" },
+  { value: "weibo", label: "微博" },
+  { value: "zhihu", label: "知乎" },
+  { value: "tiktok", label: "抖音" },
+  { value: "mail", label: "邮箱" },
+];
 
 export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
   const { preferences, updatePreference } = useReadingPreferences();
@@ -783,12 +798,7 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
                                 className="flex-1 px-2 py-1.5 bg-surface-container-highest rounded-md input-soft text-on-surface text-xs"
                               />
                               <CustomSelect
-                                options={[
-                                  { value: "globe", label: "链接" },
-                                  { value: "mail", label: "邮件" },
-                                  { value: "gitFork", label: "代码" },
-                                  { value: "messageCircle", label: "社区" },
-                                ]}
+                                options={iconOptions}
                                 value={link.icon}
                                 onChange={(value) => updateLink(i, "icon", value)}
                                 className="w-20"

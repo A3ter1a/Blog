@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
-import { Mail, GitFork, Globe, MessageCircle } from "lucide-react";
 
 // Default profile data
 const defaultProfile = {
@@ -11,19 +10,23 @@ const defaultProfile = {
   tagline: "博观而约取，厚积而薄发。在这场孤独的修行中，我们终将听见远方的回响。",
   badges: ["星月女神 Asteria", "考研人 | 数学 · 英语 · 政治 · 经济学"],
   links: [
-    { name: "微博", icon: "globe", href: "#", variant: "default" as const },
-    { name: "知乎", icon: "messageCircle", href: "#", variant: "secondary" as const },
-    { name: "Github", icon: "gitFork", href: "#", variant: "dark" as const },
-    { name: "联系我", icon: "mail", href: "mailto:your@email.com", variant: "primary" as const },
+    { name: "QQ", icon: "qq", href: "#", variant: "default" as const },
+    { name: "微信", icon: "wechat", href: "#", variant: "secondary" as const },
+    { name: "B站", icon: "bilibili", href: "#", variant: "dark" as const },
+    { name: "Github", icon: "github", href: "#", variant: "primary" as const },
   ],
   footer: "Asteroid — 知识的沉淀与共鸣",
 };
 
-const iconMap: Record<string, any> = {
-  mail: Mail,
-  gitFork: GitFork,
-  globe: Globe,
-  messageCircle: MessageCircle,
+const iconMap: Record<string, string> = {
+  mail: "/icons/email.svg",
+  github: "/icons/github.svg",
+  weibo: "/icons/weibo.svg",
+  zhihu: "/icons/zhihu.svg",
+  qq: "/icons/qq.svg",
+  wechat: "/icons/wechat.svg",
+  bilibili: "/icons/bilibili.svg",
+  tiktok: "/icons/tiktok.svg",
 };
 
 export default function About() {
@@ -110,7 +113,7 @@ export default function About() {
       >
         <div className="bg-surface-container-lowest rounded-2xl shadow-ambient overflow-hidden divide-y divide-outline-variant/10">
           {profile.links.map((link, index) => {
-            const Icon = iconMap[link.icon] || Globe;
+            const iconSrc = iconMap[link.icon] || "/icons/email.svg";
             const isPrimary = link.variant === "primary";
 
             return (
@@ -127,15 +130,15 @@ export default function About() {
               >
                 <div className="flex items-center gap-4">
                   <div
-                    className={`w-10 h-10 rounded-xl flex items-center justify-center ${
+                    className={`w-10 h-10 rounded-xl flex items-center justify-center overflow-hidden ${
                       isPrimary
-                        ? "bg-on-primary/10 backdrop-blur-sm text-on-primary"
+                        ? "bg-on-primary/10 backdrop-blur-sm"
                         : link.variant === "dark"
-                        ? "bg-on-surface text-surface"
-                        : "editorial-gradient text-on-primary"
+                        ? "bg-on-surface"
+                        : "editorial-gradient"
                     }`}
                   >
-                    <Icon className="w-5 h-5" />
+                    <img src={iconSrc} alt={link.name} className="w-6 h-6" />
                   </div>
                   <span className="font-medium">{link.name}</span>
                 </div>
