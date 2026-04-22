@@ -42,13 +42,6 @@ export default function CreatePage() {
   const [editorReady, setEditorReady] = useState(false);
   const editorRef = useRef<RichTextEditorRef>(null);
 
-  // Force re-render when editor is ready
-  useEffect(() => {
-    if (editorRef.current?.editor) {
-      setEditorReady(true);
-    }
-  }, [content]);
-
   // Check editor readiness on mount
   useEffect(() => {
     const timer = setInterval(() => {

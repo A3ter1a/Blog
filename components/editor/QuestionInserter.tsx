@@ -48,8 +48,8 @@ export function QuestionInserter({ isOpen, onClose, onInsert, existingProblems }
     setError(null);
 
     try {
-      const base64 = await fileToBase64(await fetch(preview).then(r => r.blob()).then(b => new File([b], "question.png")));
-      // fileToBase64 already strips the prefix, no need to split again
+      // preview is already a data URL, just extract the base64 part
+      const base64 = preview.split(",")[1];
       const extracted = await extractFromImage(base64);
       
       const problemNumber = existingProblems.length + 1;

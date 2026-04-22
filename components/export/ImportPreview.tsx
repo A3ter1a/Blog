@@ -7,6 +7,7 @@ import { ParsedNote } from "@/lib/import";
 import { analyzeImportedNote } from "@/lib/ai";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/components/ui/Toast";
+import { subjectMap, typeMap } from "@/lib/types";
 
 interface ImportPreviewProps {
   isOpen: boolean;
@@ -62,19 +63,6 @@ export function ImportPreview({ isOpen, onClose, parsedNotes }: ImportPreviewPro
   const handleSaveAll = () => {
     toast.info('直接保存功能将在连接数据库后启用');
     onClose();
-  };
-
-  const subjectMap: Record<string, string> = {
-    math: '数学',
-    english: '英语',
-    politics: '政治',
-    economics: '经济学',
-  };
-
-  const typeMap: Record<string, string> = {
-    note: '笔记',
-    problem: '题集',
-    essay: '随笔',
   };
 
   return (

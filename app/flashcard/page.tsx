@@ -59,14 +59,15 @@ export default function FlashcardPage() {
       const dueCards = await flashcardsApi.getDue(20);
       setCards(dueCards);
 
-      // Load note titles for reference
+      // Load note titles in parallel
+      const uniqueNoteIds = [...new Set(dueCards.map(c => c.noteId))];
+      const noteResults = await Promise.all(
+        uniqueNoteIds.map(id => notesApi.getById(id))
+      );
       const titles: Record<string, string> = {};
-      for (const card of dueCards) {
-        if (!titles[card.noteId]) {
-          const note = await notesApi.getById(card.noteId);
-          if (note) titles[card.noteId] = note.title;
-        }
-      }
+      noteResults.forEach(note => {
+        if (note) titles[note.id] = note.title;
+      });
       setNoteTitles(titles);
     } catch (error) {
       console.error("Failed to load flashcards:", error);
@@ -89,7 +90,7 @@ export default function FlashcardPage() {
       lastReview: new Date(),
     });
 
-    setReviewed(reviewed + 1);
+    setReviewed(prev => prev + 1);
 
     // Move to next card
     if (currentIndex < cards.length - 1) {

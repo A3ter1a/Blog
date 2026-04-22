@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
@@ -13,7 +14,7 @@ interface MarkdownContentProps {
 }
 
 export function MarkdownContent({ content, className = "", style }: MarkdownContentProps) {
-  const processedContent = preprocessLatex(content);
+  const processedContent = useMemo(() => preprocessLatex(content), [content]);
 
   return (
     <div className={`markdown-content ${className}`} style={{ fontSize: style?.fontSize || 'inherit' }}>

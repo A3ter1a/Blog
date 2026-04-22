@@ -2,7 +2,7 @@
 
 import { useState, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Plus, Trash2, ChevronDown, ChevronUp, Upload, Sparkles, Loader2, Shield } from "lucide-react";
+import { Plus, Trash2, ChevronDown, ChevronUp, Upload, Sparkles, Loader2 } from "lucide-react";
 import type { Problem, ProblemType, Difficulty, ProblemOption } from "@/lib/types";
 import { problemTypeMap, difficultyMap } from "@/lib/types";
 import { BatchUpload } from "./BatchUpload";

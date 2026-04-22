@@ -5,13 +5,16 @@
  * - $$ block math should be on separate lines
  */
 export function preprocessLatex(content: string): string {
-  // Step 1: Remove spaces between $ and formula content
+  // Remove spaces between $ and formula content
   // $ formula $ → $formula$
-  content = content
-    .replace(/\$\s+([^$\n]+?)\s+\$/g, '$$1$')
-    .replace(/\$\s+([^$\n]+?)\s+\$/g, '$$1$'); // second pass
+  let changed = true;
+  while (changed) {
+    const before = content;
+    content = content.replace(/\$\s+([^$\n]+?)\s+\$/g, '$$1$');
+    changed = content !== before;
+  }
 
-  // Step 2: Convert \[ \] and \( \) to $$ $$ and $ $
+  // Convert \[ \] and \( \) to $$ $$ and $ $
   return content
     .replace(/\\\[/g, '$$')
     .replace(/\\\]/g, '$$')
