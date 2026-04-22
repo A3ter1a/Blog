@@ -1,17 +1,17 @@
 "use client";
 
-import { motion } from "framer-motion";
-import { NoteType, Subject, subjectMap, typeMap, Difficulty, ProblemType, difficultyMap, problemTypeMap } from "@/lib/types";
+import { motion, AnimatePresence } from "framer-motion";
+import { useState } from "react";
+import { NoteType, Subject, subjectMap } from "@/lib/types";
+import { ChevronDown, ChevronUp, ArrowUpDown } from "lucide-react";
 
 interface TagFilterProps {
   selectedType: NoteType | "all";
   selectedSubject: Subject | "all";
-  selectedDifficulty: Difficulty | "all";
-  selectedProblemType: ProblemType | "all";
+  sortOrder: "desc" | "asc";
   onTypeChange: (type: NoteType | "all") => void;
   onSubjectChange: (subject: Subject | "all") => void;
-  onDifficultyChange: (difficulty: Difficulty | "all") => void;
-  onProblemTypeChange: (problemType: ProblemType | "all") => void;
+  onSortOrderChange: (order: "desc" | "asc") => void;
 }
 
 const types: { value: NoteType | "all"; label: string }[] = [
@@ -29,33 +29,15 @@ const subjects: { value: Subject | "all"; label: string }[] = [
   { value: "economics", label: subjectMap.economics },
 ];
 
-const difficulties: { value: Difficulty | "all"; label: string }[] = [
-  { value: "all", label: "全部难度" },
-  { value: "easy", label: "基础" },
-  { value: "medium", label: "中等" },
-  { value: "hard", label: "困难" },
-];
-
-const problemTypes: { value: ProblemType | "all"; label: string }[] = [
-  { value: "all", label: "全部题型" },
-  { value: "choice", label: "选择题" },
-  { value: "fill", label: "填空题" },
-  { value: "calculation", label: "计算题" },
-  { value: "proof", label: "证明题" },
-  { value: "proofEssay", label: "论述题" },
-];
-
 export function TagFilter({
   selectedType,
   selectedSubject,
-  selectedDifficulty,
-  selectedProblemType,
+  sortOrder,
   onTypeChange,
   onSubjectChange,
-  onDifficultyChange,
-  onProblemTypeChange,
+  onSortOrderChange,
 }: TagFilterProps) {
-  const showProblemFilters = selectedType === "problem" || selectedType === "all";
+  const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
 
   return (
     <div className="space-y-3">
@@ -78,67 +60,78 @@ export function TagFilter({
         ))}
       </div>
 
-      {/* Subject Filter */}
-      <div className="flex flex-wrap gap-2">
-        <span className="text-xs text-on-surface-variant/60 flex items-center mr-1">科目</span>
-        {subjects.map((subject) => (
-          <motion.button
-            key={subject.value}
-            whileTap={{ scale: 0.95 }}
-            onClick={() => onSubjectChange(subject.value)}
-            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-300 ${
-              selectedSubject === subject.value
-                ? "bg-surface-container-highest text-primary shadow-ambient"
-                : "bg-surface-container-low text-on-surface-variant hover:bg-surface-container-high"
-            }`}
-          >
-            {subject.label}
-          </motion.button>
-        ))}
+      {/* Advanced Filters Toggle */}
+      <div className="flex items-center gap-2">
+        <button
+          onClick={() => setIsAdvancedOpen(!isAdvancedOpen)}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-surface-container-low text-on-surface-variant text-sm hover:bg-surface-container-high transition-colors"
+        >
+          {isAdvancedOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+          高级筛选
+        </button>
       </div>
 
-      {/* Problem Filters (only show when problem type is selected or all) */}
-      {showProblemFilters && (
-        <>
-          {/* Difficulty Filter */}
-          <div className="flex flex-wrap gap-2">
-            <span className="text-xs text-on-surface-variant/60 flex items-center mr-1">难度</span>
-            {difficulties.map((diff) => (
-              <motion.button
-                key={diff.value}
-                whileTap={{ scale: 0.95 }}
-                onClick={() => onDifficultyChange(diff.value)}
-                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-300 ${
-                  selectedDifficulty === diff.value
-                    ? "bg-amber-100 text-amber-700 shadow-ambient"
-                    : "bg-surface-container-low text-on-surface-variant hover:bg-surface-container-high"
-                }`}
-              >
-                {diff.label}
-              </motion.button>
-            ))}
-          </div>
+      {/* Collapsible Advanced Filters */}
+      <AnimatePresence>
+        {isAdvancedOpen && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="overflow-hidden"
+          >
+            <div className="space-y-3 pt-1">
+              {/* Sort Order */}
+              <div className="flex flex-wrap gap-2 items-center">
+                <span className="text-xs text-on-surface-variant/60 flex items-center mr-1">
+                  <ArrowUpDown className="w-3 h-3 mr-1" />
+                  排序
+                </span>
+                <button
+                  onClick={() => onSortOrderChange("desc")}
+                  className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-300 ${
+                    sortOrder === "desc"
+                      ? "bg-primary-container/30 text-primary-container shadow-ambient"
+                      : "bg-surface-container-low text-on-surface-variant hover:bg-surface-container-high"
+                  }`}
+                >
+                  最新优先
+                </button>
+                <button
+                  onClick={() => onSortOrderChange("asc")}
+                  className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-300 ${
+                    sortOrder === "asc"
+                      ? "bg-primary-container/30 text-primary-container shadow-ambient"
+                      : "bg-surface-container-low text-on-surface-variant hover:bg-surface-container-high"
+                  }`}
+                >
+                  最早优先
+                </button>
+              </div>
 
-          {/* Problem Type Filter */}
-          <div className="flex flex-wrap gap-2">
-            <span className="text-xs text-on-surface-variant/60 flex items-center mr-1">题型</span>
-            {problemTypes.map((pt) => (
-              <motion.button
-                key={pt.value}
-                whileTap={{ scale: 0.95 }}
-                onClick={() => onProblemTypeChange(pt.value)}
-                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-300 ${
-                  selectedProblemType === pt.value
-                    ? "bg-primary-container/30 text-primary-container shadow-ambient"
-                    : "bg-surface-container-low text-on-surface-variant hover:bg-surface-container-high"
-                }`}
-              >
-                {pt.label}
-              </motion.button>
-            ))}
-          </div>
-        </>
-      )}
+              {/* Subject Filter */}
+              <div className="flex flex-wrap gap-2">
+                <span className="text-xs text-on-surface-variant/60 flex items-center mr-1">科目</span>
+                {subjects.map((subject) => (
+                  <motion.button
+                    key={subject.value}
+                    whileTap={{ scale: 0.95 }}
+                    onClick={() => onSubjectChange(subject.value)}
+                    className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-300 ${
+                      selectedSubject === subject.value
+                        ? "bg-surface-container-highest text-primary shadow-ambient"
+                        : "bg-surface-container-low text-on-surface-variant hover:bg-surface-container-high"
+                    }`}
+                  >
+                    {subject.label}
+                  </motion.button>
+                ))}
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

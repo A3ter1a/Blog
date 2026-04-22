@@ -7,15 +7,14 @@ import { TagFilter } from "@/components/notes/TagFilter";
 import { NoteCard } from "@/components/notes/NoteCard";
 import { ExportDialog } from "@/components/export/ExportDialog";
 import { notesApi } from "@/lib/supabase";
-import { NoteType, Subject, Difficulty, ProblemType, Note } from "@/lib/types";
-import { CheckSquare, Square, Download, X, Trash2, AlertTriangle, Loader2 } from "lucide-react";
+import { NoteType, Subject, Note } from "@/lib/types";
+import { CheckSquare, Square, Download, X, Trash2, AlertTriangle, Loader2, ArrowUpDown } from "lucide-react";
 
 export default function NotesPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedType, setSelectedType] = useState<NoteType | "all">("all");
   const [selectedSubject, setSelectedSubject] = useState<Subject | "all">("all");
-  const [selectedDifficulty, setSelectedDifficulty] = useState<Difficulty | "all">("all");
-  const [selectedProblemType, setSelectedProblemType] = useState<ProblemType | "all">("all");
+  const [sortOrder, setSortOrder] = useState<"desc" | "asc">("desc");
   
   // Data state
   const [notes, setNotes] = useState<Note[]>([]);
@@ -46,7 +45,7 @@ export default function NotesPage() {
   };
 
   const filteredNotes = useMemo(() => {
-    return notes.filter((note) => {
+    let result = notes.filter((note) => {
       const matchesSearch =
         searchQuery === "" ||
         note.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -54,21 +53,18 @@ export default function NotesPage() {
       const matchesType = selectedType === "all" || note.type === selectedType;
       const matchesSubject = selectedSubject === "all" || note.subject === selectedSubject || note.type === "essay";
 
-      // Problem-specific filters
-      let matchesDifficulty = true;
-      let matchesProblemType = true;
-      if (note.type === "problem" && note.problems && note.problems.length > 0) {
-        if (selectedDifficulty !== "all") {
-          matchesDifficulty = note.problems.some((p) => p.difficulty === selectedDifficulty);
-        }
-        if (selectedProblemType !== "all") {
-          matchesProblemType = note.problems.some((p) => p.type === selectedProblemType);
-        }
-      }
-
-      return matchesSearch && matchesType && matchesSubject && matchesDifficulty && matchesProblemType;
+      return matchesSearch && matchesType && matchesSubject;
     });
-  }, [searchQuery, selectedType, selectedSubject, selectedDifficulty, selectedProblemType, notes]);
+
+    // Sort by date
+    result = [...result].sort((a, b) => {
+      const dateA = a.createdAt instanceof Date ? a.createdAt.getTime() : new Date(a.createdAt as any).getTime();
+      const dateB = b.createdAt instanceof Date ? b.createdAt.getTime() : new Date(b.createdAt as any).getTime();
+      return sortOrder === "desc" ? dateB - dateA : dateA - dateB;
+    });
+
+    return result;
+  }, [searchQuery, selectedType, selectedSubject, sortOrder, notes]);
 
   const handleToggleSelect = (noteId: string) => {
     setSelectedNoteIds((prev) => {
@@ -209,12 +205,10 @@ export default function NotesPage() {
           <TagFilter
             selectedType={selectedType}
             selectedSubject={selectedSubject}
-            selectedDifficulty={selectedDifficulty}
-            selectedProblemType={selectedProblemType}
+            sortOrder={sortOrder}
             onTypeChange={setSelectedType}
             onSubjectChange={setSelectedSubject}
-            onDifficultyChange={setSelectedDifficulty}
-            onProblemTypeChange={setSelectedProblemType}
+            onSortOrderChange={setSortOrder}
           />
         </motion.section>
 
