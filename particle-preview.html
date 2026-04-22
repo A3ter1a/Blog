@@ -1,272 +1,338 @@
-<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Logo 粒子动效预览</title>
-  <style>
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
-    
-    body {
-      min-height: 100vh;
-      background: #ffffff;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      overflow: hidden;
-      font-family: system-ui, -apple-system, sans-serif;
-    }
-    
-    .container {
-      position: relative;
-      width: 100vw;
-      height: 100vh;
-    }
-    
-    canvas {
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-    }
-    
-    .info {
-      position: fixed;
-      bottom: 20px;
-      left: 50%;
-      transform: translateX(-50%);
-      color: rgba(0, 0, 0, 0.3);
-      font-size: 12px;
-      z-index: 100;
-    }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <canvas id="particleCanvas"></canvas>
-  </div>
-  <div class="info">鼠标移动有交互效果 | 刷新页面重新生成</div>
+<style>
+  :root {
+    --canvas-size: 500px;
+    --bg-color: #0a0a0a;
+    --primary-color: #ffffff;
+    --secondary-color: #888888;
+    --accent-color: #00ff88;
+    --tail-color: #00aaff;
+  }
 
-  <script>
-    const canvas = document.getElementById('particleCanvas');
+  #particle-container {
+    width: 100%;
+    height: 100vh;
+    background: var(--bg-color);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    overflow: hidden;
+    position: relative;
+  }
+
+  #particle-canvas {
+    width: var(--canvas-size);
+    height: var(--canvas-size);
+  }
+
+  .controls {
+    position: absolute;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 15px;
+    z-index: 10;
+  }
+
+  .control-btn {
+    padding: 8px 16px;
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--primary-color);
+    border: 1px solid var(--secondary-color);
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: all 0.3s ease;
+  }
+
+  .control-btn:hover {
+    background: var(--accent-color);
+    color: var(--bg-color);
+    border-color: var(--accent-color);
+  }
+
+  .control-btn.active {
+    background: var(--accent-color);
+    color: var(--bg-color);
+    border-color: var(--accent-color);
+  }
+
+  .slider-container {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: rgba(255, 255, 255, 0.1);
+    padding: 8px 12px;
+    border-radius: 6px;
+  }
+
+  .slider-container label {
+    color: var(--primary-color);
+    font-size: 12px;
+    white-space: nowrap;
+  }
+
+  .slider-container input[type="range"] {
+    width: 80px;
+    accent-color: var(--accent-color);
+  }
+</style>
+
+<div id="particle-container">
+  <canvas id="particle-canvas"></canvas>
+  <div class="controls">
+    <button class="control-btn active" id="btn-reset">重置动画</button>
+    <button class="control-btn" id="btn-pause">暂停</button>
+    <div class="slider-container">
+      <label>粒子密度</label>
+      <input type="range" id="density-slider" min="50" max="300" step="10" value="150">
+    </div>
+    <div class="slider-container">
+      <label>速度</label>
+      <input type="range" id="speed-slider" min="0.5" max="3" step="0.1" value="1">
+    </div>
+  </div>
+</div>
+
+<script>
+  (function() {
+    const canvas = document.getElementById('particle-canvas');
     const ctx = canvas.getContext('2d');
     
-    let width, height, centerX, centerY, radius;
-    let particles = [];
-    let mouse = { x: 0, y: 0, active: false };
-    let animationId;
+    const container = document.getElementById('particle-container');
+    const btnReset = document.getElementById('btn-reset');
+    const btnPause = document.getElementById('btn-pause');
+    const densitySlider = document.getElementById('density-slider');
+    const speedSlider = document.getElementById('speed-slider');
     
-    const colors = {
-      body: '#1a1a2e',
-      crater: '#ffffff',
-      trail: '#1a1a2e',
-    };
-
+    let width, height;
+    let centerX, centerY;
+    let radius;
+    
+    let asteroidParticles = [];
+    let tailLines = [];
+    let streamingParticles = [];
+    
+    let animationId = null;
+    let isPaused = false;
+    let time = 0;
+    let particleDensity = 150;
+    let speedMultiplier = 1;
+    
     function resize() {
-      width = canvas.width = window.innerWidth;
-      height = canvas.height = window.innerHeight;
+      const size = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--canvas-size'));
+      canvas.width = size * window.devicePixelRatio;
+      canvas.height = size * window.devicePixelRatio;
+      canvas.style.width = size + 'px';
+      canvas.style.height = size + 'px';
+      
+      width = canvas.width;
+      height = canvas.height;
       centerX = width / 2;
       centerY = height / 2;
-      radius = Math.min(width, height) * 0.22;
-      initParticles();
+      radius = width * 0.35;
     }
     
-    class Particle {
-      constructor(x, y, size, color, extra = {}) {
-        this.originX = x;
-        this.originY = y;
-        this.x = x;
-        this.y = y;
-        this.size = size;
-        this.color = color;
-        this.floatSpeed = 0.0005 + Math.random() * 0.002;
-        this.floatOffset = Math.random() * Math.PI * 2;
-        this.floatRange = extra.floatRange || 0.8;
-      }
+    function initAsteroidParticles() {
+      asteroidParticles = [];
       
-      update(time) {
-        const fx = Math.sin(time * this.floatSpeed + this.floatOffset) * this.floatRange;
-        const fy = Math.cos(time * this.floatSpeed * 0.7 + this.floatOffset) * this.floatRange;
-        this.x = this.originX + fx;
-        this.y = this.originY + fy;
+      const count = particleDensity;
+      const asteroidRadius = radius;
+      
+      for (let i = 0; i < count; i++) {
+        const theta = Math.random() * Math.PI * 2;
+        const r = Math.random() * asteroidRadius;
         
-        if (mouse.active) {
-          const dx = this.x - mouse.x;
-          const dy = this.y - mouse.y;
-          const dist = Math.sqrt(dx * dx + dy * dy);
-          const maxDist = 120;
-          if (dist < maxDist && dist > 0) {
-            const force = (1 - dist / maxDist) * 20;
-            this.x += (dx / dist) * force;
-            this.y += (dy / dist) * force;
-          }
-        }
-      }
-      
-      draw() {
-        ctx.beginPath();
-        ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
-        ctx.fillStyle = this.color;
-        ctx.fill();
-      }
-    }
-    
-    // 用网格方式密集填充圆形
-    function fillCircle(cx, cy, r, spacing, excludeCircles = []) {
-      const particles = [];
-      const steps = Math.ceil(r * 2 / spacing);
-      
-      for (let i = -steps; i <= steps; i++) {
-        for (let j = -steps; j <= steps; j++) {
-          const px = cx + i * spacing;
-          const py = cy + j * spacing;
-          const dist = Math.hypot(px - cx, py - cy);
-          
-          if (dist > r) continue;
-          
-          // 检查是否在排除区域内
-          let excluded = false;
-          for (const ec of excludeCircles) {
-            if (Math.hypot(px - ec.cx, py - ec.cy) < ec.r) {
-              excluded = true;
-              break;
-            }
-          }
-          if (excluded) continue;
-          
-          // 添加随机偏移让分布更自然
-          const offsetX = (Math.random() - 0.5) * spacing * 0.6;
-          const offsetY = (Math.random() - 0.5) * spacing * 0.6;
-          const size = spacing * 0.35 + Math.random() * spacing * 0.15;
-          
-          particles.push(new Particle(px + offsetX, py + offsetY, size, colors.body, { floatRange: 0.5 }));
-        }
-      }
-      return particles;
-    }
-    
-    // 填充圆形区域（用于陨石坑）
-    function fillCircleArea(cx, cy, r, spacing, color) {
-      const particles = [];
-      const steps = Math.ceil(r * 2 / spacing);
-      
-      for (let i = -steps; i <= steps; i++) {
-        for (let j = -steps; j <= steps; j++) {
-          const px = cx + i * spacing;
-          const py = cy + j * spacing;
-          const dist = Math.hypot(px - cx, py - cy);
-          
-          if (dist > r) continue;
-          
-          const offsetX = (Math.random() - 0.5) * spacing * 0.5;
-          const offsetY = (Math.random() - 0.5) * spacing * 0.5;
-          const size = spacing * 0.3 + Math.random() * spacing * 0.15;
-          
-          particles.push(new Particle(px + offsetX, py + offsetY, size, color, { floatRange: 0.3 }));
-        }
-      }
-      return particles;
-    }
-    
-    function initParticles() {
-      particles = [];
-      const r = radius;
-      const bodySpacing = 10; // 粒子间距，增大减少数量
-      
-      // 陨石坑定义
-      const craters = [
-        { cx: centerX - 0.3 * r, cy: centerY - 0.25 * r, r: 0.08 * r },
-        { cx: centerX + 0.35 * r, cy: centerY - 0.15 * r, r: 0.06 * r },
-        { cx: centerX + 0.1 * r, cy: centerY + 0.1 * r, r: 0.04 * r },
-      ];
-      
-      // 1. 天体主体
-      particles.push(...fillCircle(centerX, centerY, r * 0.96, bodySpacing, craters));
-      
-      // 2. 陨石坑
-      for (const crater of craters) {
-        particles.push(...fillCircleArea(crater.cx, crater.cy, crater.r * 0.9, bodySpacing * 0.8, colors.crater));
-      }
-      
-      // 3. 流星拖尾 - 从中心向左下角射出
-      const trailAngle = Math.PI * 1.25; // 左下约225度
-      const trailStartX = centerX;
-      const trailStartY = centerY;
-      
-      // 4条拖尾线条
-      const trailOffsets = [-0.12, -0.04, 0.04, 0.12];
-      for (const angleOffset of trailOffsets) {
-        const angle = trailAngle + angleOffset;
-        const length = r * (1.2 + Math.abs(angleOffset) * 3);
-        const lineSpacing = 8;
+        const x = centerX + Math.cos(theta) * r;
+        const y = centerY + Math.sin(theta) * r;
         
-        for (let d = 0; d < length; d += lineSpacing) {
-          const t = d / length;
-          const px = trailStartX + Math.cos(angle) * d;
-          const py = trailStartY + Math.sin(angle) * d;
-          const size = (3.5 - t * 2.8) + Math.random() * 0.5;
-          
-          // 每条线加1个旁粒子
-          const ox = (Math.random() - 0.5) * 5;
-          const oy = (Math.random() - 0.5) * 5;
-          const s = size * (0.4 + Math.random() * 0.4);
-          particles.push(new Particle(px + ox, py + oy, s, colors.trail, { floatRange: 0.6 }));
-        }
-      }
-      
-      // 拖尾周围散落粒子
-      for (let i = 0; i < 20; i++) {
-        const angle = trailAngle + (Math.random() - 0.5) * 0.7;
-        const dist = r * (0.3 + Math.random() * 1.5);
-        const px = centerX + Math.cos(angle) * dist;
-        const py = centerY + Math.sin(angle) * dist;
-        const size = 1 + Math.random() * 2;
-        particles.push(new Particle(px, py, size, colors.trail, { floatRange: 1 }));
+        const size = Math.random() * 2 + 1;
+        const opacity = Math.random() * 0.5 + 0.5;
+        const speed = Math.random() * 0.02 + 0.01;
+        const angle = Math.random() * Math.PI * 2;
+        
+        asteroidParticles.push({
+          x, y,
+          baseX: x,
+          baseY: y,
+          size,
+          opacity,
+          speed,
+          angle,
+          oscillation: Math.random() * 0.5 + 0.5
+        });
       }
     }
     
-    function animate(time) {
+    function initTailLines() {
+      tailLines = [];
+      
+      const tailLength = 50;
+      const tailWidth = 8;
+      const angle = Math.PI / 4;
+      
+      const startX = centerX - Math.cos(angle) * (radius + 30);
+      const startY = centerY + Math.sin(angle) * (radius + 30);
+      
+      for (let i = 0; i < tailLength; i++) {
+        const t = i / tailLength;
+        const lineAngle = angle + (Math.random() - 0.5) * 0.3;
+        const lineLength = Math.random() * 15 + 10;
+        const offsetX = (Math.random() - 0.5) * tailWidth * (1 - t);
+        const offsetY = (Math.random() - 0.5) * tailWidth * (1 - t);
+        
+        const lineStartX = startX - Math.cos(lineAngle) * i * 3 + offsetX;
+        const lineStartY = startY + Math.sin(lineAngle) * i * 3 + offsetY;
+        
+        const lineEndX = lineStartX - Math.cos(lineAngle) * lineLength;
+        const lineEndY = lineStartY + Math.sin(lineAngle) * lineLength;
+        
+        tailLines.push({
+          x1: lineStartX,
+          y1: lineStartY,
+          x2: lineEndX,
+          y2: lineEndY,
+          baseX1: lineStartX,
+          baseY1: lineStartY,
+          baseX2: lineEndX,
+          baseY2: lineEndY,
+          opacity: (1 - t) * 0.8,
+          width: Math.max(1, (1 - t) * 2),
+          delay: t * 2
+        });
+      }
+    }
+    
+    function initStreamingParticles() {
+      streamingParticles = [];
+      
+      const count = particleDensity / 2;
+      const tailAngle = Math.PI / 4;
+      const startX = centerX - Math.cos(tailAngle) * (radius + 30);
+      const startY = centerY + Math.sin(tailAngle) * (radius + 30);
+      
+      for (let i = 0; i < count; i++) {
+        const offset = Math.random() * 150;
+        const spread = (Math.random() - 0.5) * 20;
+        
+        streamingParticles.push({
+          baseX: startX - Math.cos(tailAngle) * offset + Math.sin(tailAngle) * spread,
+          baseY: startY + Math.sin(tailAngle) * offset + Math.cos(tailAngle) * spread,
+          size: Math.random() * 1.5 + 0.5,
+          opacity: Math.random() * 0.6 + 0.2,
+          speed: Math.random() * 0.03 + 0.01,
+          angle: Math.random() * Math.PI * 2,
+          offset: offset
+        });
+      }
+    }
+    
+    function updateParticles(deltaTime) {
+      const dt = deltaTime * speedMultiplier;
+      time += dt;
+      
+      asteroidParticles.forEach(p => {
+        p.x = p.baseX + Math.sin(time * p.speed * 10 + p.angle) * p.oscillation * 2;
+        p.y = p.baseY + Math.cos(time * p.speed * 10 + p.angle) * p.oscillation * 2;
+      });
+      
+      tailLines.forEach(line => {
+        const delay = line.delay;
+        const wave = Math.sin(time * 2 - delay * 5) * 3;
+        
+        line.x1 = line.baseX1 + wave;
+        line.y1 = line.baseY1 + wave * 0.5;
+        line.x2 = line.baseX2 + wave;
+        line.y2 = line.baseY2 + wave * 0.5;
+      });
+      
+      streamingParticles.forEach(p => {
+        p.x = p.baseX + Math.sin(time * p.speed * 10 + p.angle) * 1;
+        p.y = p.baseY + Math.cos(time * p.speed * 10 + p.angle) * 1;
+      });
+    }
+    
+    function drawParticles() {
       ctx.clearRect(0, 0, width, height);
       
-      for (const p of particles) {
-        p.update(time);
-        p.draw();
-      }
+      ctx.strokeStyle = '#00aaff';
+      ctx.lineWidth = 1;
+      tailLines.forEach(line => {
+        ctx.globalAlpha = line.opacity;
+        ctx.lineWidth = line.width;
+        ctx.beginPath();
+        ctx.moveTo(line.x1, line.y1);
+        ctx.lineTo(line.x2, line.y2);
+        ctx.stroke();
+      });
       
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = '#ffffff';
+      asteroidParticles.forEach(p => {
+        ctx.globalAlpha = p.opacity;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+        ctx.fill();
+      });
+      
+      ctx.fillStyle = '#88aacc';
+      streamingParticles.forEach(p => {
+        ctx.globalAlpha = p.opacity;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+        ctx.fill();
+      });
+      
+      ctx.globalAlpha = 1;
+    }
+    
+    function animate(currentTime) {
+      if (!isPaused) {
+        const deltaTime = 0.016;
+        updateParticles(deltaTime);
+        drawParticles();
+      }
       animationId = requestAnimationFrame(animate);
     }
     
-    window.addEventListener('resize', resize);
+    function init() {
+      resize();
+      initAsteroidParticles();
+      initTailLines();
+      initStreamingParticles();
+      drawParticles();
+      animationId = requestAnimationFrame(animate);
+    }
     
-    canvas.addEventListener('mousemove', (e) => {
-      mouse.x = e.clientX;
-      mouse.y = e.clientY;
-      mouse.active = true;
+    function reset() {
+      if (animationId) {
+        cancelAnimationFrame(animationId);
+      }
+      time = 0;
+      init();
+    }
+    
+    btnReset.addEventListener('click', reset);
+    
+    btnPause.addEventListener('click', () => {
+      isPaused = !isPaused;
+      btnPause.textContent = isPaused ? '继续' : '暂停';
+      btnPause.classList.toggle('active', isPaused);
     });
     
-    canvas.addEventListener('mouseleave', () => {
-      mouse.active = false;
+    densitySlider.addEventListener('input', (e) => {
+      particleDensity = parseInt(e.target.value);
+      reset();
     });
     
-    canvas.addEventListener('touchmove', (e) => {
-      e.preventDefault();
-      const touch = e.touches[0];
-      mouse.x = touch.clientX;
-      mouse.y = touch.clientY;
-      mouse.active = true;
+    speedSlider.addEventListener('input', (e) => {
+      speedMultiplier = parseFloat(e.target.value);
     });
     
-    canvas.addEventListener('touchend', () => {
-      mouse.active = false;
+    window.addEventListener('resize', () => {
+      reset();
     });
     
-    resize();
-    animate(0);
-  </script>
-</body>
-</html>
+    init();
+  })();
+</script>

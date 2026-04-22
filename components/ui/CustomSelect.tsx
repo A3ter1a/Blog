@@ -31,11 +31,15 @@ export function CustomSelect({ options, value, onChange, placeholder = "请选�
   useEffect(() => {
     if (isOpen && buttonRef.current) {
       const rect = buttonRef.current.getBoundingClientRect();
+      const viewportWidth = window.innerWidth;
+      const dropdownWidth = Math.min(rect.width, 200);
+      const left = Math.min(rect.left, viewportWidth - dropdownWidth - 8);
+      
       setDropdownStyle({
         position: "fixed",
         top: rect.bottom + 4,
-        left: rect.left,
-        width: rect.width,
+        left: left,
+        width: dropdownWidth,
         zIndex: 100,
       });
     }
@@ -67,19 +71,6 @@ export function CustomSelect({ options, value, onChange, placeholder = "请选�
           <ChevronDown className="w-4 h-4 text-on-surface-variant" />
         </motion.div>
       </button>
-
-      {/* Backdrop */}
-      <AnimatePresence>
-        {isOpen && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[99] bg-transparent"
-            onClick={closeDropdown}
-          />
-        )}
-      </AnimatePresence>
 
       {/* Dropdown */}
       <AnimatePresence>
