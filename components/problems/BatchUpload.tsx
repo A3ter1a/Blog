@@ -4,6 +4,7 @@ import { useState, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Upload, Image as ImageIcon, Loader2, CheckCircle2, XCircle, Trash2, Eye } from "lucide-react";
 import { extractFromImage } from "@/lib/ai";
+import { fileToBase64 } from "@/lib/utils";
 import type { Problem, Difficulty } from "@/lib/types";
 
 interface BatchUploadResult {
@@ -319,15 +320,6 @@ export function BatchUpload({ onProblemsExtracted }: BatchUploadProps) {
       )}
     </div>
   );
-}
-
-// Utility functions
-async function fileToBase64(file: File): Promise<string> {
-  return new Promise((resolve) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result as string);
-    reader.readAsDataURL(file);
-  });
 }
 
 function extractOptions(content: string) {

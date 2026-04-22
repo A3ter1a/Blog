@@ -6,7 +6,7 @@ import { X, Plus, Trash2, CheckCircle2, XCircle, Loader2, Key, Upload, Type, Lis
 import { APIConfig, aiProviders, aiModelsByProvider } from "@/lib/types";
 import { CustomSelect } from "@/components/ui/CustomSelect";
 import { useReadingPreferences, TOCPosition } from "@/lib/useReadingPreferences";
-import { ParsedNote } from "@/lib/import";
+import { ParsedNote, detectFormat, importFromJSON, importFromMarkdown, importFromObsidian } from "@/lib/import";
 import { ImportPreview } from "@/components/export/ImportPreview";
 import { fileToDataUrl } from "@/lib/utils";
 
@@ -327,8 +327,6 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
     reader.onload = (event) => {
       try {
         const content = event.target?.result as string;
-        const { detectFormat, importFromJSON, importFromMarkdown, importFromObsidian } = require('@/lib/import');
-        const { ParsedNote } = require('@/lib/import');
         
         const format = detectFormat(content);
         let notes: ParsedNote[];

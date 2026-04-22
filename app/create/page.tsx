@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import { motion } from "framer-motion";
 import { useRouter } from "next/navigation";
-import { Save, RotateCcw, X, Image as ImageIcon, Sparkles, Plus } from "lucide-react";
+import { Save, RotateCcw, X, Image as ImageIcon, Sparkles } from "lucide-react";
 import { Subject, subjectMap, NoteType, typeMap, Video, Problem } from "@/lib/types";
 import { notesApi } from "@/lib/supabase";
 import { Playlist } from "@/components/video/Playlist";

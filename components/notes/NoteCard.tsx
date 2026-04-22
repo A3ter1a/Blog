@@ -3,7 +3,7 @@
 import { motion } from "framer-motion";
 import Link from "next/link";
 import { Note, subjectMap, typeMap, NoteType } from "@/lib/types";
-import { FileText, BookOpen, Calendar, Eye, Bookmark, ChevronDown, Check } from "lucide-react";
+import { FileText, BookOpen, Calendar, ChevronDown, Check } from "lucide-react";
 import { useState } from "react";
 
 interface NoteCardProps {

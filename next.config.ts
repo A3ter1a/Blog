@@ -15,7 +15,7 @@ const nextConfig: NextConfig = {
   experimental: {
     optimizePackageImports: ["lucide-react", "framer-motion"],
   },
-  // Headers for DPlayer and video playback
+  // Headers for embedded video playback (Bilibili & YouTube)
   async headers() {
     return [
       {

@@ -70,9 +70,14 @@ export function noteToObsidian(note: Note, allNotes?: Note[]): string {
 
 /**
  * Convert standard Markdown links to wiki-style [[links]]
+ * Only converts internal note references, preserves external URLs and images
  */
 function convertToWikiLinks(content: string, allNotes: Note[]): string {
-  return content.replace(/\[([^\]]+)\]\([^)]+\)/g, (match, text) => {
+  return content.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (match, text, url) => {
+    // Skip external links, images, and data URLs
+    if (url.startsWith('http') || url.startsWith('https') || url.startsWith('data:') || url.startsWith('/')) {
+      return match;
+    }
     const note = allNotes.find(n => n.title.includes(text) || text.includes(n.title));
     if (note) {
       return `[[${note.title}]]`;
