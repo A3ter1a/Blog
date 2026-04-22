@@ -22,9 +22,9 @@ export function Playlist({ videos, onChange, editable = false, onPlay }: Playlis
 
   const currentVideo = videos[currentIndex];
 
-  // In non-editable mode (reading page), don't show embedded player
+  // In non-editable mode with onPlay callback (reading page), don't show embedded player
   // Users will click to play inline in the article
-  const shouldShowPlayer = editable || !onPlay;
+  const shouldShowPlayer = editable && !onPlay;
 
   const parseVideoInput = (input: string, platform: VideoPlatform) => {
     input = input.trim();
