@@ -189,15 +189,7 @@ ${content}`,
     toast.success("已应用润色结果");
   };
 
-  // Editor toolbar handlers
-  const handleEditorBold = () => editorRef.current?.insertContent("**bold**");
-  const handleEditorItalic = () => editorRef.current?.insertContent("*italic*");
-  const handleEditorH1 = () => editorRef.current?.insertContent("\n# ");
-  const handleEditorH2 = () => editorRef.current?.insertContent("\n## ");
-  const handleEditorH3 = () => editorRef.current?.insertContent("\n### ");
-  const handleEditorBulletList = () => editorRef.current?.insertContent("\n- ");
-  const handleEditorOrderedList = () => editorRef.current?.insertContent("\n1. ");
-  
+  // Editor toolbar handlers - only complex operations remain
   const handleEditorImageUpload = async () => {
     const input = document.createElement("input");
     input.type = "file";
@@ -417,13 +409,7 @@ ${content}`,
                 内容（Markdown）
               </label>
               <EditorToolbar
-                onBold={handleEditorBold}
-                onItalic={handleEditorItalic}
-                onHeading1={handleEditorH1}
-                onHeading2={handleEditorH2}
-                onHeading3={handleEditorH3}
-                onBulletList={handleEditorBulletList}
-                onOrderedList={handleEditorOrderedList}
+                editor={editorRef.current?.editor}
                 onImageUpload={handleEditorImageUpload}
                 onFormulaToImage={() => setShowFormulaModal(true)}
                 onSketchUpload={() => setShowSketchModal(true)}
@@ -435,6 +421,14 @@ ${content}`,
                 onChange={setContent}
                 placeholder={isEssay ? "记录你的想法..." : "在此输入内容，支持 Markdown 语法..."}
               />
+              {/* Character Count */}
+              <div className="flex justify-between items-center mt-2 px-2 text-xs text-on-surface-variant/60">
+                <span>
+                  字数: {content.replace(/\s/g, "").length.toLocaleString()} |
+                  字符: {content.length.toLocaleString()}
+                </span>
+                <span>Markdown</span>
+              </div>
             </>
           )}
         </motion.div>

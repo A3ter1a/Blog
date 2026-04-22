@@ -4,6 +4,8 @@ import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Image from "@tiptap/extension-image";
 import Placeholder from "@tiptap/extension-placeholder";
+import Link from "@tiptap/extension-link";
+import CharacterCount from "@tiptap/extension-character-count";
 import { Markdown } from "tiptap-markdown";
 import { useEffect, forwardRef, useImperativeHandle } from "react";
 import { ProblemBlock, parseProblemMarkers } from "@/lib/problem-block-extension";
@@ -16,6 +18,7 @@ interface RichTextEditorProps {
 }
 
 export interface RichTextEditorRef {
+  editor: ReturnType<typeof useEditor>;
   insertImage: (url: string) => void;
   insertContent: (content: string) => void;
 }
@@ -34,6 +37,15 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
         Placeholder.configure({
           placeholder,
         }),
+        Link.configure({
+          openOnClick: false,
+          HTMLAttributes: {
+            class: "text-primary underline",
+          },
+        }),
+        CharacterCount.configure({
+          limit: null,
+        }),
         ProblemBlock,
         Markdown.configure({
           html: false,
@@ -50,6 +62,7 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
 
     // 暴露方法给父组件
     useImperativeHandle(ref, () => ({
+      editor,
       insertImage: (url: string) => {
         editor?.chain().focus().setImage({ src: url }).run();
       },
@@ -90,7 +103,9 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
             [&_.ProseMirror_code]:bg-surface-container-high [&_.ProseMirror_code]:px-1.5 [&_.ProseMirror_code]:py-0.5
             [&_.ProseMirror_code]:rounded [&_.ProseMirror_code]:text-sm
             [&_.ProseMirror_pre]:bg-surface-container-high [&_.ProseMirror_pre]:p-4
-            [&_.ProseMirror_pre]:rounded-lg [&_.ProseMirror_pre]:overflow-x-auto [&_.ProseMirror_pre]:my-3"
+            [&_.ProseMirror_pre]:rounded-lg [&_.ProseMirror_pre]:overflow-x-auto [&_.ProseMirror_pre]:my-3
+            [&_.ProseMirror_a]:text-primary [&_.ProseMirror_a]:underline
+            [&_.ProseMirror_hr:my-4] [&_.ProseMirror_hr:border-outline-variant/20]"
         />
       </div>
     );
