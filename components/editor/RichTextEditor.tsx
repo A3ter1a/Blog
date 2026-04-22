@@ -93,8 +93,16 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
             if (e.key === "Tab") {
               e.preventDefault();
               if (e.shiftKey) {
-                // Shift+Tab: 尝试减少缩进
-                editor.chain().focus().indent({ level: -1 }).run();
+                // Shift+Tab: 删除光标前的两个空格
+                const { state } = editor;
+                const { $from } = state.selection;
+                const textBefore = state.doc.textBetween(Math.max(0, $from.pos - 2), $from.pos);
+                if (textBefore === "  ") {
+                  editor.chain().focus()
+                    .setTextSelection({ from: $from.pos - 2, to: $from.pos })
+                    .deleteSelection()
+                    .run();
+                }
               } else {
                 // Tab: 插入两个空格作为缩进
                 editor.chain().focus().insertContent("  ").run();
