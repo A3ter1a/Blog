@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Plus, Trash2, CheckCircle2, XCircle, Loader2, Key, Upload, Type, ListTree, Eye, AlignLeft, User, Camera, Edit3, Save } from "lucide-react";
+import { X, Plus, Trash2, CheckCircle2, XCircle, Loader2, Key, Upload, Type, ListTree, Eye, AlignLeft, User, Camera, Edit3, Save, Mail, GitFork, Globe, MessageCircle } from "lucide-react";
 import { APIConfig, aiProviders, aiModelsByProvider } from "@/lib/types";
 import { CustomSelect } from "@/components/ui/CustomSelect";
 import { useReadingPreferences, TOCPosition } from "@/lib/useReadingPreferences";
@@ -39,10 +39,10 @@ const defaultProfile = {
 };
 
 const iconMap: Record<string, any> = {
-  mail: require("lucide-react").Mail,
-  gitFork: require("lucide-react").GitFork,
-  globe: require("lucide-react").Globe,
-  messageCircle: require("lucide-react").MessageCircle,
+  mail: Mail,
+  gitFork: GitFork,
+  globe: Globe,
+  messageCircle: MessageCircle,
 };
 
 export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
