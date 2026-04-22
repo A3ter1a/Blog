@@ -143,13 +143,13 @@ export function ImportPreview({ isOpen, onClose, parsedNotes }: ImportPreviewPro
                           <div>
                             <span className="text-on-surface-variant/60">类型:</span>
                             <span className="ml-2 text-on-surface">
-                              {typeMap[analysis.type] || '未识别'}
+                              {typeMap[analysis.type as keyof typeof typeMap] || '未识别'}
                             </span>
                           </div>
                           <div>
                             <span className="text-on-surface-variant/60">科目:</span>
                             <span className="ml-2 text-on-surface">
-                              {analysis.subject ? subjectMap[analysis.subject] || '未识别' : '未识别'}
+                              {analysis.subject ? subjectMap[analysis.subject as keyof typeof subjectMap] || '未识别' : '未识别'}
                             </span>
                           </div>
                         </div>
