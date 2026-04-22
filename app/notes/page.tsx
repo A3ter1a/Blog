@@ -35,7 +35,6 @@ export default function NotesPage() {
     try {
       setLoading(true);
       const data = await notesApi.getAll();
-      console.log('Supabase 返回的笔记数据:', data);
       setNotes(data);
     } catch (error) {
       console.error("Failed to load notes:", error);

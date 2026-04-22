@@ -97,7 +97,6 @@ export default function CreatePage() {
     }
 
     const tags = tagInput.split(/[,，]/).map(t => t.trim()).filter(Boolean);
-    console.log("Saving note with tags:", tags);
 
     const noteData = {
       noteType,

@@ -7,6 +7,16 @@ import { VideoPlayer } from "./VideoPlayer";
 import type { Video, VideoPlatform } from "@/lib/types";
 import { platformMap } from "@/lib/types";
 
+// Cached regex patterns for video URL parsing
+const BV_PATTERN = /(BV[\w]+)/;
+const P_PATTERN = /[?&]p=(\d+)/;
+const YOUTUBE_PATTERNS = [
+  /(?:youtube\.com\/watch\?v=)([a-zA-Z0-9_-]{11})/,
+  /(?:youtu\.be\/)([a-zA-Z0-9_-]{11})/,
+  /(?:youtube\.com\/embed\/)([a-zA-Z0-9_-]{11})/,
+  /^([a-zA-Z0-9_-]{11})$/,
+];
+
 interface PlaylistProps {
   videos: Video[];
   onChange?: (videos: Video[]) => void;
@@ -30,9 +40,8 @@ export function Playlist({ videos, onChange, editable = false, onPlay }: Playlis
     input = input.trim();
     
     if (platform === "bilibili") {
-      // Support full URL with P, BV号, or raw BV
-      const bvMatch = input.match(/(BV[\w]+)/);
-      const pMatch = input.match(/[?&]p=(\d+)/);
+      const bvMatch = input.match(BV_PATTERN);
+      const pMatch = input.match(P_PATTERN);
       return {
         bvid: bvMatch ? bvMatch[1] : input,
         p: pMatch ? parseInt(pMatch[1]) : 1,
@@ -40,15 +49,7 @@ export function Playlist({ videos, onChange, editable = false, onPlay }: Playlis
     }
     
     if (platform === "youtube") {
-      // Support various YouTube URL formats
-      const patterns = [
-        /(?:youtube\.com\/watch\?v=)([a-zA-Z0-9_-]{11})/,
-        /(?:youtu\.be\/)([a-zA-Z0-9_-]{11})/,
-        /(?:youtube\.com\/embed\/)([a-zA-Z0-9_-]{11})/,
-        /^([a-zA-Z0-9_-]{11})$/,  // Direct video ID
-      ];
-      
-      for (const pattern of patterns) {
+      for (const pattern of YOUTUBE_PATTERNS) {
         const match = input.match(pattern);
         if (match) return { videoId: match[1] };
       }
