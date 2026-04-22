@@ -10,7 +10,6 @@ import { Playlist } from "@/components/video/Playlist";
 import { ProblemEditor } from "@/components/problems/ProblemEditor";
 import { chatWithAI } from "@/lib/ai";
 import { fileToDataUrl } from "@/lib/utils";
-import { useClickOutside } from "@/lib/hooks";
 import { useToast } from "@/components/ui/Toast";
 import { RichTextEditor, RichTextEditorRef } from "@/components/editor/RichTextEditor";
 import { EditorToolbar } from "@/components/editor/EditorToolbar";
@@ -131,7 +130,21 @@ export default function CreatePage() {
     }
   };
 
-  const tagContainerRef = useClickOutside(() => setShowTagSuggestions(false), showTagSuggestions);
+  const tagContainerRef = useRef<HTMLDivElement>(null);
+
+  // Close tag suggestions when clicking outside
+  useEffect(() => {
+    if (!showTagSuggestions) return;
+    
+    const handleClickOutside = (event: MouseEvent) => {
+      if (tagContainerRef.current && !tagContainerRef.current.contains(event.target as Node)) {
+        setShowTagSuggestions(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [showTagSuggestions]);
 
   // Tag editing handlers
   const handleStartEditTags = () => {
