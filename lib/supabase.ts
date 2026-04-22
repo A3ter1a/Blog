@@ -17,69 +17,90 @@ export function getSupabase() {
   return _supabase;
 }
 
+// 字段转换：snake_case → camelCase
+function mapSnakeToCamel(row: any): Note {
+  return {
+    id: row.id,
+    type: row.type,
+    title: row.title,
+    content: row.content,
+    subject: row.subject || undefined,
+    tags: row.tags || [],
+    coverImage: row.cover_image || undefined,
+    videos: row.videos || [],
+    problems: row.problems || [],
+    createdAt: new Date(row.created_at),
+    updatedAt: new Date(row.updated_at),
+    isPublished: row.is_published,
+  };
+}
+
+// 字段转换：camelCase → snake_case
+function mapCamelToSnake(note: Partial<Note>): any {
+  const db: any = {};
+  if (note.type !== undefined) db.type = note.type;
+  if (note.title !== undefined) db.title = note.title;
+  if (note.content !== undefined) db.content = note.content;
+  if (note.subject !== undefined) db.subject = note.subject;
+  if (note.tags !== undefined) db.tags = note.tags;
+  if (note.coverImage !== undefined) db.cover_image = note.coverImage;
+  if (note.videos !== undefined) db.videos = note.videos;
+  if (note.problems !== undefined) db.problems = note.problems;
+  if (note.isPublished !== undefined) db.is_published = note.isPublished;
+  return db;
+}
+
 // Notes API (使用 getSupabase() 确保延迟初始化)
-// 注意: Supabase 类型适配尚未完成，暂时使用 any 绕过
 export const notesApi = {
   // Get all notes
   async getAll(): Promise<Note[]> {
     const supabase = getSupabase();
-    const { data, error } = await (supabase as any)
+    const { data, error } = await supabase
       .from("notes")
       .select("*")
       .eq("is_published", true)
       .order("created_at", { ascending: false });
 
     if (error) throw error;
-    return data || [];
+    return (data || []).map(mapSnakeToCamel);
   },
 
   // Get note by ID
   async getById(id: string): Promise<Note | null> {
     const supabase = getSupabase();
-    const { data, error } = await (supabase as any)
+    const { data, error } = await supabase
       .from("notes")
       .select("*")
       .eq("id", id)
       .single();
 
     if (error) return null;
-    return data;
+    return mapSnakeToCamel(data);
   },
 
   // Create note
   async create(note: Omit<Note, "id" | "createdAt" | "updatedAt">): Promise<Note> {
     const supabase = getSupabase();
+    const dbNote = mapCamelToSnake(note);
     const { data, error } = await (supabase as any)
       .from("notes")
-      .insert([
-        {
-          type: note.type,
-          title: note.title,
-          content: note.content,
-          subject: note.subject || null,
-          tags: note.tags,
-          cover_image: note.coverImage || null,
-          videos: note.videos || [],
-          problems: note.problems || [],
-          is_published: note.isPublished,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        },
-      ])
+      .insert([{
+        ...dbNote,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }])
       .select()
       .single();
 
     if (error) throw error;
-    return data;
+    return mapSnakeToCamel(data);
   },
 
   // Update note
   async update(id: string, updates: Partial<Note>): Promise<Note> {
     const supabase = getSupabase();
-    const dbUpdates: any = { ...updates, updated_at: new Date().toISOString() };
-    // Map camelCase to snake_case
-    if (updates.coverImage !== undefined) { dbUpdates.cover_image = updates.coverImage; delete dbUpdates.coverImage; }
-    if (updates.isPublished !== undefined) { dbUpdates.is_published = updates.isPublished; delete dbUpdates.isPublished; }
+    const dbUpdates = mapCamelToSnake(updates);
+    dbUpdates.updated_at = new Date().toISOString();
     
     const { data, error } = await (supabase as any)
       .from("notes")
@@ -89,20 +110,20 @@ export const notesApi = {
       .single();
 
     if (error) throw error;
-    return data;
+    return mapSnakeToCamel(data);
   },
 
   // Delete note
   async delete(id: string): Promise<void> {
     const supabase = getSupabase();
-    const { error } = await (supabase as any).from("notes").delete().eq("id", id);
+    const { error } = await supabase.from("notes").delete().eq("id", id);
     if (error) throw error;
   },
 
   // Search notes
   async search(query: string, type?: NoteType, subject?: Subject): Promise<Note[]> {
     const supabase = getSupabase();
-    let q = (supabase as any)
+    let q = supabase
       .from("notes")
       .select("*")
       .eq("is_published", true)
@@ -113,6 +134,6 @@ export const notesApi = {
 
     const { data, error } = await q.order("created_at", { ascending: false });
     if (error) throw error;
-    return data || [];
+    return (data || []).map(mapSnakeToCamel);
   },
 };
