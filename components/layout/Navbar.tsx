@@ -42,7 +42,7 @@ export function Navbar() {
           href="/"
           className="flex items-center gap-2 hover:opacity-80 transition-opacity duration-300"
         >
-          <img src="/logo.png" alt="Asteroid Logo" className="w-12 h-12 object-contain" />
+          <img src="/logo.png" alt="Asteroid Logo" className="w-14 h-14 object-contain" />
           <span className="text-2xl font-bold font-headline text-primary-container translate-y-[1px]">
             Asteroid
           </span>
