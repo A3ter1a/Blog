@@ -8,8 +8,8 @@ export const metadata: Metadata = {
   title: "Asteroid - 知识的沉淀与共鸣",
   description: "个人考研笔记网站 - 数学三、英语一、政治一、经济学",
   icons: {
-    icon: "/favicon.png",
-    apple: "/favicon.png",
+    icon: "/logo.png",
+    apple: "/logo.png",
   },
 };
 
