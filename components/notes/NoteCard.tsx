@@ -160,7 +160,9 @@ export function NoteCard({ note, index, isSelected = false, onToggleSelect, sele
             <div className="flex items-center gap-4">
               <span className="flex items-center gap-1">
                 <Calendar className="w-4 h-4" />
-                {note.createdAt.toLocaleDateString("zh-CN")}
+                {note.createdAt instanceof Date 
+                  ? note.createdAt.toLocaleDateString("zh-CN") 
+                  : new Date(note.createdAt as any).toLocaleDateString("zh-CN")}
               </span>
             </div>
           </div>

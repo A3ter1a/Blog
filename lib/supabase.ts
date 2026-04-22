@@ -19,19 +19,22 @@ export function getSupabase() {
 
 // 字段转换：snake_case → camelCase
 function mapSnakeToCamel(row: any): Note {
+  const createdAt = row.created_at ? new Date(row.created_at) : new Date();
+  const updatedAt = row.updated_at ? new Date(row.updated_at) : createdAt;
+  
   return {
     id: row.id,
     type: row.type,
     title: row.title,
     content: row.content,
     subject: row.subject || undefined,
-    tags: row.tags || [],
+    tags: Array.isArray(row.tags) ? row.tags : [],
     coverImage: row.cover_image || undefined,
-    videos: row.videos || [],
-    problems: row.problems || [],
-    createdAt: new Date(row.created_at),
-    updatedAt: new Date(row.updated_at),
-    isPublished: row.is_published,
+    videos: Array.isArray(row.videos) ? row.videos : [],
+    problems: Array.isArray(row.problems) ? row.problems : [],
+    createdAt,
+    updatedAt,
+    isPublished: row.is_published ?? true,
   };
 }
 
