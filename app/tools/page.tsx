@@ -38,7 +38,7 @@ export default function ToolsPage() {
   ];
 
   return (
-    <div className="min-h-screen bg-surface">
+    <div className="min-h-screen bg-surface pt-24">
       {/* Header */}
       <div className="bg-surface-container-low border-b border-outline-variant/20">
         <div className="max-w-4xl mx-auto px-4 py-8">
