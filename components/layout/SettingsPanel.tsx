@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Plus, Trash2, CheckCircle2, XCircle, Loader2, Key, Upload, Type, ListTree, Eye, AlignLeft, User, Camera, Edit3, Save, Mail, GitFork, Globe, MessageCircle } from "lucide-react";
+import { X, Plus, Trash2, CheckCircle2, XCircle, Loader2, Key, Upload, Type, ListTree, Eye, AlignLeft, User, Camera, Edit3, Save, Mail, GitFork, Globe, MessageCircle, ChevronUp, ChevronDown, GripVertical } from "lucide-react";
 import { APIConfig, aiProviders, aiModelsByProvider } from "@/lib/types";
 import { CustomSelect } from "@/components/ui/CustomSelect";
 import { useReadingPreferences, TOCPosition } from "@/lib/useReadingPreferences";
@@ -288,6 +288,14 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
   const updateLink = (index: number, field: keyof ProfileLink, value: string) => {
     const newLinks = [...editForm.links];
     newLinks[index] = { ...newLinks[index], [field]: value };
+    setEditForm({ ...editForm, links: newLinks });
+  };
+
+  const moveLink = (index: number, direction: "up" | "down") => {
+    const newIndex = direction === "up" ? index - 1 : index + 1;
+    if (newIndex < 0 || newIndex >= editForm.links.length) return;
+    const newLinks = [...editForm.links];
+    [newLinks[index], newLinks[newIndex]] = [newLinks[newIndex], newLinks[index]];
     setEditForm({ ...editForm, links: newLinks });
   };
 
@@ -789,23 +797,46 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
                       <div className="space-y-2">
                         {editForm.links.map((link, i) => (
                           <div key={i} className="bg-surface-container rounded-lg p-2 space-y-2">
-                            <div className="flex gap-2">
-                              <input
-                                type="text"
-                                value={link.name}
-                                onChange={(e) => updateLink(i, "name", e.target.value)}
-                                placeholder="名称"
-                                className="flex-1 px-2 py-1.5 bg-surface-container-highest rounded-md input-soft text-on-surface text-xs"
-                              />
+                            <div className="flex items-center gap-1">
+                              {/* Drag Handle */}
+                              <div className="flex flex-col gap-0.5 text-on-surface-variant/40">
+                                <button
+                                  onClick={() => moveLink(i, "up")}
+                                  disabled={i === 0}
+                                  className="p-0.5 rounded hover:bg-surface-container-high disabled:opacity-30 transition-colors"
+                                >
+                                  <ChevronUp className="w-3 h-3" />
+                                </button>
+                                <button
+                                  onClick={() => moveLink(i, "down")}
+                                  disabled={i === editForm.links.length - 1}
+                                  className="p-0.5 rounded hover:bg-surface-container-high disabled:opacity-30 transition-colors"
+                                >
+                                  <ChevronDown className="w-3 h-3" />
+                                </button>
+                              </div>
+                              {/* Link Info */}
+                              <div className="flex items-center gap-2 flex-1">
+                                <div className="w-8 h-8 flex items-center justify-center flex-shrink-0">
+                                  <img src={iconMap[link.icon] || "/icons/email.svg"} alt={link.name} className="w-6 h-6" />
+                                </div>
+                                <input
+                                  type="text"
+                                  value={link.name}
+                                  onChange={(e) => updateLink(i, "name", e.target.value)}
+                                  placeholder="名称"
+                                  className="flex-1 px-2 py-1.5 bg-surface-container-highest rounded-md input-soft text-on-surface text-xs min-w-0"
+                                />
+                              </div>
                               <CustomSelect
                                 options={iconOptions}
                                 value={link.icon}
                                 onChange={(value) => updateLink(i, "icon", value)}
-                                className="w-20"
+                                className="w-20 flex-shrink-0"
                               />
                               <button
                                 onClick={() => removeLink(i)}
-                                className="p-1.5 rounded-md hover:bg-red-100 text-on-surface-variant hover:text-red-500 transition-colors"
+                                className="p-1.5 rounded-md hover:bg-red-100 text-on-surface-variant hover:text-red-500 transition-colors flex-shrink-0"
                               >
                                 <Trash2 className="w-3.5 h-3.5" />
                               </button>

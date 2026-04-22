@@ -114,7 +114,6 @@ export default function About() {
         <div className="bg-surface-container-lowest rounded-2xl shadow-ambient overflow-hidden divide-y divide-outline-variant/10">
           {profile.links.map((link, index) => {
             const iconSrc = iconMap[link.icon] || "/icons/email.svg";
-            const isPrimary = link.variant === "primary";
 
             return (
               <motion.a
@@ -123,29 +122,17 @@ export default function About() {
                 initial={{ opacity: 0, x: -20 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: 0.6 + index * 0.1, duration: 0.4 }}
-                whileHover={{ backgroundColor: isPrimary ? "rgba(0,59,110,0.9)" : "rgba(234,232,231,0.8)" }}
-                className={`group flex items-center justify-between p-4 transition-all duration-200 ${
-                  isPrimary ? "editorial-gradient text-on-primary" : "text-on-surface"
-                }`}
+                whileHover={{ backgroundColor: "rgba(234,232,231,0.8)" }}
+                className="group flex items-center justify-between p-4 transition-all duration-200 text-on-surface"
               >
                 <div className="flex items-center gap-4">
-                  <div
-                    className={`w-10 h-10 rounded-xl flex items-center justify-center overflow-hidden ${
-                      isPrimary
-                        ? "bg-on-primary/10 backdrop-blur-sm"
-                        : link.variant === "dark"
-                        ? "bg-on-surface"
-                        : "editorial-gradient"
-                    }`}
-                  >
-                    <img src={iconSrc} alt={link.name} className="w-6 h-6" />
+                  <div className="w-10 h-10 flex items-center justify-center">
+                    <img src={iconSrc} alt={link.name} className="w-7 h-7" />
                   </div>
                   <span className="font-medium">{link.name}</span>
                 </div>
                 <svg
-                  className={`w-5 h-5 transition-transform duration-200 group-hover:translate-x-0.5 ${
-                    isPrimary ? "text-on-primary/50" : "text-outline-variant"
-                  }`}
+                  className="w-5 h-5 text-outline-variant transition-transform duration-200 group-hover:translate-x-0.5"
                   fill="none"
                   viewBox="0 0 24 24"
                   stroke="currentColor"

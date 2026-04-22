@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Asteroid 粒子动效预览</title>
+  <title>Logo 粒子动效预览</title>
   <style>
     * {
       margin: 0;
@@ -25,10 +25,6 @@
       position: relative;
       width: 100vw;
       height: 100vh;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
     }
     
     canvas {
@@ -37,39 +33,6 @@
       left: 0;
       width: 100%;
       height: 100%;
-      pointer-events: none;
-    }
-    
-    .title {
-      position: relative;
-      z-index: 10;
-      text-align: center;
-      pointer-events: none;
-    }
-    
-    .title h1 {
-      font-size: clamp(48px, 8vw, 96px);
-      font-weight: 700;
-      color: #e0d4ff;
-      margin-bottom: 16px;
-      letter-spacing: -0.02em;
-    }
-    
-    .title h1 span {
-      color: #b3a2f2;
-    }
-    
-    .title p {
-      font-size: clamp(16px, 2.5vw, 24px);
-      color: rgba(200, 190, 255, 0.6);
-      font-style: italic;
-      margin-bottom: 8px;
-    }
-    
-    .title .subtitle-en {
-      font-size: clamp(12px, 1.5vw, 16px);
-      color: rgba(200, 190, 255, 0.4);
-      letter-spacing: 0.05em;
     }
     
     .info {
@@ -77,7 +40,7 @@
       bottom: 20px;
       left: 50%;
       transform: translateX(-50%);
-      color: rgba(200, 190, 255, 0.4);
+      color: rgba(0, 0, 0, 0.3);
       font-size: 12px;
       z-index: 100;
     }
@@ -93,119 +56,52 @@
     const canvas = document.getElementById('particleCanvas');
     const ctx = canvas.getContext('2d');
     
-    let width, height, centerX, centerY;
+    let width, height, centerX, centerY, radius;
     let particles = [];
     let mouse = { x: 0, y: 0, active: false };
     let animationId;
     
-    // 粒子配置
-    const config = {
-      asteroidRadius: 0.12,  // 球体占屏幕比例
-      constellationPoints: 20,
-      trailParticles: 35,
-      connectionDistance: 100,
-      colors: {
-        asteroid: 'rgba(20, 15, 35, 0.9)',
-        asteroidBorder: 'rgba(179, 162, 242, 0.4)',
-        constellation: 'rgba(200, 190, 255, 0.7)',
-        trail: 'rgba(179, 162, 242, 0.5)',
-        connection: 'rgba(179, 162, 242, 0.15)',
-        glow: 'rgba(147, 130, 220, 0.3)',
-      }
+    const colors = {
+      body: '#1a1a2e',
+      crater: '#ffffff',
+      trail: '#1a1a2e',
     };
-    
+
     function resize() {
       width = canvas.width = window.innerWidth;
       height = canvas.height = window.innerHeight;
       centerX = width / 2;
       centerY = height / 2;
+      radius = Math.min(width, height) * 0.22;
       initParticles();
     }
     
     class Particle {
-      constructor(type) {
-        this.type = type;
-        this.init();
-      }
-      
-      init() {
-        const asteroidRadius = Math.min(width, height) * config.asteroidRadius;
-        
-        if (this.type === 'asteroid') {
-          this.x = centerX;
-          this.y = centerY;
-          this.size = asteroidRadius;
-          this.color = config.colors.asteroid;
-          this.vx = 0;
-          this.vy = 0;
-        } else if (this.type === 'constellation') {
-          const angle = Math.random() * Math.PI * 2;
-          const radius = asteroidRadius * (0.7 + Math.random() * 0.6);
-          this.x = centerX + Math.cos(angle) * radius;
-          this.y = centerY + Math.sin(angle) * radius;
-          this.originX = this.x;
-          this.originY = this.y;
-          this.size = 1 + Math.random() * 2;
-          this.color = config.colors.constellation;
-          this.vx = 0;
-          this.vy = 0;
-          this.speed = 0.001 + Math.random() * 0.002;
-          this.floatOffset = Math.random() * Math.PI * 2;
-        } else if (this.type === 'trail') {
-          const angle = Math.random() * Math.PI * 2;
-          const orbitRadius = asteroidRadius * (1.1 + Math.random() * 1.8);
-          this.x = centerX + Math.cos(angle) * orbitRadius;
-          this.y = centerY + Math.sin(angle) * orbitRadius;
-          this.size = 0.8 + Math.random() * 1.5;
-          this.color = config.colors.trail;
-          this.opacity = 0.3 + Math.random() * 0.5;
-          this.angle = angle;
-          this.orbitRadius = orbitRadius;
-          this.speed = 0.003 + Math.random() * 0.008;
-          this.trail = [];
-          for (let i = 0; i < 6; i++) {
-            this.trail.push({ x: this.x, y: this.y });
-          }
-        }
+      constructor(x, y, size, color, extra = {}) {
+        this.originX = x;
+        this.originY = y;
+        this.x = x;
+        this.y = y;
+        this.size = size;
+        this.color = color;
+        this.floatSpeed = 0.0005 + Math.random() * 0.002;
+        this.floatOffset = Math.random() * Math.PI * 2;
+        this.floatRange = extra.floatRange || 0.8;
       }
       
       update(time) {
-        if (this.type === 'asteroid') {
-          // 球体微微呼吸
-          this.size = Math.min(width, height) * config.asteroidRadius + Math.sin(time * 0.001) * 3;
-          return;
-        }
+        const fx = Math.sin(time * this.floatSpeed + this.floatOffset) * this.floatRange;
+        const fy = Math.cos(time * this.floatSpeed * 0.7 + this.floatOffset) * this.floatRange;
+        this.x = this.originX + fx;
+        this.y = this.originY + fy;
         
-        if (this.type === 'constellation') {
-          // 星座点轻微浮动
-          this.x = this.originX + Math.sin(time * this.speed + this.floatOffset) * 4;
-          this.y = this.originY + Math.cos(time * this.speed + this.floatOffset) * 4;
-        }
-        
-        if (this.type === 'trail') {
-          // 尾迹粒子沿轨道运动
-          this.angle += this.speed;
-          const targetX = centerX + Math.cos(this.angle) * this.orbitRadius;
-          const targetY = centerY + Math.sin(this.angle) * this.orbitRadius;
-          
-          // 更新尾迹
-          this.trail.unshift({ x: this.x, y: this.y });
-          if (this.trail.length > 6) this.trail.pop();
-          
-          // 平滑移动
-          this.x += (targetX - this.x) * 0.08;
-          this.y += (targetY - this.y) * 0.08;
-        }
-        
-        // 鼠标排斥效果
         if (mouse.active) {
           const dx = this.x - mouse.x;
           const dy = this.y - mouse.y;
           const dist = Math.sqrt(dx * dx + dy * dy);
           const maxDist = 120;
-          
           if (dist < maxDist && dist > 0) {
-            const force = (1 - dist / maxDist) * 30;
+            const force = (1 - dist / maxDist) * 20;
             this.x += (dx / dist) * force;
             this.y += (dy / dist) * force;
           }
@@ -213,138 +109,139 @@
       }
       
       draw() {
-        if (this.type === 'asteroid') {
-          // 绘制球体
-          ctx.beginPath();
-          ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
-          ctx.fillStyle = this.color;
-          ctx.fill();
-          
-          // 球体边框
-          ctx.strokeStyle = config.colors.asteroidBorder;
-          ctx.lineWidth = 1.5;
-          ctx.stroke();
-          
-          // 球体内部几何线条
-          this.drawAsteroidLines();
-          return;
-        }
-        
-        if (this.type === 'trail' && this.trail.length > 1) {
-          // 绘制尾迹线
-          ctx.beginPath();
-          ctx.moveTo(this.trail[0].x, this.trail[0].y);
-          for (let i = 1; i < this.trail.length; i++) {
-            ctx.lineTo(this.trail[i].x, this.trail[i].y);
-          }
-          ctx.strokeStyle = `rgba(179, 162, 242, ${this.opacity * 0.3})`;
-          ctx.lineWidth = this.size * 0.6;
-          ctx.lineCap = 'round';
-          ctx.stroke();
-        }
-        
-        // 绘制粒子点
         ctx.beginPath();
         ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
         ctx.fillStyle = this.color;
         ctx.fill();
-        
-        // 发光效果
-        if (this.size > 1.5) {
-          ctx.beginPath();
-          ctx.arc(this.x, this.y, this.size * 2.5, 0, Math.PI * 2);
-          const gradient = ctx.createRadialGradient(
-            this.x, this.y, 0,
-            this.x, this.y, this.size * 2.5
-          );
-          gradient.addColorStop(0, this.color.replace(/[\d.]+\)$/, '0.2)'));
-          gradient.addColorStop(1, 'transparent');
-          ctx.fillStyle = gradient;
-          ctx.fill();
-        }
       }
+    }
+    
+    // 用网格方式密集填充圆形
+    function fillCircle(cx, cy, r, spacing, excludeCircles = []) {
+      const particles = [];
+      const steps = Math.ceil(r * 2 / spacing);
       
-      drawAsteroidLines() {
-        const numLines = 15;
-        const radius = this.size;
-        
-        ctx.strokeStyle = 'rgba(200, 190, 255, 0.15)';
-        ctx.lineWidth = 0.8;
-        
-        for (let i = 0; i < numLines; i++) {
-          const angle1 = (Math.PI * 2 * i) / numLines + Math.random() * 0.3;
-          const angle2 = angle1 + (Math.PI * 2 / numLines) * (0.3 + Math.random() * 0.5);
+      for (let i = -steps; i <= steps; i++) {
+        for (let j = -steps; j <= steps; j++) {
+          const px = cx + i * spacing;
+          const py = cy + j * spacing;
+          const dist = Math.hypot(px - cx, py - cy);
           
-          const x1 = this.x + Math.cos(angle1) * radius * (0.3 + Math.random() * 0.7);
-          const y1 = this.y + Math.sin(angle1) * radius * (0.3 + Math.random() * 0.7);
-          const x2 = this.x + Math.cos(angle2) * radius * (0.3 + Math.random() * 0.7);
-          const y2 = this.y + Math.sin(angle2) * radius * (0.3 + Math.random() * 0.7);
+          if (dist > r) continue;
           
-          ctx.beginPath();
-          ctx.moveTo(x1, y1);
-          ctx.lineTo(x2, y2);
-          ctx.stroke();
+          // 检查是否在排除区域内
+          let excluded = false;
+          for (const ec of excludeCircles) {
+            if (Math.hypot(px - ec.cx, py - ec.cy) < ec.r) {
+              excluded = true;
+              break;
+            }
+          }
+          if (excluded) continue;
+          
+          // 添加随机偏移让分布更自然
+          const offsetX = (Math.random() - 0.5) * spacing * 0.6;
+          const offsetY = (Math.random() - 0.5) * spacing * 0.6;
+          const size = spacing * 0.35 + Math.random() * spacing * 0.15;
+          
+          particles.push(new Particle(px + offsetX, py + offsetY, size, colors.body, { floatRange: 0.5 }));
         }
       }
+      return particles;
+    }
+    
+    // 填充圆形区域（用于陨石坑）
+    function fillCircleArea(cx, cy, r, spacing, color) {
+      const particles = [];
+      const steps = Math.ceil(r * 2 / spacing);
+      
+      for (let i = -steps; i <= steps; i++) {
+        for (let j = -steps; j <= steps; j++) {
+          const px = cx + i * spacing;
+          const py = cy + j * spacing;
+          const dist = Math.hypot(px - cx, py - cy);
+          
+          if (dist > r) continue;
+          
+          const offsetX = (Math.random() - 0.5) * spacing * 0.5;
+          const offsetY = (Math.random() - 0.5) * spacing * 0.5;
+          const size = spacing * 0.3 + Math.random() * spacing * 0.15;
+          
+          particles.push(new Particle(px + offsetX, py + offsetY, size, color, { floatRange: 0.3 }));
+        }
+      }
+      return particles;
     }
     
     function initParticles() {
       particles = [];
+      const r = radius;
+      const bodySpacing = 5; // 粒子间距，越小越密
       
-      // 添加球体
-      particles.push(new Particle('asteroid'));
+      // 陨石坑定义 - 上下翻转后的位置
+      const craters = [
+        { cx: centerX - 0.3 * r, cy: centerY + 0.25 * r, r: 0.08 * r },  // 左下
+        { cx: centerX + 0.35 * r, cy: centerY + 0.15 * r, r: 0.06 * r },  // 右下
+        { cx: centerX + 0.1 * r, cy: centerY - 0.1 * r, r: 0.04 * r },    // 中上
+      ];
       
-      // 添加星座点
-      for (let i = 0; i < config.constellationPoints; i++) {
-        particles.push(new Particle('constellation'));
+      // 1. 天体主体 - 密集填充
+      particles.push(...fillCircle(centerX, centerY, r * 0.96, bodySpacing, craters));
+      
+      // 2. 陨石坑 - 白色粒子
+      for (const crater of craters) {
+        particles.push(...fillCircleArea(crater.cx, crater.cy, crater.r * 0.9, bodySpacing * 0.8, colors.crater));
       }
       
-      // 添加尾迹粒子
-      for (let i = 0; i < config.trailParticles; i++) {
-        particles.push(new Particle('trail'));
-      }
-    }
-    
-    function drawConnections() {
-      const constellationParticles = particles.filter(p => p.type === 'constellation');
+      // 3. 流星拖尾 - 右下方向，用粒子排列成粗线条
+      const trailBaseAngle = -Math.PI * 0.25; // 右下45度
+      const trailStartX = centerX + Math.cos(0.4) * r * 0.9;
+      const trailStartY = centerY + Math.sin(0.4) * r * 0.9;
       
-      for (let i = 0; i < constellationParticles.length; i++) {
-        for (let j = i + 1; j < constellationParticles.length; j++) {
-          const p1 = constellationParticles[i];
-          const p2 = constellationParticles[j];
-          const dx = p1.x - p2.x;
-          const dy = p1.y - p2.y;
-          const dist = Math.sqrt(dx * dx + dy * dy);
+      // 3条主要拖尾线条
+      const trailAngles = [-0.35, -0.25, -0.15];
+      for (const angleOffset of trailAngles) {
+        const angle = trailBaseAngle + angleOffset;
+        const length = r * (1.0 + Math.abs(angleOffset) * 2);
+        const lineSpacing = 5;
+        
+        for (let d = 0; d < length; d += lineSpacing) {
+          const px = trailStartX + Math.cos(angle) * d;
+          const py = trailStartY + Math.sin(angle) * d;
+          const size = (3 - d / length * 2) + Math.random() * 0.5;
           
-          if (dist < config.connectionDistance) {
-            const opacity = (1 - dist / config.connectionDistance) * 0.35;
-            ctx.strokeStyle = `rgba(200, 190, 255, ${opacity})`;
-            ctx.lineWidth = 0.8;
-            ctx.beginPath();
-            ctx.moveTo(p1.x, p1.y);
-            ctx.lineTo(p2.x, p2.y);
-            ctx.stroke();
+          // 每条线周围加点随机粒子增加宽度
+          for (let k = 0; k < 2; k++) {
+            const ox = (Math.random() - 0.5) * 6;
+            const oy = (Math.random() - 0.5) * 6;
+            const s = size * (0.5 + Math.random() * 0.5);
+            particles.push(new Particle(px + ox, py + oy, s, colors.trail, { floatRange: 0.8 }));
           }
         }
+      }
+      
+      // 拖尾周围散落粒子
+      for (let i = 0; i < 40; i++) {
+        const angle = trailBaseAngle + (Math.random() - 0.5) * 0.8;
+        const dist = r * (0.5 + Math.random() * 1.2);
+        const px = centerX + Math.cos(angle) * dist;
+        const py = centerY + Math.sin(angle) * dist;
+        const size = 1 + Math.random() * 2.5;
+        particles.push(new Particle(px, py, size, colors.trail, { floatRange: 1.2 }));
       }
     }
     
     function animate(time) {
       ctx.clearRect(0, 0, width, height);
       
-      // 更新和绘制粒子
-      particles.forEach(p => {
+      for (const p of particles) {
         p.update(time);
         p.draw();
-      });
-      
-      // 绘制连线
-      drawConnections();
+      }
       
       animationId = requestAnimationFrame(animate);
     }
     
-    // 事件监听
     window.addEventListener('resize', resize);
     
     canvas.addEventListener('mousemove', (e) => {
@@ -369,7 +266,6 @@
       mouse.active = false;
     });
     
-    // 初始化
     resize();
     animate(0);
   </script>
