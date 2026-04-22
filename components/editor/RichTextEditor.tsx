@@ -6,6 +6,7 @@ import Image from "@tiptap/extension-image";
 import Placeholder from "@tiptap/extension-placeholder";
 import { Markdown } from "tiptap-markdown";
 import { useEffect, forwardRef, useImperativeHandle } from "react";
+import { ProblemBlock, parseProblemMarkers } from "@/lib/problem-block-extension";
 
 interface RichTextEditorProps {
   content: string;
@@ -33,13 +34,14 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
         Placeholder.configure({
           placeholder,
         }),
+        ProblemBlock,
         Markdown.configure({
           html: false,
           transformPastedText: true,
           transformCopiedText: true,
         }),
       ],
-      content,
+      content: parseProblemMarkers(content),
       onUpdate: ({ editor }) => {
         onChange((editor.storage as any).markdown.getMarkdown());
       },
@@ -59,7 +61,7 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
     // 当外部 content 变化时更新编辑器
     useEffect(() => {
       if (editor && content !== (editor.storage as any).markdown.getMarkdown()) {
-        editor.commands.setContent(content);
+        editor.commands.setContent(parseProblemMarkers(content));
       }
     }, [content, editor]);
 

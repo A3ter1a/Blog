@@ -15,17 +15,9 @@ import { RichTextEditor, RichTextEditorRef } from "@/components/editor/RichTextE
 import { EditorToolbar } from "@/components/editor/EditorToolbar";
 import { FormulaToImage } from "@/components/editor/FormulaToImage";
 import { SketchUploader } from "@/components/editor/SketchUploader";
+import { QuestionInserter } from "@/components/editor/QuestionInserter";
 import { uploadImage, generateFileName } from "@/lib/supabase-storage";
 import { DiffViewer } from "@/components/ui/DiffViewer";
-
-const tagSuggestionsBySubject: Record<Subject, string[]> = {
-  math: ['极限', '连续', '导数', '积分', '微分方程', '线性代数', '矩阵', '秩', '特征值', '特征向量', '概率论', '条件概率', '贝叶斯', '随机变量'],
-  english: ['阅读理解', '长难句', '语法', '词汇', '作文', '翻译', '完形填空', '新题型'],
-  politics: ['马原', '毛概', '史纲', '思修', '辩证法', '唯物论', '认识论', '政治经济学'],
-  economics: ['微观经济学', '宏观经济学', '消费者行为', '效用', '市场结构', 'GDP', '通货膨胀', '财政政策'],
-};
-
-const essayTags = ['心情', '感悟', '日常', '思考', '随笔', '生活', '读书', '旅行'];
 
 export default function CreatePage() {
   const router = useRouter();
@@ -35,12 +27,7 @@ export default function CreatePage() {
   const [noteType, setNoteType] = useState<NoteType>("note");
   const [title, setTitle] = useState("");
   const [subject, setSubject] = useState<Subject>("math");
-  const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState("");
-  const [showTagSuggestions, setShowTagSuggestions] = useState(false);
-  const [isEditingTags, setIsEditingTags] = useState(false);
-  const [editableTags, setEditableTags] = useState<string[]>([]);
-  const [newTagInput, setNewTagInput] = useState("");
   const [content, setContent] = useState("");
   const [videos, setVideos] = useState<Video[]>([]);
   const [problems, setProblems] = useState<Problem[]>([]);
@@ -48,10 +35,10 @@ export default function CreatePage() {
   const [showVideoSection, setShowVideoSection] = useState(false);
   const [showFormulaModal, setShowFormulaModal] = useState(false);
   const [showSketchModal, setShowSketchModal] = useState(false);
+  const [showQuestionModal, setShowQuestionModal] = useState(false);
   const [showDiffModal, setShowDiffModal] = useState(false);
   const [originalContent, setOriginalContent] = useState("");
   const [polishedContent, setPolishedContent] = useState("");
-  const tagInputRef = useRef<HTMLInputElement>(null);
   const editorRef = useRef<RichTextEditorRef>(null);
 
   // Load note data if in edit mode or import mode
@@ -68,7 +55,7 @@ export default function CreatePage() {
           setNoteType(existingNote.type);
           setTitle(existingNote.title);
           setSubject(existingNote.subject || "math");
-          setSelectedTags(existingNote.tags || []);
+          setTagInput(existingNote.tags.join(", "));
           setContent(existingNote.content);
           setVideos(existingNote.videos || []);
           setProblems(existingNote.problems || []);
@@ -86,7 +73,7 @@ export default function CreatePage() {
           const parsed = JSON.parse(importData);
           setTitle(parsed.title || "");
           setContent(parsed.content || "");
-          setSelectedTags(parsed.tags || []);
+          setTagInput((parsed.tags || []).join(", "));
           
           if (parsed.noteType) setNoteType(parsed.noteType);
           if (parsed.subject) setSubject(parsed.subject);
@@ -103,90 +90,20 @@ export default function CreatePage() {
     }
   }, []);
 
-  // Filter suggestions based on input and current type
-  const currentTags = noteType === "essay" ? essayTags : (tagSuggestionsBySubject[subject] || []);
-  const filteredSuggestions = currentTags.filter(
-    (tag) => tag.includes(tagInput) && !selectedTags.includes(tag)
-  );
-
-  const addTag = (tag: string) => {
-    if (tag && !selectedTags.includes(tag)) {
-      setSelectedTags([...selectedTags, tag]);
-      setTagInput("");
-    }
-  };
-
-  const removeTag = (tag: string) => {
-    setSelectedTags(selectedTags.filter((t) => t !== tag));
-  };
-
-  const handleTagKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && tagInput.trim()) {
-      e.preventDefault();
-      addTag(tagInput.trim());
-    }
-    if (e.key === "Backspace" && !tagInput && selectedTags.length > 0) {
-      removeTag(selectedTags[selectedTags.length - 1]);
-    }
-  };
-
-  const tagContainerRef = useRef<HTMLDivElement>(null);
-
-  // Close tag suggestions when clicking outside
-  useEffect(() => {
-    if (!showTagSuggestions) return;
-    
-    const handleClickOutside = (event: MouseEvent) => {
-      if (tagContainerRef.current && !tagContainerRef.current.contains(event.target as Node)) {
-        setShowTagSuggestions(false);
-      }
-    };
-
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [showTagSuggestions]);
-
-  // Tag editing handlers
-  const handleStartEditTags = () => {
-    setIsEditingTags(true);
-    setEditableTags([...selectedTags]);
-    setNewTagInput("");
-  };
-
-  const handleAddTag = () => {
-    const newTag = newTagInput.trim();
-    if (newTag && !editableTags.includes(newTag)) {
-      setEditableTags([...editableTags, newTag]);
-      setNewTagInput("");
-    }
-  };
-
-  const handleRemoveTag = (tagToRemove: string) => {
-    setEditableTags(editableTags.filter(tag => tag !== tagToRemove));
-  };
-
-  const handleSaveTags = () => {
-    setSelectedTags(editableTags);
-    setIsEditingTags(false);
-    setNewTagInput("");
-  };
-
-  const handleCancelEditTags = () => {
-    setIsEditingTags(false);
-    setNewTagInput("");
-  };
-
   const handleSave = async () => {
     if (!title.trim()) {
       toast.error("请输入标题");
       return;
     }
 
+    const tags = tagInput.split(/[,，]/).map(t => t.trim()).filter(Boolean);
+    console.log("Saving note with tags:", tags);
+
     const noteData = {
       noteType,
       title,
       subject: noteType === "essay" ? undefined : subject,
-      tags: selectedTags,
+      tags,
       content,
       videos,
       problems: noteType === "problem" ? problems : undefined,
@@ -231,7 +148,6 @@ export default function CreatePage() {
   const handleClear = () => {
     setTitle("");
     setContent("");
-    setSelectedTags([]);
     setTagInput("");
     setVideos([]);
     setProblems([]);
@@ -310,6 +226,16 @@ ${content}`,
   const handleSketchInsert = (imageUrl: string) => {
     editorRef.current?.insertImage(imageUrl);
     toast.success("草图识别完成");
+  };
+
+  const handleQuestionInsert = (problemNumber: number, problem: Problem) => {
+    // Add problem to the problems array
+    setProblems([...problems, problem]);
+    
+    // Insert problem marker into content
+    const problemMarker = `\n<!--problem:${problemNumber}-->\n`;
+    editorRef.current?.insertContent(problemMarker);
+    toast.success(`题目 ${problemNumber} 已插入`);
   };
 
   const isEssay = noteType === "essay";
@@ -460,127 +386,18 @@ ${content}`,
             </div>
           )}
 
-          {/* Tags - With Edit Mode */}
-          <div ref={tagContainerRef as React.Ref<HTMLDivElement>} className={isEssay ? "md:col-span-2" : ""}>
+          {/* Tags - Simple comma-separated input */}
+          <div className={isEssay ? "md:col-span-2" : ""}>
             <label className="block text-sm font-medium text-on-surface-variant mb-3">
               标签
             </label>
-            {isEditingTags ? (
-              // Edit Mode: Show editable tags with input and save/cancel buttons
-              <div className="flex items-center gap-2 flex-wrap p-3 bg-surface-container-low rounded-xl">
-                {editableTags.map((tag) => (
-                  <span
-                    key={tag}
-                    className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-primary/10 text-primary text-sm"
-                  >
-                    {tag}
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveTag(tag)}
-                      className="hover:bg-primary/20 rounded-full p-0.5 transition-colors"
-                    >
-                      <X className="w-3 h-3" />
-                    </button>
-                  </span>
-                ))}
-                <input
-                  type="text"
-                  value={newTagInput}
-                  onChange={(e) => setNewTagInput(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && handleAddTag()}
-                  placeholder="添加标签..."
-                  className="px-2 py-1 bg-surface-container-lowest rounded-md text-sm min-w-[100px] outline-none focus:ring-1 focus:ring-primary flex-1"
-                />
-                <button
-                  type="button"
-                  onClick={handleSaveTags}
-                  className="px-3 py-1.5 rounded-md bg-primary text-on-primary text-sm hover:opacity-90 transition-opacity"
-                >
-                  保存
-                </button>
-                <button
-                  type="button"
-                  onClick={handleCancelEditTags}
-                  className="px-3 py-1.5 rounded-md bg-surface-container-high text-on-surface-variant text-sm hover:bg-surface-container-highest transition-colors"
-                >
-                  取消
-                </button>
-              </div>
-            ) : (
-              // View Mode: Show tags with input and edit button inside
-              <div className="relative">
-                <div
-                  className="w-full min-h-[48px] px-4 py-2 bg-surface-container-low rounded-xl border-b-2 border-outline-variant/30 focus-within:border-primary transition-colors duration-200 flex flex-wrap gap-2 items-center cursor-text"
-                  onClick={() => tagInputRef.current?.focus()}
-                >
-                  {selectedTags.map((tag) => (
-                    <span
-                      key={tag}
-                      className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-primary/10 text-primary text-sm"
-                    >
-                      {tag}
-                      <button
-                        type="button"
-                        onClick={() => removeTag(tag)}
-                        className="hover:bg-primary/20 rounded-full p-0.5 transition-colors"
-                      >
-                        <X className="w-3 h-3" />
-                      </button>
-                    </span>
-                  ))}
-                  <input
-                    ref={tagInputRef}
-                    type="text"
-                    value={tagInput}
-                    onChange={(e) => {
-                      setTagInput(e.target.value);
-                      setShowTagSuggestions(true);
-                    }}
-                    onFocus={() => setShowTagSuggestions(true)}
-                    onKeyDown={handleTagKeyDown}
-                    placeholder={selectedTags.length === 0 ? "输入或选择标签..." : ""}
-                    className="flex-1 min-w-[100px] bg-transparent outline-none text-on-surface placeholder:text-on-surface-variant/40 text-sm"
-                  />
-                  {/* Edit Button inside the tag container */}
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleStartEditTags();
-                    }}
-                    className="flex-shrink-0 p-1.5 rounded-lg text-on-surface-variant hover:bg-primary/10 hover:text-primary transition-colors"
-                    title="编辑标签"
-                  >
-                    <Plus className="w-4 h-4" />
-                  </button>
-                </div>
-
-                {/* Tag Suggestions */}
-                {showTagSuggestions && (
-                  <div className="absolute z-10 w-full mt-1 bg-surface-container-lowest rounded-xl shadow-elevated p-3 max-h-64 overflow-y-auto">
-                    <p className="text-xs text-on-surface-variant/60 mb-2">
-                      {isEssay ? "常用标签" : `${subjectMap[subject]} 相关标签`}
-                    </p>
-                    <div className="flex flex-wrap gap-2">
-                      {filteredSuggestions.length > 0 ? (
-                        filteredSuggestions.map((tag) => (
-                          <button
-                            key={tag}
-                            type="button"
-                            onClick={() => addTag(tag)}
-                            className="px-3 py-1.5 rounded-lg bg-surface-container text-on-surface text-sm hover:bg-primary/10 hover:text-primary transition-colors duration-200"
-                          >
-                            {tag}
-                          </button>
-                        ))
-                      ) : (
-                        <p className="text-sm text-on-surface-variant/40 py-2">没有匹配的标签</p>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
+            <input
+              type="text"
+              value={tagInput}
+              onChange={(e) => setTagInput(e.target.value)}
+              placeholder="输入标签，用逗号分隔..."
+              className="w-full px-4 py-3 bg-surface-container-low rounded-xl input-soft text-on-surface placeholder:text-on-surface-variant/40"
+            />
           </div>
         </motion.div>
 
@@ -611,6 +428,7 @@ ${content}`,
                 onImageUpload={handleEditorImageUpload}
                 onFormulaToImage={() => setShowFormulaModal(true)}
                 onSketchUpload={() => setShowSketchModal(true)}
+                onQuestionInsert={() => setShowQuestionModal(true)}
               />
               <RichTextEditor
                 ref={editorRef}
@@ -702,6 +520,14 @@ ${content}`,
         isOpen={showSketchModal}
         onClose={() => setShowSketchModal(false)}
         onInsert={handleSketchInsert}
+      />
+
+      {/* Question Inserter Modal */}
+      <QuestionInserter
+        isOpen={showQuestionModal}
+        onClose={() => setShowQuestionModal(false)}
+        onInsert={handleQuestionInsert}
+        existingProblems={problems}
       />
 
       {/* Diff Viewer Modal */}

@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import { useRouter, useParams } from "next/navigation";
-import { ArrowLeft, Calendar, Tag, Edit2, Trash2, AlertTriangle, ChevronDown, ChevronUp, Plus, X, BookOpen, BookMarked, Brain, Loader2 } from "lucide-react";
+import { ArrowLeft, Calendar, Tag, Edit2, Trash2, AlertTriangle, ChevronDown, ChevronUp, BookOpen, BookMarked, Brain, Loader2 } from "lucide-react";
 import { notesApi } from "@/lib/supabase";
 import { subjectMap, typeMap, Note } from "@/lib/types";
 import { Playlist } from "@/components/video/Playlist";
@@ -26,9 +26,6 @@ export default function NoteReaderPage() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isCoverExpanded, setIsCoverExpanded] = useState(false);
   const [isAIPanelOpen, setIsAIPanelOpen] = useState(false);
-  const [isEditingTags, setIsEditingTags] = useState(false);
-  const [editableTags, setEditableTags] = useState<string[]>([]);
-  const [newTagInput, setNewTagInput] = useState("");
   const [isImmersiveMode, setIsImmersiveMode] = useState(false);
 
   // Load note from Supabase
@@ -48,14 +45,10 @@ export default function NoteReaderPage() {
     }
   };
 
-  // Initialize editableTags when note is loaded
+  // Auto-expand cover image when note is loaded
   useEffect(() => {
-    if (note) {
-      setEditableTags(note.tags);
-      // Auto-expand cover image when navigating from notes list
-      if (note.coverImage) {
-        setIsCoverExpanded(true);
-      }
+    if (note && note.coverImage) {
+      setIsCoverExpanded(true);
     }
   }, [note]);
 
@@ -67,34 +60,6 @@ export default function NoteReaderPage() {
     } catch (error) {
       console.error("Failed to delete note:", error);
     }
-  };
-
-  const handleAddTag = () => {
-    const newTag = newTagInput.trim();
-    if (newTag && !editableTags.includes(newTag)) {
-      setEditableTags([...editableTags, newTag]);
-      setNewTagInput("");
-    }
-  };
-
-  const handleRemoveTag = (tagToRemove: string) => {
-    setEditableTags(editableTags.filter(tag => tag !== tagToRemove));
-  };
-
-  const handleSaveTags = () => {
-    if (note) {
-      note.tags = editableTags;
-    }
-    setIsEditingTags(false);
-    setNewTagInput("");
-  };
-
-  const handleCancelEditTags = () => {
-    if (note) {
-      setEditableTags(note.tags);
-    }
-    setIsEditingTags(false);
-    setNewTagInput("");
   };
 
   if (loading) {
@@ -255,62 +220,16 @@ export default function NoteReaderPage() {
               </span>
               <span className="flex items-center gap-2">
                 <Tag className="w-4 h-4" />
-                {isEditingTags ? (
-                  <div className="flex items-center gap-2 flex-wrap">
-                    {editableTags.map((tag) => (
-                      <span
-                        key={tag}
-                        className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-primary/10 text-primary text-xs"
-                      >
-                        {tag}
-                        <button
-                          onClick={() => handleRemoveTag(tag)}
-                          className="hover:bg-primary/20 rounded-full p-0.5 transition-colors"
-                        >
-                          <X className="w-3 h-3" />
-                        </button>
-                      </span>
-                    ))}
-                    <input
-                      type="text"
-                      value={newTagInput}
-                      onChange={(e) => setNewTagInput(e.target.value)}
-                      onKeyDown={(e) => e.key === "Enter" && handleAddTag()}
-                      placeholder="添加标签..."
-                      className="px-2 py-1 bg-surface-container-low rounded-md text-xs min-w-[80px] outline-none focus:ring-1 focus:ring-primary"
-                    />
-                    <button
-                      onClick={handleSaveTags}
-                      className="px-2 py-1 rounded-md bg-primary text-on-primary text-xs hover:opacity-90 transition-opacity"
+                <div className="flex items-center gap-2 flex-wrap">
+                  {note.tags.map((tag) => (
+                    <span
+                      key={tag}
+                      className="px-2 py-1 rounded-md bg-surface-container-high text-on-surface-variant text-xs"
                     >
-                      保存
-                    </button>
-                    <button
-                      onClick={handleCancelEditTags}
-                      className="px-2 py-1 rounded-md bg-surface-container-high text-on-surface-variant text-xs hover:bg-surface-container-highest transition-colors"
-                    >
-                      取消
-                    </button>
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-2 flex-wrap">
-                    {note.tags.map((tag) => (
-                      <span
-                        key={tag}
-                        className="px-2 py-1 rounded-md bg-surface-container-high text-on-surface-variant text-xs"
-                      >
-                        {tag}
-                      </span>
-                    ))}
-                    <button
-                      onClick={() => setIsEditingTags(true)}
-                      className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-surface-container text-on-surface-variant text-xs hover:bg-primary/10 hover:text-primary transition-colors"
-                    >
-                      <Plus className="w-3 h-3" />
-                      编辑
-                    </button>
-                  </div>
-                )}
+                      {tag}
+                    </span>
+                  ))}
+                </div>
               </span>
             </div>
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { Bold, Italic, List, ListOrdered, Heading1, Heading2, Heading3, Image as ImageIcon, Sigma, Palette } from "lucide-react";
+import { Bold, Italic, List, ListOrdered, Heading1, Heading2, Heading3, Image as ImageIcon, Sigma, Palette, FileText } from "lucide-react";
 
 interface EditorToolbarProps {
   onBold: () => void;
@@ -13,6 +13,7 @@ interface EditorToolbarProps {
   onImageUpload: () => void;
   onFormulaToImage: () => void;
   onSketchUpload: () => void;
+  onQuestionInsert: () => void;
 }
 
 export function EditorToolbar({
@@ -26,6 +27,7 @@ export function EditorToolbar({
   onImageUpload,
   onFormulaToImage,
   onSketchUpload,
+  onQuestionInsert,
 }: EditorToolbarProps) {
   return (
     <div className="flex flex-wrap items-center gap-1 p-2 bg-surface-container-low border border-outline-variant/20 rounded-t-xl border-b-0">
@@ -71,6 +73,9 @@ export function EditorToolbar({
       </ToolbarButton>
       <ToolbarButton onClick={onSketchUpload} tooltip="AI 草图识别" variant="accent">
         <Palette className="w-4 h-4" />
+      </ToolbarButton>
+      <ToolbarButton onClick={onQuestionInsert} tooltip="插入题目" variant="accent">
+        <FileText className="w-4 h-4" />
       </ToolbarButton>
     </div>
   );
