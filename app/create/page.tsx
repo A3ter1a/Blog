@@ -39,7 +39,15 @@ export default function CreatePage() {
   const [showDiffModal, setShowDiffModal] = useState(false);
   const [originalContent, setOriginalContent] = useState("");
   const [polishedContent, setPolishedContent] = useState("");
+  const [editorReady, setEditorReady] = useState(false);
   const editorRef = useRef<RichTextEditorRef>(null);
+
+  // Force re-render when editor is ready
+  useEffect(() => {
+    if (editorRef.current?.editor) {
+      setEditorReady(true);
+    }
+  }, [content]);
 
   // Load note data if in edit mode or import mode
   useEffect(() => {
@@ -408,13 +416,15 @@ ${content}`,
               <label className="block text-sm font-medium text-on-surface-variant mb-3">
                 内容（Markdown）
               </label>
-              <EditorToolbar
-                editor={editorRef.current?.editor ?? null}
-                onImageUpload={handleEditorImageUpload}
-                onFormulaToImage={() => setShowFormulaModal(true)}
-                onSketchUpload={() => setShowSketchModal(true)}
-                onQuestionInsert={() => setShowQuestionModal(true)}
-              />
+              {editorReady && (
+                <EditorToolbar
+                  editor={editorRef.current?.editor ?? null}
+                  onImageUpload={handleEditorImageUpload}
+                  onFormulaToImage={() => setShowFormulaModal(true)}
+                  onSketchUpload={() => setShowSketchModal(true)}
+                  onQuestionInsert={() => setShowQuestionModal(true)}
+                />
+              )}
               <RichTextEditor
                 ref={editorRef}
                 content={content}
