@@ -20,7 +20,12 @@ function markdownToHtml(md: string): string {
   // Extract block math $$...$$
   html = html.replace(/\$\$([\s\S]*?)\$\$/g, (match, latex) => {
     const token = `%%LATEX${counter++}%%`;
-    latexBlocks.push({ token, latex: latex.replace(/[\n\r]+/g, ' ').trim(), displayMode: true });
+    // Remove newlines and \\ from block math - KaTeX doesn't support them in display mode
+    latex = latex
+      .replace(/\\\\/g, ' ')  // Remove \\ line breaks
+      .replace(/[\n\r]+/g, ' ')  // Remove actual newlines
+      .trim();
+    latexBlocks.push({ token, latex, displayMode: true });
     return token;
   });
 
