@@ -41,8 +41,8 @@ export function TagFilter({
 
   return (
     <div className="space-y-3">
-      {/* Type Filter */}
-      <div className="flex flex-wrap gap-2">
+      {/* Type Filter + Advanced Toggle */}
+      <div className="flex flex-wrap gap-2 items-center">
         <span className="text-xs text-on-surface-variant/60 flex items-center mr-1">类型</span>
         {types.map((type) => (
           <motion.button
@@ -58,13 +58,11 @@ export function TagFilter({
             {type.label}
           </motion.button>
         ))}
-      </div>
-
-      {/* Advanced Filters Toggle */}
-      <div className="flex items-center gap-2">
+        
+        {/* Advanced Filters Toggle */}
         <button
           onClick={() => setIsAdvancedOpen(!isAdvancedOpen)}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-surface-container-low text-on-surface-variant text-sm hover:bg-surface-container-high transition-colors"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-surface-container-low text-on-surface-variant text-sm hover:bg-surface-container-high transition-colors ml-2"
         >
           {isAdvancedOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
           高级筛选
