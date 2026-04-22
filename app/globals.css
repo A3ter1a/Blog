@@ -4,7 +4,7 @@
 /* XITS Math Font for KaTeX */
 @font-face {
   font-family: 'XITS Math';
-  src: url('https://cdn.jsdelivr.net/npm/xits@1.0.5/dist/xits-math.woff2') format('woff2');
+  src: url('https://cdn.jsdelivr.net/npm/xits@1.0.5/dist/xits-math.woff') format('woff');
   font-weight: normal;
   font-style: normal;
   font-display: swap;
