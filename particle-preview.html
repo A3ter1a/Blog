@@ -167,25 +167,24 @@
     function initTailLines() {
       tailLines = [];
       
-      const tailLength = 50;
-      const tailWidth = 8;
-      const angle = Math.PI / 4;
+      const tailAngle = Math.PI * 1.25;
+      const startX = centerX - Math.cos(tailAngle) * (radius + 20);
+      const startY = centerY + Math.sin(tailAngle) * (radius + 20);
       
-      const startX = centerX - Math.cos(angle) * (radius + 30);
-      const startY = centerY + Math.sin(angle) * (radius + 30);
+      const tailCount = 12;
       
-      for (let i = 0; i < tailLength; i++) {
-        const t = i / tailLength;
-        const lineAngle = angle + (Math.random() - 0.5) * 0.3;
-        const lineLength = Math.random() * 15 + 10;
-        const offsetX = (Math.random() - 0.5) * tailWidth * (1 - t);
-        const offsetY = (Math.random() - 0.5) * tailWidth * (1 - t);
+      for (let i = 0; i < tailCount; i++) {
+        const t = i / tailCount;
+        const length = (1 - t) * 120 + 30;
+        const spread = (Math.random() - 0.5) * 8;
+        const angleOffset = (Math.random() - 0.5) * 0.15;
         
-        const lineStartX = startX - Math.cos(lineAngle) * i * 3 + offsetX;
-        const lineStartY = startY + Math.sin(lineAngle) * i * 3 + offsetY;
+        const lineAngle = tailAngle + angleOffset;
+        const lineStartX = startX - Math.cos(tailAngle) * t * 150 + Math.sin(tailAngle) * spread;
+        const lineStartY = startY + Math.sin(tailAngle) * t * 150 + Math.cos(tailAngle) * spread;
         
-        const lineEndX = lineStartX - Math.cos(lineAngle) * lineLength;
-        const lineEndY = lineStartY + Math.sin(lineAngle) * lineLength;
+        const lineEndX = lineStartX - Math.cos(lineAngle) * length;
+        const lineEndY = lineStartY + Math.sin(lineAngle) * length;
         
         tailLines.push({
           x1: lineStartX,
@@ -196,9 +195,10 @@
           baseY1: lineStartY,
           baseX2: lineEndX,
           baseY2: lineEndY,
-          opacity: (1 - t) * 0.8,
-          width: Math.max(1, (1 - t) * 2),
-          delay: t * 2
+          opacity: (1 - t) * 0.6,
+          width: Math.max(0.5, (1 - t * 0.8) * 1.5),
+          delay: t * 1.5,
+          speed: 0.8 + Math.random() * 0.4
         });
       }
     }
@@ -238,12 +238,13 @@
       
       tailLines.forEach(line => {
         const delay = line.delay;
-        const wave = Math.sin(time * 2 - delay * 5) * 3;
+        const wave = Math.sin(time * line.speed - delay * 3) * 4;
+        const wave2 = Math.cos(time * line.speed * 0.7 - delay * 2) * 2;
         
         line.x1 = line.baseX1 + wave;
-        line.y1 = line.baseY1 + wave * 0.5;
-        line.x2 = line.baseX2 + wave;
-        line.y2 = line.baseY2 + wave * 0.5;
+        line.y1 = line.baseY1 + wave2;
+        line.x2 = line.baseX2 + wave * 1.2;
+        line.y2 = line.baseY2 + wave2 * 1.2;
       });
       
       streamingParticles.forEach(p => {
@@ -256,7 +257,6 @@
       ctx.clearRect(0, 0, width, height);
       
       ctx.strokeStyle = '#00aaff';
-      ctx.lineWidth = 1;
       tailLines.forEach(line => {
         ctx.globalAlpha = line.opacity;
         ctx.lineWidth = line.width;

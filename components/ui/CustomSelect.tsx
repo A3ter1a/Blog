@@ -3,7 +3,6 @@
 import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ChevronDown } from "lucide-react";
-import { useClickOutside } from "@/lib/hooks";
 
 interface SelectOption {
   value: string;
@@ -20,46 +19,28 @@ interface CustomSelectProps {
 
 export function CustomSelect({ options, value, onChange, placeholder = "请选择", className = "" }: CustomSelectProps) {
   const [isOpen, setIsOpen] = useState(false);
-  const buttonRef = useRef<HTMLButtonElement>(null);
-  const [dropdownStyle, setDropdownStyle] = useState<React.CSSProperties>({});
+  const containerRef = useRef<HTMLDivElement>(null);
   const selectedOption = options.find((opt) => opt.value === value);
 
-  const closeDropdown = () => setIsOpen(false);
-  useClickOutside(closeDropdown, isOpen);
-
-  // 计算下拉菜单位置
-  useEffect(() => {
-    if (isOpen && buttonRef.current) {
-      const rect = buttonRef.current.getBoundingClientRect();
-      const viewportWidth = window.innerWidth;
-      const dropdownWidth = Math.min(rect.width, 200);
-      const left = Math.min(rect.left, viewportWidth - dropdownWidth - 8);
-      
-      setDropdownStyle({
-        position: "fixed",
-        top: rect.bottom + 4,
-        left: left,
-        width: dropdownWidth,
-        zIndex: 100,
-      });
-    }
-  }, [isOpen]);
-
-  // 滚动时关闭
   useEffect(() => {
     if (!isOpen) return;
-    const handleScroll = () => closeDropdown();
-    window.addEventListener("scroll", handleScroll, true);
-    return () => window.removeEventListener("scroll", handleScroll, true);
+    
+    const handleClickOutside = (event: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [isOpen]);
 
   return (
-    <>
+    <div ref={containerRef} className={`relative ${className}`}>
       <button
-        ref={buttonRef}
         type="button"
         onClick={() => setIsOpen(!isOpen)}
-        className={`w-full px-3 py-2 bg-surface-container-highest rounded-lg text-on-surface text-sm text-left flex items-center justify-between hover:bg-surface-container-highest/80 transition-colors duration-200 ${className}`}
+        className="w-full px-3 py-2 bg-surface-container-highest rounded-lg text-on-surface text-sm text-left flex items-center justify-between hover:bg-surface-container-highest/80 transition-colors duration-200"
       >
         <span className={selectedOption ? "text-on-surface" : "text-on-surface-variant/40"}>
           {selectedOption?.label || placeholder}
@@ -80,8 +61,7 @@ export function CustomSelect({ options, value, onChange, placeholder = "请选�
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -4, scale: 0.98 }}
             transition={{ duration: 0.15 }}
-            style={dropdownStyle}
-            className="bg-surface-container-low rounded-lg shadow-elevated border border-outline-variant/10 overflow-hidden"
+            className="absolute top-full left-0 right-0 mt-1 bg-surface-container-low rounded-lg shadow-elevated border border-outline-variant/10 overflow-hidden z-50"
           >
             <div className="py-1 max-h-48 overflow-y-auto">
               {options.map((option) => (
@@ -90,7 +70,7 @@ export function CustomSelect({ options, value, onChange, placeholder = "请选�
                   type="button"
                   onClick={() => {
                     onChange(option.value);
-                    closeDropdown();
+                    setIsOpen(false);
                   }}
                   className={`w-full px-3 py-2 text-left text-sm transition-colors duration-150 ${
                     value === option.value
@@ -105,6 +85,6 @@ export function CustomSelect({ options, value, onChange, placeholder = "请选�
           </motion.div>
         )}
       </AnimatePresence>
-    </>
+    </div>
   );
 }
