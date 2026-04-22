@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef } from "react";
-import { Maximize2, Minimize2, ExternalLink } from "lucide-react";
+import { Maximize2, Minimize2, ExternalLink, Expand, Shrink } from "lucide-react";
 
 interface BilibiliPlayerProps {
   bvid: string;
@@ -13,6 +13,7 @@ interface BilibiliPlayerProps {
 
 export function BilibiliPlayer({ bvid, cid, p = 1, title, autoPlay = false }: BilibiliPlayerProps) {
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
   const embedUrl = `//player.bilibili.com/player.html?isOutside=true&bvid=${bvid}&cid=${cid || ""}&p=${p}&autoplay=${autoPlay ? 1 : 0}&danmaku=0`;
@@ -27,11 +28,15 @@ export function BilibiliPlayer({ bvid, cid, p = 1, title, autoPlay = false }: Bi
     }
   };
 
+  const toggleExpand = () => {
+    setIsExpanded(!isExpanded);
+  };
+
   return (
     <div
       ref={containerRef}
       className={`relative w-full bg-black rounded-xl overflow-hidden shadow-elevated transition-all duration-300 ${
-        isFullscreen ? "fixed inset-0 z-50 rounded-none" : ""
+        isFullscreen ? "fixed inset-0 z-50 rounded-none" : isExpanded ? "max-w-4xl mx-auto" : ""
       }`}
     >
       {/* Header Bar */}
@@ -56,7 +61,7 @@ export function BilibiliPlayer({ bvid, cid, p = 1, title, autoPlay = false }: Bi
       {/* Control Bar */}
       <div className="absolute bottom-0 left-0 right-0 z-10 bg-gradient-to-t from-black/60 to-transparent px-3 py-2 flex items-center justify-end gap-2">
         <a
-          href={`https://www.bilibili.com/video/${bvid}`}
+          href={`https://www.bilibili.com/video/${bvid}${p > 1 ? `?p=${p}` : ""}`}
           target="_blank"
           rel="noopener noreferrer"
           className="p-2 rounded-lg bg-white/10 hover:bg-white/20 text-white transition-colors duration-200"
@@ -64,6 +69,15 @@ export function BilibiliPlayer({ bvid, cid, p = 1, title, autoPlay = false }: Bi
         >
           <ExternalLink className="w-4 h-4" />
         </a>
+        {!isFullscreen && (
+          <button
+            onClick={toggleExpand}
+            className="p-2 rounded-lg bg-white/10 hover:bg-white/20 text-white transition-colors duration-200"
+            title={isExpanded ? "缩小" : "放大"}
+          >
+            {isExpanded ? <Shrink className="w-4 h-4" /> : <Expand className="w-4 h-4" />}
+          </button>
+        )}
         <button
           onClick={toggleFullscreen}
           className="p-2 rounded-lg bg-white/10 hover:bg-white/20 text-white transition-colors duration-200"

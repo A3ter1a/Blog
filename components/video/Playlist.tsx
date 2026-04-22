@@ -25,9 +25,13 @@ export function Playlist({ videos, onChange, editable = false }: PlaylistProps) 
     input = input.trim();
     
     if (platform === "bilibili") {
-      // Support full URL, BV号, or raw BV
+      // Support full URL with P, BV号, or raw BV
       const bvMatch = input.match(/(BV[\w]+)/);
-      return bvMatch ? bvMatch[1] : input;
+      const pMatch = input.match(/[?&]p=(\d+)/);
+      return {
+        bvid: bvMatch ? bvMatch[1] : input,
+        p: pMatch ? parseInt(pMatch[1]) : 1,
+      };
     }
     
     if (platform === "youtube") {
@@ -41,29 +45,30 @@ export function Playlist({ videos, onChange, editable = false }: PlaylistProps) 
       
       for (const pattern of patterns) {
         const match = input.match(pattern);
-        if (match) return match[1];
+        if (match) return { videoId: match[1] };
       }
-      return input;
+      return { videoId: input };
     }
     
-    return input;
+    return platform === "bilibili" ? { bvid: input, p: 1 } : { videoId: input };
   };
 
   const handleAddVideo = () => {
     if (!newVideoInput.trim()) return;
 
-    const videoId = parseVideoInput(newVideoInput, newPlatform);
+    const parsed = parseVideoInput(newVideoInput, newPlatform);
+    const videoId = newPlatform === "bilibili" ? (parsed as any).bvid : (parsed as any).videoId;
     const newVideo: Video = {
       id: `${newPlatform}-${videoId}-${Date.now()}`,
       platform: newPlatform,
       title: newTitle.trim() || `视频 ${videos.length + 1}`,
       bilibili: newPlatform === "bilibili" ? {
-        bvid: videoId,
-        p: 1,
+        bvid: (parsed as any).bvid,
+        p: (parsed as any).p || 1,
         title: newTitle.trim() || `视频 ${videos.length + 1}`,
       } : undefined,
       youtube: newPlatform === "youtube" ? {
-        videoId,
+        videoId: (parsed as any).videoId,
         title: newTitle.trim() || `视频 ${videos.length + 1}`,
       } : undefined,
     };
@@ -198,7 +203,7 @@ export function Playlist({ videos, onChange, editable = false }: PlaylistProps) 
               type="text"
               value={newVideoInput}
               onChange={(e) => setNewVideoInput(e.target.value)}
-              placeholder={newPlatform === "bilibili" ? "输入BV号或B站链接..." : "输入YouTube链接或视频ID..."}
+              placeholder={newPlatform === "bilibili" ? "输入BV号或链接 (如 BV1xx?p=3)..." : "输入YouTube链接或视频ID..."}
               className="flex-1 px-3 py-2 bg-surface-container-highest rounded-lg input-soft text-on-surface placeholder:text-on-surface-variant/40 text-sm"
               onKeyDown={(e) => e.key === "Enter" && handleAddVideo()}
             />
