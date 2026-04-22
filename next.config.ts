@@ -15,6 +15,20 @@ const nextConfig: NextConfig = {
   experimental: {
     optimizePackageImports: ["lucide-react", "framer-motion"],
   },
+  // Headers for DPlayer and video playback
+  async headers() {
+    return [
+      {
+        source: "/(.*)",
+        headers: [
+          {
+            key: "Content-Security-Policy",
+            value: "frame-src https://www.bilibili.com https://player.bilibili.com https://www.youtube.com; media-src 'self' blob: https: data:;"
+          }
+        ]
+      }
+    ];
+  }
 };
 
 export default nextConfig;

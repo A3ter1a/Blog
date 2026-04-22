@@ -1,6 +1,6 @@
 "use client";
 
-import { BilibiliEmbedPlayer } from "./BilibiliEmbedPlayer";
+import { DPlayerBilibili } from "./DPlayerBilibili";
 import { YouTubePlayer } from "./YouTubePlayer";
 import type { Video } from "@/lib/types";
 
@@ -14,12 +14,10 @@ interface VideoPlayerProps {
 export function VideoPlayer({ video, autoPlay = false, inlineMode = false, onExitInline }: VideoPlayerProps) {
   if (video.platform === "bilibili" && video.bilibili) {
     return (
-      <BilibiliEmbedPlayer
+      <DPlayerBilibili
         bvid={video.bilibili.bvid}
-        cid={video.bilibili.cid}
         p={video.bilibili.p}
         title={video.title}
-        autoPlay={autoPlay}
         inlineMode={inlineMode}
         onExitInline={onExitInline}
       />
