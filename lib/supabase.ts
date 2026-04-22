@@ -55,12 +55,22 @@ function mapCamelToSnake(note: Partial<Note>): any {
 
 // Notes API (使用 getSupabase() 确保延迟初始化)
 export const notesApi = {
-  // Get all notes
+  // Get all notes (optimized: only fetch fields needed for list view)
   async getAll(): Promise<Note[]> {
     const supabase = getSupabase();
     const { data, error } = await supabase
       .from("notes")
-      .select("*")
+      .select(`
+        id,
+        type,
+        title,
+        subject,
+        tags,
+        cover_image,
+        created_at,
+        updated_at,
+        is_published
+      `)
       .eq("is_published", true)
       .order("created_at", { ascending: false });
 
@@ -68,12 +78,25 @@ export const notesApi = {
     return (data || []).map(mapSnakeToCamel);
   },
 
-  // Get note by ID
+  // Get note by ID (fetch all fields for detail view)
   async getById(id: string): Promise<Note | null> {
     const supabase = getSupabase();
     const { data, error } = await supabase
       .from("notes")
-      .select("*")
+      .select(`
+        id,
+        type,
+        title,
+        content,
+        subject,
+        tags,
+        cover_image,
+        videos,
+        problems,
+        created_at,
+        updated_at,
+        is_published
+      `)
       .eq("id", id)
       .single();
 
@@ -123,12 +146,22 @@ export const notesApi = {
     if (error) throw error;
   },
 
-  // Search notes
+  // Search notes (optimized field selection)
   async search(query: string, type?: NoteType, subject?: Subject): Promise<Note[]> {
     const supabase = getSupabase();
     let q = supabase
       .from("notes")
-      .select("*")
+      .select(`
+        id,
+        type,
+        title,
+        subject,
+        tags,
+        cover_image,
+        created_at,
+        updated_at,
+        is_published
+      `)
       .eq("is_published", true)
       .or(`title.ilike.%${query}%,content.ilike.%${query}%`);
 
