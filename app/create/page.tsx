@@ -409,7 +409,7 @@ ${content}`,
                 内容（Markdown）
               </label>
               <EditorToolbar
-                editor={editorRef.current?.editor}
+                editor={editorRef.current?.editor ?? null}
                 onImageUpload={handleEditorImageUpload}
                 onFormulaToImage={() => setShowFormulaModal(true)}
                 onSketchUpload={() => setShowSketchModal(true)}
