@@ -1,16 +1,9 @@
-"use client";
-
-import { AsteroidParticles } from "@/components/ui/AsteroidParticles";
-
 export default function Home() {
   return (
     <div className="min-h-screen relative overflow-hidden">
       {/* Hero Section */}
       <section className="min-h-screen flex flex-col items-center justify-center px-6 relative">
-        {/* Particle Effect Behind Title */}
-        <AsteroidParticles />
-        
-        <div className="text-center max-w-4xl relative z-10">
+        <div className="text-center max-w-4xl">
           <h1 className="text-6xl md:text-7xl lg:text-8xl font-bold text-primary mb-6 tracking-tight font-headline">
             知识的<span className="text-primary-container">小行星</span>
           </h1>
