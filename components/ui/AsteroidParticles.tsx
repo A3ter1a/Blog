@@ -47,7 +47,7 @@ export function AsteroidParticles() {
     return points;
   }, []);
 
-  const initParticles = useCallback((width: number, height: number, sphereRadius: number) => {
+  const initParticles = useCallback((sphereRadius: number) => {
     const particles: Particle[] = [];
     const spherePoints = fibonacciSphere(particleCount);
     
@@ -95,8 +95,8 @@ export function AsteroidParticles() {
     if (!ctx) return;
 
     const rect = container.getBoundingClientRect();
-    const width = canvas.width;
-    const height = canvas.height;
+    const width = rect.width;
+    const height = rect.height;
     const centerX = width / 2;
     const centerY = height / 2;
     const sphereRadius = width * 0.32;
@@ -157,13 +157,8 @@ export function AsteroidParticles() {
       canvas.style.width = rect.width + 'px';
       canvas.style.height = rect.height + 'px';
       
-      const ctx = canvas.getContext("2d");
-      if (ctx) {
-        ctx.scale(dpr, dpr);
-      }
-      
       const sphereRadius = rect.width * 0.32;
-      initParticles(canvas.width, canvas.height, sphereRadius);
+      initParticles(sphereRadius);
     };
 
     resize();
