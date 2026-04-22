@@ -1,6 +1,6 @@
 "use client";
 
-import { useEditor, EditorContent } from "@tiptap/react";
+import { useEditor, EditorContent, type Editor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Image from "@tiptap/extension-image";
 import Placeholder from "@tiptap/extension-placeholder";
@@ -18,7 +18,7 @@ interface RichTextEditorProps {
 }
 
 export interface RichTextEditorRef {
-  editor: ReturnType<typeof useEditor>;
+  editor: Editor | null;
   insertImage: (url: string) => void;
   insertContent: (content: string) => void;
 }
