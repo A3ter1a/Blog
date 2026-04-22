@@ -20,7 +20,7 @@ export function MarkdownContent({ content, className = "", style }: MarkdownCont
     <div className={`markdown-content ${className}`} style={{ fontSize: style?.fontSize || 'inherit' }}>
       <ReactMarkdown
         remarkPlugins={[[remarkMath, { singleDollarTextMath: true }]]}
-        rehypePlugins={[[rehypeKatex, { strict: 'ignore' }], rehypeSlug]}
+        rehypePlugins={[rehypeSlug, [rehypeKatex, { strict: 'ignore' }]]}
         components={{
           p: ({ children, ...props }) => (
             <p {...props} className="mb-4 last:mb-0 leading-relaxed">{children}</p>
