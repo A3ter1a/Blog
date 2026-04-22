@@ -13,18 +13,17 @@ interface MarkdownContentProps {
 function markdownToHtml(md: string): string {
   let html = md;
 
-  // STEP 1: Extract LaTeX FIRST (before any Markdown processing)
+  // STEP 1: Unescape TipTap's double backslashes (\\xi → \xi)
+  html = html.replace(/\\\\/g, '\\');
+
+  // STEP 2: Extract LaTeX FIRST (before any Markdown processing)
   const latexBlocks: { token: string; latex: string; displayMode: boolean }[] = [];
   let counter = 0;
 
   // Extract block math $$...$$
   html = html.replace(/\$\$([\s\S]*?)\$\$/g, (match, latex) => {
     const token = `%%LATEX${counter++}%%`;
-    // Remove newlines and \\ from block math - KaTeX doesn't support them in display mode
-    latex = latex
-      .replace(/\\\\/g, ' ')  // Remove \\ line breaks
-      .replace(/[\n\r]+/g, ' ')  // Remove actual newlines
-      .trim();
+    latex = latex.replace(/[\n\r]+/g, ' ').trim();
     latexBlocks.push({ token, latex, displayMode: true });
     return token;
   });
@@ -32,7 +31,8 @@ function markdownToHtml(md: string): string {
   // Extract inline math $...$
   html = html.replace(/\$([^\$\n]+?)\$/g, (match, latex) => {
     const token = `%%LATEX${counter++}%%`;
-    latexBlocks.push({ token, latex: latex.trim(), displayMode: false });
+    latex = latex.trim();
+    latexBlocks.push({ token, latex, displayMode: false });
     return token;
   });
 
