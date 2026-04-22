@@ -68,7 +68,7 @@ export default function NotesPage() {
 
       return matchesSearch && matchesType && matchesSubject && matchesDifficulty && matchesProblemType;
     });
-  }, [searchQuery, selectedType, selectedSubject, selectedDifficulty, selectedProblemType]);
+  }, [searchQuery, selectedType, selectedSubject, selectedDifficulty, selectedProblemType, notes]);
 
   const handleToggleSelect = (noteId: string) => {
     setSelectedNoteIds((prev) => {
@@ -225,45 +225,29 @@ export default function NotesPage() {
               <Loader2 className="w-8 h-8 animate-spin text-primary" />
               <span className="ml-3 text-on-surface-variant">加载笔记中...</span>
             </div>
+          ) : filteredNotes.length > 0 ? (
+            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
+              {filteredNotes.map((note, index) => (
+                <NoteCard
+                  key={note.id}
+                  note={note}
+                  index={index}
+                  isSelected={selectedNoteIds.has(note.id)}
+                  onToggleSelect={selectMode ? handleToggleSelect : undefined}
+                  selectMode={selectMode}
+                />
+              ))}
+            </div>
           ) : (
-            <>
-              {/* Debug info */}
-              <div className="mb-4 p-3 bg-surface-container rounded-lg text-sm text-on-surface-variant">
-                共 {notes.length} 条笔记，过滤后 {filteredNotes.length} 条
-              </div>
-              
-              {filteredNotes.length > 0 ? (
-                <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
-                  {filteredNotes.map((note, index) => {
-                    try {
-                      return (
-                        <NoteCard
-                          key={note.id}
-                          note={note}
-                          index={index}
-                          isSelected={selectedNoteIds.has(note.id)}
-                          onToggleSelect={selectMode ? handleToggleSelect : undefined}
-                          selectMode={selectMode}
-                        />
-                      );
-                    } catch (err) {
-                      console.error("Error rendering note:", note.id, err);
-                      return null;
-                    }
-                  })}
-                </div>
-              ) : (
-                <motion.div
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  className="text-center py-20"
-                >
-                  <p className="text-on-surface-variant text-lg">
-                    没有找到匹配的笔记
-                  </p>
-                </motion.div>
-              )}
-            </>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="text-center py-20"
+            >
+              <p className="text-on-surface-variant text-lg">
+                没有找到匹配的笔记
+              </p>
+            </motion.div>
           )}
         </section>
       </div>
