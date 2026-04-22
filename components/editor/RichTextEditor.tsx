@@ -6,6 +6,7 @@ import Image from "@tiptap/extension-image";
 import Placeholder from "@tiptap/extension-placeholder";
 import Link from "@tiptap/extension-link";
 import CharacterCount from "@tiptap/extension-character-count";
+import Highlight from "@tiptap/extension-highlight";
 import { Markdown } from "tiptap-markdown";
 import { useEffect, forwardRef, useImperativeHandle } from "react";
 import { ProblemBlock, parseProblemMarkers } from "@/lib/problem-block-extension";
@@ -46,6 +47,9 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
         CharacterCount.configure({
           limit: null,
         }),
+        Highlight.configure({
+          multicolor: true,
+        }),
         ProblemBlock,
         Markdown.configure({
           html: false,
@@ -85,6 +89,18 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
         {/* Editor Content */}
         <EditorContent
           editor={editor}
+          onKeyDown={(e) => {
+            if (e.key === "Tab") {
+              e.preventDefault();
+              if (e.shiftKey) {
+                // Shift+Tab: 尝试减少缩进
+                editor.chain().focus().indent({ level: -1 }).run();
+              } else {
+                // Tab: 插入两个空格作为缩进
+                editor.chain().focus().insertContent("  ").run();
+              }
+            }
+          }}
           className="prose prose-sm max-w-none p-4 min-h-[400px] focus:outline-none
             [&_.ProseMirror]:min-h-[400px] [&_.ProseMirror]:outline-none
             [&_.ProseMirror_p.is-editor-empty:first-child::before]:text-on-surface-variant/40
@@ -105,7 +121,8 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
             [&_.ProseMirror_pre]:bg-surface-container-high [&_.ProseMirror_pre]:p-4
             [&_.ProseMirror_pre]:rounded-lg [&_.ProseMirror_pre]:overflow-x-auto [&_.ProseMirror_pre]:my-3
             [&_.ProseMirror_a]:text-primary [&_.ProseMirror_a]:underline
-            [&_.ProseMirror_hr:my-4] [&_.ProseMirror_hr:border-outline-variant/20]"
+            [&_.ProseMirror_hr:my-4] [&_.ProseMirror_hr:border-outline-variant/20]
+            [&_.ProseMirror_mark]:rounded-sm [&_.ProseMirror_mark]:px-1 [&_.ProseMirror_mark]:py-0.5"
         />
       </div>
     );

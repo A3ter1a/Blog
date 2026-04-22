@@ -242,7 +242,7 @@ ${content}`,
 
   return (
     <main className="pt-24 pb-20 min-h-screen">
-      <div className="max-w-6xl mx-auto px-6">
+      <div className="max-w-7xl mx-auto px-6">
         {/* Header */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -416,28 +416,32 @@ ${content}`,
               <label className="block text-sm font-medium text-on-surface-variant mb-3">
                 内容（Markdown）
               </label>
-              {editorReady && (
-                <EditorToolbar
-                  editor={editorRef.current?.editor ?? null}
-                  onImageUpload={handleEditorImageUpload}
-                  onFormulaToImage={() => setShowFormulaModal(true)}
-                  onSketchUpload={() => setShowSketchModal(true)}
-                  onQuestionInsert={() => setShowQuestionModal(true)}
+              <div className="max-w-4xl">
+                <div className="sticky top-24 z-30 mb-2">
+                  {editorReady && (
+                    <EditorToolbar
+                      editor={editorRef.current?.editor ?? null}
+                      onImageUpload={handleEditorImageUpload}
+                      onFormulaToImage={() => setShowFormulaModal(true)}
+                      onSketchUpload={() => setShowSketchModal(true)}
+                      onQuestionInsert={() => setShowQuestionModal(true)}
+                    />
+                  )}
+                </div>
+                <RichTextEditor
+                  ref={editorRef}
+                  content={content}
+                  onChange={setContent}
+                  placeholder={isEssay ? "记录你的想法..." : "在此输入内容，支持 Markdown 语法..."}
                 />
-              )}
-              <RichTextEditor
-                ref={editorRef}
-                content={content}
-                onChange={setContent}
-                placeholder={isEssay ? "记录你的想法..." : "在此输入内容，支持 Markdown 语法..."}
-              />
-              {/* Character Count */}
-              <div className="flex justify-between items-center mt-2 px-2 text-xs text-on-surface-variant/60">
-                <span>
-                  字数: {content.replace(/\s/g, "").length.toLocaleString()} |
-                  字符: {content.length.toLocaleString()}
-                </span>
-                <span>Markdown</span>
+                {/* Character Count */}
+                <div className="flex justify-between items-center mt-2 px-2 text-xs text-on-surface-variant/60">
+                  <span>
+                    字数: {content.replace(/\s/g, "").length.toLocaleString()} |
+                    字符: {content.length.toLocaleString()}
+                  </span>
+                  <span>Markdown</span>
+                </div>
               </div>
             </>
           )}

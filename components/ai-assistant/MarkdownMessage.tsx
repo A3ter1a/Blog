@@ -20,7 +20,7 @@ export function MarkdownMessage({ content, isUser }: MarkdownMessageProps) {
   return (
     <div className="prose prose-sm max-w-none dark:prose-invert">
       <ReactMarkdown
-        remarkPlugins={[remarkMath]}
+        remarkPlugins={[[remarkMath, { singleDollarTextMath: true }]]}
         rehypePlugins={[rehypeKatex]}
         components={{
           p: ({ children }) => (

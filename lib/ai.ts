@@ -414,3 +414,123 @@ function parseAnalysisResponse(text: string) {
     };
   }
 }
+
+/**
+ * Generate quiz questions from note content
+ * Returns an array of quiz questions with options and answers
+ */
+export async function generateQuiz(
+  content: string,
+  count: number = 5
+): Promise<Array<{
+  question: string;
+  type: "choice" | "fill" | "short";
+  options?: Array<{ label: string; content: string }>;
+  answer: string;
+  explanation: string;
+}>> {
+  const config = getActiveConfig();
+  
+  const quizPrompt = `你是一个专业的出题助手。请根据以下笔记内容，生成 ${count} 道练习题来帮助巩固知识点。
+
+要求：
+1. 题目类型包含选择题、填空题和简答题
+2. 选择题必须提供 4 个选项（A、B、C、D）
+3. 题目应该覆盖笔记的核心知识点
+4. 难度适中，循序渐进
+5. 答案要准确，解析要详细
+
+请严格按照以下 JSON 格式返回（不要包含其他内容）：
+
+[
+  {
+    "question": "题目内容（使用 LaTeX 语法表示公式）",
+    "type": "choice 或 fill 或 short",
+    "options": [
+      {"label": "A", "content": "选项内容"},
+      {"label": "B", "content": "选项内容"},
+      {"label": "C", "content": "选项内容"},
+      {"label": "D", "content": "选项内容"}
+    ],
+    "answer": "正确答案（选择题填选项字母如 A，其他填具体内容）",
+    "explanation": "详细的解析和解题思路"
+  }
+]
+
+笔记内容：
+${content.substring(0, 3000)}`;
+
+  try {
+    // OpenAI-compatible APIs (OpenAI, DeepSeek, Qwen)
+    if (config && (config.provider === "openai" || config.provider === "deepseek" || config.provider === "qwen")) {
+      const provider = aiProviders.find(p => p.value === config.provider);
+      const baseUrl = config.baseUrl || provider?.defaultUrl || "";
+      
+      const response = await fetch(`${baseUrl}/chat/completions`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${config.apiKey}`,
+        },
+        body: JSON.stringify({
+          model: config.model || provider?.defaultModel,
+          messages: [{ role: "user", content: quizPrompt }],
+          max_tokens: 4096,
+        }),
+      });
+      
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error?.message || "API 错误");
+      const text = data.choices[0].message.content;
+      return parseQuizResponse(text);
+    }
+
+    // Claude
+    if (config?.provider === "claude") {
+      const response = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": config.apiKey,
+          "anthropic-version": "2023-06-01",
+        },
+        body: JSON.stringify({
+          model: config.model || "claude-3-5-sonnet-20241022",
+          messages: [{ role: "user", content: quizPrompt }],
+          max_tokens: 4096,
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error?.message || "Claude API 错误");
+      return parseQuizResponse(data.content[0].text);
+    }
+
+    // Gemini (default or env)
+    const apiKey = config?.provider === "gemini" ? config.apiKey : process.env.NEXT_PUBLIC_GEMINI_API_KEY;
+    if (apiKey) {
+      const genAI = new GoogleGenerativeAI(apiKey);
+      const model = genAI.getGenerativeModel({ 
+        model: config?.model || "gemini-2.0-flash" 
+      });
+      const result = await model.generateContent(quizPrompt);
+      return parseQuizResponse(result.response.text());
+    }
+
+    throw new Error("请先在设置中配置 AI API");
+  } catch (error) {
+    console.error("Quiz generation failed:", error);
+    throw error;
+  }
+}
+
+function parseQuizResponse(text: string) {
+  try {
+    const jsonMatch = text.match(/\[[\s\S]*\]/);
+    if (jsonMatch) return JSON.parse(jsonMatch[0]);
+    throw new Error("Failed to parse JSON");
+  } catch {
+    // Fallback: return empty array
+    return [];
+  }
+}
+

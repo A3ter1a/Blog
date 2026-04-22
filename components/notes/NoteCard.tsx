@@ -3,8 +3,9 @@
 import { motion } from "framer-motion";
 import Link from "next/link";
 import { Note, subjectMap, typeMap, NoteType } from "@/lib/types";
-import { FileText, BookOpen, Calendar, ChevronDown, Check } from "lucide-react";
+import { FileText, BookOpen, Calendar, ChevronDown, Check, Clock } from "lucide-react";
 import { useState } from "react";
+import { estimateReadingTime } from "@/lib/utils";
 
 interface NoteCardProps {
   note: Note;
@@ -164,6 +165,12 @@ export function NoteCard({ note, index, isSelected = false, onToggleSelect, sele
                   ? note.createdAt.toLocaleDateString("zh-CN") 
                   : new Date(note.createdAt as any).toLocaleDateString("zh-CN")}
               </span>
+              {!isProblem && note.content && (
+                <span className="flex items-center gap-1">
+                  <Clock className="w-4 h-4" />
+                  {estimateReadingTime(note.content)} 分钟
+                </span>
+              )}
             </div>
           </div>
         </div>

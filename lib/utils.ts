@@ -58,3 +58,30 @@ export function extractOptions(content: string) {
 
   return options.length > 0 ? options : undefined;
 }
+
+/**
+ * Estimate reading time for text content.
+ * Average reading speed: ~300 Chinese characters per minute or ~200 English words per minute.
+ * Returns reading time in minutes (minimum 1 minute).
+ */
+export function estimateReadingTime(content: string): number {
+  if (!content || content.trim().length === 0) {
+    return 1;
+  }
+
+  // Count Chinese characters
+  const chineseChars = (content.match(/[\u4e00-\u9fff]/g) || []).length;
+  
+  // Count English words (approximate)
+  const englishWords = content.split(/\s+/).filter(word => word.length > 0).length;
+  
+  // Calculate time: 300 Chinese chars/min or 200 English words/min
+  const chineseTime = chineseChars / 300;
+  const englishTime = englishWords / 200;
+  
+  // Use the maximum of the two (content might be mixed)
+  const totalMinutes = Math.max(chineseTime, englishTime);
+  
+  // Minimum 1 minute
+  return Math.max(1, Math.ceil(totalMinutes));
+}

@@ -1,6 +1,15 @@
 @import "tailwindcss";
 @import "katex/dist/katex.min.css";
 
+/* XITS Math Font for KaTeX */
+@font-face {
+  font-family: 'XITS Math';
+  src: url('https://cdn.jsdelivr.net/npm/xits@1.0.5/dist/xits-math.woff2') format('woff2');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
 /* ========================================
    Scholar's Ink Design System
    Editorial Intelligence Theme
@@ -163,7 +172,7 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .prose h2, .prose h3 {
-  margin-top: 2em;
+  margin-top: 1.5em;
   margin-bottom: 0.75em;
 }
 
@@ -188,12 +197,29 @@ h1, h2, h3, h4, h5, h6 {
 /* KaTeX Protection - prevent Tailwind from overriding KaTeX styles */
 .katex,
 .katex * {
-  font-family: KaTeX_Main, 'Times New Roman', serif !important;
+  font-family: 'XITS Math', KaTeX_Main, 'Times New Roman', serif !important;
   font-style: normal !important;
   font-weight: normal !important;
   line-height: 1.2 !important;
   text-indent: 0 !important;
   white-space: nowrap !important;
+}
+
+/* Override KaTeX math font specifically */
+.katex .mathnormal,
+.katex .mathit {
+  font-family: 'XITS Math', KaTeX_Math, 'Times New Roman', serif !important;
+  font-style: italic !important;
+}
+
+.katex .textrm {
+  font-family: 'XITS Math', KaTeX_Main, 'Times New Roman', serif !important;
+  font-style: normal !important;
+}
+
+.katex .mathbf {
+  font-family: 'XITS Math', KaTeX_Main, 'Times New Roman', serif !important;
+  font-weight: bold !important;
 }
 
 .katex .katex-html {
@@ -221,3 +247,8 @@ h1, h2, h3, h4, h5, h6 {
   font-style: normal !important;
 }
 
+/* Highlight styles for editor */
+.ProseMirror mark {
+  border-radius: 2px;
+  padding: 1px 4px;
+}

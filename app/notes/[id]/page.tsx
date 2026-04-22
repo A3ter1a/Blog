@@ -4,9 +4,11 @@ import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import { useRouter, useParams } from "next/navigation";
-import { ArrowLeft, Calendar, Tag, Edit2, Trash2, AlertTriangle, ChevronDown, ChevronUp, BookOpen, BookMarked, Brain, Loader2 } from "lucide-react";
+import { ArrowLeft, Calendar, Tag, Edit2, Trash2, AlertTriangle, ChevronDown, ChevronUp, BookOpen, BookMarked, Brain, Loader2, Clock, Sparkles } from "lucide-react";
 import { notesApi } from "@/lib/supabase";
 import { subjectMap, typeMap, Note } from "@/lib/types";
+import { estimateReadingTime } from "@/lib/utils";
+import { QuizModal } from "@/components/quiz/QuizModal";
 import { Playlist } from "@/components/video/Playlist";
 import { VideoPlayer } from "@/components/video/VideoPlayer";
 import { AIPanel } from "@/components/ai-assistant/AIPanel";
@@ -29,6 +31,7 @@ export default function NoteReaderPage() {
   const [isAIPanelOpen, setIsAIPanelOpen] = useState(false);
   const [isImmersiveMode, setIsImmersiveMode] = useState(false);
   const [inlineVideoIndex, setInlineVideoIndex] = useState<number | null>(null);
+  const [showQuizModal, setShowQuizModal] = useState(false);
 
   // Load note from Supabase
   useEffect(() => {
@@ -220,6 +223,12 @@ export default function NoteReaderPage() {
                 <Calendar className="w-4 h-4" />
                 {note.createdAt.toLocaleDateString("zh-CN")}
               </span>
+              {!isProblem && (
+                <span className="flex items-center gap-2">
+                  <Clock className="w-4 h-4" />
+                  预计阅读 {estimateReadingTime(note.content)} 分钟
+                </span>
+              )}
               <span className="flex items-center gap-2">
                 <Tag className="w-4 h-4" />
                 <div className="flex items-center gap-2 flex-wrap">
@@ -244,6 +253,15 @@ export default function NoteReaderPage() {
                 <Edit2 className="w-4 h-4" />
                 编辑
               </Link>
+              {!isProblem && (
+                <button
+                  onClick={() => setShowQuizModal(true)}
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary/10 text-primary hover:bg-primary/20 transition-colors duration-200 text-sm font-medium"
+                >
+                  <Sparkles className="w-4 h-4" />
+                  AI 出题
+                </button>
+              )}
               <button
                 onClick={() => setShowDeleteConfirm(true)}
                 className="flex items-center gap-2 px-4 py-2 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 transition-colors duration-200 text-sm font-medium"
@@ -502,6 +520,15 @@ export default function NoteReaderPage() {
                   <Calendar className="w-4 h-4" />
                   {note.createdAt.toLocaleDateString("zh-CN")}
                 </span>
+                {!isProblem && (
+                  <>
+                    <span className="text-on-surface-variant/30">·</span>
+                    <span className="flex items-center gap-2">
+                      <Clock className="w-4 h-4" />
+                      预计阅读 {estimateReadingTime(note.content)} 分钟
+                    </span>
+                  </>
+                )}
                 {note.tags.length > 0 && (
                   <>
                     <span className="text-on-surface-variant/30">·</span>
@@ -538,6 +565,16 @@ export default function NoteReaderPage() {
               <div className="h-32" />
             </motion.div>
           </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Quiz Modal */}
+      <AnimatePresence>
+        {showQuizModal && (
+          <QuizModal
+            content={note.content}
+            onClose={() => setShowQuizModal(false)}
+          />
         )}
       </AnimatePresence>
     </main>

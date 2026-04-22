@@ -1,5 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
-import { Note, NoteType, Subject } from "./types";
+import { Note, NoteType, Subject, Flashcard } from "./types";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
@@ -171,5 +171,116 @@ export const notesApi = {
     const { data, error } = await q.order("created_at", { ascending: false });
     if (error) throw error;
     return (data || []).map(mapSnakeToCamel);
+  },
+};
+
+// Flashcard API
+function mapFlashcardSnakeToCamel(row: any): Flashcard {
+  return {
+    id: row.id,
+    noteId: row.note_id,
+    question: row.question,
+    answer: row.answer,
+    interval: row.interval || 1,
+    repetition: row.repetition || 0,
+    easeFactor: row.ease_factor || 2.5,
+    nextReview: new Date(row.next_review),
+    lastReview: row.last_review ? new Date(row.last_review) : undefined,
+    createdAt: new Date(row.created_at),
+    updatedAt: new Date(row.updated_at),
+  };
+}
+
+export const flashcardsApi = {
+  // Get due flashcards (cards ready for review)
+  async getDue(limit: number = 20): Promise<Flashcard[]> {
+    const supabase = getSupabase();
+    const now = new Date().toISOString();
+    const { data, error } = await supabase
+      .from("flashcards")
+      .select("*")
+      .lte("next_review", now)
+      .order("next_review", { ascending: true })
+      .limit(limit);
+
+    if (error) throw error;
+    return (data || []).map(mapFlashcardSnakeToCamel);
+  },
+
+  // Get all flashcards for a note
+  async getByNoteId(noteId: string): Promise<Flashcard[]> {
+    const supabase = getSupabase();
+    const { data, error } = await supabase
+      .from("flashcards")
+      .select("*")
+      .eq("note_id", noteId)
+      .order("created_at", { ascending: true });
+
+    if (error) throw error;
+    return (data || []).map(mapFlashcardSnakeToCamel);
+  },
+
+  // Create flashcard
+  async create(card: Omit<Flashcard, "id" | "createdAt" | "updatedAt">): Promise<Flashcard> {
+    const supabase = getSupabase();
+    const { data, error } = await supabase
+      .from("flashcards")
+      .insert([{
+        note_id: card.noteId,
+        question: card.question,
+        answer: card.answer,
+        interval: card.interval,
+        repetition: card.repetition,
+        ease_factor: card.easeFactor,
+        next_review: card.nextReview.toISOString(),
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }])
+      .select()
+      .single();
+
+    if (error) throw error;
+    return mapFlashcardSnakeToCamel(data);
+  },
+
+  // Update flashcard (after review)
+  async update(id: string, updates: Partial<Flashcard>): Promise<Flashcard> {
+    const supabase = getSupabase();
+    const dbUpdates: any = { updated_at: new Date().toISOString() };
+    if (updates.interval !== undefined) dbUpdates.interval = updates.interval;
+    if (updates.repetition !== undefined) dbUpdates.repetition = updates.repetition;
+    if (updates.easeFactor !== undefined) dbUpdates.ease_factor = updates.easeFactor;
+    if (updates.nextReview !== undefined) dbUpdates.next_review = updates.nextReview.toISOString();
+    if (updates.lastReview !== undefined) dbUpdates.last_review = updates.lastReview.toISOString();
+
+    const { data, error } = await supabase
+      .from("flashcards")
+      .update(dbUpdates)
+      .eq("id", id)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return mapFlashcardSnakeToCamel(data);
+  },
+
+  // Delete flashcard
+  async delete(id: string): Promise<void> {
+    const supabase = getSupabase();
+    const { error } = await supabase.from("flashcards").delete().eq("id", id);
+    if (error) throw error;
+  },
+
+  // Get count of due cards
+  async getDueCount(): Promise<number> {
+    const supabase = getSupabase();
+    const now = new Date().toISOString();
+    const { count, error } = await supabase
+      .from("flashcards")
+      .select("*", { count: "exact", head: true })
+      .lte("next_review", now);
+
+    if (error) throw error;
+    return count || 0;
   },
 };

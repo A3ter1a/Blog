@@ -18,11 +18,11 @@ export function MarkdownContent({ content, className = "", style }: MarkdownCont
   return (
     <div className={`markdown-content ${className}`} style={{ fontSize: style?.fontSize || 'inherit' }}>
       <ReactMarkdown
-        remarkPlugins={[remarkMath]}
-        rehypePlugins={[rehypeSlug, rehypeKatex]}
+        remarkPlugins={[[remarkMath, { singleDollarTextMath: true }]]}
+        rehypePlugins={[rehypeKatex, rehypeSlug]}
         components={{
-          p: ({ children }) => (
-            <p className="mb-4 last:mb-0 leading-relaxed">{children}</p>
+          p: ({ children, ...props }) => (
+            <p {...props} className="mb-4 last:mb-0 leading-relaxed">{children}</p>
           ),
           ul: ({ children }) => (
             <ul className="list-disc ml-6 mb-4 space-y-1">{children}</ul>

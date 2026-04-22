@@ -4,8 +4,9 @@ import type { Editor } from "@tiptap/react";
 import {
   Bold, Italic, Strikethrough, List, ListOrdered, Quote,
   Heading1, Heading2, Heading3, Code, Code2, Link as LinkIcon,
-  Minus, Image as ImageIcon, Undo, Redo,
+  Minus, Image as ImageIcon, Undo, Redo, Highlighter,
 } from "lucide-react";
+import { useState, useRef, useEffect } from "react";
 
 interface EditorToolbarProps {
   editor: Editor | null;
@@ -146,6 +147,11 @@ export function EditorToolbar({
 
       <div className="w-px h-6 bg-outline-variant/20 mx-1" />
 
+      {/* Highlight */}
+      <HighlightColorPicker editor={editor} />
+
+      <div className="w-px h-6 bg-outline-variant/20 mx-1" />
+
       {/* Link & Horizontal Rule */}
       <ToolbarBtn
         onClick={() => {
@@ -212,5 +218,75 @@ function ToolbarBtn({ onClick, tooltip, active, disabled, accent, children }: To
     >
       {children}
     </button>
+  );
+}
+
+const HIGHLIGHT_COLORS = [
+  { color: "#fef08a", label: "黄色" },
+  { color: "#bbf7d0", label: "绿色" },
+  { color: "#bfdbfe", label: "蓝色" },
+  { color: "#fecaca", label: "红色" },
+  { color: "#fbcfe8", label: "粉色" },
+  { color: "#e9d5ff", label: "紫色" },
+  { color: "#fed7aa", label: "橙色" },
+  { color: "#ccfbf1", label: "青色" },
+];
+
+interface HighlightColorPickerProps {
+  editor: Editor;
+}
+
+function HighlightColorPicker({ editor }: HighlightColorPickerProps) {
+  const [isOpen, setIsOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const isActive = editor.isActive("highlight");
+
+  return (
+    <div className="relative" ref={dropdownRef}>
+      <ToolbarBtn
+        onClick={() => {
+          if (isActive) {
+            editor.chain().focus().unsetHighlight().run();
+          } else {
+            setIsOpen(!isOpen);
+          }
+        }}
+        active={isActive}
+        tooltip="文本高亮"
+      >
+        <Highlighter className="w-4 h-4" />
+      </ToolbarBtn>
+
+      {isOpen && (
+        <div className="absolute top-full left-0 mt-1 p-2 bg-surface-container-lowest rounded-lg shadow-elevated border border-outline-variant/20 z-50">
+          <div className="grid grid-cols-4 gap-1">
+            {HIGHLIGHT_COLORS.map(({ color, label }) => (
+              <button
+                key={color}
+                type="button"
+                onClick={() => {
+                  editor.chain().focus().toggleHighlight({ color }).run();
+                  setIsOpen(false);
+                }}
+                className="w-8 h-8 rounded-md border border-outline-variant/30 hover:scale-110 transition-transform"
+                style={{ backgroundColor: color }}
+                title={label}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
   );
 }

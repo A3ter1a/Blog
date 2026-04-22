@@ -189,3 +189,20 @@ export const aiModelShortLabels: Record<string, { value: string; label: string }
     { value: "claude-3-haiku-20240307", label: "3 Haiku" },
   ],
 };
+
+// Flashcard for spaced repetition
+export interface Flashcard {
+  id: string;
+  noteId: string;
+  question: string;
+  answer: string;
+  interval: number; // Days until next review
+  repetition: number; // Number of consecutive successful reviews
+  easeFactor: number; // Difficulty multiplier (default 2.5)
+  nextReview: Date;
+  lastReview?: Date;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export type ReviewQuality = 0 | 1 | 2 | 3 | 4 | 5;
