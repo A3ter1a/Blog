@@ -194,32 +194,24 @@ h1, h2, h3, h4, h5, h6 {
   overscroll-behavior: contain;
 }
 
-/* KaTeX Protection - prevent Tailwind from overriding KaTeX styles */
+/* KaTeX Protection - use XITS Math font while preserving KaTeX's styling */
 .katex,
 .katex * {
   font-family: 'XITS Math', KaTeX_Main, 'Times New Roman', serif !important;
-  font-style: normal !important;
-  font-weight: normal !important;
-  line-height: 1.2 !important;
-  text-indent: 0 !important;
-  white-space: nowrap !important;
 }
 
-/* Override KaTeX math font specifically */
+/* KaTeX math italic should remain italic */
 .katex .mathnormal,
 .katex .mathit {
   font-family: 'XITS Math', KaTeX_Math, 'Times New Roman', serif !important;
-  font-style: italic !important;
 }
 
 .katex .textrm {
   font-family: 'XITS Math', KaTeX_Main, 'Times New Roman', serif !important;
-  font-style: normal !important;
 }
 
 .katex .mathbf {
   font-family: 'XITS Math', KaTeX_Main, 'Times New Roman', serif !important;
-  font-weight: bold !important;
 }
 
 .katex .katex-html {

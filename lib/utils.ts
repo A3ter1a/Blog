@@ -1,8 +1,21 @@
 /**
  * Convert LaTeX delimiters for remark-math compatibility.
  * Converts `\[...\]` to `$$...$$` and `\(...\)` to `$...$`.
+ * Protects backslash commands inside math delimiters.
  */
 export function preprocessLatex(content: string): string {
+  // Protect LaTeX commands inside $...$ and $$...$$ by escaping backslashes
+  // This prevents Markdown parser from consuming the backslash
+  content = content
+    // Handle $$...$$ block math first (longer delimiter)
+    .replace(/\$\$([^$]+)\$\$/g, (match, inner) => {
+      return '$$' + inner.replace(/\\/g, '\\\\') + '$$';
+    })
+    // Handle $...$ inline math (not containing newlines)
+    .replace(/\$([^$\n]+)\$/g, (match, inner) => {
+      return '$' + inner.replace(/\\/g, '\\\\') + '$';
+    });
+
   return content
     .replace(/\\\[/g, '$$')
     .replace(/\\\]/g, '$$')
