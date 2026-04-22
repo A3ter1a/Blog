@@ -1,15 +1,6 @@
 @import "tailwindcss";
 @import "katex/dist/katex.min.css";
 
-/* XITS Math Font for KaTeX */
-@font-face {
-  font-family: 'XITS Math';
-  src: url('https://cdn.jsdelivr.net/npm/xits@1.0.5/dist/xits-math.woff') format('woff');
-  font-weight: normal;
-  font-style: normal;
-  font-display: swap;
-}
-
 /* ========================================
    Scholar's Ink Design System
    Editorial Intelligence Theme
@@ -192,26 +183,6 @@ h1, h2, h3, h4, h5, h6 {
 /* AI Messages Container - overscroll containment */
 .ai-messages-container {
   overscroll-behavior: contain;
-}
-
-/* KaTeX Protection - use XITS Math font while preserving KaTeX's styling */
-.katex,
-.katex * {
-  font-family: 'XITS Math', KaTeX_Main, 'Times New Roman', serif !important;
-}
-
-/* KaTeX math italic should remain italic */
-.katex .mathnormal,
-.katex .mathit {
-  font-family: 'XITS Math', KaTeX_Math, 'Times New Roman', serif !important;
-}
-
-.katex .textrm {
-  font-family: 'XITS Math', KaTeX_Main, 'Times New Roman', serif !important;
-}
-
-.katex .mathbf {
-  font-family: 'XITS Math', KaTeX_Main, 'Times New Roman', serif !important;
 }
 
 /* Highlight styles for editor */

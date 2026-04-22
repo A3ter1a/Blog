@@ -11,18 +11,15 @@ interface MarkdownContentProps {
 
 // Simple Markdown to HTML converter with KaTeX support
 function markdownToHtml(md: string): string {
-  console.log("[MarkdownContent] Raw input:", md.substring(0, 300));
-  
   let html = md;
 
-  // Extract and protect LaTeX blocks
+  // STEP 1: Extract LaTeX FIRST (before any Markdown processing)
   const latexBlocks: { token: string; latex: string; displayMode: boolean }[] = [];
   let counter = 0;
 
   // Extract block math $$...$$
   html = html.replace(/\$\$([\s\S]*?)\$\$/g, (match, latex) => {
     const token = `%%LATEX${counter++}%%`;
-    // Remove newlines from block math - KaTeX doesn't support \\ in display mode
     latexBlocks.push({ token, latex: latex.replace(/[\n\r]+/g, ' ').trim(), displayMode: true });
     return token;
   });
@@ -34,8 +31,10 @@ function markdownToHtml(md: string): string {
     return token;
   });
 
-  // Process Markdown
+  // STEP 2: Now process Markdown (LaTeX is protected by tokens)
   html = html
+    // Unescape underscores in LaTeX tokens (TipTap may have escaped them)
+    .replace(/(%%LATEX\d+%%)/g, (match) => match.replace(/\\_/g, '_'))
     // Escape HTML special chars (but not our tokens)
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
