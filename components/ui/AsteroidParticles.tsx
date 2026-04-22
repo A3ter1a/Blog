@@ -169,7 +169,7 @@ export function AsteroidParticles() {
       window.removeEventListener("resize", resize);
       cancelAnimationFrame(animationRef.current);
     };
-  }, [initParticles, animate]);
+  }, []);
 
   return (
     <div ref={containerRef} className="absolute inset-0 pointer-events-none">
