@@ -196,7 +196,7 @@ export const flashcardsApi = {
   async getDue(limit: number = 20): Promise<Flashcard[]> {
     const supabase = getSupabase();
     const now = new Date().toISOString();
-    const { data, error } = await supabase
+    const { data, error } = await (supabase as any)
       .from("flashcards")
       .select("*")
       .lte("next_review", now)
@@ -210,7 +210,7 @@ export const flashcardsApi = {
   // Get all flashcards for a note
   async getByNoteId(noteId: string): Promise<Flashcard[]> {
     const supabase = getSupabase();
-    const { data, error } = await supabase
+    const { data, error } = await (supabase as any)
       .from("flashcards")
       .select("*")
       .eq("note_id", noteId)
@@ -223,7 +223,7 @@ export const flashcardsApi = {
   // Create flashcard
   async create(card: Omit<Flashcard, "id" | "createdAt" | "updatedAt">): Promise<Flashcard> {
     const supabase = getSupabase();
-    const { data, error } = await supabase
+    const { data, error } = await (supabase as any)
       .from("flashcards")
       .insert([{
         note_id: card.noteId,
@@ -253,7 +253,7 @@ export const flashcardsApi = {
     if (updates.nextReview !== undefined) dbUpdates.next_review = updates.nextReview.toISOString();
     if (updates.lastReview !== undefined) dbUpdates.last_review = updates.lastReview.toISOString();
 
-    const { data, error } = await supabase
+    const { data, error } = await (supabase as any)
       .from("flashcards")
       .update(dbUpdates)
       .eq("id", id)
@@ -267,7 +267,7 @@ export const flashcardsApi = {
   // Delete flashcard
   async delete(id: string): Promise<void> {
     const supabase = getSupabase();
-    const { error } = await supabase.from("flashcards").delete().eq("id", id);
+    const { error } = await (supabase as any).from("flashcards").delete().eq("id", id);
     if (error) throw error;
   },
 
@@ -275,7 +275,7 @@ export const flashcardsApi = {
   async getDueCount(): Promise<number> {
     const supabase = getSupabase();
     const now = new Date().toISOString();
-    const { data, error } = await supabase
+    const { data, error } = await (supabase as any)
       .from("flashcards")
       .select("id")
       .lte("next_review", now);
