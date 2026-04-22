@@ -356,11 +356,14 @@ export default function NoteReaderPage() {
                 </div>
               </>
             ) : (
-              <MarkdownContent 
-                content={note.content} 
-                className="text-on-surface-variant" 
-                style={{ fontSize: `${preferences.fontSize}px` }}
-              />
+              <>
+                {console.log("[Note Detail] note.content:", note.content.substring(0, 500))}
+                <MarkdownContent 
+                  content={note.content} 
+                  className="text-on-surface-variant" 
+                  style={{ fontSize: `${preferences.fontSize}px` }}
+                />
+              </>
             )}
           </motion.article>
         </div>
