@@ -118,29 +118,24 @@ export function Playlist({ videos, onChange, editable = false, onPlay }: Playlis
               initial={{ opacity: 0, x: -20 }}
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: 20 }}
-              className={`flex items-center gap-3 p-3 rounded-xl cursor-pointer transition-all duration-200 ${
+              className={`flex items-center gap-3 p-3 rounded-xl transition-all duration-200 ${
                 index === currentIndex
-                  ? "bg-primary text-on-primary"
-                  : "bg-surface-container-low hover:bg-surface-container-high text-on-surface"
+                  ? "bg-primary/10 border border-primary/20"
+                  : "bg-surface-container-low hover:bg-surface-container-high"
               }`}
-              onClick={() => setCurrentIndex(index)}
             >
-              <div className="flex-shrink-0 w-8 h-8 rounded-full bg-white/10 flex items-center justify-center">
-                {index === currentIndex ? (
-                  <Play className="w-4 h-4" />
-                ) : (
-                  <span className="text-sm font-bold">{index + 1}</span>
-                )}
+              <div className="flex-shrink-0 w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-on-surface-variant">
+                <span className="text-sm font-bold">{index + 1}</span>
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium truncate">{video.title}</p>
+                <p className="text-sm font-medium truncate text-on-surface">{video.title}</p>
                 <div className="flex items-center gap-2">
-                  <span className="text-xs opacity-60">{platformMap[video.platform]}</span>
+                  <span className="text-xs opacity-60 text-on-surface-variant">{platformMap[video.platform]}</span>
                   {video.platform === "bilibili" && video.bilibili && (
-                    <span className="text-xs opacity-40">{video.bilibili.bvid}</span>
+                    <span className="text-xs opacity-40 text-on-surface-variant">{video.bilibili.bvid}</span>
                   )}
                   {video.platform === "youtube" && video.youtube && (
-                    <span className="text-xs opacity-40">{video.youtube.videoId}</span>
+                    <span className="text-xs opacity-40 text-on-surface-variant">{video.youtube.videoId}</span>
                   )}
                 </div>
               </div>
@@ -160,7 +155,7 @@ export function Playlist({ videos, onChange, editable = false, onPlay }: Playlis
                     e.stopPropagation();
                     onPlay(index);
                   }}
-                  className="flex-shrink-0 p-2 rounded-lg bg-primary/10 hover:bg-primary/20 text-primary transition-colors duration-200"
+                  className="flex-shrink-0 p-2 rounded-lg bg-primary hover:bg-primary/90 text-on-primary transition-colors duration-200"
                   title="播放"
                 >
                   <Play className="w-4 h-4" />
