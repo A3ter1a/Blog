@@ -112,7 +112,7 @@ export default function FlashcardPage() {
   const totalCards = cards.length;
 
   return (
-    <div className="min-h-screen bg-surface">
+    <div className="min-h-screen bg-surface pt-24">
       {/* Header */}
       <div className="bg-surface-container-low border-b border-outline-variant/20">
         <div className="max-w-3xl mx-auto px-4 py-6">
