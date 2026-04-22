@@ -275,12 +275,12 @@ export const flashcardsApi = {
   async getDueCount(): Promise<number> {
     const supabase = getSupabase();
     const now = new Date().toISOString();
-    const { count, error } = await supabase
+    const { data, error } = await supabase
       .from("flashcards")
-      .select("*", { count: "exact", head: true })
+      .select("id")
       .lte("next_review", now);
 
     if (error) throw error;
-    return count || 0;
+    return data?.length || 0;
   },
 };
