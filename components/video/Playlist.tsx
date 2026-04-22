@@ -11,15 +11,20 @@ interface PlaylistProps {
   videos: Video[];
   onChange?: (videos: Video[]) => void;
   editable?: boolean;
+  onPlay?: (index: number) => void;
 }
 
-export function Playlist({ videos, onChange, editable = false }: PlaylistProps) {
+export function Playlist({ videos, onChange, editable = false, onPlay }: PlaylistProps) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [newVideoInput, setNewVideoInput] = useState("");
   const [newTitle, setNewTitle] = useState("");
   const [newPlatform, setNewPlatform] = useState<VideoPlatform>("bilibili");
 
   const currentVideo = videos[currentIndex];
+
+  // In non-editable mode (reading page), don't show embedded player
+  // Users will click to play inline in the article
+  const shouldShowPlayer = editable || !onPlay;
 
   const parseVideoInput = (input: string, platform: VideoPlatform) => {
     input = input.trim();
@@ -89,8 +94,8 @@ export function Playlist({ videos, onChange, editable = false }: PlaylistProps) 
 
   return (
     <div className="space-y-4 overscroll-contain">
-      {/* Player */}
-      {currentVideo && (
+      {/* Player - only show in editable mode or when no onPlay callback */}
+      {shouldShowPlayer && currentVideo && (
         <VideoPlayer video={currentVideo} />
       )}
 
@@ -139,7 +144,7 @@ export function Playlist({ videos, onChange, editable = false }: PlaylistProps) 
                   )}
                 </div>
               </div>
-              {editable && (
+              {editable ? (
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
@@ -148,6 +153,17 @@ export function Playlist({ videos, onChange, editable = false }: PlaylistProps) 
                   className="flex-shrink-0 p-1.5 rounded-lg hover:bg-white/10 transition-colors duration-200"
                 >
                   <Trash2 className="w-4 h-4" />
+                </button>
+              ) : onPlay && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onPlay(index);
+                  }}
+                  className="flex-shrink-0 p-2 rounded-lg bg-primary/10 hover:bg-primary/20 text-primary transition-colors duration-200"
+                  title="播放"
+                >
+                  <Play className="w-4 h-4" />
                 </button>
               )}
             </motion.div>

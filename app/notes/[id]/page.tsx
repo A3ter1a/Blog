@@ -8,6 +8,7 @@ import { ArrowLeft, Calendar, Tag, Edit2, Trash2, AlertTriangle, ChevronDown, Ch
 import { notesApi } from "@/lib/supabase";
 import { subjectMap, typeMap, Note } from "@/lib/types";
 import { Playlist } from "@/components/video/Playlist";
+import { VideoPlayer } from "@/components/video/VideoPlayer";
 import { AIPanel } from "@/components/ai-assistant/AIPanel";
 import { ProblemCard } from "@/components/problems/ProblemCard";
 import { ProblemStats } from "@/components/problems/ProblemStats";
@@ -27,6 +28,7 @@ export default function NoteReaderPage() {
   const [isCoverExpanded, setIsCoverExpanded] = useState(false);
   const [isAIPanelOpen, setIsAIPanelOpen] = useState(false);
   const [isImmersiveMode, setIsImmersiveMode] = useState(false);
+  const [inlineVideoIndex, setInlineVideoIndex] = useState<number | null>(null);
 
   // Load note from Supabase
   useEffect(() => {
@@ -252,6 +254,26 @@ export default function NoteReaderPage() {
             </div>
           </motion.header>
 
+          {/* Inline Video Player (shown when clicking play in sidebar) */}
+          <AnimatePresence>
+            {inlineVideoIndex !== null && note.videos && note.videos[inlineVideoIndex] && (
+              <motion.section
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+                transition={{ duration: 0.3 }}
+                className="mb-8"
+              >
+                <VideoPlayer 
+                  video={note.videos[inlineVideoIndex]} 
+                  autoPlay={true}
+                  inlineMode={true}
+                  onExitInline={() => setInlineVideoIndex(null)}
+                />
+              </motion.section>
+            )}
+          </AnimatePresence>
+
           {/* Delete Confirmation Modal */}
           <AnimatePresence>
             {showDeleteConfirm && (
@@ -337,7 +359,11 @@ export default function NoteReaderPage() {
                   transition={{ delay: 0.3, duration: 0.5 }}
                   className="lg:sticky lg:top-24 bg-surface-container-lowest rounded-xl p-4 shadow-ambient overscroll-contain"
                 >
-                  <Playlist videos={note.videos} editable={false} />
+                  <Playlist 
+                    videos={note.videos} 
+                    editable={false}
+                    onPlay={(index) => setInlineVideoIndex(index)}
+                  />
                 </motion.section>
               )}
             </AnimatePresence>

@@ -7,9 +7,11 @@ import type { Video } from "@/lib/types";
 interface VideoPlayerProps {
   video: Video;
   autoPlay?: boolean;
+  inlineMode?: boolean;
+  onExitInline?: () => void;
 }
 
-export function VideoPlayer({ video, autoPlay = false }: VideoPlayerProps) {
+export function VideoPlayer({ video, autoPlay = false, inlineMode = false, onExitInline }: VideoPlayerProps) {
   if (video.platform === "bilibili" && video.bilibili) {
     return (
       <BilibiliPlayer
@@ -18,6 +20,8 @@ export function VideoPlayer({ video, autoPlay = false }: VideoPlayerProps) {
         p={video.bilibili.p}
         title={video.title}
         autoPlay={autoPlay}
+        inlineMode={inlineMode}
+        onExitInline={onExitInline}
       />
     );
   }
@@ -28,6 +32,8 @@ export function VideoPlayer({ video, autoPlay = false }: VideoPlayerProps) {
         videoId={video.youtube.videoId}
         title={video.title}
         autoPlay={autoPlay}
+        inlineMode={inlineMode}
+        onExitInline={onExitInline}
       />
     );
   }
