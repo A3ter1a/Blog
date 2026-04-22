@@ -1,11 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import ReactMarkdown from "react-markdown";
-import remarkMath from "remark-math";
-import rehypeKatex from "rehype-katex";
-import rehypeSlug from "rehype-slug";
-import { preprocessLatex } from "@/lib/utils";
+import katex from "katex";
 
 interface MarkdownContentProps {
   content: string;
@@ -13,77 +9,97 @@ interface MarkdownContentProps {
   style?: React.CSSProperties;
 }
 
+// Simple Markdown to HTML converter with KaTeX support
+function markdownToHtml(md: string): string {
+  let html = md;
+
+  // Extract and protect LaTeX blocks
+  const latexBlocks: { token: string; latex: string; displayMode: boolean }[] = [];
+  let counter = 0;
+
+  // Extract block math $$...$$
+  html = html.replace(/\$\$([\s\S]*?)\$\$/g, (match, latex) => {
+    const token = `%%LATEX${counter++}%%`;
+    latexBlocks.push({ token, latex: latex.trim(), displayMode: true });
+    return token;
+  });
+
+  // Extract inline math $...$
+  html = html.replace(/\$([^\$\n]+?)\$/g, (match, latex) => {
+    const token = `%%LATEX${counter++}%%`;
+    latexBlocks.push({ token, latex: latex.trim(), displayMode: false });
+    return token;
+  });
+
+  // Process Markdown
+  html = html
+    // Escape HTML special chars (but not our tokens)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    // Code blocks
+    .replace(/```(\w*)\n([\s\S]*?)```/g, '<pre><code class="language-$1">$2</code></pre>')
+    // Inline code
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    // Headers
+    .replace(/^#### (.+)$/gm, '<h4>$1</h4>')
+    .replace(/^### (.+)$/gm, '<h3>$1</h3>')
+    .replace(/^## (.+)$/gm, '<h2>$1</h2>')
+    .replace(/^# (.+)$/gm, '<h1>$1</h1>')
+    // Bold & Italic
+    .replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>')
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.+?)\*/g, '<em>$1</em>')
+    // Horizontal rule
+    .replace(/^---$/gm, '<hr/>')
+    // Blockquotes
+    .replace(/^&gt; (.+)$/gm, '<blockquote>$1</blockquote>')
+    // Unordered lists
+    .replace(/^[\*-] (.+)$/gm, '<li>$1</li>')
+    // Ordered lists  
+    .replace(/^\d+\. (.+)$/gm, '<li>$1</li>');
+
+  // Wrap list items
+  html = html.replace(/((?:<li>.*<\/li>\n?)+)/g, '<ul>$1</ul>');
+
+  // Convert line breaks to paragraphs
+  const blocks = html.split(/\n\n+/);
+  html = blocks.map(block => {
+    block = block.trim();
+    if (!block) return '';
+    if (block.startsWith('<h') || block.startsWith('<ul') || block.startsWith('<ol') || 
+        block.startsWith('<pre') || block.startsWith('<blockquote') || block.startsWith('<hr')) {
+      return block;
+    }
+    // Convert single newlines to <br>
+    block = block.replace(/\n/g, '<br/>');
+    return `<p>${block}</p>`;
+  }).join('\n');
+
+  // Restore LaTeX
+  latexBlocks.forEach(({ token, latex, displayMode }) => {
+    try {
+      const rendered = katex.renderToString(latex, {
+        throwOnError: false,
+        displayMode,
+      });
+      html = html.replace(token, rendered);
+    } catch (e) {
+      html = html.replace(token, `<span class="text-red-500">${latex}</span>`);
+    }
+  });
+
+  return html;
+}
+
 export function MarkdownContent({ content, className = "", style }: MarkdownContentProps) {
-  const processedContent = useMemo(() => preprocessLatex(content), [content]);
+  const html = useMemo(() => markdownToHtml(content), [content]);
 
   return (
-    <div className={`markdown-content ${className}`} style={{ fontSize: style?.fontSize || 'inherit' }}>
-      <ReactMarkdown
-        remarkPlugins={[[remarkMath, { singleDollarTextMath: true }]]}
-        rehypePlugins={[rehypeSlug, [rehypeKatex, { strict: 'ignore' }]]}
-        components={{
-          p: ({ children, ...props }) => (
-            <p {...props} className="mb-4 last:mb-0 leading-relaxed">{children}</p>
-          ),
-          ul: ({ children }) => (
-            <ul className="list-disc ml-6 mb-4 space-y-1">{children}</ul>
-          ),
-          ol: ({ children }) => (
-            <ol className="list-decimal ml-6 mb-4 space-y-1">{children}</ol>
-          ),
-          li: ({ children }) => <li className="leading-relaxed">{children}</li>,
-          strong: ({ children }) => (
-            <strong className="font-semibold">{children}</strong>
-          ),
-          em: ({ children }) => (
-            <em className="italic">{children}</em>
-          ),
-          code: ({ className, children, ...props }) => {
-            const isInline = !className;
-            return isInline ? (
-              <code className="px-1.5 py-0.5 bg-black/5 dark:bg-white/10 rounded text-sm font-mono">
-                {children}
-              </code>
-            ) : (
-              <code className={className} {...props}>
-                {children}
-              </code>
-            );
-          },
-          pre: ({ children }) => (
-            <pre className="bg-black/5 dark:bg-white/5 rounded-lg p-4 mb-4 overflow-x-auto text-sm">
-              {children}
-            </pre>
-          ),
-          h1: ({ children, ...props }) => (
-            <h1 {...props} className="text-3xl font-bold mt-8 mb-4 font-headline scroll-mt-24">{children}</h1>
-          ),
-          h2: ({ children, ...props }) => (
-            <h2 {...props} className="text-2xl font-bold mt-6 mb-3 font-headline scroll-mt-24">{children}</h2>
-          ),
-          h3: ({ children, ...props }) => (
-            <h3 {...props} className="text-xl font-bold mt-5 mb-2 font-headline scroll-mt-24">{children}</h3>
-          ),
-          h4: ({ children, ...props }) => (
-            <h4 {...props} className="text-lg font-bold mt-4 mb-2 scroll-mt-24">{children}</h4>
-          ),
-          blockquote: ({ children }) => (
-            <blockquote className="border-l-4 border-primary/30 pl-4 py-2 mb-4 text-on-surface-variant italic">
-              {children}
-            </blockquote>
-          ),
-          hr: () => (
-            <hr className="my-6 border-outline-variant/20" />
-          ),
-          a: ({ href, children }) => (
-            <a href={href} className="text-primary hover:underline" target="_blank" rel="noopener noreferrer">
-              {children}
-            </a>
-          ),
-        }}
-      >
-        {processedContent}
-      </ReactMarkdown>
-    </div>
+    <div
+      className={`markdown-content ${className}`}
+      style={{ fontSize: style?.fontSize || 'inherit' }}
+      dangerouslySetInnerHTML={{ __html: html }}
+    />
   );
 }
