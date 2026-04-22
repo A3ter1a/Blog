@@ -11,6 +11,8 @@ interface MarkdownContentProps {
 
 // Simple Markdown to HTML converter with KaTeX support
 function markdownToHtml(md: string): string {
+  console.log("[MarkdownContent] Raw input:", md.substring(0, 300));
+  
   let html = md;
 
   // Extract and protect LaTeX blocks
