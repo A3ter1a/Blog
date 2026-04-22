@@ -1,12 +1,13 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Search, X, ArrowRight } from "lucide-react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { mockNotes } from "@/lib/mock-data";
+import { notesApi } from "@/lib/supabase";
 import { subjectMap, typeMap } from "@/lib/types";
+import type { Note } from "@/lib/types";
 
 interface SearchOverlayProps {
   isOpen: boolean;
@@ -16,14 +17,47 @@ interface SearchOverlayProps {
 export function SearchOverlay({ isOpen, onClose }: SearchOverlayProps) {
   const router = useRouter();
   const [query, setQuery] = useState("");
+  const [results, setResults] = useState<Note[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // Debounced search
+  const searchNotes = useCallback(async (searchQuery: string) => {
+    if (!searchQuery.trim()) {
+      setResults([]);
+      return;
+    }
+
+    setIsSearching(true);
+    try {
+      const notes = await notesApi.search(searchQuery);
+      setResults(notes);
+    } catch (error) {
+      console.error("Search failed:", error);
+      setResults([]);
+    } finally {
+      setIsSearching(false);
+    }
+  }, []);
+
+  // Debounce search query
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      searchNotes(query);
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [query, searchNotes]);
 
   // Focus input when opened
   useEffect(() => {
     if (isOpen && inputRef.current) {
       setTimeout(() => inputRef.current?.focus(), 100);
     }
-    if (!isOpen) setQuery("");
+    if (!isOpen) {
+      setQuery("");
+      setResults([]);
+    }
   }, [isOpen]);
 
   // Close on Escape
@@ -36,16 +70,6 @@ export function SearchOverlay({ isOpen, onClose }: SearchOverlayProps) {
       return () => document.removeEventListener("keydown", handleEscape);
     }
   }, [isOpen, onClose]);
-
-  // Search results
-  const results = query.trim()
-    ? mockNotes.filter(
-        (note) =>
-          note.title.toLowerCase().includes(query.toLowerCase()) ||
-          note.content.toLowerCase().includes(query.toLowerCase()) ||
-          note.tags.some((tag) => tag.includes(query))
-      )
-    : [];
 
   return (
     <AnimatePresence>
@@ -93,7 +117,12 @@ export function SearchOverlay({ isOpen, onClose }: SearchOverlayProps) {
               {/* Results */}
               {query.trim() && (
                 <div className="max-h-80 overflow-y-auto">
-                  {results.length > 0 ? (
+                  {isSearching ? (
+                    <div className="py-12 text-center">
+                      <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+                      <p className="text-sm text-on-surface-variant/60">搜索中...</p>
+                    </div>
+                  ) : results.length > 0 ? (
                     <div className="py-2">
                       <p className="px-6 py-2 text-xs text-on-surface-variant/60">
                         找到 {results.length} 条结果

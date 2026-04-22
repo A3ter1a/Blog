@@ -4,7 +4,7 @@ import { useState, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Upload, Image as ImageIcon, Loader2, CheckCircle2, XCircle, Trash2, Eye } from "lucide-react";
 import { extractFromImage } from "@/lib/ai";
-import { fileToBase64 } from "@/lib/utils";
+import { fileToBase64, extractOptions } from "@/lib/utils";
 import type { Problem, Difficulty } from "@/lib/types";
 
 interface BatchUploadResult {
@@ -57,8 +57,8 @@ export function BatchUpload({ onProblemsExtracted }: BatchUploadProps) {
         // Convert to base64
         const base64 = await fileToBase64(result.file);
         
-        // OCR extraction - now returns structured data
-        const extracted = await extractFromImage(base64.split(",")[1]);
+        // OCR extraction - fileToBase64 already strips the prefix
+        const extracted = await extractFromImage(base64);
         
         // Convert extracted data to Problem format
         const problem: Problem = {
@@ -320,19 +320,4 @@ export function BatchUpload({ onProblemsExtracted }: BatchUploadProps) {
       )}
     </div>
   );
-}
-
-function extractOptions(content: string) {
-  const options = [];
-  const labels = ["A", "B", "C", "D", "E", "F"];
-  
-  for (const label of labels) {
-    const regex = new RegExp(`${label}[\\.、]\\s*([^\\n]+)`, "i");
-    const match = content.match(regex);
-    if (match) {
-      options.push({ label, content: match[1].trim() });
-    }
-  }
-  
-  return options.length > 0 ? options : undefined;
 }

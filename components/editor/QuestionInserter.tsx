@@ -4,7 +4,7 @@ import { useState, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Upload, Loader2, CheckCircle2, Copy, Image as ImageIcon } from "lucide-react";
 import { extractFromImage } from "@/lib/ai";
-import { fileToBase64 } from "@/lib/utils";
+import { fileToBase64, extractOptions } from "@/lib/utils";
 import type { Problem } from "@/lib/types";
 import { useToast } from "@/components/ui/Toast";
 
@@ -49,7 +49,8 @@ export function QuestionInserter({ isOpen, onClose, onInsert, existingProblems }
 
     try {
       const base64 = await fileToBase64(await fetch(preview).then(r => r.blob()).then(b => new File([b], "question.png")));
-      const extracted = await extractFromImage(base64.split(",")[1]);
+      // fileToBase64 already strips the prefix, no need to split again
+      const extracted = await extractFromImage(base64);
       
       const problemNumber = existingProblems.length + 1;
       const problem: Problem = {
@@ -228,19 +229,4 @@ export function QuestionInserter({ isOpen, onClose, onInsert, existingProblems }
       )}
     </AnimatePresence>
   );
-}
-
-function extractOptions(content: string) {
-  const options = [];
-  const labels = ["A", "B", "C", "D", "E", "F"];
-  
-  for (const label of labels) {
-    const regex = new RegExp(`${label}[\\.、]\\s*([^\\n]+)`, "i");
-    const match = content.match(regex);
-    if (match) {
-      options.push({ label, content: match[1].trim() });
-    }
-  }
-  
-  return options.length > 0 ? options : undefined;
 }
