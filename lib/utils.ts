@@ -1,21 +1,17 @@
 /**
  * Convert LaTeX delimiters for remark-math compatibility.
- * Converts `\[...\]` to `$$...$$` and `\(...\)` to `$...$`.
- * Protects backslash commands inside math delimiters.
+ * Rules:
+ * - $ must be紧贴公式内容，不能有空格: $formula$ ✓, $ formula $ ✗
+ * - $$ block math should be on separate lines
  */
 export function preprocessLatex(content: string): string {
-  // Protect LaTeX commands inside $...$ and $$...$$ by escaping backslashes
-  // This prevents Markdown parser from consuming the backslash
+  // Step 1: Remove spaces between $ and formula content
+  // $ formula $ → $formula$
   content = content
-    // Handle $$...$$ block math first (longer delimiter)
-    .replace(/\$\$([^$]+)\$\$/g, (match, inner) => {
-      return '$$' + inner.replace(/\\/g, '\\\\') + '$$';
-    })
-    // Handle $...$ inline math (not containing newlines)
-    .replace(/\$([^$\n]+)\$/g, (match, inner) => {
-      return '$' + inner.replace(/\\/g, '\\\\') + '$';
-    });
+    .replace(/\$\s+([^$\n]+?)\s+\$/g, '$$1$')
+    .replace(/\$\s+([^$\n]+?)\s+\$/g, '$$1$'); // second pass
 
+  // Step 2: Convert \[ \] and \( \) to $$ $$ and $ $
   return content
     .replace(/\\\[/g, '$$')
     .replace(/\\\]/g, '$$')
