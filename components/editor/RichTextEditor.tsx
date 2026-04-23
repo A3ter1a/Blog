@@ -55,6 +55,7 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
           html: false,
           transformPastedText: true,
           transformCopiedText: true,
+          breaks: true,
         }),
       ],
       content: parseProblemMarkers(content),

@@ -2,6 +2,7 @@
 
 import { useMemo } from "react";
 import katex from "katex";
+import { normalizeMarkdownHeadings } from "@/lib/markdown-utils";
 
 interface MarkdownContentProps {
   content: string;
@@ -11,7 +12,8 @@ interface MarkdownContentProps {
 
 // Simple Markdown to HTML converter with KaTeX support
 function markdownToHtml(md: string): string {
-  let html = md;
+  // STEP 0: Normalize heading markers to fix duplicate # issue
+  let html = normalizeMarkdownHeadings(md);
 
   // STEP 1: Unescape TipTap's double backslashes (\\xi → \xi)
   html = html.replace(/\\\\/g, '\\');

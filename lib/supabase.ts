@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { Note, NoteType, Subject, Flashcard } from "./types";
+import { normalizeMarkdownHeadings } from "./markdown-utils";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
@@ -108,6 +109,12 @@ export const notesApi = {
   async create(note: Omit<Note, "id" | "createdAt" | "updatedAt">): Promise<Note> {
     const supabase = getSupabase();
     const dbNote = mapCamelToSnake(note);
+    
+    // Normalize markdown headings to fix duplicate # markers
+    if (dbNote.content) {
+      dbNote.content = normalizeMarkdownHeadings(dbNote.content);
+    }
+    
     const { data, error } = await (supabase as any)
       .from("notes")
       .insert([{
@@ -127,6 +134,11 @@ export const notesApi = {
     const supabase = getSupabase();
     const dbUpdates = mapCamelToSnake(updates);
     dbUpdates.updated_at = new Date().toISOString();
+    
+    // Normalize markdown headings to fix duplicate # markers
+    if (dbUpdates.content) {
+      dbUpdates.content = normalizeMarkdownHeadings(dbUpdates.content);
+    }
     
     const { data, error } = await (supabase as any)
       .from("notes")
