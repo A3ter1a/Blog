@@ -16,6 +16,10 @@ function markdownToHtml(md: string): string {
   // STEP 1: Unescape TipTap's double backslashes (\\xi → \xi)
   html = html.replace(/\\\\/g, '\\');
 
+  // STEP 1.5: Replace \[ and \] with regular brackets (NOT LaTeX block delimiters)
+  // TipTap escapes [ and ] as \[ and \], but we want plain brackets
+  html = html.replace(/\\\[/g, '[').replace(/\\\]/g, ']');
+
   // STEP 2: Extract LaTeX FIRST (before any Markdown processing)
   const latexBlocks: { token: string; latex: string; displayMode: boolean }[] = [];
   let counter = 0;
