@@ -38,6 +38,9 @@ function markdownToHtml(md: string): string {
 
   // STEP 2: Now process Markdown (LaTeX is protected by tokens)
   html = html
+    // Remove stray backslashes (TipTap escape characters)
+    .replace(/\\\s*$/gm, '')  // Remove trailing backslashes at end of lines
+    .replace(/\\\s*\n/g, '\n')  // Remove backslashes before newlines
     // Unescape underscores in LaTeX tokens (TipTap may have escaped them)
     .replace(/(%%LATEX\d+%%)/g, (match) => match.replace(/\\_/g, '_'))
     // Escape HTML special chars (but not our tokens)
