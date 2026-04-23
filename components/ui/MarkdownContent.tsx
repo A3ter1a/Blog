@@ -1,14 +1,8 @@
 "use client";
 
-import { useEditor, EditorContent } from "@tiptap/react";
-import StarterKit from "@tiptap/starter-kit";
-import Image from "@tiptap/extension-image";
-import Link from "@tiptap/extension-link";
-import Highlight from "@tiptap/extension-highlight";
-import { Markdown } from "tiptap-markdown";
-import { ProblemBlock } from "@/lib/problem-block-extension";
-import { useEffect, useRef } from "react";
+import { useMemo } from "react";
 import katex from "katex";
+import { normalizeMarkdownHeadings } from "@/lib/markdown-utils";
 
 interface MarkdownContentProps {
   content: string;
@@ -16,155 +10,112 @@ interface MarkdownContentProps {
   style?: React.CSSProperties;
 }
 
-export function MarkdownContent({ content, className = "", style }: MarkdownContentProps) {
-  const containerRef = useRef<HTMLDivElement>(null);
+// Simple Markdown to HTML converter with KaTeX support
+function markdownToHtml(md: string): string {
+  // STEP 0: Normalize heading markers to fix duplicate # issue
+  let html = normalizeMarkdownHeadings(md);
 
-  const editor = useEditor({
-    extensions: [
-      StarterKit.configure({
-        heading: { levels: [1, 2, 3] },
-      }),
-      Image.configure({
-        inline: false,
-        allowBase64: true,
-      }),
-      Link.configure({
-        openOnClick: false,
-        HTMLAttributes: {
-          class: "text-primary underline",
-        },
-      }),
-      Highlight.configure({
-        multicolor: true,
-      }),
-      ProblemBlock,
-      Markdown.configure({
-        html: false,
-        breaks: true,
-      }),
-    ],
-    content,
-    editable: false,
-    immediatelyRender: false,
+  // STEP 1: Unescape TipTap's double backslashes (\\xi → \xi)
+  html = html.replace(/\\\\/g, '\\');
+
+  // STEP 1.5: Replace \[ and \] with regular brackets (NOT LaTeX block delimiters)
+  // TipTap escapes [ and ] as \[ and \], but we want plain brackets
+  html = html.replace(/\\\[/g, '[').replace(/\\\]/g, ']');
+
+  // STEP 2: Extract LaTeX FIRST (before any Markdown processing)
+  const latexBlocks: { token: string; latex: string; displayMode: boolean }[] = [];
+  let counter = 0;
+
+  // Extract block math $$...$$
+  html = html.replace(/\$\$([\s\S]*?)\$\$/g, (match, latex) => {
+    const token = `%%LATEX${counter++}%%`;
+    latex = latex.replace(/[\n\r]+/g, ' ').trim();
+    latexBlocks.push({ token, latex, displayMode: true });
+    return token;
   });
 
-  // Render LaTeX after editor content is ready
-  useEffect(() => {
-    if (!editor || !containerRef.current) return;
+  // Extract inline math $...$
+  html = html.replace(/\$([^\$\n]+?)\$/g, (match, latex) => {
+    const token = `%%LATEX${counter++}%%`;
+    latex = latex.trim();
+    latexBlocks.push({ token, latex, displayMode: false });
+    return token;
+  });
 
-    const renderLaTeX = () => {
-      const container = containerRef.current;
-      if (!container) return;
+  // STEP 2: Now process Markdown (LaTeX is protected by tokens)
+  html = html
+    // Remove stray backslashes (TipTap escape characters)
+    .replace(/\\\s*$/gm, '')  // Remove trailing backslashes at end of lines
+    .replace(/\\\s*\n/g, '\n')  // Remove backslashes before newlines
+    // Unescape underscores in LaTeX tokens (TipTap may have escaped them)
+    .replace(/(%%LATEX\d+%%)/g, (match) => match.replace(/\\_/g, '_'))
+    // Escape HTML special chars (but not our tokens)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    // Code blocks
+    .replace(/```(\w*)\n([\s\S]*?)```/g, '<pre><code class="language-$1">$2</code></pre>')
+    // Inline code
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    // Headers
+    .replace(/^#### (.+)$/gm, '<h4>$1</h4>')
+    .replace(/^### (.+)$/gm, '<h3>$1</h3>')
+    .replace(/^## (.+)$/gm, '<h2>$1</h2>')
+    .replace(/^# (.+)$/gm, '<h1>$1</h1>')
+    // Bold & Italic
+    .replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>')
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.+?)\*/g, '<em>$1</em>')
+    // Horizontal rule
+    .replace(/^---$/gm, '<hr/>')
+    // Blockquotes
+    .replace(/^&gt; (.+)$/gm, '<blockquote>$1</blockquote>')
+    // Unordered lists
+    .replace(/^[\*-] (.+)$/gm, '<li>$1</li>')
+    // Ordered lists  
+    .replace(/^\d+\. (.+)$/gm, '<li>$1</li>');
 
-      // Process block math $$...$$
-      const walkTextNodes = (node: Node) => {
-        if (node.nodeType === Node.TEXT_NODE) {
-          const text = node.textContent || "";
-          
-          // Replace block math $$...$$
-          if (text.includes("$$")) {
-            const parent = node.parentNode;
-            if (!parent) return;
+  // Wrap list items
+  html = html.replace(/((?:<li>.*<\/li>\n?)+)/g, '<ul>$1</ul>');
 
-            const parts = text.split(/\$\$([\s\S]*?)\$\$/);
-            if (parts.length === 1) return;
+  // Convert line breaks to paragraphs
+  const blocks = html.split(/\n\n+/);
+  html = blocks.map(block => {
+    block = block.trim();
+    if (!block) return '';
+    if (block.startsWith('<h') || block.startsWith('<ul') || block.startsWith('<ol') || 
+        block.startsWith('<pre') || block.startsWith('<blockquote') || block.startsWith('<hr')) {
+      return block;
+    }
+    // Convert single newlines to <br>
+    block = block.replace(/\n/g, '<br/>');
+    return `<p>${block}</p>`;
+  }).join('\n');
 
-            const fragment = document.createDocumentFragment();
-            parts.forEach((part, index) => {
-              if (index % 2 === 0) {
-                // Regular text
-                if (part) fragment.appendChild(document.createTextNode(part));
-              } else {
-                // LaTeX
-                try {
-                  const latex = part.replace(/[\n\r]+/g, " ").trim();
-                  const span = document.createElement("span");
-                  span.className = "katex-display";
-                  span.innerHTML = katex.renderToString(latex, {
-                    throwOnError: false,
-                    displayMode: true,
-                  });
-                  fragment.appendChild(span);
-                } catch {
-                  fragment.appendChild(document.createTextNode(`$$${part}$$`));
-                }
-              }
-            });
+  // Restore LaTeX
+  latexBlocks.forEach(({ token, latex, displayMode }) => {
+    try {
+      const rendered = katex.renderToString(latex, {
+        throwOnError: false,
+        displayMode,
+      });
+      html = html.replace(token, rendered);
+    } catch (e) {
+      html = html.replace(token, `<span class="text-red-500">${latex}</span>`);
+    }
+  });
 
-            parent.replaceChild(fragment, node);
-          }
-        } else if (node.nodeType === Node.ELEMENT_NODE) {
-          // Don't process already-rendered KaTeX
-          if ((node as Element).classList?.contains("katex")) return;
-          
-          // Process child nodes
-          const children = Array.from(node.childNodes);
-          children.forEach(walkTextNodes);
-        }
-      };
+  return html;
+}
 
-      // Process inline math $...$ (but not $$...$$)
-      const processInlineMath = (node: Node) => {
-        if (node.nodeType === Node.TEXT_NODE) {
-          const text = node.textContent || "";
-          
-          // Match $...$ but not $$...$$
-          const inlineMathRegex = /(?<!\$)\$(?!\$)(.+?)(?<!\$)\$(?!\$)/g;
-          if (!inlineMathRegex.test(text)) return;
-          inlineMathRegex.lastIndex = 0;
-
-          const parent = node.parentNode;
-          if (!parent) return;
-
-          const parts = text.split(/(?<!\$)\$(?!\$)(.+?)(?<!\$)\$(?!\$)/g);
-          if (parts.length === 1) return;
-
-          const fragment = document.createDocumentFragment();
-          parts.forEach((part, index) => {
-            if (index % 2 === 0) {
-              if (part) fragment.appendChild(document.createTextNode(part));
-            } else {
-              try {
-                const latex = part.trim();
-                const span = document.createElement("span");
-                span.className = "katex";
-                span.innerHTML = katex.renderToString(latex, {
-                  throwOnError: false,
-                  displayMode: false,
-                });
-                fragment.appendChild(span);
-              } catch {
-                fragment.appendChild(document.createTextNode(`$${part}$`));
-              }
-            }
-          });
-
-          parent.replaceChild(fragment, node);
-        } else if (node.nodeType === Node.ELEMENT_NODE) {
-          if ((node as Element).classList?.contains("katex")) return;
-          const children = Array.from(node.childNodes);
-          children.forEach(processInlineMath);
-        }
-      };
-
-      walkTextNodes(container);
-      processInlineMath(container);
-    };
-
-    // Wait for editor to render
-    const timeout = setTimeout(renderLaTeX, 100);
-    return () => clearTimeout(timeout);
-  }, [editor, content]);
-
-  if (!editor) return null;
+export function MarkdownContent({ content, className = "", style }: MarkdownContentProps) {
+  const html = useMemo(() => markdownToHtml(content), [content]);
 
   return (
     <div
-      ref={containerRef}
-      className={`markdown-content prose prose-sm max-w-none ${className}`}
-      style={{ fontSize: style?.fontSize || "inherit" }}
-    >
-      <EditorContent editor={editor} />
-    </div>
+      className={`markdown-content ${className}`}
+      style={{ fontSize: style?.fontSize || 'inherit' }}
+      dangerouslySetInnerHTML={{ __html: html }}
+    />
   );
 }
