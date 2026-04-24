@@ -24,7 +24,7 @@ interface MarkdownContentProps {
  * 1. Add heading IDs for TOC navigation
  * 2. Render LaTeX formulas via KaTeX
  */
-function processContent(container: HTMLElement) {
+export function processContent(container: HTMLElement) {
   // Add IDs to heading elements for TOC navigation
   const slugger = new GithubSlugger();
   const headings = container.querySelectorAll("h1, h2, h3");
