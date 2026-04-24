@@ -118,7 +118,6 @@ function processContent(container: HTMLElement) {
 export function MarkdownContent({ content, className = "", style }: MarkdownContentProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [isReady, setIsReady] = useState(false);
-  const hasSetContent = useRef(false);
 
   // Preprocess LaTeX before passing to TipTap
   const processedContent = preprocessLatex(content);
@@ -147,24 +146,11 @@ export function MarkdownContent({ content, className = "", style }: MarkdownCont
       ProblemBlock,
       Markdown.configure({ html: false, breaks: true }),
     ],
-    content: "", // Start empty; markdown is set via commands below
+    content: processedContent,
     editable: false,
-    immediatelyRender: false,
-    onCreate: ({ editor }) => {
-      // Use setContent with render:true to parse markdown properly
-      editor.commands.setContent(processedContent, { render: true } as any);
-      hasSetContent.current = true;
-      handleEditorReady();
-    },
+    onCreate: handleEditorReady,
     onUpdate: handleEditorReady,
-  });
-
-  // Update content when the input markdown changes (skip initial mount)
-  useEffect(() => {
-    if (!editor || !hasSetContent.current) return;
-    setIsReady(false);
-    editor.commands.setContent(processedContent, { render: true } as any);
-  }, [processedContent, editor]);
+  }, [processedContent]);
 
   // Retry: Re-process content after initial render to catch any formulas
   // that TipTap may have deferred (e.g., inside nested node views)
