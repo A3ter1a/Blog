@@ -389,7 +389,7 @@ export default function CreatePage() {
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {/* Editor Panel */}
                 <div className="flex flex-col">
-                  <div className="sticky top-24 z-30 mb-2">
+                  <div className="sticky top-24 z-30 mb-2 min-h-[40px]">
                     {editorReady && (
                       <EditorToolbar
                         editor={editorRef.current?.editor ?? null}
@@ -426,8 +426,8 @@ export default function CreatePage() {
 
                 {/* Preview Panel */}
                 <div className="flex flex-col">
-                  <div className="mb-2 text-xs font-medium text-on-surface-variant/40">
-                    实时预览
+                  <div className="mb-2 min-h-[40px] flex items-end">
+                    <span className="text-xs font-medium text-on-surface-variant/40">实时预览</span>
                   </div>
                   <div
                     ref={previewScrollRef}
