@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
 import { useRouter } from "next/navigation";
 import { Save, RotateCcw, X, Image as ImageIcon } from "lucide-react";
@@ -30,8 +30,33 @@ export default function CreatePage() {
   const [coverImage, setCoverImage] = useState("");
   const [showVideoSection, setShowVideoSection] = useState(false);
   const [editorReady, setEditorReady] = useState(false);
-  const [showPreview, setShowPreview] = useState(false);
   const editorRef = useRef<RichTextEditorRef>(null);
+  const editorScrollRef = useRef<HTMLDivElement>(null);
+  const previewScrollRef = useRef<HTMLDivElement>(null);
+  const isSyncingScroll = useRef(false);
+
+  // Synchronize scroll between editor and preview panels
+  const syncScroll = useCallback((source: HTMLDivElement, target: HTMLDivElement) => {
+    if (isSyncingScroll.current) return;
+    isSyncingScroll.current = true;
+
+    const ratio = source.scrollTop / Math.max(1, source.scrollHeight - source.clientHeight);
+    target.scrollTop = ratio * Math.max(0, target.scrollHeight - target.clientHeight);
+
+    requestAnimationFrame(() => { isSyncingScroll.current = false; });
+  }, []);
+
+  const handleEditorScroll = useCallback(() => {
+    if (editorScrollRef.current && previewScrollRef.current) {
+      syncScroll(editorScrollRef.current, previewScrollRef.current);
+    }
+  }, [syncScroll]);
+
+  const handlePreviewScroll = useCallback(() => {
+    if (previewScrollRef.current && editorScrollRef.current) {
+      syncScroll(previewScrollRef.current, editorScrollRef.current);
+    }
+  }, [syncScroll]);
 
   // Check editor readiness on mount
   useEffect(() => {
@@ -353,46 +378,30 @@ export default function CreatePage() {
             <>
               <div className="flex items-center justify-between mb-3">
                 <label className="block text-sm font-medium text-on-surface-variant">
-                  内容（Markdown）
+                  内容
                 </label>
-                <div className="flex gap-1 p-0.5 rounded-lg bg-surface-container-high">
-                  <button
-                    onClick={() => setShowPreview(false)}
-                    className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all duration-200 ${
-                      !showPreview
-                        ? "bg-surface-container-lowest text-on-surface shadow-ambient"
-                        : "text-on-surface-variant hover:text-on-surface"
-                    }`}
-                  >
-                    编辑
-                  </button>
-                  <button
-                    onClick={() => setShowPreview(true)}
-                    className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all duration-200 ${
-                      showPreview
-                        ? "bg-surface-container-lowest text-on-surface shadow-ambient"
-                        : "text-on-surface-variant hover:text-on-surface"
-                    }`}
-                  >
-                    预览
-                  </button>
-                </div>
+                <span className="text-xs text-on-surface-variant/40">编辑 · 预览</span>
               </div>
-              <div className="max-w-4xl">
-                {showPreview ? (
-                  <div className="bg-surface-container-low rounded-xl p-6 min-h-[400px]">
-                    <ContentPreview content={content} className="text-on-surface-variant" />
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Editor Panel */}
+                <div className="flex flex-col">
+                  <div className="sticky top-24 z-30 mb-2">
+                    {editorReady && (
+                      <EditorToolbar
+                        editor={editorRef.current?.editor ?? null}
+                        onImageUpload={handleEditorImageUpload}
+                      />
+                    )}
                   </div>
-                ) : (
-                  <>
-                    <div className="sticky top-24 z-30 mb-2">
-                      {editorReady && (
-                        <EditorToolbar
-                          editor={editorRef.current?.editor ?? null}
-                          onImageUpload={handleEditorImageUpload}
-                        />
-                      )}
-                    </div>
+                  <div
+                    ref={editorScrollRef}
+                    onScroll={handleEditorScroll}
+                    className="overflow-y-auto rounded-xl border border-outline-variant/20 bg-surface-container-low
+                      [&::-webkit-scrollbar]:w-1.5
+                      [&::-webkit-scrollbar-thumb]:bg-outline-variant/30
+                      [&::-webkit-scrollbar-thumb]:rounded-full"
+                    style={{ maxHeight: 'calc(100vh - 500px)', minHeight: '400px' }}
+                  >
                     <RichTextEditor
                       ref={editorRef}
                       content={content}
@@ -400,15 +409,35 @@ export default function CreatePage() {
                       placeholder={isEssay ? "记录你的想法..." : "在此输入内容，支持 Markdown 语法..."}
                     />
                     {/* Character Count */}
-                    <div className="flex justify-between items-center mt-2 px-2 text-xs text-on-surface-variant/60">
+                    <div className="flex justify-between items-center px-4 pb-2 text-xs text-on-surface-variant/60">
                       <span>
                         字数: {content.replace(/\s/g, "").length.toLocaleString()} |
                         字符: {content.length.toLocaleString()}
                       </span>
                       <span>Markdown</span>
                     </div>
-                  </>
-                )}
+                  </div>
+                </div>
+
+                {/* Preview Panel */}
+                <div className="flex flex-col">
+                  <div className="mb-2 text-xs font-medium text-on-surface-variant/40">
+                    实时预览
+                  </div>
+                  <div
+                    ref={previewScrollRef}
+                    onScroll={handlePreviewScroll}
+                    className="overflow-y-auto rounded-xl border border-outline-variant/20 bg-surface-container-low
+                      [&::-webkit-scrollbar]:w-1.5
+                      [&::-webkit-scrollbar-thumb]:bg-outline-variant/30
+                      [&::-webkit-scrollbar-thumb]:rounded-full"
+                    style={{ maxHeight: 'calc(100vh - 500px)', minHeight: '400px' }}
+                  >
+                    <div className="p-6">
+                      <ContentPreview content={content} className="text-on-surface-variant" />
+                    </div>
+                  </div>
+                </div>
               </div>
             </>
           )}

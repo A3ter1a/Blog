@@ -30,7 +30,7 @@ export function ContentPreview({ content, className = "" }: ContentPreviewProps)
 
       // Process KaTeX formulas and add heading IDs for TOC
       processContent(containerRef.current);
-    }, 300); // Debounce to avoid perf issues on rapid typing
+    }, 60); // Short debounce for responsive side-by-side preview
     return () => clearTimeout(timer);
   }, [content]);
 

@@ -1,11 +1,15 @@
 /**
  * Preprocess LaTeX content to ensure proper delimiter format.
  * - Removes spaces between $ and formula content ($ formula $ → $formula$)
- * - Converts \[ \] and \( \) to $$ $$ and $ $
+ * - Converts \[ \] and \( \) to $$ $$ and $ $  (only OUTSIDE math spans)
+ * - Escapes [ and ] inside $...$ and $$...$$ (to prevent markdown-it link parsing)
  * - Wraps bare LaTeX environments (align, equation, gather, etc.) with $$ if not already wrapped
+ *
+ * NOTE: \[ and \( inside existing $...$ or $$...$$ spans are NOT converted,
+ * because they may be part of bracket escaping from the Markdown serializer.
  */
 export function preprocessLatex(content: string): string {
-  // Remove spaces between $ and formula content
+  // Step 1: Remove spaces between $ and formula content
   // $ formula $ → $formula$
   let changed = true;
   while (changed) {
@@ -14,14 +18,32 @@ export function preprocessLatex(content: string): string {
     changed = content !== before;
   }
 
-  // Convert \[ \] and \( \) to $$ $$ and $ $
-  content = content
-    .replace(/\\\[/g, '$$')
-    .replace(/\\\]/g, '$$')
-    .replace(/\\\(/g, '$')
-    .replace(/\\\)/g, '$');
+  // Step 2: Split into math spans and non-math segments, process each separately
+  // Math spans ($...$ or $$...$$) are at odd indices, non-math at even indices
+  const segments = content.split(/(\$\$[\s\S]*?\$\$|\$[^$]*?\$)/);
 
-  // Wrap bare LaTeX environments that are not already inside $$...$$
+  for (let i = 0; i < segments.length; i++) {
+    if (i % 2 === 1) {
+      // Math span: escape unescaped [ and ] to prevent markdown-it link parsing
+      // e.g. $[a,b]$ → $\[a,b\]$
+      // Already-escaped \( e.g. $\[a,b\]$ stays as-is
+      segments[i] = segments[i]
+        .replace(/(?<!\\)\[/g, '\\[')
+        .replace(/(?<!\\)\]/g, '\\]');
+    } else {
+      // Non-math content: convert \[ \] and \( \) to $$ $$ and $ $
+      // These are guaranteed to be outside math spans
+      segments[i] = segments[i]
+        .replace(/\\\[/g, '$$')
+        .replace(/\\\]/g, '$$')
+        .replace(/\\\(/g, '$')
+        .replace(/\\\)/g, '$');
+    }
+  }
+
+  content = segments.join('');
+
+  // Step 3: Wrap bare LaTeX environments that are not already inside $$...$$
   const envPattern = /\\begin\{(align|equation|gather|aligned|split|cases|multline|array|matrix|pmatrix|bmatrix|vmatrix)\*?\}[\s\S]*?\\end\{\1\*?\}/g;
   content = content.replace(envPattern, (match, _envName, offset: number) => {
     // Check if preceded by $$ on the same line
@@ -39,13 +61,6 @@ export function preprocessLatex(content: string): string {
     if (textBeforeNextNewline.startsWith('$$')) return match;
 
     return `$$\n${match}\n$$`;
-  });
-
-  // Escape [ and ] inside $...$ and $$...$$ spans to prevent
-  // markdown-it from parsing them as link/reference syntax.
-  // This must run AFTER the \[ → $$ conversion above.
-  content = content.replace(/(\$+)([\s\S]*?)\1/g, (match, dollars, inner) => {
-    return dollars + inner.replace(/\[/g, '\\[').replace(/\]/g, '\\]') + dollars;
   });
 
   return content;
