@@ -4,6 +4,7 @@ import { useMemo } from "react";
 import { ChevronRight } from "lucide-react";
 import { preprocessLatex } from "@/lib/utils";
 import GithubSlugger from "github-slugger";
+import katex from "katex";
 
 interface TOCItem {
   id: string;
@@ -14,6 +15,26 @@ interface TOCItem {
 interface TableOfContentsProps {
   content: string;
   className?: string;
+}
+
+// Render inline $...$ math in a text string to KaTeX HTML
+function renderInlineMath(text: string): string {
+  if (!text.includes("$")) return text;
+  const parts = text.split(/(?<!\$)\$(?!\$)(.+?)(?<!\$)\$(?!\$)/g);
+  if (parts.length === 1) return text;
+  return parts
+    .map((part, i) => {
+      if (i % 2 === 0) return part;
+      try {
+        return katex.renderToString(part.trim(), {
+          throwOnError: false,
+          displayMode: false,
+        });
+      } catch {
+        return `$${part}$`;
+      }
+    })
+    .join("");
 }
 
 export function TableOfContents({ content, className = "" }: TableOfContentsProps) {
@@ -68,7 +89,7 @@ export function TableOfContents({ content, className = "" }: TableOfContentsProp
         >
           <div className="flex items-center gap-2">
             <ChevronRight className="w-3 h-3 opacity-0 -ml-4 group-hover:opacity-100 transition-opacity" />
-            <span>{item.title}</span>
+            <span dangerouslySetInnerHTML={{ __html: renderInlineMath(item.title) }} />
           </div>
         </button>
       ))}
