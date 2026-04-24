@@ -30,6 +30,7 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
       extensions: [
         StarterKit.configure({
           heading: { levels: [1, 2, 3] },
+          link: false,
         }),
         Image.configure({
           inline: false,
