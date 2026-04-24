@@ -6,6 +6,9 @@ import { preprocessLatex } from "@/lib/utils";
 import { processContent } from "./MarkdownContent";
 import "katex/dist/katex.min.css";
 
+// Reusable markdown-it instance (no state, so safe at module level)
+const md = markdownit({ html: false, breaks: true });
+
 interface ContentPreviewProps {
   content: string;
   className?: string;
@@ -24,7 +27,6 @@ export function ContentPreview({ content, className = "" }: ContentPreviewProps)
     const timer = setTimeout(() => {
       if (!containerRef.current) return;
 
-      const md = markdownit({ html: false, breaks: true });
       const html = md.render(preprocessLatex(content));
       containerRef.current.innerHTML = html;
 

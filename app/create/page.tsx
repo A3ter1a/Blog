@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
 import { useRouter } from "next/navigation";
-import { Save, RotateCcw, X, Image as ImageIcon } from "lucide-react";
+import { Save, RotateCcw, X, Image as ImageIcon, Sparkles } from "lucide-react";
 import { Subject, subjectMap, NoteType, typeMap, Video, Problem } from "@/lib/types";
 import { notesApi } from "@/lib/supabase";
 import { Playlist } from "@/components/video/Playlist";
@@ -13,6 +13,7 @@ import { useToast } from "@/components/ui/Toast";
 import { RichTextEditor, RichTextEditorRef } from "@/components/editor/RichTextEditor";
 import { EditorToolbar } from "@/components/editor/EditorToolbar";
 import { ContentPreview } from "@/components/ui/ContentPreview";
+import { FormulaFixer } from "@/components/editor/FormulaFixer";
 import { uploadImage, generateFileName } from "@/lib/supabase-storage";
 
 export default function CreatePage() {
@@ -30,6 +31,7 @@ export default function CreatePage() {
   const [coverImage, setCoverImage] = useState("");
   const [showVideoSection, setShowVideoSection] = useState(false);
   const [editorReady, setEditorReady] = useState(false);
+  const [showFormulaFixer, setShowFormulaFixer] = useState(false);
   const editorRef = useRef<RichTextEditorRef>(null);
   const editorScrollRef = useRef<HTMLDivElement>(null);
   const previewScrollRef = useRef<HTMLDivElement>(null);
@@ -380,7 +382,20 @@ export default function CreatePage() {
                 <label className="block text-sm font-medium text-on-surface-variant">
                   内容
                 </label>
-                <span className="text-xs text-on-surface-variant/40">编辑 · 预览</span>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setShowFormulaFixer(true)}
+                    disabled={!editorReady || content.length === 0}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium
+                      bg-amber-50 border border-amber-200 text-amber-700
+                      hover:bg-amber-100 transition-colors
+                      disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    <Sparkles className="w-3.5 h-3.5" />
+                    修正公式
+                  </button>
+                  <span className="text-xs text-on-surface-variant/40">编辑 · 预览</span>
+                </div>
               </div>
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {/* Editor Panel */}
@@ -502,6 +517,15 @@ export default function CreatePage() {
           </button>
         </motion.div>
       </div>
+      {/* Formula Fixer Dialog */}
+      <FormulaFixer
+        isOpen={showFormulaFixer}
+        onClose={() => setShowFormulaFixer(false)}
+        content={content}
+        onApplyFixes={(fixedContent) => {
+          setContent(fixedContent);
+        }}
+      />
     </main>
   );
 }

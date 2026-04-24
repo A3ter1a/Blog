@@ -6,7 +6,7 @@ import Image from "@tiptap/extension-image";
 import Link from "@tiptap/extension-link";
 import Highlight from "@tiptap/extension-highlight";
 import { ProblemBlock } from "@/lib/problem-block-extension";
-import { useRef, useCallback, useState, useEffect } from "react";
+import { useRef, useCallback, useState, useEffect, useMemo } from "react";
 import katex from "katex";
 import GithubSlugger from "github-slugger";
 import markdownit from "markdown-it";
@@ -34,6 +34,38 @@ export function processContent(container: HTMLElement) {
     heading.id = id;
   });
 
+  // Helper: process inline math ($...$) in a single text node
+  const processInlineMath = (textNode: Text) => {
+    const text = textNode.textContent || "";
+    if (!/\$(?!\$).+?\$(?!\$)/.test(text)) return;
+
+    const parent = textNode.parentNode;
+    if (!parent) return;
+
+    const parts = text.split(/(?<!\$)\$(?!\$)(.+?)(?<!\$)\$(?!\$)/g);
+    if (parts.length === 1) return;
+
+    const frag = document.createDocumentFragment();
+    parts.forEach((part, i) => {
+      if (i % 2 === 0) {
+        if (part) frag.appendChild(document.createTextNode(part));
+      } else {
+        try {
+          const span = document.createElement("span");
+          span.className = "katex";
+          span.innerHTML = katex.renderToString(part.trim(), {
+            throwOnError: false,
+            displayMode: false,
+          });
+          frag.appendChild(span);
+        } catch {
+          frag.appendChild(document.createTextNode(`$${part}$`));
+        }
+      }
+    });
+    parent.replaceChild(frag, textNode);
+  };
+
   // Process LaTeX in text nodes (skip nodes inside already-processed KaTeX spans)
   const processNode = (node: Node) => {
     if (node.nodeType === Node.TEXT_NODE) {
@@ -51,7 +83,11 @@ export function processContent(container: HTMLElement) {
       // Process display math: $$...$$
       if (text.includes("$$")) {
         const parts = text.split(/\$\$([\s\S]*?)\$\$/);
-        if (parts.length === 1) return;
+        if (parts.length === 1) {
+          // No complete $$...$$ pair (edge case: lone $$), fall through to inline
+          processInlineMath(node as Text);
+          return;
+        }
         const frag = document.createDocumentFragment();
         parts.forEach((part, i) => {
           if (i % 2 === 0) {
@@ -71,34 +107,21 @@ export function processContent(container: HTMLElement) {
           }
         });
         parent.replaceChild(frag, node);
-        return; // Node is replaced, no need to check inline
+
+        // Fix: process inline math in remaining text nodes after display math replacement.
+        // Previously we returned early here, which skipped $...$ inside text portions
+        // that coexist with $$...$$ in the same text node.
+        Array.from(frag.childNodes).forEach((child) => {
+          if (child.nodeType === Node.TEXT_NODE) {
+            processInlineMath(child as Text);
+          }
+        });
+        return; // Node is replaced
       }
 
       // Process inline math: $...$  (but not $$...$$)
-      // Use lookahead to ensure we don't match $$ as $
-      if (/\$(?!\$).+?\$(?!\$)/.test(text)) {
-        const parts = text.split(/(?<!\$)\$(?!\$)(.+?)(?<!\$)\$(?!\$)/g);
-        if (parts.length === 1) return;
-        const frag = document.createDocumentFragment();
-        parts.forEach((part, i) => {
-          if (i % 2 === 0) {
-            if (part) frag.appendChild(document.createTextNode(part));
-          } else {
-            try {
-              const span = document.createElement("span");
-              span.className = "katex";
-              span.innerHTML = katex.renderToString(part.trim(), {
-                throwOnError: false,
-                displayMode: false,
-              });
-              frag.appendChild(span);
-            } catch {
-              frag.appendChild(document.createTextNode(`$${part}$`));
-            }
-          }
-        });
-        parent.replaceChild(frag, node);
-      }
+      processInlineMath(node as Text);
+      return;
     } else if (node.nodeType === Node.ELEMENT_NODE) {
       // Skip already-processed KaTeX nodes and their descendants
       const el = node as Element;
@@ -121,8 +144,10 @@ export function MarkdownContent({ content, className = "", style }: MarkdownCont
 
   // Preprocess LaTeX, then render Markdown to HTML with markdown-it
   // This bypasses tiptap-markdown's onBeforeCreate which can have timing issues
-  const md = markdownit({ html: false, breaks: true });
-  const htmlContent = md.render(preprocessLatex(content));
+  const htmlContent = useMemo(() => {
+    const md = markdownit({ html: false, breaks: true });
+    return md.render(preprocessLatex(content));
+  }, [content]);
 
   const handleEditorReady = useCallback(() => {
     // Use double requestAnimationFrame to ensure DOM is settled after TipTap render
