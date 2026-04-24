@@ -24,7 +24,15 @@ export function preprocessLatex(content: string): string {
 
   for (let i = 0; i < segments.length; i++) {
     if (i % 2 === 1) {
-      // Math span: escape unescaped [ and ] to prevent markdown-it link parsing
+      // Math span
+      // For display math ($$...$$), collapse newlines to prevent
+      // markdown-it's breaks:true from splitting them into <br> nodes,
+      // which would separate $$ from content across text nodes.
+      if (segments[i].startsWith('$$')) {
+        segments[i] = segments[i].replace(/\n/g, ' ');
+      }
+
+      // Escape unescaped [ and ] to prevent markdown-it link parsing
       // e.g. $[a,b]$ → $\[a,b\]$
       // Already-escaped \( e.g. $\[a,b\]$ stays as-is
       segments[i] = segments[i]
