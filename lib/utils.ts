@@ -41,6 +41,13 @@ export function preprocessLatex(content: string): string {
     return `$$\n${match}\n$$`;
   });
 
+  // Escape [ and ] inside $...$ and $$...$$ spans to prevent
+  // markdown-it from parsing them as link/reference syntax.
+  // This must run AFTER the \[ → $$ conversion above.
+  content = content.replace(/(\$+)([\s\S]*?)\1/g, (match, dollars, inner) => {
+    return dollars + inner.replace(/\[/g, '\\[').replace(/\]/g, '\\]') + dollars;
+  });
+
   return content;
 }
 
