@@ -4,35 +4,21 @@ import type { Editor } from "@tiptap/react";
 import {
   Bold, Italic, Strikethrough, List, ListOrdered, Quote,
   Heading1, Heading2, Heading3, Code, Code2, Link as LinkIcon,
-  Minus, Image as ImageIcon, Undo, Redo, Highlighter,
+  Minus, Image as ImageIcon, Undo, Redo, Highlighter, FileText, ListChecks, Wrench,
 } from "lucide-react";
-import { useState, useRef, useEffect } from "react";
+import { useState } from "react";
+import { useClickOutside } from "@/hooks/useClickOutside";
 
 interface EditorToolbarProps {
   editor: Editor | null;
   onImageUpload: () => void;
-  onFormulaToImage: () => void;
-  onSketchUpload: () => void;
-  onQuestionInsert: () => void;
 }
 
 export function EditorToolbar({
   editor,
   onImageUpload,
-  onFormulaToImage,
-  onSketchUpload,
-  onQuestionInsert,
 }: EditorToolbarProps) {
   if (!editor) return null;
-
-  const btnClass = (active: boolean, disabled: boolean) =>
-    `p-2 rounded-lg transition-colors ${
-      disabled
-        ? "opacity-40 cursor-not-allowed text-on-surface-variant/40"
-        : active
-        ? "bg-primary/10 text-primary"
-        : "hover:bg-surface-container-high text-on-surface-variant"
-    }`;
 
   return (
     <div className="flex flex-wrap items-center gap-1 p-2 bg-surface-container-low border border-outline-variant/20 rounded-t-xl border-b-0">
@@ -172,18 +158,32 @@ export function EditorToolbar({
 
       <div className="w-px h-6 bg-outline-variant/20 mx-1" />
 
+      {/* Math Note Helpers */}
+      <ToolbarBtn
+        onClick={() => editor.chain().focus().insertContent("\n\n> **题干：** \n\n").run()}
+        tooltip="插入题干区块"
+      >
+        <FileText className="w-4 h-4" />
+      </ToolbarBtn>
+      <ToolbarBtn
+        onClick={() => editor.chain().focus().insertContent("\n\n> **解答：** \n\n").run()}
+        tooltip="插入解答区块"
+      >
+        <Quote className="w-4 h-4" />
+      </ToolbarBtn>
+      <StepLabelPicker editor={editor} />
+      <ToolbarBtn
+        onClick={() => fixFormulaFormat(editor)}
+        tooltip="修复公式格式"
+      >
+        <Wrench className="w-4 h-4" />
+      </ToolbarBtn>
+
+      <div className="w-px h-6 bg-outline-variant/20 mx-1" />
+
       {/* Advanced Features */}
       <ToolbarBtn onClick={onImageUpload} tooltip="插入图片" accent>
         <ImageIcon className="w-4 h-4" />
-      </ToolbarBtn>
-      <ToolbarBtn onClick={onFormulaToImage} tooltip="公式转图片" accent>
-        <span className="text-sm font-serif font-bold">Σ</span>
-      </ToolbarBtn>
-      <ToolbarBtn onClick={onSketchUpload} tooltip="AI 草图识别" accent>
-        <span className="text-sm font-bold">AI</span>
-      </ToolbarBtn>
-      <ToolbarBtn onClick={onQuestionInsert} tooltip="插入题目" accent>
-        <span className="text-sm font-bold">题</span>
       </ToolbarBtn>
     </div>
   );
@@ -238,17 +238,7 @@ interface HighlightColorPickerProps {
 
 function HighlightColorPicker({ editor }: HighlightColorPickerProps) {
   const [isOpen, setIsOpen] = useState(false);
-  const dropdownRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setIsOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
+  const dropdownRef = useClickOutside<HTMLDivElement>(() => setIsOpen(false), isOpen);
 
   const isActive = editor.isActive("highlight");
 
@@ -276,7 +266,7 @@ function HighlightColorPicker({ editor }: HighlightColorPickerProps) {
                 key={color}
                 type="button"
                 onClick={() => {
-                  editor.chain().focus().toggleHighlight({ color }).run();
+                  editor.chain().focus().setHighlight({ color }).run();
                   setIsOpen(false);
                 }}
                 className="w-8 h-8 rounded-md border border-outline-variant/30 hover:scale-110 transition-transform"
@@ -289,4 +279,75 @@ function HighlightColorPicker({ editor }: HighlightColorPickerProps) {
       )}
     </div>
   );
+}
+
+// Step Label Picker Component
+const STEP_LABELS = [
+  "第一步：",
+  "第二步：",
+  "第三步：",
+  "第四步：",
+  "第五步：",
+  "解：",
+  "证明：",
+  "因为",
+  "所以",
+];
+
+interface StepLabelPickerProps {
+  editor: Editor;
+}
+
+function StepLabelPicker({ editor }: StepLabelPickerProps) {
+  const [isOpen, setIsOpen] = useState(false);
+  const dropdownRef = useClickOutside<HTMLDivElement>(() => setIsOpen(false), isOpen);
+
+  return (
+    <div className="relative" ref={dropdownRef}>
+      <ToolbarBtn
+        onClick={() => setIsOpen(!isOpen)}
+        tooltip="插入步骤标签"
+      >
+        <ListChecks className="w-4 h-4" />
+      </ToolbarBtn>
+
+      {isOpen && (
+        <div className="absolute top-full left-0 mt-1 p-2 bg-surface-container-lowest rounded-lg shadow-elevated border border-outline-variant/20 z-50 min-w-[120px]">
+          <div className="flex flex-col gap-1">
+            {STEP_LABELS.map((label) => (
+              <button
+                key={label}
+                type="button"
+                onClick={() => {
+                  editor.chain().focus().insertContent(label).run();
+                  setIsOpen(false);
+                }}
+                className="px-3 py-1.5 rounded-md text-sm text-on-surface hover:bg-surface-container-high text-left transition-colors"
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Fix formula format helper function
+function fixFormulaFormat(editor: Editor) {
+  const { state } = editor;
+  const text = state.doc.textBetween(0, state.doc.content.size);
+  
+  // Fix: $ formula $ -> $formula$ (remove spaces between $ and content)
+  let fixedText = text;
+  fixedText = fixedText.replace(/\$\s+([^$\n]+?)\s+\$/g, '$$1$');
+  
+  // Fix: Add space after $ if followed by Chinese character
+  fixedText = fixedText.replace(/\$([\u4e00-\u9fa5])/g, '$ $1');
+  fixedText = fixedText.replace(/([\u4e00-\u9fa5])\$/g, '$1$ ');
+  
+  if (fixedText !== text) {
+    editor.chain().focus().setContent(fixedText).run();
+  }
 }

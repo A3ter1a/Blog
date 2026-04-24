@@ -37,7 +37,7 @@ function ProblemBlockView({ node, updateAttributes }: ProblemBlockProps) {
         <div className="p-4">
           <div contentEditable={false} suppressContentEditableWarning>
             <p className="text-sm text-on-surface-variant">
-              此题目已通过OCR插入，详细内容请在发布后查看
+              此题目已插入，详细内容请在发布后查看
             </p>
           </div>
         </div>

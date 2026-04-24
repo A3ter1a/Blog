@@ -4,14 +4,12 @@ import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import { useRouter, useParams } from "next/navigation";
-import { ArrowLeft, Calendar, Tag, Edit2, Trash2, AlertTriangle, ChevronDown, ChevronUp, BookOpen, BookMarked, Brain, Loader2, Clock, Sparkles } from "lucide-react";
+import { ArrowLeft, Calendar, Tag, Edit2, Trash2, AlertTriangle, ChevronDown, ChevronUp, BookOpen, BookMarked, Loader2, Clock } from "lucide-react";
 import { notesApi } from "@/lib/supabase";
 import { subjectMap, typeMap, Note } from "@/lib/types";
 import { estimateReadingTime } from "@/lib/utils";
-import { QuizModal } from "@/components/quiz/QuizModal";
 import { Playlist } from "@/components/video/Playlist";
 import { VideoPlayer } from "@/components/video/VideoPlayer";
-import { AIPanel } from "@/components/ai-assistant/AIPanel";
 import { ProblemCard } from "@/components/problems/ProblemCard";
 import { ProblemStats } from "@/components/problems/ProblemStats";
 import { ProblemList } from "@/components/problems/ProblemList";
@@ -28,10 +26,8 @@ export default function NoteReaderPage() {
   const [loading, setLoading] = useState(true);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isCoverExpanded, setIsCoverExpanded] = useState(false);
-  const [isAIPanelOpen, setIsAIPanelOpen] = useState(false);
   const [isImmersiveMode, setIsImmersiveMode] = useState(false);
   const [inlineVideoIndex, setInlineVideoIndex] = useState<number | null>(null);
-  const [showQuizModal, setShowQuizModal] = useState(false);
 
   // Load note from Supabase
   useEffect(() => {
@@ -96,28 +92,6 @@ export default function NoteReaderPage() {
 
   const isProblem = note.type === "problem";
   const isEssay = note.type === "essay";
-
-  // Build context for AI from note content
-  const getContextForAI = (): string => {
-    const parts: string[] = [];
-    parts.push(`笔记标题: ${note.title}`);
-    if (note.subject) parts.push(`科目: ${note.subject}`);
-    parts.push(`类型: ${note.type}`);
-    parts.push(`标签: ${note.tags.join(", ")}`);
-    parts.push("");
-    parts.push("笔记内容:");
-    parts.push(note.content);
-    if (isProblem && note.problems) {
-      parts.push("");
-      parts.push("题目:");
-      note.problems.forEach((p, i) => {
-        parts.push(`${i + 1}. ${p.question}`);
-        parts.push(`答案: ${p.answer}`);
-        parts.push(`解析: ${p.explanation}`);
-      });
-    }
-    return parts.join("\n");
-  };
 
   return (
     <main className="pt-24 pb-20 min-h-screen">
@@ -253,15 +227,6 @@ export default function NoteReaderPage() {
                 <Edit2 className="w-4 h-4" />
                 编辑
               </Link>
-              {!isProblem && (
-                <button
-                  onClick={() => setShowQuizModal(true)}
-                  className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary/10 text-primary hover:bg-primary/20 transition-colors duration-200 text-sm font-medium"
-                >
-                  <Sparkles className="w-4 h-4" />
-                  AI 出题
-                </button>
-              )}
               <button
                 onClick={() => setShowDeleteConfirm(true)}
                 className="flex items-center gap-2 px-4 py-2 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 transition-colors duration-200 text-sm font-medium"
@@ -368,11 +333,11 @@ export default function NoteReaderPage() {
           </motion.article>
         </div>
 
-        {/* Sidebar: Video Player + TOC/Problem Stats (hidden when TOC is hidden or AI panel open) */}
+        {/* Sidebar: Video Player + TOC (hidden when TOC is hidden) */}
         {preferences.tocPosition !== "hidden" && (
           <aside className="lg:col-span-3 space-y-6 min-w-[280px]">
             <AnimatePresence>
-              {note.videos && note.videos.length > 0 && !isAIPanelOpen && (
+              {note.videos && note.videos.length > 0 && (
                 <motion.section
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
@@ -391,71 +356,29 @@ export default function NoteReaderPage() {
 
             {/* Table of Contents for notes/essays, or Problem Stats for problems */}
             <AnimatePresence>
-              {!isAIPanelOpen && (
-                <motion.section
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -20 }}
-                  transition={{ delay: 0.35, duration: 0.5 }}
-                  className="lg:sticky lg:top-24 bg-surface-container-lowest rounded-xl p-4 shadow-ambient"
-                >
-                  {isProblem && note.problems && note.problems.length > 0 ? (
-                    <ProblemList problems={note.problems} />
-                  ) : (
-                    <>
-                      <div className="flex items-center gap-2 mb-3 pb-3 border-b border-outline-variant/10">
-                        <BookOpen className="w-4 h-4 text-on-surface-variant" />
-                        <h3 className="text-sm font-bold text-on-surface">目录</h3>
-                      </div>
-                      <TableOfContents content={note.content} />
-                    </>
-                  )}
-                </motion.section>
-              )}
+              <motion.section
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+                transition={{ delay: 0.35, duration: 0.5 }}
+                className="lg:sticky lg:top-24 bg-surface-container-lowest rounded-xl p-4 shadow-ambient"
+              >
+                {isProblem && note.problems && note.problems.length > 0 ? (
+                  <ProblemList problems={note.problems} />
+                ) : (
+                  <>
+                    <div className="flex items-center gap-2 mb-3 pb-3 border-b border-outline-variant/10">
+                      <BookOpen className="w-4 h-4 text-on-surface-variant" />
+                      <h3 className="text-sm font-bold text-on-surface">目录</h3>
+                    </div>
+                    <TableOfContents content={note.content} />
+                  </>
+                )}
+              </motion.section>
             </AnimatePresence>
           </aside>
         )}
       </div>
-
-      {/* AI Trigger Button - Fixed on right edge */}
-      <AnimatePresence>
-        {!isAIPanelOpen && (
-          <motion.div
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: 20 }}
-            transition={{ duration: 0.2 }}
-            className="fixed right-0 top-1/2 -translate-y-1/2 z-40"
-          >
-            <button
-              onClick={() => setIsAIPanelOpen(true)}
-              className="w-10 h-24 editorial-gradient rounded-l-xl flex items-center justify-center shadow-elevated shadow-primary/20 hover:opacity-90 transition-opacity"
-            >
-              <Brain className="w-5 h-5 text-on-primary" />
-            </button>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* AI Panel - Fixed on right side */}
-      <AnimatePresence>
-        {isAIPanelOpen && (
-          <motion.div
-            initial={{ opacity: 0, x: 100 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: 100 }}
-            transition={{ 
-              type: "tween",
-              duration: 0.6,
-              delay: 0.3, // Wait for video and TOC to disappear first
-              ease: "easeOut"
-            }}
-            className="fixed right-4 top-24 bottom-4 w-[480px] bg-surface-container-lowest rounded-2xl shadow-elevated z-50 flex flex-col overflow-hidden"
-          >
-            <AIPanel context={getContextForAI()} onOpenChange={setIsAIPanelOpen} />
-          </motion.div>
-        )}
-      </AnimatePresence>
 
       {/* Immersive Reading Mode */}
       <AnimatePresence>
@@ -568,16 +491,6 @@ export default function NoteReaderPage() {
               <div className="h-32" />
             </motion.div>
           </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Quiz Modal */}
-      <AnimatePresence>
-        {showQuizModal && (
-          <QuizModal
-            content={note.content}
-            onClose={() => setShowQuizModal(false)}
-          />
         )}
       </AnimatePresence>
     </main>

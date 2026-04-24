@@ -109,86 +109,24 @@ export const typeMap: Record<NoteType, string> = {
   essay: '随笔',
 };
 
-// AI API Config
-export interface APIConfig {
-  id: string;
-  provider: string;
-  apiKey: string;
-  baseUrl?: string;
-  model?: string;
-  isActive: boolean;
+// Profile link
+export interface ProfileLink {
+  name: string;
+  icon: string;
+  href: string;
+  variant: "default" | "secondary" | "dark" | "primary";
+  linkType?: "link" | "number";
 }
 
-export const aiProviders = [
-  { value: "qwen", label: "通义千问", shortLabel: "Qwen", defaultModel: "qwen-plus", defaultUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1" },
-  { value: "deepseek", label: "DeepSeek", shortLabel: "DeepSeek", defaultModel: "deepseek-chat", defaultUrl: "https://api.deepseek.com" },
-  { value: "gemini", label: "Google Gemini", shortLabel: "Gemini", defaultModel: "gemini-2.0-flash", defaultUrl: "" },
-  { value: "openai", label: "OpenAI", shortLabel: "OpenAI", defaultModel: "gpt-4o", defaultUrl: "https://api.openai.com/v1" },
-  { value: "claude", label: "Claude", shortLabel: "Claude", defaultModel: "claude-3-5-sonnet-20241022", defaultUrl: "https://api.anthropic.com/v1" },
-];
-
-export const aiModelsByProvider: Record<string, { value: string; label: string }[]> = {
-  gemini: [
-    { value: "gemini-2.0-flash", label: "Gemini 2.0 Flash" },
-    { value: "gemini-2.0-pro", label: "Gemini 2.0 Pro" },
-    { value: "gemini-1.5-flash", label: "Gemini 1.5 Flash" },
-    { value: "gemini-1.5-pro", label: "Gemini 1.5 Pro" },
-  ],
-  openai: [
-    { value: "gpt-4o", label: "GPT-4o" },
-    { value: "gpt-4o-mini", label: "GPT-4o Mini" },
-    { value: "gpt-4-turbo", label: "GPT-4 Turbo" },
-    { value: "gpt-3.5-turbo", label: "GPT-3.5 Turbo" },
-  ],
-  deepseek: [
-    { value: "deepseek-chat", label: "DeepSeek Chat" },
-    { value: "deepseek-reasoner", label: "DeepSeek Reasoner" },
-  ],
-  qwen: [
-    { value: "qwen-plus", label: "Qwen Plus" },
-    { value: "qwen-max", label: "Qwen Max" },
-    { value: "qwen-turbo", label: "Qwen Turbo" },
-    { value: "qwen-long", label: "Qwen Long" },
-    { value: "qwen-vl-plus", label: "Qwen VL Plus" },
-    { value: "qwen-vl-max", label: "Qwen VL Max" },
-  ],
-  claude: [
-    { value: "claude-3-5-sonnet-20241022", label: "Claude 3.5 Sonnet" },
-    { value: "claude-3-opus-20240229", label: "Claude 3 Opus" },
-    { value: "claude-3-haiku-20240307", label: "Claude 3 Haiku" },
-  ],
-};
-
-// 短标签（用于 AI 面板显示）
-export const aiModelShortLabels: Record<string, { value: string; label: string }[]> = {
-  gemini: [
-    { value: "gemini-2.0-flash", label: "2.0 Flash" },
-    { value: "gemini-2.0-pro", label: "2.0 Pro" },
-    { value: "gemini-1.5-flash", label: "1.5 Flash" },
-  ],
-  openai: [
-    { value: "gpt-4o", label: "GPT-4o" },
-    { value: "gpt-4o-mini", label: "4o Mini" },
-    { value: "gpt-4-turbo", label: "GPT-4 Turbo" },
-    { value: "gpt-3.5-turbo", label: "GPT-3.5" },
-  ],
-  deepseek: [
-    { value: "deepseek-chat", label: "Chat" },
-    { value: "deepseek-reasoner", label: "Reasoner" },
-  ],
-  qwen: [
-    { value: "qwen-plus", label: "Qwen Plus" },
-    { value: "qwen-max", label: "Qwen Max" },
-    { value: "qwen-turbo", label: "Qwen Turbo" },
-    { value: "qwen-vl-plus", label: "VL Plus" },
-    { value: "qwen-vl-max", label: "VL Max" },
-  ],
-  claude: [
-    { value: "claude-3-5-sonnet-20241022", label: "3.5 Sonnet" },
-    { value: "claude-3-opus-20240229", label: "3 Opus" },
-    { value: "claude-3-haiku-20240307", label: "3 Haiku" },
-  ],
-};
+// Profile (used by SettingsPanel / ProfileEditor)
+export interface Profile {
+  name: string;
+  avatar: string;
+  tagline: string;
+  badges: string[];
+  links: ProfileLink[];
+  footer: string;
+}
 
 // Flashcard for spaced repetition
 export interface Flashcard {

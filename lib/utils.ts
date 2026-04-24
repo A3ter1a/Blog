@@ -1,8 +1,8 @@
 /**
- * Convert LaTeX delimiters for remark-math compatibility.
- * Rules:
- * - $ must be紧贴公式内容，不能有空格: $formula$ ✓, $ formula $ ✗
- * - $$ block math should be on separate lines
+ * Preprocess LaTeX content to ensure proper delimiter format.
+ * - Removes spaces between $ and formula content ($ formula $ → $formula$)
+ * - Converts \[ \] and \( \) to $$ $$ and $ $
+ * - Wraps bare LaTeX environments (align, equation, gather, etc.) with $$ if not already wrapped
  */
 export function preprocessLatex(content: string): string {
   // Remove spaces between $ and formula content
@@ -15,11 +15,33 @@ export function preprocessLatex(content: string): string {
   }
 
   // Convert \[ \] and \( \) to $$ $$ and $ $
-  return content
+  content = content
     .replace(/\\\[/g, '$$')
     .replace(/\\\]/g, '$$')
     .replace(/\\\(/g, '$')
     .replace(/\\\)/g, '$');
+
+  // Wrap bare LaTeX environments that are not already inside $$...$$
+  const envPattern = /\\begin\{(align|equation|gather|aligned|split|cases|multline|array|matrix|pmatrix|bmatrix|vmatrix)\*?\}[\s\S]*?\\end\{\1\*?\}/g;
+  content = content.replace(envPattern, (match, _envName, offset: number) => {
+    // Check if preceded by $$ on the same line
+    const beforeText = content.substring(0, offset);
+    const lastNewline = beforeText.lastIndexOf('\n');
+    const textAfterLastNewline = beforeText.substring(lastNewline + 1);
+    if (textAfterLastNewline.trimEnd().endsWith('$$')) return match;
+
+    // Check if followed by $$ on the same line
+    const afterText = content.substring(offset + match.length);
+    const nextNewline = afterText.indexOf('\n');
+    const textBeforeNextNewline = nextNewline !== -1
+      ? afterText.substring(0, nextNewline).trimStart()
+      : afterText.trimStart();
+    if (textBeforeNextNewline.startsWith('$$')) return match;
+
+    return `$$\n${match}\n$$`;
+  });
+
+  return content;
 }
 
 /**

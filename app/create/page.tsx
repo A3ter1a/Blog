@@ -3,21 +3,16 @@
 import { useState, useRef, useEffect } from "react";
 import { motion } from "framer-motion";
 import { useRouter } from "next/navigation";
-import { Save, RotateCcw, X, Image as ImageIcon, Sparkles } from "lucide-react";
+import { Save, RotateCcw, X, Image as ImageIcon } from "lucide-react";
 import { Subject, subjectMap, NoteType, typeMap, Video, Problem } from "@/lib/types";
 import { notesApi } from "@/lib/supabase";
 import { Playlist } from "@/components/video/Playlist";
 import { ProblemEditor } from "@/components/problems/ProblemEditor";
-import { chatWithAI } from "@/lib/ai";
 import { fileToDataUrl } from "@/lib/utils";
 import { useToast } from "@/components/ui/Toast";
 import { RichTextEditor, RichTextEditorRef } from "@/components/editor/RichTextEditor";
 import { EditorToolbar } from "@/components/editor/EditorToolbar";
-import { FormulaToImage } from "@/components/editor/FormulaToImage";
-import { SketchUploader } from "@/components/editor/SketchUploader";
-import { QuestionInserter } from "@/components/editor/QuestionInserter";
 import { uploadImage, generateFileName } from "@/lib/supabase-storage";
-import { DiffViewer } from "@/components/ui/DiffViewer";
 
 export default function CreatePage() {
   const router = useRouter();
@@ -33,12 +28,6 @@ export default function CreatePage() {
   const [problems, setProblems] = useState<Problem[]>([]);
   const [coverImage, setCoverImage] = useState("");
   const [showVideoSection, setShowVideoSection] = useState(false);
-  const [showFormulaModal, setShowFormulaModal] = useState(false);
-  const [showSketchModal, setShowSketchModal] = useState(false);
-  const [showQuestionModal, setShowQuestionModal] = useState(false);
-  const [showDiffModal, setShowDiffModal] = useState(false);
-  const [originalContent, setOriginalContent] = useState("");
-  const [polishedContent, setPolishedContent] = useState("");
   const [editorReady, setEditorReady] = useState(false);
   const editorRef = useRef<RichTextEditorRef>(null);
 
@@ -164,43 +153,6 @@ export default function CreatePage() {
     setProblems([]);
   };
 
-  const [isPolishing, setIsPolishing] = useState(false);
-
-  const handlePolish = async () => {
-    if (!content.trim()) {
-      toast.info("请先输入内容");
-      return;
-    }
-    setIsPolishing(true);
-    setOriginalContent(content);
-    try {
-      const result = await chatWithAI(
-        `请对以下笔记内容进行润色，要求：
-1. 优化语言表达，使其更加流畅、专业
-2. 保持原有结构和核心内容不变
-3. 修正语法错误和不通顺的句子
-4. 如果是数学内容，确保公式格式正确（$$ 包裹的 LaTeX）
-5. 返回润色后的完整 Markdown 内容
-
-原始内容：
-${content}`,
-        content
-      );
-      setPolishedContent(result);
-      setShowDiffModal(true);
-    } catch (error: any) {
-      toast.error(`润色失败：${error.message}`);
-    } finally {
-      setIsPolishing(false);
-    }
-  };
-
-  const handleApplyPolished = () => {
-    setContent(polishedContent);
-    setShowDiffModal(false);
-    toast.success("已应用润色结果");
-  };
-
   // Editor toolbar handlers - only complex operations remain
   const handleEditorImageUpload = async () => {
     const input = document.createElement("input");
@@ -219,26 +171,6 @@ ${content}`,
       }
     };
     input.click();
-  };
-
-  const handleFormulaInsert = (imageUrl: string) => {
-    editorRef.current?.insertImage(imageUrl);
-    toast.success("公式图片已插入");
-  };
-
-  const handleSketchInsert = (imageUrl: string) => {
-    editorRef.current?.insertImage(imageUrl);
-    toast.success("草图识别完成");
-  };
-
-  const handleQuestionInsert = (problemNumber: number, problem: Problem) => {
-    // Add problem to the problems array
-    setProblems([...problems, problem]);
-    
-    // Insert problem marker into content
-    const problemMarker = `\n<!--problem:${problemNumber}-->\n`;
-    editorRef.current?.insertContent(problemMarker);
-    toast.success(`题目 ${problemNumber} 已插入`);
   };
 
   const isEssay = noteType === "essay";
@@ -426,9 +358,6 @@ ${content}`,
                     <EditorToolbar
                       editor={editorRef.current?.editor ?? null}
                       onImageUpload={handleEditorImageUpload}
-                      onFormulaToImage={() => setShowFormulaModal(true)}
-                      onSketchUpload={() => setShowSketchModal(true)}
-                      onQuestionInsert={() => setShowQuestionModal(true)}
                     />
                   )}
                 </div>
@@ -495,14 +424,6 @@ ${content}`,
           className="flex gap-4 justify-end"
         >
           <button
-            onClick={handlePolish}
-            disabled={isPolishing}
-            className="px-6 py-3 rounded-xl bg-primary/10 text-primary hover:bg-primary/20 transition-all duration-300 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <Sparkles className={`w-4 h-4 ${isPolishing ? "animate-spin" : ""}`} />
-            {isPolishing ? "润色中..." : "润色"}
-          </button>
-          <button
             onClick={handleClear}
             className="px-6 py-3 rounded-xl bg-surface-container-low text-on-surface-variant hover:bg-surface-container-high transition-all duration-300 flex items-center gap-2"
           >
@@ -518,37 +439,6 @@ ${content}`,
           </button>
         </motion.div>
       </div>
-
-      {/* Formula to Image Modal */}
-      <FormulaToImage
-        isOpen={showFormulaModal}
-        onClose={() => setShowFormulaModal(false)}
-        onInsert={handleFormulaInsert}
-      />
-
-      {/* Sketch Upload Modal */}
-      <SketchUploader
-        isOpen={showSketchModal}
-        onClose={() => setShowSketchModal(false)}
-        onInsert={handleSketchInsert}
-      />
-
-      {/* Question Inserter Modal */}
-      <QuestionInserter
-        isOpen={showQuestionModal}
-        onClose={() => setShowQuestionModal(false)}
-        onInsert={handleQuestionInsert}
-        existingProblems={problems}
-      />
-
-      {/* Diff Viewer Modal */}
-      <DiffViewer
-        isOpen={showDiffModal}
-        onClose={() => setShowDiffModal(false)}
-        original={originalContent}
-        polished={polishedContent}
-        onApply={handleApplyPolished}
-      />
     </main>
   );
 }

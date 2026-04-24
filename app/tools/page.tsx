@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Clock, Brain, Sparkles, ChevronRight } from "lucide-react";
+import { Clock, ChevronRight } from "lucide-react";
 
 export default function ToolsPage() {
   const tools = [
@@ -15,25 +15,6 @@ export default function ToolsPage() {
       href: "#",
       comingSoon: false,
       note: "已在笔记页面自动显示",
-    },
-    {
-      id: "ai-quiz",
-      title: "AI 出题练习",
-      description: "基于笔记内容自动生成练习题，巩固知识点",
-      icon: Brain,
-      color: "bg-purple-500/10 text-purple-600",
-      href: "#",
-      comingSoon: false,
-      note: "在笔记详情页点击「AI 出题」按钮",
-    },
-    {
-      id: "flashcard",
-      title: "抽卡复习",
-      description: "间隔重复算法，智能安排复习计划",
-      icon: Sparkles,
-      color: "bg-amber-500/10 text-amber-600",
-      href: "/flashcard",
-      comingSoon: false,
     },
   ];
 

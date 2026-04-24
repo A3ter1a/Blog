@@ -36,6 +36,14 @@ yarn-error.log*
 # vercel
 .vercel
 .vercel-tmp
+
+# JVM crash logs
+hs_err_pid*.log
+replay_pid*.log
+
+# Windows artifacts
+nul
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts
