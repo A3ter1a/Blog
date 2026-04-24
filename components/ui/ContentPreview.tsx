@@ -71,7 +71,12 @@ export function ContentPreview({ content, className = "" }: ContentPreviewProps)
   return (
     <div
       ref={containerRef}
-      className={`prose prose-sm max-w-none ${className}`}
+      className={`prose max-w-none
+        [&_h1]:text-2xl [&_h1]:font-bold [&_h1]:mb-4
+        [&_h2]:text-xl [&_h2]:font-bold [&_h2]:mb-3
+        [&_h3]:text-lg [&_h3]:font-semibold [&_h3]:mb-2
+        [&_h4]:text-base [&_h4]:font-semibold [&_h4]:mb-2
+        ${className}`}
     />
   );
 }
