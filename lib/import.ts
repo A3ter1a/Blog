@@ -1,4 +1,5 @@
 import { Note, NoteType, Subject, Problem, ProblemType, Difficulty } from './types';
+import { sanitizeFileName } from './utils';
 
 /**
  * Parsed note data from import files
@@ -199,11 +200,4 @@ export function extractInlineTags(content: string): string[] {
 function extractFirstHeading(content: string): string | null {
   const match = content.match(/^#{1,6}\s+(.+)$/m);
   return match ? match[1].trim() : null;
-}
-
-/**
- * Sanitize filename
- */
-function sanitizeFileName(filename: string): string {
-  return filename.replace(/[^a-zA-Z0-9\u4e00-\u9fa5_-]/g, '-').substring(0, 100);
 }

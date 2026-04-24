@@ -322,7 +322,6 @@ export default function NoteReaderPage() {
               </>
             ) : (
               <>
-                {console.log("[Note Detail] note.content:", note.content.substring(0, 500))}
                 <MarkdownContent 
                   content={note.content} 
                   className="text-on-surface-variant" 

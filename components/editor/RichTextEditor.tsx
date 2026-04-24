@@ -13,11 +13,15 @@ import { ProblemBlock, parseProblemMarkers } from "@/lib/problem-block-extension
 import { DOMParser } from "@tiptap/pm/model";
 import markdownit from "markdown-it";
 
+// Module-level markdown-it instance for paste handling (stateless, safe to reuse)
+const md = markdownit({ html: false, breaks: true });
+
 interface RichTextEditorProps {
   content: string;
   onChange: (content: string) => void;
   placeholder?: string;
   onImageUpload?: (file: File) => Promise<string>;
+  onReady?: () => void;
 }
 
 export interface RichTextEditorRef {
@@ -27,7 +31,7 @@ export interface RichTextEditorRef {
 }
 
 export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>(
-  ({ content, onChange, placeholder = "在此输入内容，支持 Markdown 语法...", onImageUpload }, ref) => {
+  ({ content, onChange, placeholder = "在此输入内容，支持 Markdown 语法...", onImageUpload, onReady }, ref) => {
     const editor = useEditor({
       extensions: [
         StarterKit.configure({
@@ -61,6 +65,7 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
           breaks: true,
         }),
       ],
+      onCreate: () => onReady?.(),
       content: parseProblemMarkers(content),
       onUpdate: ({ editor }) => {
         onChange((editor.storage as any).markdown.getMarkdown());
@@ -77,8 +82,7 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
           event.preventDefault();
 
           try {
-            // Parse pasted text as Markdown with markdown-it
-            const md = markdownit({ html: false, breaks: true });
+            // Parse pasted text as Markdown with module-level markdown-it instance
             const html = md.render(text);
             const dom = document.createElement('div');
             dom.innerHTML = html;

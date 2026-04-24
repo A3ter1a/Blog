@@ -60,17 +60,6 @@ export default function CreatePage() {
     }
   }, [syncScroll]);
 
-  // Check editor readiness on mount
-  useEffect(() => {
-    const timer = setInterval(() => {
-      if (editorRef.current?.editor) {
-        setEditorReady(true);
-        clearInterval(timer);
-      }
-    }, 100);
-    return () => clearInterval(timer);
-  }, []);
-
   // Load note data if in edit mode or import mode
   useEffect(() => {
     const searchParams = new URLSearchParams(window.location.search);
@@ -421,6 +410,7 @@ export default function CreatePage() {
                       ref={editorRef}
                       content={content}
                       onChange={setContent}
+                      onReady={() => setEditorReady(true)}
                       placeholder={isEssay ? "记录你的想法..." : "在此输入内容，支持 Markdown 语法..."}
                     />
                     {/* Character Count */}

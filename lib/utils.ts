@@ -80,10 +80,13 @@ export function preprocessLatex(content: string): string {
 export async function fileToBase64(file: File): Promise<string> {
   const reader = new FileReader();
   reader.readAsDataURL(file);
-  return new Promise<string>((resolve) => {
+  return new Promise<string>((resolve, reject) => {
     reader.onload = () => {
       const result = reader.result as string;
       resolve(result.split(",")[1]);
+    };
+    reader.onerror = () => {
+      reject(new Error("Failed to read file as base64"));
     };
   });
 }
@@ -121,6 +124,13 @@ export function extractOptions(content: string) {
   }
 
   return options.length > 0 ? options : undefined;
+}
+
+/**
+ * Sanitize filename for safe file operations.
+ */
+export function sanitizeFileName(filename: string): string {
+  return filename.replace(/[^a-zA-Z0-9\u4e00-\u9fa5_-]/g, '-').substring(0, 100);
 }
 
 /**

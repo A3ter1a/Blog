@@ -1,5 +1,6 @@
 import JSZip from 'jszip';
 import { Note, typeMap, subjectMap, problemTypeMap } from './types';
+import { sanitizeFileName } from './utils';
 
 /**
  * Convert a single note to Markdown format with front matter
@@ -165,11 +166,4 @@ export async function exportAsObsidian(notes: Note[]): Promise<void> {
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
-}
-
-/**
- * Sanitize filename for safe file operations
- */
-function sanitizeFileName(filename: string): string {
-  return filename.replace(/[^a-zA-Z0-9\u4e00-\u9fa5_-]/g, '-').substring(0, 100);
 }
