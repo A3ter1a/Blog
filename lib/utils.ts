@@ -10,7 +10,7 @@ export function preprocessLatex(content: string): string {
   let changed = true;
   while (changed) {
     const before = content;
-    content = content.replace(/\$\s+([^$\n]+?)\s+\$/g, '$$1$');
+    content = content.replace(/\$\s+([^$\n]+?)\s+\$/g, '$$$1$$');
     changed = content !== before;
   }
 

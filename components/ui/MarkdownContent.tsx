@@ -5,11 +5,11 @@ import StarterKit from "@tiptap/starter-kit";
 import Image from "@tiptap/extension-image";
 import Link from "@tiptap/extension-link";
 import Highlight from "@tiptap/extension-highlight";
-import { Markdown } from "tiptap-markdown";
 import { ProblemBlock } from "@/lib/problem-block-extension";
 import { useRef, useCallback, useState, useEffect } from "react";
 import katex from "katex";
 import GithubSlugger from "github-slugger";
+import markdownit from "markdown-it";
 import { preprocessLatex } from "@/lib/utils";
 import "katex/dist/katex.min.css";
 
@@ -119,8 +119,10 @@ export function MarkdownContent({ content, className = "", style }: MarkdownCont
   const containerRef = useRef<HTMLDivElement>(null);
   const [isReady, setIsReady] = useState(false);
 
-  // Preprocess LaTeX before passing to TipTap
-  const processedContent = preprocessLatex(content);
+  // Preprocess LaTeX, then render Markdown to HTML with markdown-it
+  // This bypasses tiptap-markdown's onBeforeCreate which can have timing issues
+  const md = markdownit({ html: false, breaks: true });
+  const htmlContent = md.render(preprocessLatex(content));
 
   const handleEditorReady = useCallback(() => {
     // Use double requestAnimationFrame to ensure DOM is settled after TipTap render
@@ -144,13 +146,12 @@ export function MarkdownContent({ content, className = "", style }: MarkdownCont
       }),
       Highlight.configure({ multicolor: true }),
       ProblemBlock,
-      Markdown.configure({ html: false, breaks: true }),
     ],
-    content: processedContent,
+    content: htmlContent,
     editable: false,
     onCreate: handleEditorReady,
     onUpdate: handleEditorReady,
-  }, [processedContent]);
+  }, [htmlContent]);
 
   // Retry: Re-process content after initial render to catch any formulas
   // that TipTap may have deferred (e.g., inside nested node views)
@@ -162,7 +163,7 @@ export function MarkdownContent({ content, className = "", style }: MarkdownCont
       }
     }, 200);
     return () => clearTimeout(timer);
-  }, [isReady, processedContent]);
+  }, [isReady, htmlContent]);
 
   if (!editor) return null;
 
