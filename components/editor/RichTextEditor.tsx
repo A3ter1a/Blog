@@ -10,6 +10,8 @@ import Highlight from "@tiptap/extension-highlight";
 import { Markdown } from "tiptap-markdown";
 import { useEffect, forwardRef, useImperativeHandle } from "react";
 import { ProblemBlock, parseProblemMarkers } from "@/lib/problem-block-extension";
+import { DOMParser } from "@tiptap/pm/model";
+import markdownit from "markdown-it";
 
 interface RichTextEditorProps {
   content: string;
@@ -54,7 +56,7 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
         ProblemBlock,
         Markdown.configure({
           html: false,
-          transformPastedText: true,
+          transformPastedText: false,
           transformCopiedText: true,
           breaks: true,
         }),
@@ -64,6 +66,34 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
         onChange((editor.storage as any).markdown.getMarkdown());
       },
       immediatelyRender: false,
+      editorProps: {
+        handlePaste: (view, event) => {
+          // Only handle plain text pastes
+          const text = event.clipboardData?.getData('text/plain');
+          if (!text || !text.trim()) return false;
+
+          // Prevent default paste (which would use HTML from VS Code etc.,
+          // potentially creating code blocks via <pre><code>)
+          event.preventDefault();
+
+          try {
+            // Parse pasted text as Markdown with markdown-it
+            const md = markdownit({ html: false, breaks: true });
+            const html = md.render(text);
+            const dom = document.createElement('div');
+            dom.innerHTML = html;
+            const slice = DOMParser.fromSchema(view.state.schema).parseSlice(dom, {
+              preserveWhitespace: true,
+            });
+            view.dispatch(view.state.tr.replaceSelection(slice).scrollIntoView());
+          } catch {
+            // Fallback: insert as plain text
+            view.dispatch(view.state.tr.insertText(text).scrollIntoView());
+          }
+
+          return true;
+        },
+      },
     });
 
     // 暴露方法给父组件
