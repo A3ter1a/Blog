@@ -27,7 +27,7 @@ export async function callDeepSeek(
       'Authorization': `Bearer ${apiKey}`,
     },
     body: JSON.stringify(body),
-    signal: AbortSignal.timeout(60000),
+    signal: AbortSignal.timeout(120000),
   });
 
   if (!res.ok) {
@@ -80,7 +80,7 @@ export async function callQwenVision(
       max_tokens: 4096,
       stream: false,
     }),
-    signal: AbortSignal.timeout(30000),
+    signal: AbortSignal.timeout(60000),
   });
 
   if (!res.ok) {

@@ -2,7 +2,7 @@
 
 import { useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Upload, X, Scan } from 'lucide-react';
+import { Upload, X, Scan, Image as ImageIcon } from 'lucide-react';
 import { fileToBase64 } from '@/lib/utils';
 import { AIProgressIndicator } from './AIProgressIndicator';
 import { AIExtractionResult } from './AIExtractionResult';
@@ -17,23 +17,30 @@ interface OCRUploaderProps {
 }
 
 export function OCRUploader({ isOpen, onClose, onAccept, chapterContext }: OCRUploaderProps) {
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewUrls, setPreviewUrls] = useState<string[]>([]);
   const { scanState, startScan, resetScan } = useAIScan();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
 
     try {
-      const base64 = await fileToBase64(file);
-      const url = URL.createObjectURL(file);
-      setPreviewUrl(url);
-      await startScan(base64, chapterContext);
+      const urls: string[] = [];
+      const base64s: string[] = [];
+
+      for (const file of files) {
+        const base64 = await fileToBase64(file);
+        base64s.push(base64);
+        urls.push(URL.createObjectURL(file));
+      }
+
+      setPreviewUrls(urls);
+      await startScan(base64s, chapterContext);
     } catch (err: any) {
       console.error('OCR file processing failed:', err);
       resetScan();
-      setPreviewUrl(null);
+      setPreviewUrls([]);
     }
   };
 
@@ -65,12 +72,16 @@ export function OCRUploader({ isOpen, onClose, onAccept, chapterContext }: OCRUp
   };
 
   const handleClose = () => {
-    setPreviewUrl(null);
+    setPreviewUrls([]);
     resetScan();
     onClose();
   };
 
   if (!isOpen) return null;
+
+  const isProcessing = scanState.stage !== 'idle' && scanState.stage !== 'complete' && scanState.stage !== 'error';
+  const currentImage = scanState.currentImage || 0;
+  const totalImages = scanState.totalImages || 0;
 
   return (
     <AnimatePresence>
@@ -109,12 +120,13 @@ export function OCRUploader({ isOpen, onClose, onAccept, chapterContext }: OCRUp
                 </div>
                 <div className="text-center">
                   <p className="text-sm font-medium text-on-surface">点击上传题目照片</p>
-                  <p className="text-xs text-on-surface-variant/50 mt-1">支持 JPG、PNG 格式，包含数学公式的图片</p>
+                  <p className="text-xs text-on-surface-variant/50 mt-1">支持 JPG、PNG 格式，可一次选择多张图片</p>
                 </div>
                 <input
                   ref={fileInputRef}
                   type="file"
                   accept="image/*"
+                  multiple
                   onChange={handleFileSelect}
                   className="hidden"
                 />
@@ -122,19 +134,34 @@ export function OCRUploader({ isOpen, onClose, onAccept, chapterContext }: OCRUp
             )}
 
             {/* Progress */}
-            {scanState.stage !== 'idle' && (
-              <AIProgressIndicator stage={scanState.stage} progress={scanState.progress} />
+            {isProcessing && (
+              <div className="space-y-2">
+                <AIProgressIndicator stage={scanState.stage} progress={scanState.progress} />
+                {totalImages > 1 && (
+                  <p className="text-xs text-on-surface-variant/60 text-center">
+                    正在处理第 {currentImage}/{totalImages} 张图片
+                  </p>
+                )}
+              </div>
             )}
 
-            {/* Preview */}
-            {previewUrl && (
-              <div className="rounded-xl overflow-hidden border border-outline-variant/10">
-                <img src={previewUrl} alt="题目图片" className="w-full max-h-48 object-contain bg-surface-container" />
+            {/* Previews (multi-image thumbnails) */}
+            {previewUrls.length > 0 && (
+              <div className={`grid gap-2 ${previewUrls.length > 1 ? 'grid-cols-3' : 'grid-cols-1'}`}>
+                {previewUrls.map((url, i) => (
+                  <div key={i} className="rounded-xl overflow-hidden border border-outline-variant/10">
+                    <img
+                      src={url}
+                      alt={`题目图片 ${i + 1}`}
+                      className="w-full max-h-32 object-contain bg-surface-container"
+                    />
+                  </div>
+                ))}
               </div>
             )}
 
             {/* OCR text preview */}
-            {scanState.ocrText && scanState.stage === 'analyzing' && (
+            {scanState.ocrText && (scanState.stage === 'analyzing' || scanState.stage === 'scanning') && (
               <div className="p-3 rounded-xl bg-surface-container-low">
                 <p className="text-xs text-on-surface-variant/60 mb-1">OCR 识别文本</p>
                 <p className="text-sm text-on-surface whitespace-pre-wrap line-clamp-6">{scanState.ocrText}</p>
