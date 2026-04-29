@@ -2,12 +2,13 @@
 
 import { useRef, useEffect, useMemo, useState } from "react";
 import markdownit from "markdown-it";
+import markdownitMark from "markdown-it-mark";
 import { preprocessLatex } from "@/lib/utils";
 import { processContent } from "./MarkdownContent";
 import "katex/dist/katex.min.css";
 
 // Reusable markdown-it instance (no state, so safe at module level)
-const md = markdownit({ html: false, breaks: true });
+const md = markdownit({ html: false, breaks: true }).use(markdownitMark);
 
 interface ContentPreviewProps {
   content: string;
@@ -76,6 +77,7 @@ export function ContentPreview({ content, className = "" }: ContentPreviewProps)
         [&_h2]:text-xl [&_h2]:font-bold [&_h2]:mb-3
         [&_h3]:text-lg [&_h3]:font-semibold [&_h3]:mb-2
         [&_h4]:text-base [&_h4]:font-semibold [&_h4]:mb-2
+        [&_mark]:rounded-sm [&_mark]:px-1 [&_mark]:py-0.5
         ${className}`}
     />
   );

@@ -260,7 +260,7 @@ function HighlightColorPicker({ editor }: HighlightColorPickerProps) {
 
       {isOpen && (
         <div className="absolute top-full left-0 mt-1 p-2 bg-surface-container-lowest rounded-lg shadow-elevated border border-outline-variant/20 z-50">
-          <div className="grid grid-cols-4 gap-1">
+          <div className="grid grid-cols-4 gap-2">
             {HIGHLIGHT_COLORS.map(({ color, label }) => (
               <button
                 key={color}
@@ -269,7 +269,7 @@ function HighlightColorPicker({ editor }: HighlightColorPickerProps) {
                   editor.chain().focus().setHighlight({ color }).run();
                   setIsOpen(false);
                 }}
-                className="w-8 h-8 rounded-md border border-outline-variant/30 hover:scale-110 transition-transform"
+                className="w-10 h-10 rounded-lg border-2 border-outline-variant/20 hover:border-primary/50 hover:scale-110 transition-all cursor-pointer"
                 style={{ backgroundColor: color }}
                 title={label}
               />

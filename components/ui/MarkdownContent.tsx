@@ -10,6 +10,7 @@ import { useRef, useCallback, useState, useEffect, useMemo } from "react";
 import katex from "katex";
 import GithubSlugger from "github-slugger";
 import markdownit from "markdown-it";
+import markdownitMark from "markdown-it-mark";
 import { preprocessLatex } from "@/lib/utils";
 import "katex/dist/katex.min.css";
 
@@ -145,7 +146,7 @@ export function MarkdownContent({ content, className = "", style }: MarkdownCont
   // Preprocess LaTeX, then render Markdown to HTML with markdown-it
   // This bypasses tiptap-markdown's onBeforeCreate which can have timing issues
   const htmlContent = useMemo(() => {
-    const md = markdownit({ html: false, breaks: true });
+    const md = markdownit({ html: false, breaks: true }).use(markdownitMark);
     return md.render(preprocessLatex(content));
   }, [content]);
 

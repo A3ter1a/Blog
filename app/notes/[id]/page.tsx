@@ -1,18 +1,21 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import { useRouter, useParams } from "next/navigation";
-import { ArrowLeft, Calendar, Tag, Edit2, Trash2, AlertTriangle, ChevronDown, ChevronUp, BookOpen, BookMarked, Loader2, Clock } from "lucide-react";
+import { ArrowLeft, Calendar, Tag, Edit2, Trash2, AlertTriangle, ChevronDown, ChevronUp, BookOpen, BookMarked, Loader2, Clock, Layers } from "lucide-react";
 import { notesApi } from "@/lib/supabase";
-import { subjectMap, typeMap, Note } from "@/lib/types";
+import { chaptersApi } from "@/lib/chapters-api";
+import { subjectMap, typeMap, Note, Chapter, Problem } from "@/lib/types";
 import { estimateReadingTime } from "@/lib/utils";
 import { Playlist } from "@/components/video/Playlist";
 import { VideoPlayer } from "@/components/video/VideoPlayer";
 import { ProblemCard } from "@/components/problems/ProblemCard";
 import { ProblemStats } from "@/components/problems/ProblemStats";
 import { ProblemList } from "@/components/problems/ProblemList";
+import { ChapterStatsView } from "@/components/chapters/ChapterStats";
+import { ChapterFilter } from "@/components/chapters/ChapterFilter";
 import { MarkdownContent } from "@/components/ui/MarkdownContent";
 import { TableOfContents } from "@/components/ui/TableOfContents";
 import { useReadingPreferences } from "@/lib/useReadingPreferences";
@@ -28,6 +31,8 @@ export default function NoteReaderPage() {
   const [isCoverExpanded, setIsCoverExpanded] = useState(false);
   const [isImmersiveMode, setIsImmersiveMode] = useState(false);
   const [inlineVideoIndex, setInlineVideoIndex] = useState<number | null>(null);
+  const [chapters, setChapters] = useState<Chapter[]>([]);
+  const [selectedChapterId, setSelectedChapterId] = useState<string | undefined>(undefined);
 
   // Load note from Supabase
   useEffect(() => {
@@ -52,6 +57,49 @@ export default function NoteReaderPage() {
       setIsCoverExpanded(true);
     }
   }, [note]);
+
+  // Load chapters for problem notes
+  useEffect(() => {
+    if (note?.type === "problem") {
+      const id = params.id as string;
+      chaptersApi.getByNoteId(id)
+        .then(setChapters)
+        .catch(() => setChapters([]));
+    }
+  }, [note?.type, params.id]);
+
+  // Derive filtered & grouped problems for chapter support
+  const allProblems = note?.problems || [];
+  const filteredProblems = selectedChapterId
+    ? allProblems.filter(p => p.chapterId === selectedChapterId)
+    : allProblems;
+  const selectedChapter = chapters.find(c => c.id === selectedChapterId);
+
+  // Group problems by chapter when no filter is active
+  const chapterGroups = useMemo(() => {
+    if (selectedChapterId || chapters.length === 0) return null;
+    const groups: { chapter: Chapter | undefined; problems: Problem[] }[] = [];
+    const chapterMap = new Map(chapters.map(c => [c.id, c]));
+    const seenChapters = new Set<string>();
+
+    allProblems.forEach(p => {
+      if (p.chapterId && chapterMap.has(p.chapterId)) {
+        if (!seenChapters.has(p.chapterId)) {
+          seenChapters.add(p.chapterId);
+          groups.push({ chapter: chapterMap.get(p.chapterId), problems: [] });
+        }
+        groups.find(g => g.chapter?.id === p.chapterId)?.problems.push(p);
+      }
+    });
+
+    // Ungrouped problems
+    const ungrouped = allProblems.filter(p => !p.chapterId || !chapterMap.has(p.chapterId));
+    if (ungrouped.length > 0) {
+      groups.push({ chapter: undefined, problems: ungrouped });
+    }
+
+    return groups.length > 1 ? groups : null;
+  }, [allProblems, chapters, selectedChapterId]);
 
   const handleDelete = async () => {
     try {
@@ -309,16 +357,60 @@ export default function NoteReaderPage() {
             transition={{ delay: 0.2, duration: 0.5 }}
             className="py-8"
           >
-            {isProblem && note.problems && note.problems.length > 0 ? (
+            {isProblem && allProblems.length > 0 ? (
               <>
-                {/* Problem Stats */}
-                <ProblemStats problems={note.problems} />
-                {/* Problem List */}
-                <div className="space-y-6">
-                  {note.problems.map((problem, index) => (
-                    <ProblemCard key={problem.id} problem={problem} index={index} />
-                  ))}
-                </div>
+                {/* Chapter Stats when a chapter is selected */}
+                {selectedChapter && (
+                  <ChapterStatsView
+                    problems={filteredProblems}
+                    chapterName={selectedChapter.name}
+                  />
+                )}
+
+                {/* Problem Stats (overall, shown when no chapter filter) */}
+                {!selectedChapter && (
+                  <ProblemStats problems={allProblems} />
+                )}
+
+                {/* Problem Cards - grouped by chapter or flat */}
+                {chapterGroups && !selectedChapterId ? (
+                  <div className="space-y-10">
+                    {chapterGroups.map(group => (
+                      <section key={group.chapter?.id || 'ungrouped'}>
+                        {group.chapter && (
+                          <div className="flex items-center gap-3 mb-4">
+                            <Layers className="w-5 h-5 text-primary" />
+                            <h3 className="text-lg font-bold text-on-surface font-headline">
+                              {group.chapter.name}
+                            </h3>
+                            <span className="text-xs text-on-surface-variant">
+                              {group.problems.length} 题
+                            </span>
+                          </div>
+                        )}
+                        <div className="space-y-6">
+                          {group.problems.map((problem, index) => (
+                            <ProblemCard
+                              key={problem.id}
+                              problem={problem}
+                              index={allProblems.indexOf(problem) + 1}
+                            />
+                          ))}
+                        </div>
+                      </section>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="space-y-6">
+                    {filteredProblems.map((problem, index) => (
+                      <ProblemCard
+                        key={problem.id}
+                        problem={problem}
+                        index={allProblems.indexOf(problem) + 1}
+                      />
+                    ))}
+                  </div>
+                )}
               </>
             ) : (
               <>
@@ -362,8 +454,15 @@ export default function NoteReaderPage() {
                 transition={{ delay: 0.35, duration: 0.5 }}
                 className="lg:sticky lg:top-24 bg-surface-container-lowest rounded-xl p-4 shadow-ambient"
               >
-                {isProblem && note.problems && note.problems.length > 0 ? (
-                  <ProblemList problems={note.problems} />
+                {isProblem && allProblems.length > 0 ? (
+                  <div className="space-y-4">
+                    <ChapterFilter
+                      chapters={chapters}
+                      selectedId={selectedChapterId}
+                      onSelect={setSelectedChapterId}
+                    />
+                    <ProblemList problems={filteredProblems} />
+                  </div>
                 ) : (
                   <>
                     <div className="flex items-center gap-2 mb-3 pb-3 border-b border-outline-variant/10">
@@ -472,10 +571,17 @@ export default function NoteReaderPage() {
                 transition={{ delay: 0.6, duration: 0.6 }}
                 className="prose prose-lg max-w-none"
               >
-                {isProblem && note.problems && note.problems.length > 0 ? (
+                {isProblem && allProblems.length > 0 ? (
                   <div className="space-y-8">
-                    {note.problems.map((problem, index) => (
-                      <ProblemCard key={problem.id} problem={problem} index={index} />
+                    {/* Chapter indicator in immersive mode */}
+                    {selectedChapter && (
+                      <div className="flex items-center gap-2 text-sm text-on-surface-variant mb-2">
+                        <Layers className="w-4 h-4" />
+                        <span>{selectedChapter.name}</span>
+                      </div>
+                    )}
+                    {filteredProblems.map((problem, index) => (
+                      <ProblemCard key={problem.id} problem={problem} index={allProblems.indexOf(problem) + 1} />
                     ))}
                   </div>
                 ) : (

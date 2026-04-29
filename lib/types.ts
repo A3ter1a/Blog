@@ -30,6 +30,9 @@ export interface ProblemOption {
   content: string;
 }
 
+// AI处理状态
+export type AIStatus = 'none' | 'scanning' | 'scanned' | 'complete' | 'error';
+
 // 单道题目
 export interface Problem {
   id: string;
@@ -42,6 +45,55 @@ export interface Problem {
   tips?: string;
   source?: string;
   tags: string[];
+  // AI/OCR 增强字段 (optional for backward compatibility)
+  chapterId?: string;
+  aiStatus?: AIStatus;
+  ocrSource?: { imageUrl: string; processedAt: string };
+  aiResult?: {
+    rawQuestion: string;
+    rawAnswer: string;
+    rawExplanation: string;
+    confidence: number;
+  };
+}
+
+// 章节分类
+export interface Chapter {
+  id: string;
+  noteId?: string;        // null = global template, set = note-specific
+  name: string;
+  parentId?: string;      // multi-level nesting
+  sortOrder: number;
+  description?: string;
+  color?: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+// 章节统计
+export interface ChapterStats {
+  chapterId: string;
+  chapterName: string;
+  totalProblems: number;
+  easyCount: number;
+  mediumCount: number;
+  hardCount: number;
+  typeDistribution: Record<ProblemType, number>;
+}
+
+// AI API 配置
+export interface AIConfig {
+  deepseekApiKey: string;
+  deepseekModel: string;
+  qwenApiKey: string;
+  qwenModel: string;
+  qwenApiEndpoint: string;
+}
+
+// AI API 使用统计
+export interface AIUsageStats {
+  deepseek: { totalTokens: number; totalCost: number; lastUsed?: string };
+  qwen: { totalImages: number; totalCost: number; lastUsed?: string };
 }
 
 // 视频平台类型

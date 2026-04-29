@@ -3,11 +3,12 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
 import { useRouter } from "next/navigation";
-import { Save, RotateCcw, X, Image as ImageIcon, Sparkles } from "lucide-react";
+import { Save, RotateCcw, X, Image as ImageIcon, Sparkles, FolderTree } from "lucide-react";
 import { Subject, subjectMap, NoteType, typeMap, Video, Problem } from "@/lib/types";
 import { notesApi } from "@/lib/supabase";
 import { Playlist } from "@/components/video/Playlist";
 import { ProblemEditor } from "@/components/problems/ProblemEditor";
+import { ChapterManager } from "@/components/chapters/ChapterManager";
 import { fileToDataUrl } from "@/lib/utils";
 import { useToast } from "@/components/ui/Toast";
 import { RichTextEditor, RichTextEditorRef } from "@/components/editor/RichTextEditor";
@@ -32,6 +33,7 @@ export default function CreatePage() {
   const [showVideoSection, setShowVideoSection] = useState(false);
   const [editorReady, setEditorReady] = useState(false);
   const [showFormulaFixer, setShowFormulaFixer] = useState(false);
+  const [showChapterManager, setShowChapterManager] = useState(false);
   const editorRef = useRef<RichTextEditorRef>(null);
   const editorScrollRef = useRef<HTMLDivElement>(null);
   const previewScrollRef = useRef<HTMLDivElement>(null);
@@ -362,8 +364,21 @@ export default function CreatePage() {
           className="mb-8"
         >
           {isProblem ? (
-            <div className="bg-surface-container-low rounded-xl p-4">
-              <ProblemEditor problems={problems} onChange={setProblems} />
+            <div className="space-y-3">
+              <div className="bg-surface-container-low rounded-xl p-4">
+                <ProblemEditor
+                  problems={problems}
+                  onChange={setProblems}
+                  noteId={isEditMode ? editingId : undefined}
+                />
+              </div>
+              <button
+                onClick={() => setShowChapterManager(true)}
+                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-surface-container-low text-on-surface-variant hover:bg-surface-container-high transition-all text-sm font-medium"
+              >
+                <FolderTree className="w-4 h-4" />
+                章节管理
+              </button>
             </div>
           ) : (
             <>
@@ -515,6 +530,13 @@ export default function CreatePage() {
         onApplyFixes={(fixedContent) => {
           setContent(fixedContent);
         }}
+      />
+
+      {/* Chapter Manager Modal */}
+      <ChapterManager
+        isOpen={showChapterManager}
+        onClose={() => setShowChapterManager(false)}
+        noteId={isEditMode ? editingId : undefined}
       />
     </main>
   );

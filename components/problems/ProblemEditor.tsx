@@ -1,17 +1,23 @@
 "use client";
 
 import { useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import { Plus, X, ChevronDown, ChevronUp } from "lucide-react";
-import { Problem, ProblemType, Difficulty, ProblemOption, problemTypeMap, difficultyMap } from "@/lib/types";
+import { motion, AnimatePresence, Reorder } from "framer-motion";
+import { Plus, X, ChevronDown, ChevronUp, GripVertical, Sparkles, Scan } from "lucide-react";
+import { Problem, ProblemType, Difficulty, problemTypeMap, difficultyMap } from "@/lib/types";
+import { ChapterSelector } from "@/components/chapters/ChapterSelector";
+import { ProblemCompare } from "./ProblemCompare";
+import { ProblemPreview } from "./ProblemPreview";
+import { OCRUploader } from "@/components/ai-assistant/OCRUploader";
 
 interface ProblemEditorProps {
   problems: Problem[];
   onChange: (problems: Problem[]) => void;
+  noteId?: string;
 }
 
-export function ProblemEditor({ problems, onChange }: ProblemEditorProps) {
+export function ProblemEditor({ problems, onChange, noteId }: ProblemEditorProps) {
   const [showAddForm, setShowAddForm] = useState(false);
+  const [showAIScan, setShowAIScan] = useState(false);
   const [newProblem, setNewProblem] = useState<Partial<Problem>>({
     type: "calculation",
     difficulty: "medium",
@@ -25,13 +31,18 @@ export function ProblemEditor({ problems, onChange }: ProblemEditorProps) {
     if (!newProblem.question?.trim()) return;
 
     const problem: Problem = {
-      id: Date.now().toString(),
+      id: crypto.randomUUID(),
       type: (newProblem.type as ProblemType) || "calculation",
       difficulty: (newProblem.difficulty as Difficulty) || "medium",
       question: newProblem.question || "",
       answer: newProblem.answer || "",
       explanation: newProblem.explanation || "",
+      tips: newProblem.tips || undefined,
+      options: newProblem.options?.length ? newProblem.options : undefined,
       tags: newProblem.tags || [],
+      chapterId: newProblem.chapterId,
+      aiStatus: newProblem.aiStatus,
+      aiResult: newProblem.aiResult,
     };
 
     onChange([...problems, problem]);
@@ -50,17 +61,63 @@ export function ProblemEditor({ problems, onChange }: ProblemEditorProps) {
     onChange(problems.filter(p => p.id !== id));
   };
 
+  const handleUpdate = (id: string, updates: Partial<Problem>) => {
+    onChange(problems.map(p => p.id === id ? { ...p, ...updates } : p));
+  };
+
+  const handleAcceptAI = (problem: Problem) => {
+    setNewProblem({
+      type: problem.type,
+      difficulty: problem.difficulty,
+      question: problem.question,
+      answer: problem.answer,
+      explanation: problem.explanation,
+      tips: problem.tips,
+      options: problem.options,
+      tags: problem.tags,
+      chapterId: problem.chapterId,
+      aiStatus: 'complete' as const,
+      aiResult: problem.aiResult,
+    });
+    setShowAddForm(true);
+  };
+
   return (
     <div className="space-y-4">
-      {/* Existing Problems */}
-      {problems.map((problem, index) => (
-        <ProblemCard
-          key={problem.id}
-          problem={problem}
-          index={index}
-          onRemove={() => handleRemove(problem.id)}
-        />
-      ))}
+      {/* Toolbar */}
+      <div className="flex items-center gap-2">
+        <button
+          onClick={() => setShowAIScan(true)}
+          className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium
+            bg-gradient-to-r from-violet-500/10 to-primary/10 border border-violet-200/20
+            text-primary hover:border-violet-300/40 transition-all"
+        >
+          <Scan className="w-3.5 h-3.5" />
+          AI 扫描
+        </button>
+      </div>
+
+      {/* Existing Problems (drag-and-drop) */}
+      {problems.length > 0 && (
+        <Reorder.Group
+          axis="y"
+          values={problems}
+          onReorder={onChange}
+          className="space-y-3"
+        >
+          {problems.map((problem, index) => (
+            <Reorder.Item key={problem.id} value={problem}>
+              <ProblemCard
+                problem={problem}
+                index={index}
+                noteId={noteId}
+                onRemove={() => handleRemove(problem.id)}
+                onUpdate={(updates) => handleUpdate(problem.id, updates)}
+              />
+            </Reorder.Item>
+          ))}
+        </Reorder.Group>
+      )}
 
       {/* Add Form */}
       <AnimatePresence>
@@ -71,6 +128,24 @@ export function ProblemEditor({ problems, onChange }: ProblemEditorProps) {
             exit={{ opacity: 0, height: 0 }}
             className="bg-surface-container-low rounded-xl p-4 space-y-3 overflow-hidden"
           >
+            {/* AI extracted badge */}
+            {newProblem.aiStatus === 'complete' && (
+              <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-700">
+                <Sparkles className="w-3.5 h-3.5" />
+                AI 已提取，你可以直接在下方编辑修改
+              </div>
+            )}
+
+            {/* Chapter Selector */}
+            <div>
+              <label className="text-xs text-on-surface-variant/60 mb-1 block">章节分类</label>
+              <ChapterSelector
+                noteId={noteId}
+                value={newProblem.chapterId}
+                onChange={(chapterId) => setNewProblem({ ...newProblem, chapterId })}
+              />
+            </div>
+
             {/* Type and Difficulty */}
             <div className="grid grid-cols-2 gap-3">
               <div>
@@ -135,10 +210,13 @@ export function ProblemEditor({ problems, onChange }: ProblemEditorProps) {
               />
             </div>
 
+            {/* Preview */}
+            <ProblemPreview problem={newProblem} />
+
             {/* Action Buttons */}
             <div className="flex gap-2 pt-1">
               <button
-                onClick={() => setShowAddForm(false)}
+                onClick={() => { setShowAddForm(false); setNewProblem({ type: "calculation", difficulty: "medium", question: "", answer: "", explanation: "", tags: [] }); }}
                 className="flex-1 px-3 py-2 rounded-lg bg-surface-container text-on-surface-variant text-sm hover:bg-surface-container-high transition-colors"
               >
                 取消
@@ -165,44 +243,67 @@ export function ProblemEditor({ problems, onChange }: ProblemEditorProps) {
           添加题目
         </button>
       )}
+
+      {/* AI Scan Modal */}
+      <OCRUploader
+        isOpen={showAIScan}
+        onClose={() => setShowAIScan(false)}
+        onAccept={handleAcceptAI}
+      />
     </div>
   );
 }
 
-// Internal ProblemCard for editor
-function ProblemCard({ problem, index, onRemove }: { problem: Problem; index: number; onRemove: () => void }) {
+// Internal ProblemCard for editor (with drag handle + chapter + AI status)
+function ProblemCard({
+  problem, index, noteId, onRemove, onUpdate
+}: {
+  problem: Problem; index: number; noteId?: string; onRemove: () => void; onUpdate: (updates: Partial<Problem>) => void;
+}) {
   const [expanded, setExpanded] = useState(false);
 
   return (
-    <div className="bg-surface-container-low rounded-xl overflow-hidden">
-      <button
-        onClick={() => setExpanded(!expanded)}
-        className="w-full flex items-center justify-between px-4 py-3 hover:bg-surface-container-high transition-colors"
-      >
-        <div className="flex items-center gap-3">
-          <span className="w-7 h-7 rounded-full editorial-gradient text-on-primary text-xs font-bold flex items-center justify-center">
-            {index + 1}
-          </span>
-          <span className="text-sm font-medium text-on-surface line-clamp-1">
-            {problem.question}
-          </span>
-          <span className="text-xs px-2 py-0.5 rounded-full bg-surface-container-highest text-on-surface-variant">
-            {problemTypeMap[problem.type]}
-          </span>
-          <span className={`text-xs px-2 py-0.5 rounded-full ${problem.difficulty === 'easy' ? 'bg-green-100 text-green-700' : problem.difficulty === 'medium' ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-700'}`}>
-            {difficultyMap[problem.difficulty]}
-          </span>
+    <div className="bg-surface-container-low rounded-xl overflow-hidden group">
+      <div className="flex items-center">
+        {/* Drag Handle */}
+        <div className="pl-3 py-3 cursor-grab active:cursor-grabbing text-on-surface-variant/20 hover:text-on-surface-variant/50 transition-colors">
+          <GripVertical className="w-4 h-4" />
         </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={(e) => { e.stopPropagation(); onRemove(); }}
-            className="p-1 rounded hover:bg-surface-container-highest transition-colors"
-          >
-            <X className="w-4 h-4 text-on-surface-variant/40 hover:text-red-500" />
-          </button>
-          {expanded ? <ChevronUp className="w-4 h-4 text-on-surface-variant" /> : <ChevronDown className="w-4 h-4 text-on-surface-variant" />}
-        </div>
-      </button>
+
+        <button
+          onClick={() => setExpanded(!expanded)}
+          className="flex-1 flex items-center justify-between pr-4 py-3 hover:bg-surface-container-high transition-colors"
+        >
+          <div className="flex items-center gap-3">
+            <span className="w-7 h-7 rounded-full editorial-gradient text-on-primary text-xs font-bold flex items-center justify-center">
+              {index + 1}
+            </span>
+            <span className="text-sm font-medium text-on-surface line-clamp-1">
+              {problem.question || '(无题目内容)'}
+            </span>
+            <span className="text-xs px-2 py-0.5 rounded-full bg-surface-container-highest text-on-surface-variant">
+              {problemTypeMap[problem.type]}
+            </span>
+            <span className={`text-xs px-2 py-0.5 rounded-full ${problem.difficulty === 'easy' ? 'bg-green-100 text-green-700' : problem.difficulty === 'medium' ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-700'}`}>
+              {difficultyMap[problem.difficulty]}
+            </span>
+            {problem.aiStatus === 'complete' && (
+              <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 flex items-center gap-1">
+                <Sparkles className="w-3 h-3" /> AI
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={(e) => { e.stopPropagation(); onRemove(); }}
+              className="p-1 rounded hover:bg-surface-container-highest transition-colors"
+            >
+              <X className="w-4 h-4 text-on-surface-variant/40 hover:text-red-500" />
+            </button>
+            {expanded ? <ChevronUp className="w-4 h-4 text-on-surface-variant" /> : <ChevronDown className="w-4 h-4 text-on-surface-variant" />}
+          </div>
+        </button>
+      </div>
 
       <AnimatePresence>
         {expanded && (
@@ -212,6 +313,15 @@ function ProblemCard({ problem, index, onRemove }: { problem: Problem; index: nu
             exit={{ opacity: 0, height: 0 }}
             className="px-4 pb-4 space-y-2 overflow-hidden"
           >
+            {/* Chapter selector */}
+            <div className="pt-2">
+              <ChapterSelector
+                noteId={noteId}
+                value={problem.chapterId}
+                onChange={(chapterId) => onUpdate({ chapterId })}
+              />
+            </div>
+
             {problem.answer && (
               <div className="text-sm">
                 <span className="text-on-surface-variant/60">答案: </span>
@@ -223,6 +333,17 @@ function ProblemCard({ problem, index, onRemove }: { problem: Problem; index: nu
                 <span className="text-on-surface-variant/60">解析: </span>
                 <span className="text-on-surface">{problem.explanation}</span>
               </div>
+            )}
+
+            {/* AI comparison */}
+            {problem.aiResult && (
+              <ProblemCompare original={{
+                id: '', type: problem.type, difficulty: problem.difficulty,
+                question: problem.aiResult.rawQuestion,
+                answer: problem.aiResult.rawAnswer,
+                explanation: problem.aiResult.rawExplanation,
+                tags: [],
+              }} current={problem} />
             )}
           </motion.div>
         )}

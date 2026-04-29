@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ChevronDown, ChevronUp, Eye, EyeOff, Lightbulb } from "lucide-react";
+import { ChevronDown, ChevronUp, Eye, EyeOff, Lightbulb, Sparkles, Layers } from "lucide-react";
 import type { Problem, ProblemType, Difficulty } from "@/lib/types";
 import { problemTypeMap, difficultyMap, difficultyColorMap } from "@/lib/types";
 import { MarkdownContent } from "@/components/ui/MarkdownContent";
@@ -37,6 +37,16 @@ export function ProblemCard({ problem, index }: ProblemCardProps) {
             <span className={`px-2 py-1 rounded-md text-xs font-medium ${difficultyColorMap[problem.difficulty]}`}>
               {difficultyMap[problem.difficulty]}
             </span>
+            {problem.aiStatus === 'complete' && (
+              <span className="px-2 py-1 rounded-md bg-amber-100 text-amber-700 text-xs font-medium flex items-center gap-1">
+                <Sparkles className="w-3 h-3" /> AI
+              </span>
+            )}
+            {problem.chapterId && (
+              <span className="px-2 py-1 rounded-md bg-surface-container-highest text-on-surface-variant text-xs font-medium flex items-center gap-1">
+                <Layers className="w-3 h-3" /> 章节
+              </span>
+            )}
           </div>
         </div>
         {problem.source && (

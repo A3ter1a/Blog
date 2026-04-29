@@ -12,9 +12,10 @@ import { useEffect, forwardRef, useImperativeHandle } from "react";
 import { ProblemBlock, parseProblemMarkers } from "@/lib/problem-block-extension";
 import { DOMParser } from "@tiptap/pm/model";
 import markdownit from "markdown-it";
+import markdownitMark from "markdown-it-mark";
 
 // Module-level markdown-it instance for paste handling (stateless, safe to reuse)
-const md = markdownit({ html: false, breaks: true });
+const md = markdownit({ html: false, breaks: true }).use(markdownitMark);
 
 interface RichTextEditorProps {
   content: string;

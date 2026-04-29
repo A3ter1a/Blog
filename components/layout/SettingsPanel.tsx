@@ -8,6 +8,7 @@ import { useReadingPreferences, TOCPosition } from "@/lib/useReadingPreferences"
 import { ParsedNote, detectFormat, importFromJSON, importFromMarkdown, importFromObsidian } from "@/lib/import";
 import { ImportPreview } from "@/components/export/ImportPreview";
 import { ProfileEditor } from "@/components/settings/ProfileEditor";
+import { AISettings } from "@/components/settings/AISettings";
 
 interface SettingsPanelProps {
   isOpen: boolean;
@@ -230,6 +231,11 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
               {/* Profile */}
               <section>
                 <ProfileEditor profile={profile} onSave={handleSaveProfile} />
+              </section>
+
+              {/* AI Settings */}
+              <section>
+                <AISettings />
               </section>
 
               {/* Import */}
