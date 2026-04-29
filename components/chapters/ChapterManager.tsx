@@ -20,13 +20,17 @@ export function ChapterManager({ isOpen, onClose, noteId, selectedChapterId, onS
   const [editForm, setEditForm] = useState<Partial<Chapter>>({});
   const [newName, setNewName] = useState('');
   const [showAddChild, setShowAddChild] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState(false);
 
   const loadChapters = useCallback(async () => {
     try {
       const data = noteId ? await chaptersApi.getByNoteId(noteId) : await chaptersApi.getTemplates();
       setChapters(data);
+      setLoadError(false);
     } catch (err) {
       console.error('Failed to load chapters:', err);
+      setLoadError(true);
     }
   }, [noteId]);
 
@@ -39,6 +43,7 @@ export function ChapterManager({ isOpen, onClose, noteId, selectedChapterId, onS
 
   const handleCreate = async (parentId?: string) => {
     if (!newName.trim()) return;
+    setError(null);
     try {
       await chaptersApi.create({
         noteId,
@@ -51,11 +56,13 @@ export function ChapterManager({ isOpen, onClose, noteId, selectedChapterId, onS
       loadChapters();
     } catch (err) {
       console.error('Failed to create chapter:', err);
+      setError('创建失败，请确认 Supabase 中已创建 chapters 表（运行 supabase/chapters_schema.sql）');
     }
   };
 
   const handleUpdate = async (id: string) => {
     if (!editForm.name?.trim()) return;
+    setError(null);
     try {
       await chaptersApi.update(id, editForm);
       setEditingId(null);
@@ -63,16 +70,19 @@ export function ChapterManager({ isOpen, onClose, noteId, selectedChapterId, onS
       loadChapters();
     } catch (err) {
       console.error('Failed to update chapter:', err);
+      setError('更新失败，请重试');
     }
   };
 
   const handleDelete = async (id: string) => {
+    setError(null);
     try {
       await chaptersApi.delete(id);
       if (selectedChapterId === id && onSelectChapter) onSelectChapter(undefined);
       loadChapters();
     } catch (err) {
       console.error('Failed to delete chapter:', err);
+      setError('删除失败，请重试');
     }
   };
 
@@ -113,6 +123,19 @@ export function ChapterManager({ isOpen, onClose, noteId, selectedChapterId, onS
 
           {/* Chapter Tree */}
           <div className="flex-1 overflow-y-auto p-4 space-y-2">
+            {loadError && (
+              <div className="p-3 rounded-xl bg-amber-50 text-amber-700 text-sm mb-3">
+                无法加载章节，请确认 Supabase 中已创建 chapters 表。运行: supabase/chapters_schema.sql
+              </div>
+            )}
+            {error && (
+              <div className="p-3 rounded-xl bg-red-50 text-red-700 text-sm mb-3 flex items-center justify-between">
+                <span>{error}</span>
+                <button onClick={() => setError(null)} className="text-red-400 hover:text-red-600 ml-2">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            )}
             {topLevel.length === 0 && !showAddChild && (
               <p className="text-sm text-on-surface-variant/50 text-center py-8">
                 暂无章节，点击下方按钮创建
@@ -160,7 +183,7 @@ export function ChapterManager({ isOpen, onClose, noteId, selectedChapterId, onS
                   onKeyDown={e => { if (e.key === 'Enter') handleCreate(); }}
                   autoFocus
                 />
-                <button onClick={() => { handleCreate(); setShowAddChild(null); }}
+                <button onClick={() => handleCreate()}
                   className="px-3 py-2 rounded-lg bg-primary text-on-primary text-sm font-medium">
                   添加
                 </button>
