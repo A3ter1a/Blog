@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { Brain, Plug, RefreshCw, AlertCircle, Check, BarChart3 } from 'lucide-react';
 import type { AIConfig, AIUsageStats } from '@/lib/types';
-import { getUsageStats, recordDeepSeekUsage, resetUsageStats } from '@/lib/ai-usage';
+import { getUsageStats, recordDeepSeekUsage } from '@/lib/ai-usage';
 
 const STORAGE_KEY = 'ai-config';
 

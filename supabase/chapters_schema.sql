@@ -21,23 +21,24 @@ CREATE INDEX IF NOT EXISTS idx_chapters_sort_order ON chapters(sort_order);
 -- Row Level Security (RLS)
 ALTER TABLE chapters ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Users can view all chapters"
+-- Allow anon (no auth used in this project) + authenticated
+CREATE POLICY "Allow all SELECT on chapters"
   ON chapters FOR SELECT
-  TO authenticated
+  TO anon, authenticated
   USING (true);
 
-CREATE POLICY "Users can insert chapters"
+CREATE POLICY "Allow all INSERT on chapters"
   ON chapters FOR INSERT
-  TO authenticated
+  TO anon, authenticated
   WITH CHECK (true);
 
-CREATE POLICY "Users can update chapters"
+CREATE POLICY "Allow all UPDATE on chapters"
   ON chapters FOR UPDATE
-  TO authenticated
+  TO anon, authenticated
   USING (true)
   WITH CHECK (true);
 
-CREATE POLICY "Users can delete chapters"
+CREATE POLICY "Allow all DELETE on chapters"
   ON chapters FOR DELETE
-  TO authenticated
+  TO anon, authenticated
   USING (true);

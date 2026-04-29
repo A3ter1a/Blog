@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { callDeepSeek } from '@/lib/ai-client';
 
-// DeepSeek analysis endpoint — classifies OCR text into structured Problem fields
+// DeepSeek analysis endpoint — classifies OCR text into structured Problem array
 export async function POST(req: NextRequest) {
   try {
     const { ocrText, apiKey: clientApiKey, model: clientModel, chapterContext } = await req.json();
@@ -19,24 +19,30 @@ export async function POST(req: NextRequest) {
       ? `\nAvailable chapters: ${chapterList.join(', ')}. Suggest the best matching chapter from this list, or suggest a new chapter name if none match.`
       : '\nSuggest an appropriate chapter name for this problem.';
 
-    const systemPrompt = `You are a math problem classifier. Given an OCR-extracted text of an exam problem, output a JSON object with these fields:
+    const systemPrompt = `You are a math problem classifier. Given OCR-extracted text that may contain ONE or MULTIPLE math problems, output a JSON object with this structure:
 {
-  "question": "the problem question text",
-  "answer": "the answer/solution",
-  "explanation": "detailed explanation",
-  "type": "choice" | "fill" | "calculation" | "proof" | "proofEssay",
-  "difficulty": "easy" | "medium" | "hard",
-  "suggestedChapter": "chapter name or null",
-  "tips": "optional solving tips or null",
-  "options": [{"label": "A", "content": "option text"}],
-  "confidence": 0.0 to 1.0
+  "problems": [
+    {
+      "question": "problem text (preserve LaTeX $...$ or $$...$$)",
+      "answer": "answer/solution",
+      "explanation": "detailed solution steps",
+      "type": "choice" | "fill" | "calculation" | "proof" | "proofEssay",
+      "difficulty": "easy" | "medium" | "hard",
+      "suggestedChapter": "chapter name or null",
+      "tips": "optional solving tips or null",
+      "options": [{"label": "A", "content": "option text"}],
+      "confidence": 0.0 to 1.0
+    }
+  ]
 }
 Rules:
-- question/answer/explanation should preserve LaTeX formulas ($...$ or $$...$$)
+- Separate distinct problems into individual array items
+- If only one problem found, still wrap it in the problems array
+- Preserve ALL LaTeX formulas ($...$ or $$...$$) in question/answer/explanation
 - type: "choice" for multiple-choice, "fill" for fill-in-blank, "calculation" for computation/solving, "proof" for theorem proving, "proofEssay" for proof-based essays
 - difficulty: "easy" for basic exercises, "medium" for standard problems, "hard" for challenging/advanced
-- options array only for "choice" type, otherwise omit or empty
-- If unsure about any field, use your best guess and set confidence lower${chapterHint}`;
+- options array ONLY for "choice" type, otherwise omit or empty
+- If unsure about any field, use your best guess and set lower confidence${chapterHint}`;
 
     const { content, tokensUsed } = await callDeepSeek(
       apiKey,
@@ -60,18 +66,29 @@ Rules:
       );
     }
 
+    // Normalize: support both {problems:[...]} and legacy single-object responses
+    let problems: any[];
+    if (Array.isArray(parsed.problems)) {
+      problems = parsed.problems;
+    } else if (parsed.question || parsed.type) {
+      // Backward compatibility: AI returned a single problem object
+      problems = [parsed];
+    } else {
+      problems = [];
+    }
+
     return NextResponse.json({
-      result: {
-        question: parsed.question || '',
-        answer: parsed.answer || '',
-        explanation: parsed.explanation || '',
-        type: parsed.type || 'calculation',
-        difficulty: parsed.difficulty || 'medium',
-        suggestedChapter: parsed.suggestedChapter || null,
-        tips: parsed.tips || undefined,
-        options: Array.isArray(parsed.options) ? parsed.options : undefined,
-        confidence: typeof parsed.confidence === 'number' ? parsed.confidence : 0.5,
-      },
+      problems: problems.map((p: any) => ({
+        question: p.question || '',
+        answer: p.answer || '',
+        explanation: p.explanation || '',
+        type: p.type || 'calculation',
+        difficulty: p.difficulty || 'medium',
+        suggestedChapter: p.suggestedChapter || null,
+        tips: p.tips || undefined,
+        options: Array.isArray(p.options) ? p.options : undefined,
+        confidence: typeof p.confidence === 'number' ? p.confidence : 0.5,
+      })),
       tokensUsed,
       success: true,
     });

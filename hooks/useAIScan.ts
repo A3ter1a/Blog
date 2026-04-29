@@ -10,7 +10,7 @@ export interface ScanState {
   stage: ScanStage;
   progress: number; // 0-100
   ocrText?: string;
-  extractedProblem?: Partial<Problem>;
+  extractedProblems?: Partial<Problem>[];
   error?: string;
 }
 
@@ -50,6 +50,7 @@ export function useAIScan() {
           model: config.qwenModel,
           endpoint: config.qwenApiEndpoint || 'https://dashscope.aliyuncs.com/compatible-mode/v1',
         }),
+        signal: AbortSignal.timeout(120000),
       });
 
       if (!ocrRes.ok) {
@@ -75,6 +76,7 @@ export function useAIScan() {
           model: config.deepseekModel || 'deepseek-v4-flash',
           chapterContext,
         }),
+        signal: AbortSignal.timeout(120000),
       });
 
       if (!analyzeRes.ok) {
@@ -87,29 +89,38 @@ export function useAIScan() {
         recordDeepSeekUsage(analyzeData.tokensUsed);
       }
 
-      const result = analyzeData.result;
-      const extractedProblem: Partial<Problem> = {
-        type: result.type as ProblemType || 'calculation',
-        difficulty: result.difficulty as Difficulty || 'medium',
-        question: result.question || ocrText.split('\n')[0] || '',
-        answer: result.answer || '',
-        explanation: result.explanation || '',
-        tips: result.tips,
-        options: result.options,
-        tags: [result.suggestedChapter].filter(Boolean),
-      };
+      const rawProblems = Array.isArray(analyzeData.problems) ? analyzeData.problems : [];
+      const extractedProblems: Partial<Problem>[] = rawProblems.map((p: any) => ({
+        type: (p.type as ProblemType) || 'calculation',
+        difficulty: (p.difficulty as Difficulty) || 'medium',
+        question: p.question || '',
+        answer: p.answer || '',
+        explanation: p.explanation || '',
+        tips: p.tips,
+        options: Array.isArray(p.options) ? p.options : undefined,
+        tags: [p.suggestedChapter].filter(Boolean),
+        aiResult: {
+          rawQuestion: ocrText,
+          rawAnswer: '',
+          rawExplanation: '',
+          confidence: typeof p.confidence === 'number' ? p.confidence : 0.5,
+        },
+      }));
 
       setScanState({
         stage: 'complete',
         progress: 100,
         ocrText,
-        extractedProblem,
+        extractedProblems,
       });
     } catch (error: any) {
+      const msg = error.name === 'AbortError' || error.name === 'TimeoutError'
+        ? 'AI 扫描超时（超过 2 分钟），请重试或使用更小的图片'
+        : (error.message || '未知错误');
       setScanState({
         stage: 'error',
         progress: 0,
-        error: error.message || '未知错误',
+        error: msg,
       });
     }
   }, []);

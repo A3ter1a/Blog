@@ -65,21 +65,8 @@ export function ProblemEditor({ problems, onChange, noteId }: ProblemEditorProps
     onChange(problems.map(p => p.id === id ? { ...p, ...updates } : p));
   };
 
-  const handleAcceptAI = (problem: Problem) => {
-    setNewProblem({
-      type: problem.type,
-      difficulty: problem.difficulty,
-      question: problem.question,
-      answer: problem.answer,
-      explanation: problem.explanation,
-      tips: problem.tips,
-      options: problem.options,
-      tags: problem.tags,
-      chapterId: problem.chapterId,
-      aiStatus: 'complete' as const,
-      aiResult: problem.aiResult,
-    });
-    setShowAddForm(true);
+  const handleAcceptAI = (newProblems: Problem[]) => {
+    onChange([...problems, ...newProblems]);
   };
 
   return (
@@ -128,14 +115,6 @@ export function ProblemEditor({ problems, onChange, noteId }: ProblemEditorProps
             exit={{ opacity: 0, height: 0 }}
             className="bg-surface-container-low rounded-xl p-4 space-y-3 overflow-hidden"
           >
-            {/* AI extracted badge */}
-            {newProblem.aiStatus === 'complete' && (
-              <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-700">
-                <Sparkles className="w-3.5 h-3.5" />
-                AI 已提取，你可以直接在下方编辑修改
-              </div>
-            )}
-
             {/* Chapter Selector */}
             <div>
               <label className="text-xs text-on-surface-variant/60 mb-1 block">章节分类</label>

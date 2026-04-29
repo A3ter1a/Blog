@@ -28,27 +28,24 @@ CREATE INDEX IF NOT EXISTS idx_flashcards_note_id ON flashcards(note_id);
 -- Row Level Security (RLS) policies
 ALTER TABLE flashcards ENABLE ROW LEVEL SECURITY;
 
--- Allow all authenticated users to read flashcards
-CREATE POLICY "Users can view all flashcards"
+-- Allow anon (no auth used in this project) + authenticated
+CREATE POLICY "Allow all SELECT on flashcards"
   ON flashcards FOR SELECT
-  TO authenticated
+  TO anon, authenticated
   USING (true);
 
--- Allow all authenticated users to insert flashcards
-CREATE POLICY "Users can insert flashcards"
+CREATE POLICY "Allow all INSERT on flashcards"
   ON flashcards FOR INSERT
-  TO authenticated
+  TO anon, authenticated
   WITH CHECK (true);
 
--- Allow all authenticated users to update flashcards
-CREATE POLICY "Users can update flashcards"
+CREATE POLICY "Allow all UPDATE on flashcards"
   ON flashcards FOR UPDATE
-  TO authenticated
+  TO anon, authenticated
   USING (true)
   WITH CHECK (true);
 
--- Allow all authenticated users to delete flashcards
-CREATE POLICY "Users can delete flashcards"
+CREATE POLICY "Allow all DELETE on flashcards"
   ON flashcards FOR DELETE
-  TO authenticated
+  TO anon, authenticated
   USING (true);

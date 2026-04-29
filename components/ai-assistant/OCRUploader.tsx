@@ -2,7 +2,7 @@
 
 import { useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Upload, X, Image as ImageIcon, Scan } from 'lucide-react';
+import { Upload, X, Scan } from 'lucide-react';
 import { fileToBase64 } from '@/lib/utils';
 import { AIProgressIndicator } from './AIProgressIndicator';
 import { AIExtractionResult } from './AIExtractionResult';
@@ -12,7 +12,7 @@ import type { Problem } from '@/lib/types';
 interface OCRUploaderProps {
   isOpen: boolean;
   onClose: () => void;
-  onAccept: (problem: Problem) => void;
+  onAccept: (problems: Problem[]) => void;
   chapterContext?: string[];
 }
 
@@ -37,23 +37,31 @@ export function OCRUploader({ isOpen, onClose, onAccept, chapterContext }: OCRUp
     }
   };
 
-  const handleAccept = () => {
-    if (scanState.extractedProblem) {
-      const problem: Problem = {
-        id: crypto.randomUUID(),
-        type: scanState.extractedProblem.type || 'calculation',
-        difficulty: scanState.extractedProblem.difficulty || 'medium',
-        question: scanState.extractedProblem.question || '',
-        answer: scanState.extractedProblem.answer || '',
-        explanation: scanState.extractedProblem.explanation || '',
-        tips: scanState.extractedProblem.tips,
-        options: scanState.extractedProblem.options,
-        tags: scanState.extractedProblem.tags || [],
-        aiStatus: 'complete',
-      };
-      onAccept(problem);
-      handleClose();
-    }
+  const buildProblem = (partial: Partial<Problem>): Problem => ({
+    id: crypto.randomUUID(),
+    type: partial.type || 'calculation',
+    difficulty: partial.difficulty || 'medium',
+    question: partial.question || '',
+    answer: partial.answer || '',
+    explanation: partial.explanation || '',
+    tips: partial.tips,
+    options: partial.options,
+    tags: partial.tags || [],
+    aiStatus: 'complete',
+    aiResult: partial.aiResult,
+  });
+
+  const handleAcceptAll = () => {
+    const problems = scanState.extractedProblems || [];
+    if (problems.length === 0) return;
+    onAccept(problems.map(buildProblem));
+    handleClose();
+  };
+
+  const handleAcceptOne = (index: number) => {
+    const p = scanState.extractedProblems?.[index];
+    if (!p) return;
+    onAccept([buildProblem(p)]);
   };
 
   const handleClose = () => {
@@ -147,10 +155,11 @@ export function OCRUploader({ isOpen, onClose, onAccept, chapterContext }: OCRUp
             )}
 
             {/* Results */}
-            {scanState.stage === 'complete' && scanState.extractedProblem && (
+            {scanState.stage === 'complete' && scanState.extractedProblems && scanState.extractedProblems.length > 0 && (
               <AIExtractionResult
-                extracted={scanState.extractedProblem as Problem}
-                onAccept={handleAccept}
+                extractedProblems={scanState.extractedProblems}
+                onAcceptAll={handleAcceptAll}
+                onAcceptOne={handleAcceptOne}
                 onRetry={resetScan}
               />
             )}
