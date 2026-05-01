@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ChevronDown, ChevronUp, Eye, EyeOff, Lightbulb, Sparkles, Layers, Pencil, Check, X } from "lucide-react";
+import { ChevronDown, ChevronUp, Eye, EyeOff, Lightbulb, Pencil, Check, X } from "lucide-react";
 import type { Problem, ProblemType, Difficulty } from "@/lib/types";
 import { problemTypeMap, difficultyMap, difficultyColorMap } from "@/lib/types";
 import { MarkdownContent } from "@/components/ui/MarkdownContent";
@@ -76,57 +76,55 @@ export function ProblemCard({ problem, index, noteId, onUpdate }: ProblemCardPro
       transition={{ delay: index * 0.1 }}
       className="bg-surface-container-lowest rounded-xl shadow-ambient overflow-hidden scroll-mt-24"
     >
-      {/* Header: Number + Tags */}
-      <div className="flex items-center justify-between p-4 border-b border-outline-variant/10">
-        <div className="flex items-center gap-3">
-          <span className="w-8 h-8 rounded-full editorial-gradient text-on-primary text-sm font-bold flex items-center justify-center">
-            {index + 1}
-          </span>
-          <div className="flex gap-2">
-            {isEditing ? (
-              <>
-                <select
-                  value={editData.type}
-                  onChange={(e) => setEditData(prev => ({ ...prev, type: e.target.value as ProblemType }))}
-                  className={selectClass}
-                >
-                  {(Object.entries(problemTypeMap) as [ProblemType, string][]).map(([k, v]) => (
-                    <option key={k} value={k}>{v}</option>
-                  ))}
-                </select>
-                <select
-                  value={editData.difficulty}
-                  onChange={(e) => setEditData(prev => ({ ...prev, difficulty: e.target.value as Difficulty }))}
-                  className={selectClass}
-                >
-                  {(Object.entries(difficultyMap) as [Difficulty, string][]).map(([k, v]) => (
-                    <option key={k} value={k}>{v}</option>
-                  ))}
-                </select>
-              </>
-            ) : (
-              <>
-                <span className="px-2 py-1 rounded-md bg-primary-container/20 text-primary-container text-xs font-medium">
-                  {problemTypeMap[problem.type]}
-                </span>
-                <span className={`px-2 py-1 rounded-md text-xs font-medium ${difficultyColorMap[problem.difficulty]}`}>
-                  {difficultyMap[problem.difficulty]}
-                </span>
-                {problem.aiStatus === 'complete' && (
-                  <span className="px-2 py-1 rounded-md bg-amber-100 text-amber-700 text-xs font-medium flex items-center gap-1">
-                    <Sparkles className="w-3 h-3" /> AI
-                  </span>
-                )}
-                {problem.chapterId && (
-                  <span className="px-2 py-1 rounded-md bg-surface-container-highest text-on-surface-variant text-xs font-medium flex items-center gap-1">
-                    <Layers className="w-3 h-3" /> 章节
-                  </span>
-                )}
-              </>
-            )}
-          </div>
+      {/* Header: Number + Question + Tags */}
+      <div className="flex items-center gap-3 p-4 border-b border-outline-variant/10">
+        <span className="flex-shrink-0 w-7 h-7 rounded-full editorial-gradient text-on-primary text-xs font-bold flex items-center justify-center">
+          {index + 1}
+        </span>
+        <div className="flex-1 min-w-0 text-sm text-on-surface truncate">
+          {problem.question.replace(/[$#*`_\[\]()~>\\]/g, '').substring(0, 60)}
+          {problem.question.length > 60 ? '...' : ''}
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 flex-shrink-0">
+          {isEditing ? (
+            <>
+              <select
+                value={editData.type}
+                onChange={(e) => setEditData(prev => ({ ...prev, type: e.target.value as ProblemType }))}
+                className={selectClass}
+              >
+                {(Object.entries(problemTypeMap) as [ProblemType, string][]).map(([k, v]) => (
+                  <option key={k} value={k}>{v}</option>
+                ))}
+              </select>
+              <select
+                value={editData.difficulty}
+                onChange={(e) => setEditData(prev => ({ ...prev, difficulty: e.target.value as Difficulty }))}
+                className={selectClass}
+              >
+                {(Object.entries(difficultyMap) as [Difficulty, string][]).map(([k, v]) => (
+                  <option key={k} value={k}>{v}</option>
+                ))}
+              </select>
+            </>
+          ) : (
+            <>
+              <span className="px-2 py-0.5 rounded bg-primary-container/20 text-primary-container text-xs font-medium whitespace-nowrap">
+                {problemTypeMap[problem.type]}
+              </span>
+              <span className={`px-2 py-0.5 rounded text-xs font-medium whitespace-nowrap ${difficultyColorMap[problem.difficulty]}`}>
+                {difficultyMap[problem.difficulty]}
+              </span>
+              {problem.tags.length > 0 && (
+                <span className="text-xs text-on-surface-variant/60 whitespace-nowrap">
+                  {problem.tags.slice(0, 2).join(' · ')}
+                  {problem.tags.length > 2 ? '...' : ''}
+                </span>
+              )}
+            </>
+          )}
+        </div>
+        <div className="flex items-center gap-2 flex-shrink-0 ml-2">
           {onUpdate && !isEditing && (
             <button
               onClick={handleStartEdit}
@@ -135,9 +133,6 @@ export function ProblemCard({ problem, index, noteId, onUpdate }: ProblemCardPro
             >
               <Pencil className="w-4 h-4" />
             </button>
-          )}
-          {problem.source && !isEditing && (
-            <span className="text-xs text-on-surface-variant/60">{problem.source}</span>
           )}
         </div>
       </div>
