@@ -242,7 +242,7 @@ export default function CreatePage() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.15 }}
-          className="mb-6"
+          className="mb-8"
         >
           <label className="block text-sm font-medium text-on-surface-variant mb-3">
             标题
@@ -261,7 +261,7 @@ export default function CreatePage() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.16 }}
-          className="mb-6"
+          className="mb-8"
         >
           <label className="block text-sm font-medium text-on-surface-variant mb-3">
             封面图片（可选）
@@ -364,22 +364,25 @@ export default function CreatePage() {
           className="mb-8"
         >
           {isProblem ? (
-            <div className="space-y-3">
-              <div className="bg-surface-container-low rounded-xl p-4">
-                <ProblemEditor
-                  problems={problems}
-                  onChange={setProblems}
-                  noteId={isEditMode ? editingId : undefined}
-                />
+            <>
+              <div className="flex items-center justify-between mb-3">
+                <label className="text-sm font-medium text-on-surface-variant">
+                  题目
+                </label>
+                <button
+                  onClick={() => setShowChapterManager(true)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-surface-container-low text-on-surface-variant hover:bg-surface-container-high transition-all text-xs font-medium"
+                >
+                  <FolderTree className="w-3.5 h-3.5" />
+                  章节管理
+                </button>
               </div>
-              <button
-                onClick={() => setShowChapterManager(true)}
-                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-surface-container-low text-on-surface-variant hover:bg-surface-container-high transition-all text-sm font-medium"
-              >
-                <FolderTree className="w-4 h-4" />
-                章节管理
-              </button>
-            </div>
+              <ProblemEditor
+                problems={problems}
+                onChange={setProblems}
+                noteId={isEditMode ? editingId : undefined}
+              />
+            </>
           ) : (
             <>
               <div className="flex items-center justify-between mb-3">
