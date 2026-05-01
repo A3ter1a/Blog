@@ -38,10 +38,13 @@ export function preprocessLatex(content: string): string {
       segments[i] = segments[i]
         .replace(/(?<!\\)\[/g, '\\[')
         .replace(/(?<!\\)\]/g, '\\]')
-        // Replace \{ → \lbrace and \} → \rbrace to prevent
-        // markdown-it from stripping the backslash (CommonMark escape)
-        .replace(/\\\{/g, '\\lbrace')
-        .replace(/\\\}/g, '\\rbrace');
+        // Replace \{ → \lbrace{} and \} → \rbrace{} to prevent
+        // markdown-it from stripping the backslash (CommonMark escape).
+        // The {} ensures KaTeX treats \lbrace/\rbrace as delimiters,
+        // not as commands that absorb following text (e.g. \lbracea → \lbrace{}a).
+        // Also works with \left\{ since \left\lbrace{} is valid KaTeX.
+        .replace(/\\\{/g, '\\lbrace{}')
+        .replace(/\\\}/g, '\\rbrace{}');
     } else {
       // Non-math content: convert \[ \] and \( \) to $$ $$ and $ $
       // These are guaranteed to be outside math spans
