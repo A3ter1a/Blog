@@ -18,8 +18,8 @@ export function AIExtractionResult({ extractedProblems, onAcceptAll, onAcceptOne
   const [acceptedIndices, setAcceptedIndices] = useState<Set<number>>(new Set());
 
   const handleAcceptOne = (index: number) => {
-    setAcceptedIndices(prev => new Set(prev).add(index));
     onAcceptOne(index);
+    setAcceptedIndices(prev => new Set(prev).add(index));
   };
 
   const allAccepted = extractedProblems.length > 0 && acceptedIndices.size >= extractedProblems.length;

@@ -7,8 +7,8 @@ interface ProblemListProps {
 }
 
 export function ProblemList({ problems }: ProblemListProps) {
-  const scrollToProblem = (index: number) => {
-    const element = document.getElementById(`problem-${index}`);
+  const scrollToProblem = (problemId: string) => {
+    const element = document.getElementById(`problem-${problemId}`);
     if (element) {
       element.scrollIntoView({ behavior: "smooth", block: "start" });
     }
@@ -34,7 +34,7 @@ export function ProblemList({ problems }: ProblemListProps) {
           return (
             <button
               key={problem.id}
-              onClick={() => scrollToProblem(index + 1)}
+              onClick={() => scrollToProblem(problem.id)}
               className={`flex flex-col items-center justify-center p-3 rounded-lg transition-all duration-200 group ${
                 difficultyColors[problem.difficulty] || "bg-surface-container-high text-on-surface-variant"
               }`}

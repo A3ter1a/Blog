@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Upload, X, Scan, Image as ImageIcon } from 'lucide-react';
+import { Upload, X, Scan } from 'lucide-react';
 import { fileToBase64 } from '@/lib/utils';
 import { AIProgressIndicator } from './AIProgressIndicator';
 import { AIExtractionResult } from './AIExtractionResult';
@@ -25,20 +25,23 @@ export function OCRUploader({ isOpen, onClose, onAccept, chapterContext }: OCRUp
     const files = Array.from(e.target.files || []);
     if (files.length === 0) return;
 
-    try {
-      const urls: string[] = [];
-      const base64s: string[] = [];
+    const urls: string[] = [];
+    const base64s: string[] = [];
 
+    try {
       for (const file of files) {
         const base64 = await fileToBase64(file);
         base64s.push(base64);
         urls.push(URL.createObjectURL(file));
       }
 
+      // Revoke old preview URLs before replacing
+      previewUrls.forEach(url => URL.revokeObjectURL(url));
       setPreviewUrls(urls);
       await startScan(base64s, chapterContext);
     } catch (err: any) {
       console.error('OCR file processing failed:', err);
+      urls.forEach(url => URL.revokeObjectURL(url));
       resetScan();
       setPreviewUrls([]);
     }
@@ -72,15 +75,21 @@ export function OCRUploader({ isOpen, onClose, onAccept, chapterContext }: OCRUp
   };
 
   const handleClose = () => {
+    previewUrls.forEach(url => URL.revokeObjectURL(url));
     setPreviewUrls([]);
     resetScan();
     onClose();
   };
 
+  // Cleanup blob URLs on unmount
+  useEffect(() => {
+    return () => { previewUrls.forEach(url => URL.revokeObjectURL(url)); };
+  }, [previewUrls]);
+
   if (!isOpen) return null;
 
   const isProcessing = scanState.stage !== 'idle' && scanState.stage !== 'complete' && scanState.stage !== 'error';
-  const currentImage = scanState.currentImage || 0;
+  const currentImage = scanState.currentImage || 1;
   const totalImages = scanState.totalImages || 0;
 
   return (

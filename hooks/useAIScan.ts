@@ -48,14 +48,13 @@ export function useAIScan() {
     if (N === 0) return;
 
     try {
-      setScanState({ stage: 'uploading', progress: 5, currentImage: 0, totalImages: N });
+      setScanState({ stage: 'uploading', progress: 5, currentImage: 1, totalImages: N });
 
       // ── Phase 1+2: All images processed in parallel ──
       // Each pipeline: OCR → analyze. N pipelines run concurrently.
       // Total time ≈ max(slowest pipeline) instead of sum.
       let ocrDone = 0;
       let analyzeDone = 0;
-      let latestOcrText = '';
 
       const pipelines = imageBase64s.map(async (imgBase64, i) => {
         // Step A: OCR
@@ -79,7 +78,6 @@ export function useAIScan() {
         const ocrData = await ocrRes.json();
         const rawText = ocrData.text || '';
         const ocrText = truncateText(rawText, MAX_OCR_LENGTH);
-        latestOcrText = ocrText;
         recordQwenUsage(1);
 
         ocrDone++;
@@ -88,7 +86,7 @@ export function useAIScan() {
           progress: 5 + Math.round((ocrDone / N) * 45),
           currentImage: ocrDone,
           totalImages: N,
-          ocrText: latestOcrText,
+          ocrText,
         }));
 
         // Step B: Analyze
@@ -148,7 +146,6 @@ export function useAIScan() {
       setScanState({
         stage: 'complete',
         progress: 100,
-        ocrText: latestOcrText,
         extractedProblems: allProblems,
       });
     } catch (error: any) {

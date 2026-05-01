@@ -20,7 +20,7 @@ export function ProblemCard({ problem, index, noteId }: ProblemCardProps) {
 
   return (
     <motion.div
-      id={`problem-${index + 1}`}
+      id={`problem-${problem.id}`}
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: index * 0.1 }}
