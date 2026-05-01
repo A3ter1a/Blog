@@ -404,7 +404,7 @@ export default function NoteReaderPage() {
                             </span>
                           </div>
                         )}
-                        <div className="space-y-3">
+                        <div className="space-y-6">
                           {group.problems.map((problem, index) => (
                             <ProblemCard
                               key={problem.id}
@@ -412,7 +412,6 @@ export default function NoteReaderPage() {
                               index={allProblems.indexOf(problem)}
                               noteId={note?.id}
                               onUpdate={handleUpdateProblem}
-                              compact
                             />
                           ))}
                         </div>
