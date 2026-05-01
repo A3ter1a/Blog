@@ -393,7 +393,7 @@ export default function NoteReaderPage() {
                             <ProblemCard
                               key={problem.id}
                               problem={problem}
-                              index={allProblems.indexOf(problem) + 1}
+                              index={allProblems.indexOf(problem)}
                             />
                           ))}
                         </div>
@@ -406,7 +406,7 @@ export default function NoteReaderPage() {
                       <ProblemCard
                         key={problem.id}
                         problem={problem}
-                        index={allProblems.indexOf(problem) + 1}
+                        index={allProblems.indexOf(problem)}
                       />
                     ))}
                   </div>
@@ -581,7 +581,7 @@ export default function NoteReaderPage() {
                       </div>
                     )}
                     {filteredProblems.map((problem, index) => (
-                      <ProblemCard key={problem.id} problem={problem} index={allProblems.indexOf(problem) + 1} />
+                      <ProblemCard key={problem.id} problem={problem} index={allProblems.indexOf(problem)} />
                     ))}
                   </div>
                 ) : (
