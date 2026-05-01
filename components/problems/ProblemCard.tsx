@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ChevronDown, ChevronUp, Eye, EyeOff, Lightbulb, Pencil, Check, X } from "lucide-react";
+import { ChevronDown, ChevronUp, Eye, EyeOff, Lightbulb, Pencil, Check, X, Sparkles, Loader2 } from "lucide-react";
 import type { Problem, ProblemType, Difficulty } from "@/lib/types";
 import { problemTypeMap, difficultyMap, difficultyColorMap } from "@/lib/types";
 import { MarkdownContent } from "@/components/ui/MarkdownContent";
@@ -18,6 +18,15 @@ export function ProblemCard({ problem, index, noteId, onUpdate }: ProblemCardPro
   const [showAnswer, setShowAnswer] = useState(false);
   const [showExplanation, setShowExplanation] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
+
+  // AI review state
+  const [isReviewing, setIsReviewing] = useState(false);
+  const [reviewResult, setReviewResult] = useState<{
+    summary: string;
+    hasIssues: boolean;
+    suggestions: { field: string; issue: string; suggestion: string }[];
+  } | null>(null);
+  const [reviewError, setReviewError] = useState<string | null>(null);
 
   // Edit form state
   const [editData, setEditData] = useState({
@@ -61,6 +70,93 @@ export function ProblemCard({ problem, index, noteId, onUpdate }: ProblemCardPro
 
   const handleCancel = () => {
     setIsEditing(false);
+    setReviewResult(null);
+    setReviewError(null);
+  };
+
+  const handleAIReview = async () => {
+    setReviewResult(null);
+    setReviewError(null);
+    setIsReviewing(true);
+
+    try {
+      const raw = localStorage.getItem('ai-config');
+      const config = raw ? JSON.parse(raw) : null;
+      if (!config?.deepseekApiKey) {
+        setReviewError('请先在设置中配置 DeepSeek API Key');
+        setIsReviewing(false);
+        return;
+      }
+
+      const res = await fetch('/api/ai/review', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          problem: {
+            question: editData.question,
+            answer: editData.answer,
+            explanation: editData.explanation,
+            type: editData.type,
+            difficulty: editData.difficulty,
+            tags: editData.tags.split(/[,，]/).map((t: string) => t.trim()).filter(Boolean),
+            tips: editData.tips || undefined,
+          },
+          apiKey: config.deepseekApiKey,
+          model: config.deepseekModel,
+        }),
+        signal: AbortSignal.timeout(180000),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || 'AI 检查失败');
+      }
+
+      const data = await res.json();
+      setReviewResult(data.review);
+    } catch (error: any) {
+      const msg = error.name === 'AbortError' || error.name === 'TimeoutError'
+        ? 'AI 检查超时，请重试'
+        : (error.message || '未知错误');
+      setReviewError(msg);
+    } finally {
+      setIsReviewing(false);
+    }
+  };
+
+  const handleApplySuggestion = (suggestion: { field: string; suggestion: string }) => {
+    switch (suggestion.field) {
+      case 'question':
+      case 'answer':
+      case 'explanation':
+      case 'tips':
+        setEditData(prev => ({ ...prev, [suggestion.field]: suggestion.suggestion }));
+        break;
+      case 'type':
+        if (['choice', 'fill', 'calculation', 'proof', 'proofEssay'].includes(suggestion.suggestion)) {
+          setEditData(prev => ({ ...prev, type: suggestion.suggestion as ProblemType }));
+        }
+        break;
+      case 'difficulty':
+        if (['easy', 'medium', 'hard'].includes(suggestion.suggestion)) {
+          setEditData(prev => ({ ...prev, difficulty: suggestion.suggestion as Difficulty }));
+        }
+        break;
+      case 'tags':
+        setEditData(prev => ({ ...prev, tags: suggestion.suggestion }));
+        break;
+    }
+  };
+
+  const fieldLabelMap: Record<string, string> = {
+    question: '题目',
+    answer: '答案',
+    explanation: '解析',
+    tips: '提示',
+    type: '题型',
+    difficulty: '难度',
+    tags: '标签',
+    general: '综合',
   };
 
   const inputClass = "w-full px-3 py-2 bg-surface-container rounded-lg text-sm text-on-surface outline-none focus:ring-2 focus:ring-primary/20 resize-none placeholder:text-on-surface-variant/40";
@@ -197,23 +293,86 @@ export function ProblemCard({ problem, index, noteId, onUpdate }: ProblemCardPro
             </div>
           </div>
 
-          {/* Save / Cancel */}
-          <div className="flex gap-2">
-            <button
-              onClick={handleCancel}
-              className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-surface-container text-on-surface-variant text-sm hover:bg-surface-container-high transition-colors"
-            >
-              <X className="w-4 h-4" />
-              取消
-            </button>
-            <button
-              onClick={handleSave}
-              disabled={!editData.question.trim()}
-              className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg editorial-gradient text-on-primary text-sm font-medium disabled:opacity-40 transition-all"
-            >
-              <Check className="w-4 h-4" />
-              保存
-            </button>
+          {/* AI Review + Save / Cancel */}
+          <div className="space-y-3">
+            {/* Save / Cancel row */}
+            <div className="flex gap-2">
+              <button
+                onClick={handleCancel}
+                className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-surface-container text-on-surface-variant text-sm hover:bg-surface-container-high transition-colors"
+              >
+                <X className="w-4 h-4" />
+                取消
+              </button>
+              <button
+                onClick={handleAIReview}
+                disabled={isReviewing || !editData.question.trim()}
+                className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-700 text-sm hover:bg-amber-100 transition-colors disabled:opacity-40"
+                title="AI 智能检查"
+              >
+                {isReviewing ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Sparkles className="w-4 h-4" />
+                )}
+                AI 检查
+              </button>
+              <button
+                onClick={handleSave}
+                disabled={!editData.question.trim()}
+                className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg editorial-gradient text-on-primary text-sm font-medium disabled:opacity-40 transition-all"
+              >
+                <Check className="w-4 h-4" />
+                保存
+              </button>
+            </div>
+
+            {/* Review Error */}
+            {reviewError && (
+              <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-red-600 text-xs">
+                {reviewError}
+              </div>
+            )}
+
+            {/* Review Result */}
+            {reviewResult && (
+              <div className="p-4 rounded-lg bg-amber-50 border border-amber-200 space-y-3">
+                <div className="flex items-start gap-2">
+                  <Sparkles className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <span className="text-sm font-medium text-amber-800">AI 审查结果</span>
+                    <p className="text-xs text-amber-600 mt-0.5">{reviewResult.summary}</p>
+                  </div>
+                </div>
+                {reviewResult.hasIssues && reviewResult.suggestions.length > 0 && (
+                  <div className="space-y-2">
+                    {reviewResult.suggestions.map((s, i) => (
+                      <div key={i} className="p-3 rounded-lg bg-white/60 border border-amber-100">
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-xs font-medium text-amber-700">
+                            [{fieldLabelMap[s.field] || s.field}]
+                          </span>
+                          {['question', 'answer', 'explanation', 'tips', 'type', 'difficulty', 'tags'].includes(s.field) && (
+                            <button
+                              onClick={() => handleApplySuggestion(s)}
+                              className="text-xs text-primary hover:text-primary/80 font-medium transition-colors"
+                            >
+                              应用建议
+                            </button>
+                          )}
+                        </div>
+                        <p className="text-xs text-amber-600">{s.issue}</p>
+                        {s.suggestion && (
+                          <p className="text-xs text-green-700 mt-1 bg-green-50/50 rounded px-2 py-1">
+                            建议值: {s.suggestion.length > 80 ? s.suggestion.slice(0, 80) + '...' : s.suggestion}
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       ) : (

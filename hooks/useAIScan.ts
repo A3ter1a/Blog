@@ -34,10 +34,15 @@ function truncateText(text: string, maxLen: number): string {
   return text.slice(0, maxLen) + '\n...(文本过长已截断)';
 }
 
+export interface ChapterContextItem {
+  id: string;
+  name: string;
+}
+
 export function useAIScan() {
   const [scanState, setScanState] = useState<ScanState>({ stage: 'idle', progress: 0 });
 
-  const startScan = useCallback(async (imageBase64s: string[], chapterContext?: string[]) => {
+  const startScan = useCallback(async (imageBase64s: string[], chapterContext?: ChapterContextItem[]) => {
     const config = getAIConfig();
     if (!config) {
       setScanState({ stage: 'error', progress: 0, error: '请先在设置中配置 AI API Key' });
@@ -46,6 +51,9 @@ export function useAIScan() {
 
     const N = imageBase64s.length;
     if (N === 0) return;
+
+    // Extract chapter names for the API prompt
+    const chapterNames = chapterContext?.map(c => c.name) || [];
 
     try {
       setScanState({ stage: 'uploading', progress: 5, currentImage: 1, totalImages: N });
@@ -97,7 +105,7 @@ export function useAIScan() {
             ocrText,
             apiKey: config.deepseekApiKey,
             model: config.deepseekModel || 'deepseek-v4-flash',
-            chapterContext,
+            chapterContext: chapterNames,
           }),
           signal: AbortSignal.timeout(FETCH_TIMEOUT),
         });
@@ -122,22 +130,36 @@ export function useAIScan() {
         }));
 
         const rawProblems = Array.isArray(analyzeData.problems) ? analyzeData.problems : [];
-        return rawProblems.map((p: any): Partial<Problem> => ({
-          type: (p.type as ProblemType) || 'calculation',
-          difficulty: (p.difficulty as Difficulty) || 'medium',
-          question: p.question || '',
-          answer: p.answer || '',
-          explanation: p.explanation || '',
-          tips: p.tips,
-          options: Array.isArray(p.options) ? p.options : undefined,
-          tags: [p.suggestedChapter].filter(Boolean),
-          aiResult: {
-            rawQuestion: ocrText,
-            rawAnswer: '',
-            rawExplanation: '',
-            confidence: typeof p.confidence === 'number' ? p.confidence : 0.5,
-          },
-        }));
+        return rawProblems.map((p: any): Partial<Problem> => {
+          // Resolve suggestedChapter name → chapterId
+          let chapterId: string | undefined;
+          if (p.suggestedChapter && chapterContext) {
+            const name = p.suggestedChapter.trim();
+            const match = chapterContext.find(
+              c => c.name === name ||
+                   c.name.includes(name) ||
+                   name.includes(c.name)
+            );
+            if (match) chapterId = match.id;
+          }
+          return {
+            type: (p.type as ProblemType) || 'calculation',
+            difficulty: (p.difficulty as Difficulty) || 'medium',
+            question: p.question || '',
+            answer: p.answer || '',
+            explanation: p.explanation || '',
+            tips: p.tips,
+            options: Array.isArray(p.options) ? p.options : undefined,
+            tags: [],
+            chapterId,
+            aiResult: {
+              rawQuestion: ocrText,
+              rawAnswer: '',
+              rawExplanation: '',
+              confidence: typeof p.confidence === 'number' ? p.confidence : 0.5,
+            },
+          };
+        });
       });
 
       const results = await Promise.all(pipelines);

@@ -8,7 +8,7 @@ import { ArrowLeft, Calendar, Tag, Edit2, Trash2, AlertTriangle, ChevronDown, Ch
 import { notesApi } from "@/lib/supabase";
 import { chaptersApi } from "@/lib/chapters-api";
 import { subjectMap, typeMap, Note, Chapter, Problem } from "@/lib/types";
-import { estimateReadingTime } from "@/lib/utils";
+import { estimateReadingTime, getDescendantIds } from "@/lib/utils";
 import { Playlist } from "@/components/video/Playlist";
 import { VideoPlayer } from "@/components/video/VideoPlayer";
 import { ProblemCard } from "@/components/problems/ProblemCard";
@@ -70,30 +70,36 @@ export default function NoteReaderPage() {
 
   // Derive filtered & grouped problems for chapter support
   const allProblems = note?.problems || [];
-  const filteredProblems = selectedChapterId
-    ? allProblems.filter(p => p.chapterId === selectedChapterId)
-    : allProblems;
+  const filteredProblems = useMemo(() => {
+    if (!selectedChapterId) return allProblems;
+    const descendantIds = getDescendantIds(selectedChapterId, chapters);
+    return allProblems.filter(p => p.chapterId && descendantIds.has(p.chapterId));
+  }, [allProblems, chapters, selectedChapterId]);
   const selectedChapter = chapters.find(c => c.id === selectedChapterId);
 
-  // Group problems by chapter when no filter is active
+  // Group problems by top-level chapter hierarchy when no filter is active
   const chapterGroups = useMemo(() => {
     if (selectedChapterId || chapters.length === 0) return null;
     const groups: { chapter: Chapter | undefined; problems: Problem[] }[] = [];
     const chapterMap = new Map(chapters.map(c => [c.id, c]));
-    const seenChapters = new Set<string>();
+    const assignedProblemIds = new Set<string>();
 
-    allProblems.forEach(p => {
-      if (p.chapterId && chapterMap.has(p.chapterId)) {
-        if (!seenChapters.has(p.chapterId)) {
-          seenChapters.add(p.chapterId);
-          groups.push({ chapter: chapterMap.get(p.chapterId), problems: [] });
-        }
-        groups.find(g => g.chapter?.id === p.chapterId)?.problems.push(p);
+    // First group by top-level chapters (with descendant problems)
+    const topLevel = chapters.filter(c => !c.parentId);
+    topLevel.forEach(chapter => {
+      const descendantIds = getDescendantIds(chapter.id, chapters);
+      const chapterProblems = allProblems.filter(p => {
+        if (!p.chapterId || !descendantIds.has(p.chapterId)) return false;
+        assignedProblemIds.add(p.id);
+        return true;
+      });
+      if (chapterProblems.length > 0) {
+        groups.push({ chapter, problems: chapterProblems });
       }
     });
 
-    // Ungrouped problems
-    const ungrouped = allProblems.filter(p => !p.chapterId || !chapterMap.has(p.chapterId));
+    // Ungrouped problems (no chapterId or chapter not in hierarchy)
+    const ungrouped = allProblems.filter(p => !assignedProblemIds.has(p.id));
     if (ungrouped.length > 0) {
       groups.push({ chapter: undefined, problems: ungrouped });
     }

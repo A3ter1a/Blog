@@ -1,13 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence, Reorder } from "framer-motion";
 import { Plus, X, ChevronDown, ChevronUp, GripVertical, Sparkles, Scan } from "lucide-react";
-import { Problem, ProblemType, Difficulty, problemTypeMap, difficultyMap, difficultyColorMap } from "@/lib/types";
+import { Problem, ProblemType, Difficulty, problemTypeMap, difficultyMap, difficultyColorMap, Chapter } from "@/lib/types";
+import { chaptersApi } from "@/lib/chapters-api";
 import { ChapterSelector } from "@/components/chapters/ChapterSelector";
 import { ProblemCompare } from "./ProblemCompare";
 import { ProblemPreview } from "./ProblemPreview";
 import { OCRUploader } from "@/components/ai-assistant/OCRUploader";
+import type { ChapterContextItem } from "@/hooks/useAIScan";
 
 interface ProblemEditorProps {
   problems: Problem[];
@@ -26,6 +28,16 @@ export function ProblemEditor({ problems, onChange, noteId }: ProblemEditorProps
     explanation: "",
     tags: [],
   });
+
+  // Load chapter context for AI auto-classification
+  const [chapterContext, setChapterContext] = useState<ChapterContextItem[]>([]);
+  useEffect(() => {
+    if (noteId) {
+      chaptersApi.getByNoteId(noteId).then(chapters => {
+        setChapterContext(chapters.map(c => ({ id: c.id, name: c.name })));
+      }).catch(() => {});
+    }
+  }, [noteId]);
 
   const handleAdd = () => {
     if (!newProblem.question?.trim()) return;
@@ -228,6 +240,7 @@ export function ProblemEditor({ problems, onChange, noteId }: ProblemEditorProps
         isOpen={showAIScan}
         onClose={() => setShowAIScan(false)}
         onAccept={handleAcceptAI}
+        chapterContext={chapterContext}
       />
     </div>
   );

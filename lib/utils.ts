@@ -1,3 +1,30 @@
+import type { Chapter } from "@/lib/types";
+
+/**
+ * Get all descendant chapter IDs for a given chapter (including itself).
+ * Traverses the parentId tree recursively with cycle protection.
+ */
+export function getDescendantIds(chapterId: string, chapters: Chapter[]): Set<string> {
+  const result = new Set<string>();
+  const visited = new Set<string>();
+  const queue = [chapterId];
+
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    if (visited.has(current)) continue;
+    visited.add(current);
+    result.add(current);
+
+    for (const ch of chapters) {
+      if (ch.parentId === current && !visited.has(ch.id)) {
+        queue.push(ch.id);
+      }
+    }
+  }
+
+  return result;
+}
+
 /**
  * Preprocess LaTeX content to ensure proper delimiter format.
  * - Removes spaces between $ and formula content ($ formula $ → $formula$)

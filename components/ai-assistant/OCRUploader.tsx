@@ -6,14 +6,14 @@ import { Upload, X, Scan } from 'lucide-react';
 import { fileToBase64 } from '@/lib/utils';
 import { AIProgressIndicator } from './AIProgressIndicator';
 import { AIExtractionResult } from './AIExtractionResult';
-import { useAIScan } from '@/hooks/useAIScan';
+import { useAIScan, type ChapterContextItem } from '@/hooks/useAIScan';
 import type { Problem } from '@/lib/types';
 
 interface OCRUploaderProps {
   isOpen: boolean;
   onClose: () => void;
   onAccept: (problems: Problem[]) => void;
-  chapterContext?: string[];
+  chapterContext?: ChapterContextItem[];
 }
 
 export function OCRUploader({ isOpen, onClose, onAccept, chapterContext }: OCRUploaderProps) {
@@ -56,6 +56,7 @@ export function OCRUploader({ isOpen, onClose, onAccept, chapterContext }: OCRUp
     explanation: partial.explanation || '',
     tips: partial.tips,
     options: partial.options,
+    chapterId: partial.chapterId,
     tags: partial.tags || [],
     aiStatus: 'complete',
     aiResult: partial.aiResult,

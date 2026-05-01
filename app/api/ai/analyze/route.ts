@@ -42,7 +42,8 @@ Rules:
 - type: "choice" for multiple-choice, "fill" for fill-in-blank, "calculation" for computation/solving, "proof" for theorem proving, "proofEssay" for proof-based essays
 - difficulty: "easy" for basic exercises, "medium" for standard problems, "hard" for challenging/advanced
 - options array ONLY for "choice" type, otherwise omit or empty
-- If unsure about any field, use your best guess and set lower confidence${chapterHint}`;
+- If unsure about any field, use your best guess and set lower confidence
+- CRITICAL for "explanation": Format ALL explanations with numbered steps (步骤1：..., 步骤2：..., ...). Each step should be a self-contained logical step. Use proper Markdown formatting (bold, italic, line breaks) to make the explanation readable. Never output a single wall of text — always break into clear, distinct steps.${chapterHint}`;
 
     const { content, tokensUsed } = await callDeepSeek(
       apiKey,
