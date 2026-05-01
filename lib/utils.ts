@@ -102,7 +102,11 @@ export function preprocessLatex(content: string): string {
       : afterText.trimStart();
     if (textBeforeNextNewline.startsWith('$$')) return match;
 
-    return `$$\n${match}\n$$`;
+    // Collapse newlines inside the block to prevent markdown-it
+    // (configured with breaks:true) from inserting <br> tags that
+    // would break KaTeX rendering of matrices and other environments.
+    const collapsed = match.replace(/\n/g, ' ');
+    return `$$ ${collapsed} $$`;
   });
 
   return content;
