@@ -50,23 +50,15 @@ export function useAIScan() {
     try {
       setScanState({ stage: 'uploading', progress: 5, currentImage: 0, totalImages: N });
 
-      const allProblems: Partial<Problem>[] = [];
-      let lastOcrText = '';
+      // ── Phase 1+2: All images processed in parallel ──
+      // Each pipeline: OCR → analyze. N pipelines run concurrently.
+      // Total time ≈ max(slowest pipeline) instead of sum.
+      let ocrDone = 0;
+      let analyzeDone = 0;
+      let latestOcrText = '';
 
-      for (let i = 0; i < N; i++) {
-        const imgBase64 = imageBase64s[i];
-        const imgNum = i + 1;
-
-        // ── Step A: OCR ──
-        const ocrProgress = 5 + Math.round((2 * i / (2 * N)) * 90);
-        setScanState({
-          stage: 'scanning',
-          progress: ocrProgress,
-          currentImage: imgNum,
-          totalImages: N,
-          ocrText: lastOcrText,
-        });
-
+      const pipelines = imageBase64s.map(async (imgBase64, i) => {
+        // Step A: OCR
         const ocrRes = await fetch('/api/ai/ocr', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -81,25 +73,25 @@ export function useAIScan() {
 
         if (!ocrRes.ok) {
           const err = await ocrRes.json().catch(() => ({}));
-          throw new Error(err.error || `第 ${imgNum} 张图片 OCR 识别失败`);
+          throw new Error(err.error || `第 ${i + 1} 张图片 OCR 识别失败`);
         }
 
         const ocrData = await ocrRes.json();
-        const rawOcrText = ocrData.text || '';
-        const ocrText = truncateText(rawOcrText, MAX_OCR_LENGTH);
-        lastOcrText = ocrText;
+        const rawText = ocrData.text || '';
+        const ocrText = truncateText(rawText, MAX_OCR_LENGTH);
+        latestOcrText = ocrText;
         recordQwenUsage(1);
 
-        // ── Step B: Analyze ──
-        const analyzeProgress = 5 + Math.round(((2 * i + 1) / (2 * N)) * 90);
-        setScanState({
-          stage: 'analyzing',
-          progress: analyzeProgress,
-          currentImage: imgNum,
+        ocrDone++;
+        setScanState(prev => ({
+          stage: 'scanning',
+          progress: 5 + Math.round((ocrDone / N) * 45),
+          currentImage: ocrDone,
           totalImages: N,
-          ocrText,
-        });
+          ocrText: latestOcrText,
+        }));
 
+        // Step B: Analyze
         const analyzeRes = await fetch('/api/ai/analyze', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -114,7 +106,7 @@ export function useAIScan() {
 
         if (!analyzeRes.ok) {
           const err = await analyzeRes.json().catch(() => ({}));
-          throw new Error(err.error || `第 ${imgNum} 张图片分析失败`);
+          throw new Error(err.error || `第 ${i + 1} 张图片分析失败`);
         }
 
         const analyzeData = await analyzeRes.json();
@@ -122,31 +114,41 @@ export function useAIScan() {
           recordDeepSeekUsage(analyzeData.tokensUsed);
         }
 
+        analyzeDone++;
+        setScanState(prev => ({
+          stage: 'analyzing',
+          progress: 50 + Math.round((analyzeDone / N) * 45),
+          currentImage: analyzeDone,
+          totalImages: N,
+          ocrText: prev.ocrText,
+        }));
+
         const rawProblems = Array.isArray(analyzeData.problems) ? analyzeData.problems : [];
-        for (const p of rawProblems) {
-          allProblems.push({
-            type: (p.type as ProblemType) || 'calculation',
-            difficulty: (p.difficulty as Difficulty) || 'medium',
-            question: p.question || '',
-            answer: p.answer || '',
-            explanation: p.explanation || '',
-            tips: p.tips,
-            options: Array.isArray(p.options) ? p.options : undefined,
-            tags: [p.suggestedChapter].filter(Boolean),
-            aiResult: {
-              rawQuestion: ocrText,
-              rawAnswer: '',
-              rawExplanation: '',
-              confidence: typeof p.confidence === 'number' ? p.confidence : 0.5,
-            },
-          });
-        }
-      }
+        return rawProblems.map((p: any): Partial<Problem> => ({
+          type: (p.type as ProblemType) || 'calculation',
+          difficulty: (p.difficulty as Difficulty) || 'medium',
+          question: p.question || '',
+          answer: p.answer || '',
+          explanation: p.explanation || '',
+          tips: p.tips,
+          options: Array.isArray(p.options) ? p.options : undefined,
+          tags: [p.suggestedChapter].filter(Boolean),
+          aiResult: {
+            rawQuestion: ocrText,
+            rawAnswer: '',
+            rawExplanation: '',
+            confidence: typeof p.confidence === 'number' ? p.confidence : 0.5,
+          },
+        }));
+      });
+
+      const results = await Promise.all(pipelines);
+      const allProblems = results.flat();
 
       setScanState({
         stage: 'complete',
         progress: 100,
-        ocrText: lastOcrText,
+        ocrText: latestOcrText,
         extractedProblems: allProblems,
       });
     } catch (error: any) {
