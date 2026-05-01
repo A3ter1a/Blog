@@ -2,17 +2,19 @@
 
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ChevronDown, ChevronUp, Eye, EyeOff, Lightbulb, Sparkles, Layers } from "lucide-react";
+import { ChevronDown, ChevronUp, Eye, EyeOff, Lightbulb, Sparkles, Layers, Pencil } from "lucide-react";
 import type { Problem, ProblemType, Difficulty } from "@/lib/types";
 import { problemTypeMap, difficultyMap, difficultyColorMap } from "@/lib/types";
 import { MarkdownContent } from "@/components/ui/MarkdownContent";
+import Link from "next/link";
 
 interface ProblemCardProps {
   problem: Problem;
   index: number;
+  noteId?: string;
 }
 
-export function ProblemCard({ problem, index }: ProblemCardProps) {
+export function ProblemCard({ problem, index, noteId }: ProblemCardProps) {
   const [showAnswer, setShowAnswer] = useState(false);
   const [showExplanation, setShowExplanation] = useState(false);
 
@@ -49,9 +51,20 @@ export function ProblemCard({ problem, index }: ProblemCardProps) {
             )}
           </div>
         </div>
-        {problem.source && (
-          <span className="text-xs text-on-surface-variant/60">{problem.source}</span>
-        )}
+        <div className="flex items-center gap-3">
+          {noteId && (
+            <Link
+              href={`/create?edit=${noteId}`}
+              className="p-1.5 rounded-lg hover:bg-surface-container-highest text-on-surface-variant/40 hover:text-primary transition-colors"
+              title="编辑题目"
+            >
+              <Pencil className="w-4 h-4" />
+            </Link>
+          )}
+          {problem.source && (
+            <span className="text-xs text-on-surface-variant/60">{problem.source}</span>
+          )}
+        </div>
       </div>
 
       {/* Question */}
