@@ -37,7 +37,11 @@ export function preprocessLatex(content: string): string {
       // Already-escaped \( e.g. $\[a,b\]$ stays as-is
       segments[i] = segments[i]
         .replace(/(?<!\\)\[/g, '\\[')
-        .replace(/(?<!\\)\]/g, '\\]');
+        .replace(/(?<!\\)\]/g, '\\]')
+        // Replace \{ → \lbrace and \} → \rbrace to prevent
+        // markdown-it from stripping the backslash (CommonMark escape)
+        .replace(/\\\{/g, '\\lbrace')
+        .replace(/\\\}/g, '\\rbrace');
     } else {
       // Non-math content: convert \[ \] and \( \) to $$ $$ and $ $
       // These are guaranteed to be outside math spans
