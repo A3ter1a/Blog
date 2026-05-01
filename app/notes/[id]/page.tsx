@@ -426,6 +426,7 @@ export default function NoteReaderPage() {
                         problem={problem}
                         index={allProblems.indexOf(problem)}
                         noteId={note?.id}
+                        onUpdate={handleUpdateProblem}
                       />
                     ))}
                   </div>
