@@ -16,7 +16,7 @@ function ProblemBlockView({ node, updateAttributes }: ProblemBlockProps) {
         {/* Header */}
         <div className="px-4 py-3 bg-primary/10 border-b border-primary/20 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <span className="w-8 h-8 rounded-full editorial-gradient text-on-primary text-sm font-bold flex items-center justify-center">
+            <span className="w-7 h-7 rounded-full editorial-gradient text-on-primary text-xs font-bold flex items-center justify-center">
               {number}
             </span>
             <span className="text-sm font-semibold text-on-surface">题目</span>

@@ -114,7 +114,7 @@ function ProblemCard({
         className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-surface-container-low/50 transition-colors text-left"
       >
         {/* Number badge */}
-        <span className="w-6 h-6 rounded-full editorial-gradient text-on-primary text-xs font-bold flex items-center justify-center shrink-0">
+        <span className="w-7 h-7 rounded-full editorial-gradient text-on-primary text-xs font-bold flex items-center justify-center shrink-0">
           {index + 1}
         </span>
 

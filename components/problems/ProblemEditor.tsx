@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { motion, AnimatePresence, Reorder } from "framer-motion";
 import { Plus, X, ChevronDown, ChevronUp, GripVertical, Sparkles, Scan } from "lucide-react";
-import { Problem, ProblemType, Difficulty, problemTypeMap, difficultyMap } from "@/lib/types";
+import { Problem, ProblemType, Difficulty, problemTypeMap, difficultyMap, difficultyColorMap } from "@/lib/types";
 import { ChapterSelector } from "@/components/chapters/ChapterSelector";
 import { ProblemCompare } from "./ProblemCompare";
 import { ProblemPreview } from "./ProblemPreview";
@@ -254,16 +254,16 @@ function ProblemCard({
           className="flex-1 flex items-center justify-between pr-4 py-3 hover:bg-surface-container-high transition-colors"
         >
           <div className="flex items-center gap-3">
-            <span className="w-7 h-7 rounded-full editorial-gradient text-on-primary text-xs font-bold flex items-center justify-center">
+            <span className="w-7 h-7 rounded-full editorial-gradient text-on-primary text-xs font-bold flex items-center justify-center flex-shrink-0">
               {index + 1}
             </span>
             <span className="text-sm font-medium text-on-surface line-clamp-1">
               {problem.question || '(无题目内容)'}
             </span>
-            <span className="text-xs px-2 py-0.5 rounded-full bg-surface-container-highest text-on-surface-variant">
+            <span className="px-2 py-0.5 rounded bg-primary-container/20 text-primary-container text-xs font-medium whitespace-nowrap">
               {problemTypeMap[problem.type]}
             </span>
-            <span className={`text-xs px-2 py-0.5 rounded-full ${problem.difficulty === 'easy' ? 'bg-green-100 text-green-700' : problem.difficulty === 'medium' ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-700'}`}>
+            <span className={`px-2 py-0.5 rounded text-xs font-medium whitespace-nowrap ${difficultyColorMap[problem.difficulty]}`}>
               {difficultyMap[problem.difficulty]}
             </span>
             {problem.aiStatus === 'complete' && (
