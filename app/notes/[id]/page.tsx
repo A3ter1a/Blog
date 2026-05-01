@@ -111,6 +111,22 @@ export default function NoteReaderPage() {
     }
   };
 
+  const handleUpdateProblem = async (updatedProblem: Problem) => {
+    if (!note) return;
+    const updatedProblems = (note.problems || []).map(p =>
+      p.id === updatedProblem.id ? updatedProblem : p
+    );
+    // Optimistic update
+    setNote({ ...note, problems: updatedProblems });
+    try {
+      await notesApi.update(note.id, { problems: updatedProblems });
+    } catch (error) {
+      console.error("Failed to update problem:", error);
+      // Revert on failure
+      setNote(note);
+    }
+  };
+
   if (loading) {
     return (
       <main className="pt-32 pb-20 px-6 min-h-screen flex items-center justify-center">
@@ -395,6 +411,7 @@ export default function NoteReaderPage() {
                               problem={problem}
                               index={allProblems.indexOf(problem)}
                               noteId={note?.id}
+                              onUpdate={handleUpdateProblem}
                             />
                           ))}
                         </div>
@@ -583,7 +600,7 @@ export default function NoteReaderPage() {
                       </div>
                     )}
                     {filteredProblems.map((problem, index) => (
-                      <ProblemCard key={problem.id} problem={problem} index={allProblems.indexOf(problem)} noteId={note?.id} />
+                      <ProblemCard key={problem.id} problem={problem} index={allProblems.indexOf(problem)} noteId={note?.id} onUpdate={handleUpdateProblem} />
                     ))}
                   </div>
                 ) : (
