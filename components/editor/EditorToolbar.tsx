@@ -21,7 +21,10 @@ export function EditorToolbar({
   if (!editor) return null;
 
   return (
-    <div className="flex flex-wrap items-center gap-1 p-2">
+    <div className="flex flex-nowrap items-center gap-1 p-2 overflow-x-auto
+      [&::-webkit-scrollbar]:h-1
+      [&::-webkit-scrollbar-thumb]:bg-outline-variant/20
+      [&::-webkit-scrollbar-thumb]:rounded-full">
       {/* Undo / Redo */}
       <ToolbarBtn
         onClick={() => editor.chain().focus().undo().run()}

@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
 import { useRouter } from "next/navigation";
-import { Save, RotateCcw, X, Image as ImageIcon, Sparkles, FolderTree, Columns, Maximize2 } from "lucide-react";
+import { Save, RotateCcw, X, Image as ImageIcon, Sparkles, FolderTree, Columns, Maximize2, Eye } from "lucide-react";
 import { Subject, subjectMap, NoteType, typeMap, Video, Problem } from "@/lib/types";
 import { notesApi } from "@/lib/supabase";
 import { Playlist } from "@/components/video/Playlist";
@@ -34,7 +34,7 @@ export default function CreatePage() {
   const [editorReady, setEditorReady] = useState(false);
   const [showFormulaFixer, setShowFormulaFixer] = useState(false);
   const [showChapterManager, setShowChapterManager] = useState(false);
-  const [viewMode, setViewMode] = useState<"split" | "editor">("split");
+  const [viewMode, setViewMode] = useState<"split" | "editor" | "preview">("split");
   const editorRef = useRef<RichTextEditorRef>(null);
   const editorScrollRef = useRef<HTMLDivElement>(null);
   const previewScrollRef = useRef<HTMLDivElement>(null);
@@ -415,6 +415,17 @@ export default function CreatePage() {
                       <Maximize2 className="w-3.5 h-3.5" />
                       仅编辑
                     </button>
+                    <button
+                      onClick={() => setViewMode("preview")}
+                      className={`px-2.5 py-1.5 text-xs font-medium transition-colors flex items-center gap-1 ${
+                        viewMode === "preview"
+                          ? "bg-primary/10 text-primary"
+                          : "text-on-surface-variant hover:bg-surface-container-high"
+                      }`}
+                    >
+                      <Eye className="w-3.5 h-3.5" />
+                      仅预览
+                    </button>
                   </div>
                   <button
                     onClick={() => setShowFormulaFixer(true)}
@@ -430,7 +441,7 @@ export default function CreatePage() {
                 </div>
               </div>
 
-              {viewMode === "split" ? (
+              {viewMode === "split" && (
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                   {/* Editor Panel */}
                   <div
@@ -479,7 +490,7 @@ export default function CreatePage() {
                     style={{ maxHeight: 'calc(100vh - 500px)', minHeight: '400px' }}
                   >
                     {/* Preview Header */}
-                    <div className="shrink-0 border-b border-outline-variant/20 px-4 flex items-center" style={{ minHeight: '41px' }}>
+                    <div className="shrink-0 border-b border-outline-variant/20 px-4 py-2 flex items-center" style={{ minHeight: '48px' }}>
                       <span className="text-xs font-medium text-on-surface-variant/40">实时预览</span>
                     </div>
                     {/* Scrollable Preview */}
@@ -497,8 +508,9 @@ export default function CreatePage() {
                     </div>
                   </div>
                 </div>
-              ) : (
-                /* Editor-Only Mode: Full Width */
+              )}
+
+              {viewMode === "editor" && (
                 <div
                   className="flex flex-col rounded-xl border border-outline-variant/20 bg-surface-container-low overflow-hidden"
                   style={{ maxHeight: 'calc(100vh - 400px)', minHeight: '500px' }}
@@ -533,6 +545,12 @@ export default function CreatePage() {
                       <span>Markdown</span>
                     </div>
                   </div>
+                </div>
+              )}
+
+              {viewMode === "preview" && (
+                <div className="py-6">
+                  <ContentPreview content={content} className="text-on-surface-variant text-lg leading-relaxed" />
                 </div>
               )}
             </>
