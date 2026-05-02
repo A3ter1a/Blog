@@ -123,12 +123,15 @@ export function preprocessLatex(content: string): string {
 }
 
 const DASHED_SEP_MARKER = '<!--dashed-sep-->';
+const DASHED_SEP_TAG = '<dashed-separator></dashed-separator>';
 const DASHED_SEP_PLACEHOLDER = '§DASHEDSEP§';
 
-/** 在 markdown-it 渲染前，将 <!--dashed-sep--> 替换为占位符 */
+/** 在 markdown-it 渲染前，将 <!--dashed-sep--> 或 <dashed-separator> 替换为占位符 */
 export function preprocessDashedSep(content: string): string {
-  if (!content.includes(DASHED_SEP_MARKER)) return content;
-  return content.replaceAll(DASHED_SEP_MARKER, DASHED_SEP_PLACEHOLDER);
+  if (!content.includes(DASHED_SEP_MARKER) && !content.includes(DASHED_SEP_TAG)) return content;
+  return content
+    .replaceAll(DASHED_SEP_MARKER, DASHED_SEP_PLACEHOLDER)
+    .replaceAll(DASHED_SEP_TAG, DASHED_SEP_PLACEHOLDER);
 }
 
 /** 将占位符恢复为 HTML hr 标签（ContentPreview 用）。替换整个 <p> 包裹 */
