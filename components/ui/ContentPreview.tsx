@@ -3,7 +3,7 @@
 import { useRef, useEffect, useMemo, useState } from "react";
 import markdownit from "markdown-it";
 import markdownitMark from "markdown-it-mark";
-import { preprocessLatex } from "@/lib/utils";
+import { preprocessLatex, preprocessDashedSep, postprocessDashedSepAsHtml } from "@/lib/utils";
 import { processContent } from "./MarkdownContent";
 import "katex/dist/katex.min.css";
 
@@ -31,7 +31,10 @@ export function ContentPreview({ content, className = "" }: ContentPreviewProps)
 
   // Preprocess LaTeX + render Markdown to HTML (memoized)
   const htmlContent = useMemo(() => {
-    return md.render(preprocessLatex(content));
+    const processed = preprocessLatex(content);
+    const markdown = preprocessDashedSep(processed);
+    const html = md.render(markdown);
+    return postprocessDashedSepAsHtml(html);
   }, [content]);
 
   // Single-phase render: set innerHTML, then process KaTeX after DOM settles.
@@ -66,7 +69,8 @@ export function ContentPreview({ content, className = "" }: ContentPreviewProps)
         [&_h2]:text-xl [&_h2]:font-bold [&_h2]:mb-3
         [&_h3]:text-lg [&_h3]:font-semibold [&_h3]:mb-2
         [&_h4]:text-base [&_h4]:font-semibold [&_h4]:mb-2
-        [&_hr]:my-6 [&_hr]:border-0 [&_hr]:border-t [&_hr]:border-dashed [&_hr]:border-outline-variant/30
+        [&_hr]:my-4 [&_hr]:border-outline-variant/20
+        [&_hr.dashed-separator]:my-6 [&_hr.dashed-separator]:border-0 [&_hr.dashed-separator]:border-t [&_hr.dashed-separator]:border-dashed [&_hr.dashed-separator]:border-outline-variant/30
         [&_mark]:rounded-sm [&_mark]:px-1 [&_mark]:py-0.5
         ${className}`}
     />

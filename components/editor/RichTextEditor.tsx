@@ -10,6 +10,7 @@ import Highlight from "@tiptap/extension-highlight";
 import { Markdown } from "tiptap-markdown";
 import { useEffect, forwardRef, useImperativeHandle, useRef } from "react";
 import { ProblemBlock, parseProblemMarkers } from "@/lib/problem-block-extension";
+import { DashedSeparator, parseDashedSeparator } from "@/lib/dashed-separator-extension";
 import { DOMParser } from "@tiptap/pm/model";
 import markdownit from "markdown-it";
 import markdownitMark from "markdown-it-mark";
@@ -61,6 +62,7 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
           multicolor: true,
         }),
         ProblemBlock,
+        DashedSeparator,
         Markdown.configure({
           html: false,
           transformPastedText: false,
@@ -71,7 +73,7 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
       onCreate: () => onReady?.(),
       onFocus: () => { isFocusedRef.current = true; },
       onBlur: () => { isFocusedRef.current = false; },
-      content: parseProblemMarkers(content),
+      content: parseDashedSeparator(parseProblemMarkers(content)),
       onUpdate: ({ editor }) => {
         onChange((editor.storage as any).markdown.getMarkdown());
       },
@@ -172,7 +174,8 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
             [&_.ProseMirror_pre]:bg-surface-container-high [&_.ProseMirror_pre]:p-4
             [&_.ProseMirror_pre]:rounded-lg [&_.ProseMirror_pre]:overflow-x-auto [&_.ProseMirror_pre]:my-3
             [&_.ProseMirror_a]:text-primary [&_.ProseMirror_a]:underline
-            [&_.ProseMirror_hr]:my-6 [&_.ProseMirror_hr]:border-0 [&_.ProseMirror_hr]:border-t [&_.ProseMirror_hr]:border-dashed [&_.ProseMirror_hr]:border-outline-variant/30
+            [&_.ProseMirror_hr]:my-4 [&_.ProseMirror_hr]:border-outline-variant/20
+            [&_.ProseMirror_hr[data-type=dashed]]:my-6 [&_.ProseMirror_hr[data-type=dashed]]:border-0 [&_.ProseMirror_hr[data-type=dashed]]:border-t [&_.ProseMirror_hr[data-type=dashed]]:border-dashed [&_.ProseMirror_hr[data-type=dashed]]:border-outline-variant/30
             [&_.ProseMirror_mark]:rounded-sm [&_.ProseMirror_mark]:px-1 [&_.ProseMirror_mark]:py-0.5"
         />
       </div>

@@ -4,7 +4,7 @@ import type { Editor } from "@tiptap/react";
 import {
   Bold, Italic, Strikethrough, List, ListOrdered, Quote,
   Heading1, Heading2, Heading3, Code, Code2, Link as LinkIcon,
-  Minus, Image as ImageIcon, Undo, Redo, Highlighter, FileText, ListChecks, Wrench,
+  Minus, Image as ImageIcon, Undo, Redo, Highlighter, FileText, ListChecks, Wrench, Divide,
 } from "lucide-react";
 import { useState } from "react";
 import { useClickOutside } from "@/hooks/useClickOutside";
@@ -154,6 +154,12 @@ export function EditorToolbar({
         tooltip="分割线"
       >
         <Minus className="w-4 h-4" />
+      </ToolbarBtn>
+      <ToolbarBtn
+        onClick={() => editor.chain().focus().insertContent('<dashed-separator></dashed-separator>').run()}
+        tooltip="虚线分隔线"
+      >
+        <Divide className="w-4 h-4" />
       </ToolbarBtn>
 
       <div className="w-px h-6 bg-outline-variant/20 mx-1" />
