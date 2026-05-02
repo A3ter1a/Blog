@@ -66,6 +66,7 @@ export function ContentPreview({ content, className = "" }: ContentPreviewProps)
         [&_h2]:text-xl [&_h2]:font-bold [&_h2]:mb-3
         [&_h3]:text-lg [&_h3]:font-semibold [&_h3]:mb-2
         [&_h4]:text-base [&_h4]:font-semibold [&_h4]:mb-2
+        [&_hr]:my-6 [&_hr]:border-0 [&_hr]:border-t [&_hr]:border-dashed [&_hr]:border-outline-variant/30
         [&_mark]:rounded-sm [&_mark]:px-1 [&_mark]:py-0.5
         ${className}`}
     />
