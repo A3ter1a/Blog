@@ -8,7 +8,7 @@ import Link from "@tiptap/extension-link";
 import CharacterCount from "@tiptap/extension-character-count";
 import Highlight from "@tiptap/extension-highlight";
 import { Markdown } from "tiptap-markdown";
-import { useEffect, forwardRef, useImperativeHandle } from "react";
+import { useEffect, forwardRef, useImperativeHandle, useRef } from "react";
 import { ProblemBlock, parseProblemMarkers } from "@/lib/problem-block-extension";
 import { DOMParser } from "@tiptap/pm/model";
 import markdownit from "markdown-it";
@@ -33,6 +33,8 @@ export interface RichTextEditorRef {
 
 export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>(
   ({ content, onChange, placeholder = "在此输入内容，支持 Markdown 语法...", onImageUpload, onReady }, ref) => {
+    const isFocusedRef = useRef(false);
+
     const editor = useEditor({
       extensions: [
         StarterKit.configure({
@@ -67,6 +69,8 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
         }),
       ],
       onCreate: () => onReady?.(),
+      onFocus: () => { isFocusedRef.current = true; },
+      onBlur: () => { isFocusedRef.current = false; },
       content: parseProblemMarkers(content),
       onUpdate: ({ editor }) => {
         onChange((editor.storage as any).markdown.getMarkdown());
@@ -112,9 +116,11 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
       },
     }), [editor]);
 
-    // 当外部 content 变化时更新编辑器
+    // 当外部 content 变化时更新编辑器（仅在编辑器未聚焦时同步，
+    // 避免在用户输入过程中覆盖编辑器内容导致光标跳动）
     useEffect(() => {
-      if (editor && content !== (editor.storage as any).markdown.getMarkdown()) {
+      if (!editor || isFocusedRef.current) return;
+      if (content !== (editor.storage as any).markdown.getMarkdown()) {
         editor.commands.setContent(parseProblemMarkers(content));
       }
     }, [content, editor]);

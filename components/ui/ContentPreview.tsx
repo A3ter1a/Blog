@@ -17,57 +17,46 @@ interface ContentPreviewProps {
 
 /**
  * Lightweight live preview component for rendering Markdown.
- * Unlike MarkdownContent which uses TipTap, this renders directly
- * with markdown-it + KaTeX — avoids the overhead of TipTap editor
- * recreation on every keystroke.
+ * Renders directly with markdown-it + KaTeX — avoids TipTap overhead.
  *
- * Uses the same double-requestAnimationFrame + retry pattern as
- * MarkdownContent to ensure KaTeX formulas are caught reliably.
+ * Uses a single-phase render with double-requestAnimationFrame to ensure
+ * the DOM is painted before KaTeX processing. Unlike MarkdownContent
+ * (which uses TipTap and needs a 200ms retry for deferred node views),
+ * ContentPreview renders synchronously into innerHTML so a single
+ * pass is sufficient — no retry needed.
  */
 export function ContentPreview({ content, className = "" }: ContentPreviewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const [isReady, setIsReady] = useState(false);
-  const prevHtmlRef = useRef<string>("");
+  const processedHtmlRef = useRef<string>("");
 
   // Preprocess LaTeX + render Markdown to HTML (memoized)
   const htmlContent = useMemo(() => {
     return md.render(preprocessLatex(content));
   }, [content]);
 
-  // Primary render: set innerHTML and process KaTeX after DOM settles
+  // Single-phase render: set innerHTML, then process KaTeX after DOM settles.
+  // Uses 80ms debounce to batch rapid keystrokes without visible lag.
   useEffect(() => {
     const timer = setTimeout(() => {
       if (!containerRef.current) return;
-      if (htmlContent === prevHtmlRef.current) return;
+      if (htmlContent === processedHtmlRef.current) return;
 
+      // Replace content — this clears previous KaTeX output
       containerRef.current.innerHTML = htmlContent;
-      prevHtmlRef.current = htmlContent;
+      processedHtmlRef.current = htmlContent;
 
-      // Double rAF ensures the DOM is fully painted before KaTeX processing,
-      // matching the pattern used in MarkdownContent's handleEditorReady
+      // Double rAF ensures the DOM is fully painted before KaTeX processing
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
           if (containerRef.current) {
             processContent(containerRef.current);
-            setIsReady(true);
           }
         });
       });
-    }, 60); // Short debounce for responsive side-by-side preview
+    }, 80);
+
     return () => clearTimeout(timer);
   }, [htmlContent]);
-
-  // Retry: Re-process content after initial render to catch any formulas
-  // that may have been deferred (matching MarkdownContent retry pattern)
-  useEffect(() => {
-    if (!isReady) return;
-    const timer = setTimeout(() => {
-      if (containerRef.current) {
-        processContent(containerRef.current);
-      }
-    }, 200);
-    return () => clearTimeout(timer);
-  }, [isReady, htmlContent]);
 
   return (
     <div
