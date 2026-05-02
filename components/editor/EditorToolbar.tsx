@@ -21,7 +21,7 @@ export function EditorToolbar({
   if (!editor) return null;
 
   return (
-    <div className="flex flex-wrap items-center gap-1 p-2 bg-surface-container-low border border-outline-variant/20 rounded-t-xl border-b-0">
+    <div className="flex flex-wrap items-center gap-1 p-2">
       {/* Undo / Redo */}
       <ToolbarBtn
         onClick={() => editor.chain().focus().undo().run()}

@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
 import { useRouter } from "next/navigation";
-import { Save, RotateCcw, X, Image as ImageIcon, Sparkles, FolderTree } from "lucide-react";
+import { Save, RotateCcw, X, Image as ImageIcon, Sparkles, FolderTree, Columns, Maximize2 } from "lucide-react";
 import { Subject, subjectMap, NoteType, typeMap, Video, Problem } from "@/lib/types";
 import { notesApi } from "@/lib/supabase";
 import { Playlist } from "@/components/video/Playlist";
@@ -34,6 +34,7 @@ export default function CreatePage() {
   const [editorReady, setEditorReady] = useState(false);
   const [showFormulaFixer, setShowFormulaFixer] = useState(false);
   const [showChapterManager, setShowChapterManager] = useState(false);
+  const [viewMode, setViewMode] = useState<"split" | "editor">("split");
   const editorRef = useRef<RichTextEditorRef>(null);
   const editorScrollRef = useRef<HTMLDivElement>(null);
   const previewScrollRef = useRef<HTMLDivElement>(null);
@@ -390,6 +391,31 @@ export default function CreatePage() {
                   内容
                 </label>
                 <div className="flex items-center gap-2">
+                  {/* Mode Toggle */}
+                  <div className="flex rounded-lg border border-outline-variant/20 overflow-hidden">
+                    <button
+                      onClick={() => setViewMode("split")}
+                      className={`px-2.5 py-1.5 text-xs font-medium transition-colors flex items-center gap-1 ${
+                        viewMode === "split"
+                          ? "bg-primary/10 text-primary"
+                          : "text-on-surface-variant hover:bg-surface-container-high"
+                      }`}
+                    >
+                      <Columns className="w-3.5 h-3.5" />
+                      分屏
+                    </button>
+                    <button
+                      onClick={() => setViewMode("editor")}
+                      className={`px-2.5 py-1.5 text-xs font-medium transition-colors flex items-center gap-1 ${
+                        viewMode === "editor"
+                          ? "bg-primary/10 text-primary"
+                          : "text-on-surface-variant hover:bg-surface-container-high"
+                      }`}
+                    >
+                      <Maximize2 className="w-3.5 h-3.5" />
+                      仅编辑
+                    </button>
+                  </div>
                   <button
                     onClick={() => setShowFormulaFixer(true)}
                     disabled={!editorReady || content.length === 0}
@@ -401,28 +427,96 @@ export default function CreatePage() {
                     <Sparkles className="w-3.5 h-3.5" />
                     修正公式
                   </button>
-                  <span className="text-xs text-on-surface-variant/40">编辑 · 预览</span>
                 </div>
               </div>
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {/* Editor Panel */}
-                <div className="flex flex-col">
-                  <div className="sticky top-24 z-30 mb-2 min-h-[40px]">
+
+              {viewMode === "split" ? (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  {/* Editor Panel */}
+                  <div
+                    className="flex flex-col rounded-xl border border-outline-variant/20 bg-surface-container-low overflow-hidden"
+                    style={{ maxHeight: 'calc(100vh - 500px)', minHeight: '400px' }}
+                  >
+                    {/* Sticky Toolbar */}
                     {editorReady && (
+                      <div className="sticky top-0 z-10 shrink-0 border-b border-outline-variant/20">
+                        <EditorToolbar
+                          editor={editorRef.current?.editor ?? null}
+                          onImageUpload={handleEditorImageUpload}
+                        />
+                      </div>
+                    )}
+                    {/* Scrollable Editor */}
+                    <div
+                      ref={editorScrollRef}
+                      onScroll={handleEditorScroll}
+                      className="overflow-y-auto flex-1 min-h-0
+                        [&::-webkit-scrollbar]:w-1.5
+                        [&::-webkit-scrollbar-thumb]:bg-outline-variant/30
+                        [&::-webkit-scrollbar-thumb]:rounded-full"
+                    >
+                      <RichTextEditor
+                        ref={editorRef}
+                        content={content}
+                        onChange={setContent}
+                        onReady={() => setEditorReady(true)}
+                        placeholder={isEssay ? "记录你的想法..." : "在此输入内容，支持 Markdown 语法..."}
+                      />
+                      {/* Character Count */}
+                      <div className="flex justify-between items-center px-6 pb-3 text-xs text-on-surface-variant/60">
+                        <span>
+                          字数: {content.replace(/\s/g, "").length.toLocaleString()} |
+                          字符: {content.length.toLocaleString()}
+                        </span>
+                        <span>Markdown</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Preview Panel */}
+                  <div
+                    className="flex flex-col rounded-xl border border-outline-variant/20 bg-surface-container-low overflow-hidden"
+                    style={{ maxHeight: 'calc(100vh - 500px)', minHeight: '400px' }}
+                  >
+                    {/* Preview Header */}
+                    <div className="shrink-0 border-b border-outline-variant/20 px-4 flex items-center" style={{ minHeight: '41px' }}>
+                      <span className="text-xs font-medium text-on-surface-variant/40">实时预览</span>
+                    </div>
+                    {/* Scrollable Preview */}
+                    <div
+                      ref={previewScrollRef}
+                      onScroll={handlePreviewScroll}
+                      className="overflow-y-auto flex-1 min-h-0
+                        [&::-webkit-scrollbar]:w-1.5
+                        [&::-webkit-scrollbar-thumb]:bg-outline-variant/30
+                        [&::-webkit-scrollbar-thumb]:rounded-full"
+                    >
+                      <div className="p-6">
+                        <ContentPreview content={content} className="text-on-surface-variant" />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                /* Editor-Only Mode: Full Width */
+                <div
+                  className="flex flex-col rounded-xl border border-outline-variant/20 bg-surface-container-low overflow-hidden"
+                  style={{ maxHeight: 'calc(100vh - 400px)', minHeight: '500px' }}
+                >
+                  {editorReady && (
+                    <div className="sticky top-0 z-10 shrink-0 border-b border-outline-variant/20">
                       <EditorToolbar
                         editor={editorRef.current?.editor ?? null}
                         onImageUpload={handleEditorImageUpload}
                       />
-                    )}
-                  </div>
+                    </div>
+                  )}
                   <div
                     ref={editorScrollRef}
-                    onScroll={handleEditorScroll}
-                    className="overflow-y-auto rounded-xl border border-outline-variant/20 bg-surface-container-low
+                    className="overflow-y-auto flex-1 min-h-0
                       [&::-webkit-scrollbar]:w-1.5
                       [&::-webkit-scrollbar-thumb]:bg-outline-variant/30
                       [&::-webkit-scrollbar-thumb]:rounded-full"
-                    style={{ maxHeight: 'calc(100vh - 500px)', minHeight: '400px' }}
                   >
                     <RichTextEditor
                       ref={editorRef}
@@ -431,8 +525,7 @@ export default function CreatePage() {
                       onReady={() => setEditorReady(true)}
                       placeholder={isEssay ? "记录你的想法..." : "在此输入内容，支持 Markdown 语法..."}
                     />
-                    {/* Character Count */}
-                    <div className="flex justify-between items-center px-4 pb-2 text-xs text-on-surface-variant/60">
+                    <div className="flex justify-between items-center px-6 pb-3 text-xs text-on-surface-variant/60">
                       <span>
                         字数: {content.replace(/\s/g, "").length.toLocaleString()} |
                         字符: {content.length.toLocaleString()}
@@ -441,27 +534,7 @@ export default function CreatePage() {
                     </div>
                   </div>
                 </div>
-
-                {/* Preview Panel */}
-                <div className="flex flex-col">
-                  <div className="mb-2 min-h-[40px] flex items-end">
-                    <span className="text-xs font-medium text-on-surface-variant/40">实时预览</span>
-                  </div>
-                  <div
-                    ref={previewScrollRef}
-                    onScroll={handlePreviewScroll}
-                    className="overflow-y-auto rounded-xl border border-outline-variant/20 bg-surface-container-low
-                      [&::-webkit-scrollbar]:w-1.5
-                      [&::-webkit-scrollbar-thumb]:bg-outline-variant/30
-                      [&::-webkit-scrollbar-thumb]:rounded-full"
-                    style={{ maxHeight: 'calc(100vh - 500px)', minHeight: '400px' }}
-                  >
-                    <div className="p-6">
-                      <ContentPreview content={content} className="text-on-surface-variant" />
-                    </div>
-                  </div>
-                </div>
-              </div>
+              )}
             </>
           )}
         </motion.div>
