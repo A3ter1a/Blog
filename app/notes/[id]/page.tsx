@@ -478,10 +478,10 @@ export default function NoteReaderPage() {
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -20 }}
                 transition={{ delay: 0.35, duration: 0.5 }}
-                className="lg:sticky lg:top-24 bg-surface-container-lowest rounded-xl p-4 shadow-ambient"
+                className="lg:sticky lg:top-24 lg:max-h-[calc(100vh-7rem)] lg:flex lg:flex-col bg-surface-container-lowest rounded-xl p-4 shadow-ambient"
               >
                 {isProblem && allProblems.length > 0 ? (
-                  <div className="space-y-4">
+                  <div className="overflow-y-scroll flex-1 min-h-0 -mr-2 pr-2 space-y-4">
                     <ChapterFilter
                       chapters={chapters}
                       selectedId={selectedChapterId}
@@ -491,11 +491,13 @@ export default function NoteReaderPage() {
                   </div>
                 ) : (
                   <>
-                    <div className="flex items-center gap-2 mb-3 pb-3 border-b border-outline-variant/10">
+                    <div className="flex items-center gap-2 mb-3 pb-3 border-b border-outline-variant/10 shrink-0">
                       <BookOpen className="w-4 h-4 text-on-surface-variant" />
                       <h3 className="text-sm font-bold text-on-surface">目录</h3>
                     </div>
-                    <TableOfContents content={note.content} />
+                    <div className="overflow-y-scroll flex-1 min-h-0 -mr-2 pr-2">
+                      <TableOfContents content={note.content} />
+                    </div>
                   </>
                 )}
               </motion.section>

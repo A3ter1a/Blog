@@ -219,8 +219,8 @@ export function MarkdownContent({ content, className = "", style }: MarkdownCont
           [&_.ProseMirror_pre]:bg-surface-container-high [&_.ProseMirror_pre]:p-4
           [&_.ProseMirror_pre]:rounded-lg [&_.ProseMirror_pre]:overflow-x-auto [&_.ProseMirror_pre]:my-3
           [&_.ProseMirror_a]:text-primary [&_.ProseMirror_a]:underline
-          [&_.ProseMirror_hr]:my-4 [&_.ProseMirror_hr]:border-outline-variant/20
-          [&_.ProseMirror_hr[data-type=dashed]]:my-6 [&_.ProseMirror_hr[data-type=dashed]]:border-0 [&_.ProseMirror_hr[data-type=dashed]]:border-t [&_.ProseMirror_hr[data-type=dashed]]:border-dashed [&_.ProseMirror_hr[data-type=dashed]]:border-outline-variant/30
+          [&_.ProseMirror_hr]:my-4 [&_.ProseMirror_hr]:border-0 [&_.ProseMirror_hr]:border-t [&_.ProseMirror_hr]:border-solid [&_.ProseMirror_hr]:border-black
+          [&_.ProseMirror_hr[data-type=dashed]]:my-6 [&_.ProseMirror_hr[data-type=dashed]]:border-0 [&_.ProseMirror_hr[data-type=dashed]]:border-t [&_.ProseMirror_hr[data-type=dashed]]:border-dashed [&_.ProseMirror_hr[data-type=dashed]]:border-black
           [&_.ProseMirror_mark]:rounded-sm [&_.ProseMirror_mark]:px-1 [&_.ProseMirror_mark]:py-0.5"
       />
     </div>
