@@ -10,7 +10,7 @@ import Highlight from "@tiptap/extension-highlight";
 import { Markdown } from "tiptap-markdown";
 import { useEffect, forwardRef, useImperativeHandle, useRef } from "react";
 import { ProblemBlock, parseProblemMarkers } from "@/lib/problem-block-extension";
-import { DashedSeparator, parseDashedSeparator } from "@/lib/dashed-separator-extension";
+import { DashedSeparator } from "@/lib/dashed-separator-extension";
 import { DOMParser } from "@tiptap/pm/model";
 import markdownit from "markdown-it";
 import markdownitMark from "markdown-it-mark";
@@ -73,7 +73,7 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
       onCreate: () => onReady?.(),
       onFocus: () => { isFocusedRef.current = true; },
       onBlur: () => { isFocusedRef.current = false; },
-      content: parseDashedSeparator(parseProblemMarkers(content)),
+      content: parseProblemMarkers(content),
       onUpdate: ({ editor }) => {
         onChange((editor.storage as any).markdown.getMarkdown());
       },
@@ -123,7 +123,7 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
     useEffect(() => {
       if (!editor || isFocusedRef.current) return;
       if (content !== (editor.storage as any).markdown.getMarkdown()) {
-        editor.commands.setContent(parseDashedSeparator(parseProblemMarkers(content)));
+        editor.commands.setContent(parseProblemMarkers(content));
       }
     }, [content, editor]);
 
