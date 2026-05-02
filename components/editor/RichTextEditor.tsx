@@ -123,7 +123,7 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
     useEffect(() => {
       if (!editor || isFocusedRef.current) return;
       if (content !== (editor.storage as any).markdown.getMarkdown()) {
-        editor.commands.setContent(parseProblemMarkers(content));
+        editor.commands.setContent(parseDashedSeparator(parseProblemMarkers(content)));
       }
     }, [content, editor]);
 
