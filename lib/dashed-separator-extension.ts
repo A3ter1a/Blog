@@ -23,7 +23,8 @@ export const DashedSeparator = Node.create({
     return {
       markdown: {
         serialize(state: any, node: any) {
-          state.write("\n\n<!--dashed-sep-->\n\n");
+          state.write("<!--dashed-sep-->");
+          state.closeBlock(node);
         },
       },
     };

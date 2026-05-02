@@ -123,7 +123,7 @@ export function preprocessLatex(content: string): string {
 }
 
 const DASHED_SEP_MARKER = '<!--dashed-sep-->';
-const DASHED_SEP_PLACEHOLDER = '\u0000DASHEDSEP\u0000';
+const DASHED_SEP_PLACEHOLDER = '§DASHEDSEP§';
 
 /** 在 markdown-it 渲染前，将 <!--dashed-sep--> 替换为占位符 */
 export function preprocessDashedSep(content: string): string {
@@ -131,16 +131,22 @@ export function preprocessDashedSep(content: string): string {
   return content.replaceAll(DASHED_SEP_MARKER, DASHED_SEP_PLACEHOLDER);
 }
 
-/** 将占位符恢复为 HTML hr 标签（ContentPreview 用） */
+/** 将占位符恢复为 HTML hr 标签（ContentPreview 用）。替换整个 <p> 包裹 */
 export function postprocessDashedSepAsHtml(html: string): string {
   if (!html.includes(DASHED_SEP_PLACEHOLDER)) return html;
-  return html.replaceAll(DASHED_SEP_PLACEHOLDER, '<hr data-type="dashed" class="dashed-separator">');
+  return html.replace(
+    new RegExp(`<p\\b[^>]*>${DASHED_SEP_PLACEHOLDER}</p>`, 'g'),
+    '<hr data-type="dashed" class="dashed-separator">'
+  );
 }
 
-/** 将占位符恢复为 TipTap 标签（MarkdownContent 用） */
+/** 将占位符恢复为 TipTap 标签（MarkdownContent 用）。替换整个 <p> 包裹，确保 block 节点不在 <p> 内 */
 export function postprocessDashedSepAsTag(html: string): string {
   if (!html.includes(DASHED_SEP_PLACEHOLDER)) return html;
-  return html.replaceAll(DASHED_SEP_PLACEHOLDER, '<dashed-separator></dashed-separator>');
+  return html.replace(
+    new RegExp(`<p\\b[^>]*>${DASHED_SEP_PLACEHOLDER}</p>`, 'g'),
+    '<dashed-separator></dashed-separator>'
+  );
 }
 
 /**

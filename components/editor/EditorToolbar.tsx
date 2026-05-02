@@ -156,7 +156,7 @@ export function EditorToolbar({
         <Minus className="w-4 h-4" />
       </ToolbarBtn>
       <ToolbarBtn
-        onClick={() => editor.chain().focus().insertContent('<dashed-separator></dashed-separator>').run()}
+        onClick={() => editor.chain().focus().insertContent({ type: 'dashedSeparator' }).run()}
         tooltip="虚线分隔线"
       >
         <Divide className="w-4 h-4" />
