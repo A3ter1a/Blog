@@ -49,17 +49,3 @@ export const DashedSeparator = Node.create({
     };
   },
 });
-
-/**
- * 将 <!--dashed-sep--> 标记转换为 <dashed-separator> 标签。
- *
- * @deprecated RichTextEditor 的 markdown 解析已由扩展内部的
- * parse.updateDOM 钩子处理，调用方无需再手动调用。
- * 保留用于不经过 tiptap-markdown 解析器的场景。
- */
-export function parseDashedSeparator(content: string): string {
-  return content.replace(
-    /<!--dashed-sep-->/g,
-    "<dashed-separator></dashed-separator>"
-  );
-}
