@@ -87,7 +87,7 @@ export function preprocessLatex(content: string): string {
       // rendered by KaTeX instead of showing as raw "xi" / "theta" text.
       // Exclude \begin and \end which are handled by Step 3.
       segments[i] = segments[i].replace(
-        /(?<!\$)\\(?!begin\b|end\b)([a-zA-Z]+(?:\{[^}]*\})?)(?!\$)/g,
+        /(?<!\$)(\\[a-zA-Z]+(?:\{[^}]*\})?)(?!\$)/g,
         '$$$1$$'
       );
     }

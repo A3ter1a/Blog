@@ -22,16 +22,12 @@ interface TableOfContentsProps {
 // may not have been wrapped in $...$ delimiters.
 function renderInlineMath(text: string): string {
   if (!text.includes("$")) {
-    // Fallback: check for bare LaTeX commands (backslash + letters)
+    // Fallback: wrap each bare LaTeX command in $...$ then reprocess
     if (!/\\[a-zA-Z]+/.test(text)) return text;
-    try {
-      return katex.renderToString(text.trim(), {
-        throwOnError: false,
-        displayMode: false,
-      });
-    } catch {
-      return text;
-    }
+    const wrapped = text.replace(/(\\[a-zA-Z]+(?:\{[^}]*\})?)/g, '$$$1$$');
+    // Reprocess with the wrapped text (now has $ delimiters)
+    if (!wrapped.includes("$")) return text;
+    return renderInlineMath(wrapped);
   }
   const parts = text.split(/(?<!\$)\$(?!\$)(.+?)(?<!\$)\$(?!\$)/g);
   if (parts.length === 1) return text;
