@@ -30,6 +30,7 @@ export function getDescendantIds(chapterId: string, chapters: Chapter[]): Set<st
  * - Removes spaces between $ and formula content ($ formula $ → $formula$)
  * - Converts \[ \] and \( \) to $$ $$ and $ $  (only OUTSIDE math spans)
  * - Escapes [ and ] inside $...$ and $$...$$ (to prevent markdown-it link parsing)
+ * - Wraps bare LaTeX commands (\xi, \theta, \operatorname, etc.) with $...$ outside math spans
  * - Wraps bare LaTeX environments (align, equation, gather, etc.) with $$ if not already wrapped
  *
  * NOTE: \[ and \( inside existing $...$ or $$...$$ spans are NOT converted,
@@ -80,6 +81,15 @@ export function preprocessLatex(content: string): string {
         .replace(/\\\]/g, '$$')
         .replace(/\\\(/g, '$')
         .replace(/\\\)/g, '$');
+
+      // Wrap bare LaTeX commands (e.g. \xi, \theta, \operatorname{rank})
+      // that appear outside $...$ / $$...$$ delimiters so they get
+      // rendered by KaTeX instead of showing as raw "xi" / "theta" text.
+      // Exclude \begin and \end which are handled by Step 3.
+      segments[i] = segments[i].replace(
+        /(?<!\$)\\(?!begin\b|end\b)([a-zA-Z]+(?:\{[^}]*\})?)(?!\$)/g,
+        '$$$1$$'
+      );
     }
   }
 

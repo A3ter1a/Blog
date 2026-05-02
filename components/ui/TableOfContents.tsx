@@ -17,9 +17,22 @@ interface TableOfContentsProps {
   className?: string;
 }
 
-// Render inline $...$ math in a text string to KaTeX HTML
+// Render inline $...$ math in a text string to KaTeX HTML.
+// Also handles bare LaTeX commands (e.g. \xi, \theta) that
+// may not have been wrapped in $...$ delimiters.
 function renderInlineMath(text: string): string {
-  if (!text.includes("$")) return text;
+  if (!text.includes("$")) {
+    // Fallback: check for bare LaTeX commands (backslash + letters)
+    if (!/\\[a-zA-Z]+/.test(text)) return text;
+    try {
+      return katex.renderToString(text.trim(), {
+        throwOnError: false,
+        displayMode: false,
+      });
+    } catch {
+      return text;
+    }
+  }
   const parts = text.split(/(?<!\$)\$(?!\$)(.+?)(?<!\$)\$(?!\$)/g);
   if (parts.length === 1) return text;
   return parts
