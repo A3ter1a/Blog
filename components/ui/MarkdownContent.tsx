@@ -124,7 +124,7 @@ export function MarkdownContent({
     if (containerRef.current) {
       processContent(containerRef.current);
     }
-  }, [htmlContent]);
+  });
 
   useEffect(() => {
     const process = () => {
@@ -142,7 +142,7 @@ export function MarkdownContent({
       window.clearTimeout(lateFrame);
       window.clearTimeout(animationFrame);
     };
-  }, [htmlContent]);
+  });
 
   return (
     <div

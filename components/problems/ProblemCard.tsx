@@ -449,10 +449,10 @@ export function ProblemCard({ problem, index, onUpdate }: ProblemCardProps) {
           <AnimatePresence>
             {showAnswer && (
               <motion.div
-                initial={{ height: 0, opacity: 0 }}
-                animate={{ height: "auto", opacity: 1 }}
-                exit={{ height: 0, opacity: 0 }}
-                className="overflow-hidden"
+                initial={{ opacity: 0, y: -6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -6 }}
+                transition={{ duration: 0.18 }}
               >
                 <div className="px-4 pb-4">
                   <div className="p-4 rounded-lg bg-green-50 border border-green-200">
@@ -470,10 +470,10 @@ export function ProblemCard({ problem, index, onUpdate }: ProblemCardProps) {
           <AnimatePresence>
             {showExplanation && (
               <motion.div
-                initial={{ height: 0, opacity: 0 }}
-                animate={{ height: "auto", opacity: 1 }}
-                exit={{ height: 0, opacity: 0 }}
-                className="overflow-hidden"
+                initial={{ opacity: 0, y: -6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -6 }}
+                transition={{ duration: 0.18 }}
               >
                 <div className="px-4 pb-4">
                   <div className="p-4 rounded-lg bg-blue-50 border border-blue-200">
