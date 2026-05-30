@@ -3,6 +3,7 @@
 import type { Problem } from '@/lib/types';
 import { problemTypeMap, difficultyMap } from '@/lib/types';
 import { AlertCircle, Check } from 'lucide-react';
+import { MarkdownContent } from '@/components/ui/MarkdownContent';
 
 interface ProblemPreviewProps {
   problem: Partial<Problem>;
@@ -51,18 +52,19 @@ export function ProblemPreview({ problem, className = '' }: ProblemPreviewProps)
 
         {/* Question snippet */}
         {problem.question && (
-          <p className="text-on-surface leading-relaxed line-clamp-3">
-            {problem.question}
-          </p>
+          <div className="text-on-surface line-clamp-3">
+            <MarkdownContent content={problem.question} compact />
+          </div>
         )}
 
         {/* Options */}
         {problem.options && problem.options.length > 0 && (
           <div className="flex flex-wrap gap-2">
             {problem.options.map(opt => (
-              <span key={opt.label} className="px-2 py-0.5 rounded bg-surface-container-highest text-xs">
-                {opt.label}. {opt.content}
-              </span>
+              <div key={opt.label} className="px-2 py-0.5 rounded bg-surface-container-highest text-xs flex gap-1">
+                <span>{opt.label}.</span>
+                <MarkdownContent content={opt.content} compact />
+              </div>
             ))}
           </div>
         )}

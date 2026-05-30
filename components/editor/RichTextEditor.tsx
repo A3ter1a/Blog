@@ -12,11 +12,7 @@ import { useEffect, forwardRef, useImperativeHandle, useRef } from "react";
 import { ProblemBlock, parseProblemMarkers } from "@/lib/problem-block-extension";
 import { DashedSeparator } from "@/lib/dashed-separator-extension";
 import { DOMParser } from "@tiptap/pm/model";
-import markdownit from "markdown-it";
-import markdownitMark from "markdown-it-mark";
-
-// Module-level markdown-it instance for paste handling (stateless, safe to reuse)
-const md = markdownit({ html: false, breaks: true }).use(markdownitMark);
+import { repairMarkdown, renderMarkdownToHtml } from "@/lib/markdown";
 
 type MarkdownStorage = {
   markdown: {
@@ -95,8 +91,7 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
           event.preventDefault();
 
           try {
-            // Parse pasted text as Markdown with module-level markdown-it instance
-            const html = md.render(text);
+            const html = renderMarkdownToHtml(repairMarkdown(text));
             const dom = document.createElement('div');
             dom.innerHTML = html;
             const slice = DOMParser.fromSchema(view.state.schema).parseSlice(dom, {
@@ -158,7 +153,7 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
             }
           }
         }}
-        className="prose prose-sm max-w-none p-6 min-h-[400px] focus:outline-none
+        className="markdown-surface markdown-compact p-6 min-h-[400px] focus:outline-none
           [&_.ProseMirror]:min-h-[400px] [&_.ProseMirror]:outline-none
           [&_.ProseMirror_p.is-editor-empty:first-child::before]:text-on-surface-variant/40
           [&_.ProseMirror_p.is-editor-empty:first-child::before]:content-[attr(data-placeholder)]

@@ -2,6 +2,7 @@
 
 import { Sparkles, Edit3 } from 'lucide-react';
 import type { Problem } from '@/lib/types';
+import { MarkdownContent } from '@/components/ui/MarkdownContent';
 
 interface ProblemCompareProps {
   original?: Problem;     // AI-extracted
@@ -42,8 +43,8 @@ function CompareField({ label, original, current }: { label: string; original: s
         <span className="text-xs font-medium text-on-surface-variant">{label}</span>
         {hasDiff && <Edit3 className="w-3 h-3 text-primary" />}
       </div>
-      <div className="p-3 text-sm text-on-surface whitespace-pre-wrap leading-relaxed max-h-24 overflow-y-auto">
-        {original}
+      <div className="p-3 text-sm text-on-surface max-h-24 overflow-y-auto">
+        <MarkdownContent content={original} compact />
       </div>
     </div>
   );

@@ -396,9 +396,9 @@ export function ProblemCard({ problem, index, onUpdate }: ProblemCardProps) {
                     <span className="flex-shrink-0 w-6 h-6 rounded-full bg-primary/10 text-primary text-xs font-bold flex items-center justify-center">
                       {opt.label}
                     </span>
-                    <span className="text-on-surface-variant">
-                      <MarkdownContent content={opt.content} />
-                    </span>
+                    <div className="text-on-surface-variant flex-1">
+                      <MarkdownContent content={opt.content} compact />
+                    </div>
                   </div>
                 ))}
               </div>
@@ -436,7 +436,7 @@ export function ProblemCard({ problem, index, onUpdate }: ProblemCardProps) {
                   <div className="p-4 rounded-lg bg-green-50 border border-green-200">
                     <span className="text-sm font-bold text-green-700">答案：</span>
                     <div className="text-green-600 mt-2">
-                      <MarkdownContent content={problem.answer} />
+                      <MarkdownContent content={problem.answer} compact />
                     </div>
                   </div>
                 </div>
@@ -457,7 +457,7 @@ export function ProblemCard({ problem, index, onUpdate }: ProblemCardProps) {
                   <div className="p-4 rounded-lg bg-blue-50 border border-blue-200">
                     <span className="text-sm font-bold text-blue-700">解析：</span>
                     <div className="text-blue-600 mt-2">
-                      <MarkdownContent content={problem.explanation} />
+                      <MarkdownContent content={problem.explanation} compact />
                     </div>
                   </div>
                 </div>
@@ -471,7 +471,7 @@ export function ProblemCard({ problem, index, onUpdate }: ProblemCardProps) {
               <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-50 border border-amber-200">
                 <Lightbulb className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
                 <div className="text-amber-700 text-sm leading-relaxed">
-                  <MarkdownContent content={problem.tips} />
+                  <MarkdownContent content={problem.tips} compact />
                 </div>
               </div>
             </div>

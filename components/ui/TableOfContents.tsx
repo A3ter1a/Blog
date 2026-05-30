@@ -2,38 +2,23 @@
 
 import { useMemo } from "react";
 import { ChevronRight } from "lucide-react";
-import { preprocessLatex } from "@/lib/utils";
-import GithubSlugger from "github-slugger";
 import katex from "katex";
-
-interface TOCItem {
-  id: string;
-  title: string;
-  level: number;
-}
+import { extractTocItems } from "@/lib/markdown";
 
 interface TableOfContentsProps {
   content: string;
   className?: string;
 }
 
-// Render inline $...$ math in a text string to KaTeX HTML.
-// Also handles bare LaTeX commands (e.g. \xi, \theta) that
-// may not have been wrapped in $...$ delimiters.
 function renderInlineMath(text: string): string {
-  if (!text.includes("$")) {
-    // Fallback: wrap each bare LaTeX command in $...$ then reprocess
-    if (!/\\[a-zA-Z]+/.test(text)) return text;
-    const wrapped = text.replace(/(\\[a-zA-Z]+(?:\{[^}]*\})?)/g, '$$$1$$');
-    // Reprocess with the wrapped text (now has $ delimiters)
-    if (!wrapped.includes("$")) return text;
-    return renderInlineMath(wrapped);
-  }
+  if (!text.includes("$")) return text;
+
   const parts = text.split(/(?<!\$)\$(?!\$)(.+?)(?<!\$)\$(?!\$)/g);
   if (parts.length === 1) return text;
+
   return parts
-    .map((part, i) => {
-      if (i % 2 === 0) return part;
+    .map((part, index) => {
+      if (index % 2 === 0) return part;
       try {
         return katex.renderToString(part.trim(), {
           throwOnError: false,
@@ -47,39 +32,12 @@ function renderInlineMath(text: string): string {
 }
 
 export function TableOfContents({ content, className = "" }: TableOfContentsProps) {
-  const tocItems = useMemo(() => {
-    const items: TOCItem[] = [];
-    const slugger = new GithubSlugger();
-    
-    // Process content the same way as MarkdownContent
-    const processedContent = preprocessLatex(content);
-    const lines = processedContent.split("\n");
-    
-    lines.forEach((line) => {
-      const match = line.match(/^(#{1,6})\s+(.+)$/);
-      if (match) {
-        const level = match[1].length;
-        const title = match[2].trim();
-        
-        // Generate ID using github-slugger (same as rehype-slug)
-        const id = slugger.slug(title);
-        
-        items.push({ id, title, level });
-      }
-    });
-    
-    return items;
-  }, [content]);
+  const tocItems = useMemo(() => extractTocItems(content), [content]);
 
-  if (tocItems.length === 0) {
-    return null;
-  }
+  if (tocItems.length === 0) return null;
 
   const scrollToHeading = (id: string) => {
-    const element = document.getElementById(id);
-    if (element) {
-      element.scrollIntoView({ behavior: "smooth", block: "start" });
-    }
+    document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
   return (

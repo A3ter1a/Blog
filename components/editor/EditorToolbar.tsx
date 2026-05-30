@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { useClickOutside } from "@/hooks/useClickOutside";
+import { repairMarkdown } from "@/lib/markdown";
 
 interface EditorToolbarProps {
   editor: Editor | null;
@@ -347,14 +348,7 @@ function StepLabelPicker({ editor }: StepLabelPickerProps) {
 function fixFormulaFormat(editor: Editor) {
   const { state } = editor;
   const text = state.doc.textBetween(0, state.doc.content.size);
-  
-  // Fix: $ formula $ -> $formula$ (remove spaces between $ and content)
-  let fixedText = text;
-  fixedText = fixedText.replace(/\$\s+([^$\n]+?)\s+\$/g, '$$1$');
-  
-  // Fix: Add space after $ if followed by Chinese character
-  fixedText = fixedText.replace(/\$([\u4e00-\u9fa5])/g, '$ $1');
-  fixedText = fixedText.replace(/([\u4e00-\u9fa5])\$/g, '$1$ ');
+  const fixedText = repairMarkdown(text);
   
   if (fixedText !== text) {
     editor.chain().focus().setContent(fixedText).run();

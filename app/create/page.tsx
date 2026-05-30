@@ -17,6 +17,7 @@ import { EditorToolbar } from "@/components/editor/EditorToolbar";
 import { ContentPreview } from "@/components/ui/ContentPreview";
 import { FormulaFixer } from "@/components/editor/FormulaFixer";
 import { uploadImage, generateFileName } from "@/lib/supabase-storage";
+import { repairMarkdown } from "@/lib/markdown";
 
 type ImportDraft = {
   title?: string;
@@ -106,6 +107,18 @@ export default function CreatePage() {
       syncScroll(previewScrollRef.current, editorScrollRef.current);
     }
   }, [syncScroll]);
+
+  const handleAutoRepairMarkdown = useCallback(() => {
+    const repaired = repairMarkdown(content);
+    if (repaired === content.trim()) {
+      toast.info("Markdown 已经很干净");
+      return;
+    }
+
+    setContent(repaired);
+    editorRef.current?.editor?.commands.setContent(repaired);
+    toast.success("已自动修正 Markdown 语法");
+  }, [content, toast]);
 
   // Load note data if in edit mode or import mode
   useEffect(() => {
@@ -465,6 +478,17 @@ export default function CreatePage() {
                   >
                     <Sparkles className="w-3.5 h-3.5" />
                     修正公式
+                  </button>
+                  <button
+                    onClick={handleAutoRepairMarkdown}
+                    disabled={content.length === 0}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium
+                      bg-primary/10 border border-primary/15 text-primary
+                      hover:bg-primary/15 transition-colors
+                      disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    <Sparkles className="w-3.5 h-3.5" />
+                    自动修正 Markdown
                   </button>
                 </div>
               </div>

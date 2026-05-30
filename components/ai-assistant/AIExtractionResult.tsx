@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Check, RefreshCw, ChevronDown, ChevronUp, CheckCircle2 } from 'lucide-react';
 import type { Problem, ProblemType } from '@/lib/types';
 import { problemTypeMap, difficultyMap } from '@/lib/types';
+import { MarkdownContent } from '@/components/ui/MarkdownContent';
 
 interface AIExtractionResultProps {
   extractedProblems: Partial<Problem>[];
@@ -138,9 +139,9 @@ function ProblemCard({
               </span>
             )}
           </div>
-          <p className="text-sm text-on-surface line-clamp-2 leading-snug">
-            {problem.question || '(无题目内容)'}
-          </p>
+          <div className="text-sm text-on-surface line-clamp-2 leading-snug">
+            <MarkdownContent content={problem.question || '(无题目内容)'} compact />
+          </div>
         </div>
 
         {/* Confidence mini bar + expand icon */}
@@ -176,7 +177,7 @@ function ProblemCard({
               {problem.answer && (
                 <div>
                   <span className="text-[10px] font-medium text-on-surface-variant/60">答案</span>
-                  <p className="text-sm text-on-surface whitespace-pre-wrap leading-relaxed">{problem.answer}</p>
+                  <MarkdownContent content={problem.answer} compact className="text-sm text-on-surface" />
                 </div>
               )}
 
@@ -184,7 +185,7 @@ function ProblemCard({
               {problem.explanation && (
                 <div>
                   <span className="text-[10px] font-medium text-on-surface-variant/60">解析</span>
-                  <p className="text-sm text-on-surface whitespace-pre-wrap leading-relaxed">{problem.explanation}</p>
+                  <MarkdownContent content={problem.explanation} compact className="text-sm text-on-surface" />
                 </div>
               )}
 
@@ -192,7 +193,7 @@ function ProblemCard({
               {problem.tips && (
                 <div>
                   <span className="text-[10px] font-medium text-on-surface-variant/60">提示</span>
-                  <p className="text-sm text-on-surface whitespace-pre-wrap leading-relaxed">{problem.tips}</p>
+                  <MarkdownContent content={problem.tips} compact className="text-sm text-on-surface" />
                 </div>
               )}
 
@@ -202,8 +203,9 @@ function ProblemCard({
                   <span className="text-[10px] font-medium text-on-surface-variant/60">选项</span>
                   <div className="grid grid-cols-2 gap-1 mt-1">
                     {problem.options.map((opt, i) => (
-                      <span key={i} className="text-xs text-on-surface-variant">
-                        <span className="font-medium">{opt.label}.</span> {opt.content}
+                      <span key={i} className="text-xs text-on-surface-variant flex gap-1">
+                        <span className="font-medium">{opt.label}.</span>
+                        <MarkdownContent content={opt.content} compact className="flex-1" />
                       </span>
                     ))}
                   </div>

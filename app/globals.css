@@ -153,42 +153,162 @@ h1, h2, h3, h4, h5, h6 {
   background: rgba(115, 119, 128, 0.5);
 }
 
-/* Prose Styling for Article Content */
-.prose {
-  max-width: 65ch;
+/* Shared Markdown surface for articles, previews, problem cards, and AI output */
+.markdown-surface {
+  max-width: none;
   line-height: 1.8;
+  color: inherit;
+  overflow-wrap: anywhere;
 }
 
-.prose p {
-  margin-bottom: 1.5em;
+.markdown-surface > *:first-child {
+  margin-top: 0;
 }
 
-.prose h1 {
-  margin-top: 2em;
-  margin-bottom: 1em;
+.markdown-surface > *:last-child {
+  margin-bottom: 0;
+}
+
+.markdown-surface p {
+  margin: 0 0 1.1em;
+}
+
+.markdown-surface h1 {
+  margin: 1.8em 0 0.8em;
   font-size: 1.5rem;
   font-weight: 700;
+  line-height: 1.35;
 }
 
-.prose h2 {
-  margin-top: 1.5em;
-  margin-bottom: 0.75em;
+.markdown-surface h2 {
+  margin: 1.55em 0 0.7em;
   font-size: 1.25rem;
   font-weight: 700;
+  line-height: 1.4;
 }
 
-.prose h3 {
-  margin-top: 1.25em;
-  margin-bottom: 0.5em;
+.markdown-surface h3 {
+  margin: 1.25em 0 0.55em;
   font-size: 1.125rem;
   font-weight: 600;
+  line-height: 1.45;
 }
 
-.prose h4 {
-  margin-top: 1em;
-  margin-bottom: 0.5em;
+.markdown-surface h4,
+.markdown-surface h5,
+.markdown-surface h6 {
+  margin: 1em 0 0.5em;
   font-size: 1rem;
   font-weight: 600;
+}
+
+.markdown-surface ul,
+.markdown-surface ol {
+  margin: 0.8em 0 1.1em 1.5em;
+  padding-left: 0.4em;
+}
+
+.markdown-surface ul {
+  list-style: disc;
+}
+
+.markdown-surface ol {
+  list-style: decimal;
+}
+
+.markdown-surface li {
+  margin: 0.3em 0;
+}
+
+.markdown-surface blockquote {
+  margin: 1em 0;
+  padding: 0.75em 1em;
+  border-left: 4px solid color-mix(in srgb, var(--color-primary) 35%, transparent);
+  background: color-mix(in srgb, var(--color-surface-container-low) 70%, transparent);
+  border-radius: 0 var(--radius-lg) var(--radius-lg) 0;
+}
+
+.markdown-surface code {
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-container-high);
+  padding: 0.1em 0.35em;
+  font-size: 0.92em;
+}
+
+.markdown-surface pre {
+  margin: 1em 0;
+  overflow-x: auto;
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-container-high);
+  padding: 1em;
+}
+
+.markdown-surface pre code {
+  background: transparent;
+  padding: 0;
+}
+
+.markdown-surface a {
+  color: var(--color-primary);
+  text-decoration: underline;
+  text-underline-offset: 0.18em;
+}
+
+.markdown-surface table {
+  display: block;
+  width: 100%;
+  overflow-x: auto;
+  border-collapse: collapse;
+  margin: 1em 0;
+}
+
+.markdown-surface th,
+.markdown-surface td {
+  border: 1px solid var(--color-outline-variant);
+  padding: 0.55em 0.7em;
+}
+
+.markdown-surface th {
+  background: var(--color-surface-container-high);
+  font-weight: 600;
+}
+
+.markdown-surface hr {
+  margin: 1.25em 0;
+  border: 0;
+  border-top: 1px solid var(--color-outline-variant);
+}
+
+.markdown-surface hr[data-type="dashed"],
+.markdown-surface hr.dashed-separator {
+  border-top-style: dashed;
+}
+
+.markdown-surface mark {
+  border-radius: var(--radius-sm);
+  padding: 0.08em 0.25em;
+}
+
+.markdown-surface .katex-display {
+  margin: 1em 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.markdown-compact {
+  line-height: 1.65;
+}
+
+.markdown-compact p {
+  margin-bottom: 0.65em;
+}
+
+.markdown-compact ul,
+.markdown-compact ol,
+.markdown-compact blockquote,
+.markdown-compact pre {
+  margin-top: 0.55em;
+  margin-bottom: 0.65em;
 }
 
 /* Ambient Shadow Classes */
