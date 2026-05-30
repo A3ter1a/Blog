@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Image from "next/image";
 import { motion } from "framer-motion";
 
 // Default profile data
@@ -38,7 +39,8 @@ export default function About() {
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        setProfile(parsed);
+        const timer = window.setTimeout(() => setProfile(parsed), 0);
+        return () => window.clearTimeout(timer);
       } catch {}
     }
   }, []);
@@ -57,6 +59,7 @@ export default function About() {
           <div className="absolute inset-0 editorial-gradient rounded-full blur-2xl opacity-20 group-hover:opacity-40 transition-opacity duration-500" />
           <div className="relative w-32 h-32 md:w-40 md:h-40 rounded-full bg-surface-container-lowest ring-1 ring-outline-variant/15 overflow-hidden">
             {profile.avatar ? (
+              /* eslint-disable-next-line @next/next/no-img-element -- User profile avatars can be data URLs or arbitrary external URLs. */
               <img src={profile.avatar} alt={profile.name} className="w-full h-full object-cover" />
             ) : (
               <div className="w-full h-full editorial-gradient flex items-center justify-center text-on-primary text-4xl font-bold font-headline">
@@ -114,17 +117,17 @@ export default function About() {
         <div className="bg-surface-container-lowest rounded-2xl shadow-ambient overflow-hidden divide-y divide-outline-variant/10">
           {profile.links.map((link, index) => {
             const iconSrc = iconMap[link.icon] || "/icons/email.svg";
-            const isLink = (link as any).linkType !== "number";
+            const isLink = link.linkType !== "number";
 
             const Content = (
               <>
                 <div className="flex items-center gap-4">
                   <div className="w-10 h-10 flex items-center justify-center">
-                    <img src={iconSrc} alt={link.name} className="w-7 h-7" />
+                    <Image src={iconSrc} alt={link.name} width={28} height={28} className="w-7 h-7" />
                   </div>
                   <div className="flex flex-col">
                     <span className="font-medium">{link.name}</span>
-                    {(link as any).linkType === "number" && link.href && (
+                    {link.linkType === "number" && link.href && (
                       <span className="text-xs text-on-surface-variant/60">{link.href}</span>
                     )}
                   </div>

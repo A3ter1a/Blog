@@ -1,32 +1,111 @@
-import { createClient } from "@supabase/supabase-js";
-import { Note, NoteType, Subject, Flashcard } from "./types";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { Note, NoteType, Subject, Flashcard, type Problem, type Video } from "./types";
+
+export type NoteRow = {
+  id?: string;
+  type?: NoteType | null;
+  title?: string | null;
+  content?: string | null;
+  subject?: Subject | null;
+  tags?: string[] | null;
+  cover_image?: string | null;
+  videos?: Video[] | null;
+  problems?: Problem[] | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+  is_published?: boolean | null;
+};
+
+export type NoteInsert = Partial<NoteRow>;
+export type NoteUpdate = Partial<NoteRow>;
+
+export type FlashcardRow = {
+  id?: string;
+  note_id?: string | null;
+  question?: string | null;
+  answer?: string | null;
+  interval?: number | null;
+  repetition?: number | null;
+  ease_factor?: number | null;
+  next_review?: string | null;
+  last_review?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+};
+
+export type FlashcardInsert = Partial<FlashcardRow>;
+export type FlashcardUpdate = Partial<FlashcardRow>;
+
+export type ChapterRow = {
+  id?: string;
+  note_id?: string | null;
+  name?: string | null;
+  parent_id?: string | null;
+  sort_order?: number | null;
+  description?: string | null;
+  color?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+};
+
+export type ChapterInsert = Partial<ChapterRow>;
+export type ChapterUpdate = Partial<ChapterRow>;
+
+type Database = {
+  public: {
+    Tables: {
+      notes: {
+        Row: NoteRow;
+        Insert: NoteInsert;
+        Update: NoteUpdate;
+        Relationships: [];
+      };
+      flashcards: {
+        Row: FlashcardRow;
+        Insert: FlashcardInsert;
+        Update: FlashcardUpdate;
+        Relationships: [];
+      };
+      chapters: {
+        Row: ChapterRow;
+        Insert: ChapterInsert;
+        Update: ChapterUpdate;
+        Relationships: [];
+      };
+    };
+    Views: Record<string, never>;
+    Functions: Record<string, never>;
+    Enums: Record<string, never>;
+    CompositeTypes: Record<string, never>;
+  };
+};
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
 
 // 延迟初始化 - 只在变量存在时创建客户端
-let _supabase: ReturnType<typeof createClient> | null = null;
+let _supabase: SupabaseClient<Database> | null = null;
 
-export function getSupabase() {
+export function getSupabase(): SupabaseClient<Database> {
   if (!_supabase) {
     if (!supabaseUrl || !supabaseAnonKey) {
       throw new Error("Supabase 未配置。请设置 NEXT_PUBLIC_SUPABASE_URL 和 NEXT_PUBLIC_SUPABASE_ANON_KEY");
     }
-    _supabase = createClient(supabaseUrl, supabaseAnonKey);
+    _supabase = createClient<Database>(supabaseUrl, supabaseAnonKey);
   }
   return _supabase;
 }
 
 // 字段转换：snake_case → camelCase
-function mapSnakeToCamel(row: any): Note {
+function mapSnakeToCamel(row: NoteRow): Note {
   const createdAt = row.created_at ? new Date(row.created_at) : new Date();
   const updatedAt = row.updated_at ? new Date(row.updated_at) : createdAt;
   
   return {
-    id: row.id,
-    type: row.type,
-    title: row.title,
-    content: row.content,
+    id: row.id ?? "",
+    type: row.type ?? "note",
+    title: row.title ?? "",
+    content: row.content ?? "",
     subject: row.subject || undefined,
     tags: Array.isArray(row.tags) ? row.tags : [],
     coverImage: row.cover_image || undefined,
@@ -39,8 +118,8 @@ function mapSnakeToCamel(row: any): Note {
 }
 
 // 字段转换：camelCase → snake_case
-function mapCamelToSnake(note: Partial<Note>): any {
-  const db: any = {};
+function mapCamelToSnake(note: Partial<Note>): NoteUpdate {
+  const db: NoteUpdate = {};
   if (note.type !== undefined) db.type = note.type;
   if (note.title !== undefined) db.title = note.title;
   if (note.content !== undefined) db.content = note.content;
@@ -109,7 +188,7 @@ export const notesApi = {
     const supabase = getSupabase();
     const dbNote = mapCamelToSnake(note);
     
-    const { data, error } = await (supabase as any)
+    const { data, error } = await supabase
       .from("notes")
       .insert([{
         ...dbNote,
@@ -129,7 +208,7 @@ export const notesApi = {
     const dbUpdates = mapCamelToSnake(updates);
     dbUpdates.updated_at = new Date().toISOString();
 
-    const { data, error } = await (supabase as any)
+    const { data, error } = await supabase
       .from("notes")
       .update(dbUpdates)
       .eq("id", id)
@@ -176,19 +255,19 @@ export const notesApi = {
 };
 
 // Flashcard API
-function mapFlashcardSnakeToCamel(row: any): Flashcard {
+function mapFlashcardSnakeToCamel(row: FlashcardRow): Flashcard {
   return {
-    id: row.id,
-    noteId: row.note_id,
-    question: row.question,
-    answer: row.answer,
+    id: row.id ?? "",
+    noteId: row.note_id ?? "",
+    question: row.question ?? "",
+    answer: row.answer ?? "",
     interval: row.interval || 1,
     repetition: row.repetition || 0,
     easeFactor: row.ease_factor || 2.5,
-    nextReview: new Date(row.next_review),
+    nextReview: row.next_review ? new Date(row.next_review) : new Date(),
     lastReview: row.last_review ? new Date(row.last_review) : undefined,
-    createdAt: new Date(row.created_at),
-    updatedAt: new Date(row.updated_at),
+    createdAt: row.created_at ? new Date(row.created_at) : new Date(),
+    updatedAt: row.updated_at ? new Date(row.updated_at) : new Date(),
   };
 }
 
@@ -197,7 +276,7 @@ export const flashcardsApi = {
   async getDue(limit: number = 20): Promise<Flashcard[]> {
     const supabase = getSupabase();
     const now = new Date().toISOString();
-    const { data, error } = await (supabase as any)
+    const { data, error } = await supabase
       .from("flashcards")
       .select("*")
       .lte("next_review", now)
@@ -211,7 +290,7 @@ export const flashcardsApi = {
   // Get all flashcards for a note
   async getByNoteId(noteId: string): Promise<Flashcard[]> {
     const supabase = getSupabase();
-    const { data, error } = await (supabase as any)
+    const { data, error } = await supabase
       .from("flashcards")
       .select("*")
       .eq("note_id", noteId)
@@ -224,7 +303,7 @@ export const flashcardsApi = {
   // Create flashcard
   async create(card: Omit<Flashcard, "id" | "createdAt" | "updatedAt">): Promise<Flashcard> {
     const supabase = getSupabase();
-    const { data, error } = await (supabase as any)
+    const { data, error } = await supabase
       .from("flashcards")
       .insert([{
         note_id: card.noteId,
@@ -247,14 +326,14 @@ export const flashcardsApi = {
   // Update flashcard (after review)
   async update(id: string, updates: Partial<Flashcard>): Promise<Flashcard> {
     const supabase = getSupabase();
-    const dbUpdates: any = { updated_at: new Date().toISOString() };
+    const dbUpdates: FlashcardUpdate = { updated_at: new Date().toISOString() };
     if (updates.interval !== undefined) dbUpdates.interval = updates.interval;
     if (updates.repetition !== undefined) dbUpdates.repetition = updates.repetition;
     if (updates.easeFactor !== undefined) dbUpdates.ease_factor = updates.easeFactor;
     if (updates.nextReview !== undefined) dbUpdates.next_review = updates.nextReview.toISOString();
     if (updates.lastReview !== undefined) dbUpdates.last_review = updates.lastReview.toISOString();
 
-    const { data, error } = await (supabase as any)
+    const { data, error } = await supabase
       .from("flashcards")
       .update(dbUpdates)
       .eq("id", id)
@@ -268,7 +347,7 @@ export const flashcardsApi = {
   // Delete flashcard
   async delete(id: string): Promise<void> {
     const supabase = getSupabase();
-    const { error } = await (supabase as any).from("flashcards").delete().eq("id", id);
+    const { error } = await supabase.from("flashcards").delete().eq("id", id);
     if (error) throw error;
   },
 
@@ -276,7 +355,7 @@ export const flashcardsApi = {
   async getDueCount(): Promise<number> {
     const supabase = getSupabase();
     const now = new Date().toISOString();
-    const { data, error } = await (supabase as any)
+    const { data, error } = await supabase
       .from("flashcards")
       .select("id")
       .lte("next_review", now);

@@ -20,9 +20,14 @@ const DEEPSEEK_MODELS = [
   { value: 'deepseek-v4-pro', label: 'DeepSeek V4 Pro (高级)' },
 ];
 
-interface AISettingsProps {}
+type ConfigTestBody = {
+  provider: 'deepseek' | 'qwen';
+  apiKey?: string;
+  model?: string;
+  endpoint?: string;
+};
 
-export function AISettings(_props: AISettingsProps) {
+export function AISettings() {
   const [config, setConfig] = useState<AIConfig>(defaultConfig);
   const [isEditing, setIsEditing] = useState(false);
   const [testing, setTesting] = useState<string | null>(null);
@@ -32,7 +37,11 @@ export function AISettings(_props: AISettingsProps) {
   useEffect(() => {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved) {
-      try { setConfig({ ...defaultConfig, ...JSON.parse(saved) }); } catch { /* ignore */ }
+      try {
+        const nextConfig = { ...defaultConfig, ...JSON.parse(saved) };
+        const timer = window.setTimeout(() => setConfig(nextConfig), 0);
+        return () => window.clearTimeout(timer);
+      } catch { /* ignore */ }
     }
   }, []);
 
@@ -45,7 +54,7 @@ export function AISettings(_props: AISettingsProps) {
     setTesting(provider);
     setTestResult(null);
     try {
-      const body: any = { provider };
+      const body: ConfigTestBody = { provider };
       if (provider === 'deepseek') {
         body.apiKey = config.deepseekApiKey;
         body.model = config.deepseekModel;
@@ -71,7 +80,7 @@ export function AISettings(_props: AISettingsProps) {
       } else {
         setTestResult({ success: false, message: data.error || '连接失败' });
       }
-    } catch (err) {
+    } catch {
       setTestResult({ success: false, message: '网络错误，请检查配置' });
     }
     setTesting(null);

@@ -1,14 +1,10 @@
 import { Node, mergeAttributes } from "@tiptap/core";
-import { ReactNodeViewRenderer, NodeViewWrapper } from "@tiptap/react";
-
-interface ProblemBlockProps {
-  node: any;
-  updateAttributes: (attrs: any) => void;
-}
+import { ReactNodeViewRenderer, NodeViewWrapper, type NodeViewProps } from "@tiptap/react";
 
 // Problem Block Node View Component
-function ProblemBlockView({ node, updateAttributes }: ProblemBlockProps) {
-  const number = node.attrs.number || 1;
+function ProblemBlockView({ node }: NodeViewProps) {
+  const rawNumber = node.attrs.number;
+  const number = typeof rawNumber === "number" ? rawNumber : Number(rawNumber) || 1;
 
   return (
     <NodeViewWrapper className="my-6">

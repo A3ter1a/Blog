@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Upload, Type, ListTree, Eye, AlignLeft, XCircle } from "lucide-react";
-import { Profile, ProfileLink } from "@/lib/types";
+import type { Profile } from "@/lib/types";
 import { useReadingPreferences, TOCPosition } from "@/lib/useReadingPreferences";
 import { ParsedNote, detectFormat, importFromJSON, importFromMarkdown, importFromObsidian } from "@/lib/import";
 import { ImportPreview } from "@/components/export/ImportPreview";
@@ -42,7 +42,14 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
     if (!isOpen) return;
     const savedProfile = localStorage.getItem("about-profile");
     if (savedProfile) {
-      try { setProfile(JSON.parse(savedProfile)); } catch { setProfile(defaultProfile); }
+      try {
+        const parsed: Profile = JSON.parse(savedProfile);
+        const timer = window.setTimeout(() => setProfile(parsed), 0);
+        return () => window.clearTimeout(timer);
+      } catch {
+        const timer = window.setTimeout(() => setProfile(defaultProfile), 0);
+        return () => window.clearTimeout(timer);
+      }
     }
   }, [isOpen]);
 
@@ -83,8 +90,8 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
         setParsedNotes(notes);
         setShowImportPreview(true);
         setImportError(null);
-      } catch (err: any) {
-        setImportError('解析文件失败: ' + (err.message || '未知错误'));
+      } catch (err: unknown) {
+        setImportError('解析文件失败: ' + (err instanceof Error ? err.message : '未知错误'));
       }
     };
     reader.readAsText(file);

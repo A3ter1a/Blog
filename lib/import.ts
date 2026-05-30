@@ -1,5 +1,37 @@
-import { Note, NoteType, Subject, Problem, ProblemType, Difficulty } from './types';
+import type { NoteType, Subject, Problem } from './types';
 import { sanitizeFileName } from './utils';
+
+type FrontMatterValue = string | string[];
+type FrontMatter = Record<string, FrontMatterValue>;
+type ImportRecord = Record<string, unknown>;
+
+const NOTE_TYPES: NoteType[] = ['note', 'problem', 'essay'];
+const SUBJECTS: Subject[] = ['math', 'english', 'politics', 'economics'];
+
+function isRecord(value: unknown): value is ImportRecord {
+  return typeof value === 'object' && value !== null;
+}
+
+function asString(value: unknown): string | undefined {
+  return typeof value === 'string' ? value : undefined;
+}
+
+function asStringArray(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
+}
+
+function asNoteType(value: unknown): NoteType | undefined {
+  return typeof value === 'string' && NOTE_TYPES.includes(value as NoteType) ? value as NoteType : undefined;
+}
+
+function asSubject(value: unknown): Subject | undefined {
+  return typeof value === 'string' && SUBJECTS.includes(value as Subject) ? value as Subject : undefined;
+}
+
+function asDate(value: unknown): Date | undefined {
+  const text = asString(value);
+  return text ? new Date(text) : undefined;
+}
 
 /**
  * Parsed note data from import files
@@ -14,7 +46,7 @@ export interface ParsedNote {
   type?: NoteType;
   subject?: Subject;
   problems?: Problem[];
-  raw?: Record<string, any>;
+  raw?: ImportRecord | FrontMatter;
 }
 
 /**
@@ -49,7 +81,7 @@ export function detectFormat(content: string): 'json' | 'markdown' | 'obsidian' 
  * Parse YAML front matter from markdown content
  */
 export function parseFrontMatter(content: string): {
-  frontMatter: Record<string, any>;
+  frontMatter: FrontMatter;
   body: string;
 } {
   const match = content.match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/);
@@ -58,7 +90,7 @@ export function parseFrontMatter(content: string): {
   const fmText = match[1];
   const body = match[2];
 
-  const frontMatter: Record<string, any> = {};
+  const frontMatter: FrontMatter = {};
   const lines = fmText.split('\n');
   let currentKey = '';
   let currentArray: string[] = [];
@@ -115,18 +147,22 @@ export function importFromJSON(content: string): ParsedNote[] {
   const parsed = JSON.parse(content);
   const notes = Array.isArray(parsed) ? parsed : [parsed];
 
-  return notes.map((item: any) => ({
-    title: item.title || 'Untitled',
-    content: item.content || '',
-    tags: Array.isArray(item.tags) ? item.tags : [],
-    createdAt: item.createdAt ? new Date(item.createdAt) : new Date(),
-    updatedAt: item.updatedAt ? new Date(item.updatedAt) : new Date(),
-    coverImage: item.coverImage || undefined,
-    type: item.type || undefined,
-    subject: item.subject || undefined,
-    problems: item.problems || undefined,
-    raw: item,
-  }));
+  return notes.map((item: unknown) => {
+    const record = isRecord(item) ? item : {};
+
+    return {
+      title: asString(record.title) || 'Untitled',
+      content: asString(record.content) || '',
+      tags: asStringArray(record.tags),
+      createdAt: asDate(record.createdAt) || new Date(),
+      updatedAt: asDate(record.updatedAt) || new Date(),
+      coverImage: asString(record.coverImage),
+      type: asNoteType(record.type),
+      subject: asSubject(record.subject),
+      problems: Array.isArray(record.problems) ? record.problems as Problem[] : undefined,
+      raw: record,
+    };
+  });
 }
 
 /**
@@ -142,19 +178,21 @@ export function importFromMarkdown(content: string): ParsedNote {
   const fmTags = Array.isArray(frontMatter.tags) 
     ? frontMatter.tags 
     : typeof frontMatter.tags === 'string'
-      ? frontMatter.tags.split(',').map((t: string) => t.trim())
+      ? frontMatter.tags.split(',').map((t) => t.trim())
       : [];
   const allTags = [...new Set([...fmTags, ...inlineTags])];
+  const created = asString(frontMatter.created);
+  const updated = asString(frontMatter.updated);
 
   return {
-    title: frontMatter.title || extractFirstHeading(body) || 'Untitled',
+    title: asString(frontMatter.title) || extractFirstHeading(body) || 'Untitled',
     content: body,
     tags: allTags,
-    createdAt: frontMatter.created ? new Date(frontMatter.created) : undefined,
-    updatedAt: frontMatter.updated ? new Date(frontMatter.updated) : undefined,
-    coverImage: frontMatter.coverImage || undefined,
-    type: frontMatter.type || undefined,
-    subject: frontMatter.subject || undefined,
+    createdAt: created ? new Date(created) : undefined,
+    updatedAt: updated ? new Date(updated) : undefined,
+    coverImage: asString(frontMatter.coverImage),
+    type: asNoteType(frontMatter.type),
+    subject: asSubject(frontMatter.subject),
     raw: frontMatter,
   };
 }

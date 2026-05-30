@@ -18,12 +18,18 @@ import markdownitMark from "markdown-it-mark";
 // Module-level markdown-it instance for paste handling (stateless, safe to reuse)
 const md = markdownit({ html: false, breaks: true }).use(markdownitMark);
 
+type MarkdownStorage = {
+  markdown: {
+    getMarkdown: () => string;
+  };
+};
+
 interface RichTextEditorProps {
   content: string;
   onChange: (content: string) => void;
   placeholder?: string;
   onImageUpload?: (file: File) => Promise<string>;
-  onReady?: () => void;
+  onReady?: (editor: Editor) => void;
 }
 
 export interface RichTextEditorRef {
@@ -33,7 +39,7 @@ export interface RichTextEditorRef {
 }
 
 export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>(
-  ({ content, onChange, placeholder = "在此输入内容，支持 Markdown 语法...", onImageUpload, onReady }, ref) => {
+  ({ content, onChange, placeholder = "在此输入内容，支持 Markdown 语法...", onReady }, ref) => {
     const isFocusedRef = useRef(false);
 
     const editor = useEditor({
@@ -70,12 +76,12 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
           breaks: true,
         }),
       ],
-      onCreate: () => onReady?.(),
+      onCreate: ({ editor }) => onReady?.(editor),
       onFocus: () => { isFocusedRef.current = true; },
       onBlur: () => { isFocusedRef.current = false; },
       content: parseProblemMarkers(content),
       onUpdate: ({ editor }) => {
-        onChange((editor.storage as any).markdown.getMarkdown());
+        onChange((editor.storage as unknown as MarkdownStorage).markdown.getMarkdown());
       },
       immediatelyRender: false,
       editorProps: {
@@ -122,7 +128,7 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
     // 避免在用户输入过程中覆盖编辑器内容导致光标跳动）
     useEffect(() => {
       if (!editor || isFocusedRef.current) return;
-      if (content !== (editor.storage as any).markdown.getMarkdown()) {
+      if (content !== (editor.storage as unknown as MarkdownStorage).markdown.getMarkdown()) {
         editor.commands.setContent(parseProblemMarkers(content));
       }
     }, [content, editor]);

@@ -86,7 +86,7 @@ export function AsteroidParticles() {
     return { x: p.x * c - p.y * s, y: p.x * s + p.y * c, z: p.z };
   };
 
-  const animate = useCallback(() => {
+  const animate = useCallback(function animateFrame() {
     const canvas = canvasRef.current;
     const container = containerRef.current;
     if (!canvas || !container) return;
@@ -141,7 +141,7 @@ export function AsteroidParticles() {
       ctx.fill();
     });
 
-    animationRef.current = requestAnimationFrame(animate);
+    animationRef.current = requestAnimationFrame(animateFrame);
   }, [rotationSpeed]);
 
   useEffect(() => {
@@ -169,7 +169,7 @@ export function AsteroidParticles() {
       window.removeEventListener("resize", resize);
       cancelAnimationFrame(animationRef.current);
     };
-  }, []);
+  }, [animate, initParticles]);
 
   return (
     <div ref={containerRef} className="absolute inset-0 pointer-events-none">

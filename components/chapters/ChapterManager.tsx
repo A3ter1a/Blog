@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, Trash2, Edit3, Save, X, ChevronRight, FolderTree, Layers } from 'lucide-react';
+import { Plus, Trash2, Edit3, Save, X, FolderTree, Layers } from 'lucide-react';
 import type { Chapter } from '@/lib/types';
 import { chaptersApi } from '@/lib/chapters-api';
 
@@ -35,7 +35,11 @@ export function ChapterManager({ isOpen, onClose, noteId, selectedChapterId, onS
   }, [noteId]);
 
   useEffect(() => {
-    if (isOpen) loadChapters();
+    if (!isOpen) return;
+    const timer = window.setTimeout(() => {
+      void loadChapters();
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, [isOpen, loadChapters]);
 
   const topLevel = chapters.filter(c => !c.parentId);
@@ -146,7 +150,7 @@ export function ChapterManager({ isOpen, onClose, noteId, selectedChapterId, onS
               <ChapterNode
                 key={chapter.id}
                 chapter={chapter}
-                children={getChildren(chapter.id)}
+                childChapters={getChildren(chapter.id)}
                 isSelected={chapter.id === selectedChapterId}
                 onSelect={() => onSelectChapter?.(chapter.id)}
                 onEdit={() => startEdit(chapter)}
@@ -211,7 +215,7 @@ export function ChapterManager({ isOpen, onClose, noteId, selectedChapterId, onS
 // Props interface for ChapterNode
 interface ChapterNodeProps {
   chapter: Chapter;
-  children: Chapter[];
+  childChapters: Chapter[];
   isSelected: boolean;
   onSelect: () => void;
   onEdit: () => void;
@@ -237,7 +241,7 @@ interface ChapterNodeProps {
 }
 
 function ChapterNode({
-  chapter, children, isSelected, onSelect, onEdit, onDelete, onAddChild,
+  chapter, childChapters, isSelected, onSelect, onEdit, onDelete, onAddChild,
   editingId, editForm, onEditFormChange, onSaveEdit, onCancelEdit,
   showAddChild, newChildName, onNewChildNameChange, onConfirmChild,
   selectedChapterId,
@@ -295,11 +299,11 @@ function ChapterNode({
       </div>
 
       {/* Children */}
-      {children.map((child: Chapter) => (
+      {childChapters.map((child: Chapter) => (
         <div key={child.id} className="ml-6">
           <ChapterNode
             chapter={child}
-            children={[]}
+            childChapters={[]}
             isSelected={child.id === selectedChapterId}
             onSelect={() => onChildSelect(child.id)}
             onEdit={() => onChildEdit(child)}

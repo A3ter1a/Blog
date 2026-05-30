@@ -70,8 +70,11 @@ export function FormulaFixer({
   // Auto-select all issues when dialog opens / issues change
   useEffect(() => {
     if (issues.length === 0) return;
-    setSelectedIds(new Set(issues.map((i) => i.id)));
-    setExpandedIds(new Set(issues.slice(0, 3).map((i) => i.id)));
+    const timer = window.setTimeout(() => {
+      setSelectedIds(new Set(issues.map((i) => i.id)));
+      setExpandedIds(new Set(issues.slice(0, 3).map((i) => i.id)));
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, [issues]);
 
   const toggleIssue = (id: string) => {

@@ -2,7 +2,7 @@
 
 import { motion } from "framer-motion";
 import Link from "next/link";
-import { Note, subjectMap, typeMap, NoteType } from "@/lib/types";
+import { subjectMap, typeMap, type Note } from "@/lib/types";
 import { FileText, BookOpen, Calendar, ChevronDown, Check, Clock } from "lucide-react";
 import { useState } from "react";
 import { estimateReadingTime } from "@/lib/utils";
@@ -19,6 +19,7 @@ export function NoteCard({ note, index, isSelected = false, onToggleSelect, sele
   const isProblem = note.type === "problem";
   const isEssay = note.type === "essay";
   const [isCoverExpanded, setIsCoverExpanded] = useState(false);
+  const createdAt = note.createdAt instanceof Date ? note.createdAt : new Date(String(note.createdAt));
 
   const handleClick = (e: React.MouseEvent) => {
     if (selectMode && onToggleSelect) {
@@ -53,6 +54,7 @@ export function NoteCard({ note, index, isSelected = false, onToggleSelect, sele
                 animate={{ height: isCoverExpanded ? "auto" : "12rem" }}
                 className="overflow-hidden"
               >
+                {/* eslint-disable-next-line @next/next/no-img-element -- Saved cover images can be data URLs or arbitrary user-provided URLs. */}
                 <img
                   src={note.coverImage}
                   alt={note.title}
@@ -161,9 +163,7 @@ export function NoteCard({ note, index, isSelected = false, onToggleSelect, sele
             <div className="flex items-center gap-4">
               <span className="flex items-center gap-1">
                 <Calendar className="w-4 h-4" />
-                {note.createdAt instanceof Date 
-                  ? note.createdAt.toLocaleDateString("zh-CN") 
-                  : new Date(note.createdAt as any).toLocaleDateString("zh-CN")}
+                {createdAt.toLocaleDateString("zh-CN")}
               </span>
               {!isProblem && note.content && (
                 <span className="flex items-center gap-1">

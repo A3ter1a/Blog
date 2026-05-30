@@ -24,15 +24,20 @@ export function useReadingPreferences() {
 
   useEffect(() => {
     const saved = localStorage.getItem(STORAGE_KEY);
+    let nextPreferences = DEFAULT_PREFERENCES;
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        setPreferences({ ...DEFAULT_PREFERENCES, ...parsed });
+        nextPreferences = { ...DEFAULT_PREFERENCES, ...parsed };
       } catch {
         // Use defaults
       }
     }
-    setIsLoaded(true);
+    const timer = window.setTimeout(() => {
+      setPreferences(nextPreferences);
+      setIsLoaded(true);
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, []);
 
   const updatePreference = <K extends keyof ReadingPreferences>(

@@ -39,7 +39,7 @@ export function OCRUploader({ isOpen, onClose, onAccept, chapterContext }: OCRUp
       previewUrls.forEach(url => URL.revokeObjectURL(url));
       setPreviewUrls(urls);
       await startScan(base64s, chapterContext);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('OCR file processing failed:', err);
       urls.forEach(url => URL.revokeObjectURL(url));
       resetScan();
@@ -160,6 +160,7 @@ export function OCRUploader({ isOpen, onClose, onAccept, chapterContext }: OCRUp
               <div className={`grid gap-2 ${previewUrls.length > 1 ? 'grid-cols-3' : 'grid-cols-1'}`}>
                 {previewUrls.map((url, i) => (
                   <div key={i} className="rounded-xl overflow-hidden border border-outline-variant/10">
+                    {/* eslint-disable-next-line @next/next/no-img-element -- OCR thumbnails use blob URLs created from local files. */}
                     <img
                       src={url}
                       alt={`题目图片 ${i + 1}`}

@@ -17,6 +17,10 @@ const YOUTUBE_PATTERNS = [
   /^([a-zA-Z0-9_-]{11})$/,
 ];
 
+type ParsedVideoInput =
+  | { platform: "bilibili"; bvid: string; p: number }
+  | { platform: "youtube"; videoId: string };
+
 interface PlaylistProps {
   videos: Video[];
   onChange?: (videos: Video[]) => void;
@@ -36,13 +40,14 @@ export function Playlist({ videos, onChange, editable = false, onPlay }: Playlis
   // Users will click to play inline in the article
   const shouldShowPlayer = editable && !onPlay;
 
-  const parseVideoInput = (input: string, platform: VideoPlatform) => {
+  const parseVideoInput = (input: string, platform: VideoPlatform): ParsedVideoInput => {
     input = input.trim();
     
     if (platform === "bilibili") {
       const bvMatch = input.match(BV_PATTERN);
       const pMatch = input.match(P_PATTERN);
       return {
+        platform,
         bvid: bvMatch ? bvMatch[1] : input,
         p: pMatch ? parseInt(pMatch[1]) : 1,
       };
@@ -51,30 +56,30 @@ export function Playlist({ videos, onChange, editable = false, onPlay }: Playlis
     if (platform === "youtube") {
       for (const pattern of YOUTUBE_PATTERNS) {
         const match = input.match(pattern);
-        if (match) return { videoId: match[1] };
+        if (match) return { platform, videoId: match[1] };
       }
-      return { videoId: input };
+      return { platform, videoId: input };
     }
     
-    return platform === "bilibili" ? { bvid: input, p: 1 } : { videoId: input };
+    return { platform: "youtube", videoId: input };
   };
 
   const handleAddVideo = () => {
     if (!newVideoInput.trim()) return;
 
     const parsed = parseVideoInput(newVideoInput, newPlatform);
-    const videoId = newPlatform === "bilibili" ? (parsed as any).bvid : (parsed as any).videoId;
+    const videoId = parsed.platform === "bilibili" ? parsed.bvid : parsed.videoId;
     const newVideo: Video = {
       id: `${newPlatform}-${videoId}-${Date.now()}`,
       platform: newPlatform,
       title: newTitle.trim() || `视频 ${videos.length + 1}`,
-      bilibili: newPlatform === "bilibili" ? {
-        bvid: (parsed as any).bvid,
-        p: (parsed as any).p || 1,
+      bilibili: parsed.platform === "bilibili" ? {
+        bvid: parsed.bvid,
+        p: parsed.p || 1,
         title: newTitle.trim() || `视频 ${videos.length + 1}`,
       } : undefined,
-      youtube: newPlatform === "youtube" ? {
-        videoId: (parsed as any).videoId,
+      youtube: parsed.platform === "youtube" ? {
+        videoId: parsed.videoId,
         title: newTitle.trim() || `视频 ${videos.length + 1}`,
       } : undefined,
     };

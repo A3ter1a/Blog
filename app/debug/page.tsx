@@ -11,18 +11,21 @@ export default function DebugPage() {
 
   useEffect(() => {
     if (!ALLOWED) {
-      setResult("Debug 页面仅允许在开发环境访问");
-      return;
+      const timer = window.setTimeout(() => setResult("Debug 页面仅允许在开发环境访问"), 0);
+      return () => window.clearTimeout(timer);
     }
 
-    (async () => {
+    const timer = window.setTimeout(() => {
+      void (async () => {
       try {
         const notes = await notesApi.getAll();
         setResult(JSON.stringify(notes, null, 2));
-      } catch (error: any) {
-        setResult(`错误: ${error.message}`);
+      } catch (error: unknown) {
+        setResult(`错误: ${error instanceof Error ? error.message : '未知错误'}`);
       }
-    })();
+      })();
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, []);
 
   return (

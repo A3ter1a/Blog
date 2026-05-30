@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useRef } from "react";
 import { Minimize2 } from "lucide-react";
 import BilibiliEmbedRenderer from "react-bilibili-embed-renderer";
 
@@ -16,10 +16,8 @@ interface BilibiliEmbedPlayerProps {
 
 export function BilibiliEmbedPlayer({ 
   bvid, 
-  cid, 
   p = 1, 
   title, 
-  autoPlay = false, 
   inlineMode = false, 
   onExitInline 
 }: BilibiliEmbedPlayerProps) {

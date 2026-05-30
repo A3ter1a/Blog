@@ -3,7 +3,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Search, X, ArrowRight } from "lucide-react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { notesApi } from "@/lib/supabase";
 import { subjectMap, typeMap } from "@/lib/types";
@@ -15,7 +14,6 @@ interface SearchOverlayProps {
 }
 
 export function SearchOverlay({ isOpen, onClose }: SearchOverlayProps) {
-  const router = useRouter();
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<Note[]>([]);
   const [isSearching, setIsSearching] = useState(false);
@@ -55,8 +53,11 @@ export function SearchOverlay({ isOpen, onClose }: SearchOverlayProps) {
       setTimeout(() => inputRef.current?.focus(), 100);
     }
     if (!isOpen) {
-      setQuery("");
-      setResults([]);
+      const timer = window.setTimeout(() => {
+        setQuery("");
+        setResults([]);
+      }, 0);
+      return () => window.clearTimeout(timer);
     }
   }, [isOpen]);
 

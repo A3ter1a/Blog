@@ -14,7 +14,7 @@ interface ProblemCardProps {
   onUpdate?: (updated: Problem) => void;
 }
 
-export function ProblemCard({ problem, index, noteId, onUpdate }: ProblemCardProps) {
+export function ProblemCard({ problem, index, onUpdate }: ProblemCardProps) {
   const [showAnswer, setShowAnswer] = useState(false);
   const [showExplanation, setShowExplanation] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
@@ -114,10 +114,12 @@ export function ProblemCard({ problem, index, noteId, onUpdate }: ProblemCardPro
 
       const data = await res.json();
       setReviewResult(data.review);
-    } catch (error: any) {
-      const msg = error.name === 'AbortError' || error.name === 'TimeoutError'
+    } catch (error: unknown) {
+      const errorName = error instanceof Error ? error.name : '';
+      const errorMessage = error instanceof Error ? error.message : '';
+      const msg = errorName === 'AbortError' || errorName === 'TimeoutError'
         ? 'AI 检查超时，请重试'
-        : (error.message || '未知错误');
+        : (errorMessage || '未知错误');
       setReviewError(msg);
     } finally {
       setIsReviewing(false);

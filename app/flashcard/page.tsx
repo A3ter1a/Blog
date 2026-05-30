@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import { ArrowLeft, RotateCcw, Check, X, Zap, Clock, BookOpen, Loader2 } from "lucide-react";
@@ -49,11 +49,7 @@ export default function FlashcardPage() {
   const [reviewed, setReviewed] = useState(0);
   const [noteTitles, setNoteTitles] = useState<Record<string, string>>({});
 
-  useEffect(() => {
-    loadDueCards();
-  }, []);
-
-  const loadDueCards = async () => {
+  const loadDueCards = useCallback(async () => {
     try {
       setLoading(true);
       const dueCards = await flashcardsApi.getDue(20);
@@ -74,7 +70,14 @@ export default function FlashcardPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      void loadDueCards();
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [loadDueCards]);
 
   const handleReview = async (quality: ReviewQuality) => {
     const current = cards[currentIndex];

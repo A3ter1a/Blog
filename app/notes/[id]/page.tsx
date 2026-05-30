@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import { useRouter, useParams } from "next/navigation";
@@ -34,29 +34,25 @@ export default function NoteReaderPage() {
   const [chapters, setChapters] = useState<Chapter[]>([]);
   const [selectedChapterId, setSelectedChapterId] = useState<string | undefined>(undefined);
 
-  // Load note from Supabase
-  useEffect(() => {
-    loadNote();
-  }, [params.id]);
-
-  const loadNote = async () => {
+  const loadNote = useCallback(async () => {
     try {
       setLoading(true);
       const data = await notesApi.getById(params.id as string);
       setNote(data);
+      setIsCoverExpanded(Boolean(data?.coverImage));
     } catch (error) {
       console.error("Failed to load note:", error);
     } finally {
       setLoading(false);
     }
-  };
+  }, [params.id]);
 
-  // Auto-expand cover image when note is loaded
   useEffect(() => {
-    if (note && note.coverImage) {
-      setIsCoverExpanded(true);
-    }
-  }, [note]);
+    const timer = window.setTimeout(() => {
+      void loadNote();
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [loadNote]);
 
   // Load chapters for problem notes
   useEffect(() => {
@@ -69,7 +65,7 @@ export default function NoteReaderPage() {
   }, [note?.type, params.id]);
 
   // Derive filtered & grouped problems for chapter support
-  const allProblems = note?.problems || [];
+  const allProblems = useMemo(() => note?.problems || [], [note?.problems]);
   const filteredProblems = useMemo(() => {
     if (!selectedChapterId) return allProblems;
     const descendantIds = getDescendantIds(selectedChapterId, chapters);
@@ -81,7 +77,6 @@ export default function NoteReaderPage() {
   const chapterGroups = useMemo(() => {
     if (selectedChapterId || chapters.length === 0) return null;
     const groups: { chapter: Chapter | undefined; problems: Problem[] }[] = [];
-    const chapterMap = new Map(chapters.map(c => [c.id, c]));
     const assignedProblemIds = new Set<string>();
 
     // First group by top-level chapters (with descendant problems)
@@ -202,6 +197,7 @@ export default function NoteReaderPage() {
             className="overflow-hidden"
           >
             <div className="rounded-xl overflow-hidden shadow-elevated">
+              {/* eslint-disable-next-line @next/next/no-img-element -- Saved cover images can be data URLs or arbitrary user-provided URLs. */}
               <img
                 src={note.coverImage}
                 alt={note.title}
@@ -411,7 +407,7 @@ export default function NoteReaderPage() {
                           </div>
                         )}
                         <div className="space-y-6">
-                          {group.problems.map((problem, index) => (
+                          {group.problems.map((problem) => (
                             <ProblemCard
                               key={problem.id}
                               problem={problem}
@@ -426,7 +422,7 @@ export default function NoteReaderPage() {
                   </div>
                 ) : (
                   <div className="space-y-6">
-                    {filteredProblems.map((problem, index) => (
+                    {filteredProblems.map((problem) => (
                       <ProblemCard
                         key={problem.id}
                         problem={problem}
@@ -608,7 +604,7 @@ export default function NoteReaderPage() {
                         <span>{selectedChapter.name}</span>
                       </div>
                     )}
-                    {filteredProblems.map((problem, index) => (
+                    {filteredProblems.map((problem) => (
                       <ProblemCard key={problem.id} problem={problem} index={allProblems.indexOf(problem)} noteId={note?.id} onUpdate={handleUpdateProblem} />
                     ))}
                   </div>

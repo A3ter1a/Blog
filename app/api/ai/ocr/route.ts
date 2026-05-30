@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { callQwenVision } from '@/lib/ai-client';
 
+function getErrorMessage(error: unknown, fallback: string) {
+  return error instanceof Error ? error.message : fallback;
+}
+
 // Qwen Vision OCR endpoint — extracts text from problem images
 export async function POST(req: NextRequest) {
   try {
@@ -31,10 +35,11 @@ Please follow these rules:
     );
 
     return NextResponse.json({ text, success: true });
-  } catch (error: any) {
-    console.error('[OCR] Error:', error.message);
+  } catch (error: unknown) {
+    const message = getErrorMessage(error, 'OCR 识别失败');
+    console.error('[OCR] Error:', message);
     return NextResponse.json(
-      { error: error.message || 'OCR 识别失败', success: false },
+      { error: message, success: false },
       { status: 500 }
     );
   }

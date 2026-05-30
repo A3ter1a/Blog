@@ -16,8 +16,6 @@ interface DiffViewerProps {
 function computeLineDiff(original: string, polished: string) {
   const origLines = original.split("\n");
   const newLines = polished.split("\n");
-  const result: { type: "same" | "added" | "removed"; content: string }[] = [];
-
   // 使用简单的 LCS 算法找出差异
   const m = origLines.length;
   const n = newLines.length;

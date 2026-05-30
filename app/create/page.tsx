@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
 import { useRouter } from "next/navigation";
+import type { Editor } from "@tiptap/react";
 import { Save, RotateCcw, X, Image as ImageIcon, Sparkles, FolderTree, Columns, Maximize2, Eye } from "lucide-react";
 import { Subject, subjectMap, NoteType, typeMap, Video, Problem } from "@/lib/types";
 import { notesApi } from "@/lib/supabase";
@@ -17,18 +18,60 @@ import { ContentPreview } from "@/components/ui/ContentPreview";
 import { FormulaFixer } from "@/components/editor/FormulaFixer";
 import { uploadImage, generateFileName } from "@/lib/supabase-storage";
 
+type ImportDraft = {
+  title?: string;
+  content?: string;
+  tags?: string[];
+  noteType?: NoteType;
+  subject?: Subject;
+  problems?: Problem[];
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function getPendingImportDraft(): ImportDraft | null {
+  if (typeof window === "undefined") return null;
+
+  const searchParams = new URLSearchParams(window.location.search);
+  if (!searchParams.get("import")) return null;
+
+  const importData = sessionStorage.getItem("pendingImport");
+  if (!importData) return null;
+
+  try {
+    const parsed: unknown = JSON.parse(importData);
+    if (!isRecord(parsed)) return null;
+
+    return {
+      title: typeof parsed.title === "string" ? parsed.title : undefined,
+      content: typeof parsed.content === "string" ? parsed.content : undefined,
+      tags: Array.isArray(parsed.tags) ? parsed.tags.filter((tag): tag is string => typeof tag === "string") : undefined,
+      noteType: parsed.noteType === "note" || parsed.noteType === "problem" || parsed.noteType === "essay" ? parsed.noteType : undefined,
+      subject: parsed.subject === "math" || parsed.subject === "english" || parsed.subject === "politics" || parsed.subject === "economics" ? parsed.subject : undefined,
+      problems: Array.isArray(parsed.problems) ? (parsed.problems as Problem[]) : undefined,
+    };
+  } catch (error) {
+    console.error("Failed to parse import data:", error);
+    return null;
+  }
+}
+
 export default function CreatePage() {
   const router = useRouter();
   const toast = useToast();
+  const [initialImportDraft] = useState<ImportDraft | null>(getPendingImportDraft);
+
   const [isEditMode, setIsEditMode] = useState(false);
   const [editingId, setEditingId] = useState<string>("");
-  const [noteType, setNoteType] = useState<NoteType>("note");
-  const [title, setTitle] = useState("");
-  const [subject, setSubject] = useState<Subject>("math");
-  const [tagInput, setTagInput] = useState("");
-  const [content, setContent] = useState("");
+  const [noteType, setNoteType] = useState<NoteType>(initialImportDraft?.noteType ?? "note");
+  const [title, setTitle] = useState(initialImportDraft?.title ?? "");
+  const [subject, setSubject] = useState<Subject>(initialImportDraft?.subject ?? "math");
+  const [tagInput, setTagInput] = useState(initialImportDraft?.tags?.join(", ") ?? "");
+  const [content, setContent] = useState(initialImportDraft?.content ?? "");
   const [videos, setVideos] = useState<Video[]>([]);
-  const [problems, setProblems] = useState<Problem[]>([]);
+  const [problems, setProblems] = useState<Problem[]>(initialImportDraft?.problems ?? []);
   const [coverImage, setCoverImage] = useState("");
   const [showVideoSection, setShowVideoSection] = useState(false);
   const [editorReady, setEditorReady] = useState(false);
@@ -36,6 +79,7 @@ export default function CreatePage() {
   const [showChapterManager, setShowChapterManager] = useState(false);
   const [viewMode, setViewMode] = useState<"split" | "editor" | "preview">("split");
   const editorRef = useRef<RichTextEditorRef>(null);
+  const [toolbarEditor, setToolbarEditor] = useState<Editor | null>(null);
   const editorScrollRef = useRef<HTMLDivElement>(null);
   const previewScrollRef = useRef<HTMLDivElement>(null);
   const isSyncingScroll = useRef(false);
@@ -88,29 +132,12 @@ export default function CreatePage() {
         toast.error("加载笔记失败");
       });
     } else if (importMode) {
-      // Import mode: load data from sessionStorage
-      const importData = sessionStorage.getItem('pendingImport');
-      if (importData) {
-        try {
-          const parsed = JSON.parse(importData);
-          setTitle(parsed.title || "");
-          setContent(parsed.content || "");
-          setTagInput((parsed.tags || []).join(", "));
-          
-          if (parsed.noteType) setNoteType(parsed.noteType);
-          if (parsed.subject) setSubject(parsed.subject);
-          if (parsed.problems && parsed.problems.length > 0) {
-            setProblems(parsed.problems);
-          }
-          
-          toast.success('已自动填充导入内容，请检查后发布');
-          sessionStorage.removeItem('pendingImport');
-        } catch (e) {
-          console.error('Failed to parse import data:', e);
-        }
+      if (initialImportDraft) {
+        toast.success('已自动填充导入内容，请检查后发布');
+        sessionStorage.removeItem('pendingImport');
       }
     }
-  }, []);
+  }, [initialImportDraft, toast]);
 
   const handleSave = async () => {
     if (!title.trim()) {
@@ -160,9 +187,9 @@ export default function CreatePage() {
         toast.success("笔记已创建！");
         router.push(`/notes/${newNote.id}`);
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Failed to save note:", error);
-      toast.error(`保存失败：${error.message || "未知错误"}`);
+      toast.error(`保存失败：${error instanceof Error ? error.message : "未知错误"}`);
     }
   };
 
@@ -187,8 +214,8 @@ export default function CreatePage() {
         const url = await uploadImage(file, path);
         editorRef.current?.insertImage(url);
         toast.success("图片已插入");
-      } catch (err: any) {
-        toast.error(`图片上传失败：${err.message}`);
+      } catch (err: unknown) {
+        toast.error(`图片上传失败：${err instanceof Error ? err.message : "未知错误"}`);
       }
     };
     input.click();
@@ -305,6 +332,7 @@ export default function CreatePage() {
           </div>
           {coverImage && (
             <div className="mt-3 rounded-xl overflow-hidden max-h-48">
+              {/* eslint-disable-next-line @next/next/no-img-element -- Cover previews are local data URLs before the note is saved. */}
               <img src={coverImage} alt="封面预览" className="w-full h-48 object-cover" />
             </div>
           )}
@@ -452,7 +480,7 @@ export default function CreatePage() {
                     {editorReady && (
                       <div className="sticky top-0 z-10 shrink-0 border-b border-outline-variant/20">
                         <EditorToolbar
-                          editor={editorRef.current?.editor ?? null}
+                          editor={toolbarEditor}
                           onImageUpload={handleEditorImageUpload}
                         />
                       </div>
@@ -470,7 +498,10 @@ export default function CreatePage() {
                         ref={editorRef}
                         content={content}
                         onChange={setContent}
-                        onReady={() => setEditorReady(true)}
+                        onReady={(editor) => {
+                          setEditorReady(true);
+                          setToolbarEditor(editor);
+                        }}
                         placeholder={isEssay ? "记录你的想法..." : "在此输入内容，支持 Markdown 语法..."}
                       />
                       {/* Character Count */}
@@ -518,7 +549,7 @@ export default function CreatePage() {
                   {editorReady && (
                     <div className="sticky top-0 z-10 shrink-0 border-b border-outline-variant/20">
                       <EditorToolbar
-                        editor={editorRef.current?.editor ?? null}
+                        editor={toolbarEditor}
                         onImageUpload={handleEditorImageUpload}
                       />
                     </div>
@@ -534,7 +565,10 @@ export default function CreatePage() {
                       ref={editorRef}
                       content={content}
                       onChange={setContent}
-                      onReady={() => setEditorReady(true)}
+                      onReady={(editor) => {
+                        setEditorReady(true);
+                        setToolbarEditor(editor);
+                      }}
                       placeholder={isEssay ? "记录你的想法..." : "在此输入内容，支持 Markdown 语法..."}
                     />
                     <div className="flex justify-between items-center px-6 pb-3 text-xs text-on-surface-variant/60">

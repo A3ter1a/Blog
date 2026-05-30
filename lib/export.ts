@@ -1,5 +1,5 @@
 import JSZip from 'jszip';
-import { Note, typeMap, subjectMap, problemTypeMap } from './types';
+import { Note, problemTypeMap } from './types';
 import { sanitizeFileName } from './utils';
 
 /**

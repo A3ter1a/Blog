@@ -1,5 +1,10 @@
 import { Node, mergeAttributes } from "@tiptap/core";
 
+type MarkdownSerializerState = {
+  write: (text: string) => void;
+  closeBlock: (node: unknown) => void;
+};
+
 export const DashedSeparator = Node.create({
   name: "dashedSeparator",
   group: "block",
@@ -22,7 +27,7 @@ export const DashedSeparator = Node.create({
   addStorage() {
     return {
       markdown: {
-        serialize(state: any, node: any) {
+        serialize(state: MarkdownSerializerState, node: unknown) {
           state.write("<!--dashed-sep-->");
           state.closeBlock(node);
         },

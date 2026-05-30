@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { Search, Settings } from "lucide-react";
 import { SearchOverlay } from "./SearchOverlay";
@@ -43,7 +44,14 @@ export function Navbar() {
           href="/"
           className="flex items-center gap-2 hover:opacity-80 transition-opacity duration-300"
         >
-          <img src="/logo.png" alt="Asteroid Logo" className="w-14 h-14 object-contain" />
+          <Image
+            src="/logo.png"
+            alt="Asteroid Logo"
+            width={56}
+            height={56}
+            className="w-14 h-14 object-contain"
+            priority
+          />
           <span className="text-2xl font-bold font-headline text-primary-container translate-y-[1px]">
             Asteroid
           </span>

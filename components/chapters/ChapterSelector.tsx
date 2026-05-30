@@ -23,7 +23,12 @@ export function ChapterSelector({ noteId, value, onChange, className = '' }: Cha
     } catch { /* ignore */ }
   }, [noteId]);
 
-  useEffect(() => { loadChapters(); }, [loadChapters]);
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      void loadChapters();
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [loadChapters]);
 
   const selected = chapters.find(c => c.id === value);
   const topLevel = chapters.filter(c => !c.parentId);

@@ -201,7 +201,7 @@ function ProblemCard({
                 <div>
                   <span className="text-[10px] font-medium text-on-surface-variant/60">选项</span>
                   <div className="grid grid-cols-2 gap-1 mt-1">
-                    {problem.options.map((opt: any, i: number) => (
+                    {problem.options.map((opt, i) => (
                       <span key={i} className="text-xs text-on-surface-variant">
                         <span className="font-medium">{opt.label}.</span> {opt.content}
                       </span>

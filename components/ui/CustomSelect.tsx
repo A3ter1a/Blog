@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useId, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ChevronDown } from "lucide-react";
 import { useClickOutside } from "@/hooks/useClickOutside";
@@ -22,6 +22,7 @@ export function CustomSelect({ options, value, onChange, placeholder = "请选�
   const [isOpen, setIsOpen] = useState(false);
   const [focusedIndex, setFocusedIndex] = useState(-1);
   const containerRef = useClickOutside<HTMLDivElement>(() => setIsOpen(false), isOpen);
+  const listboxId = useId();
   const selectedOption = options.find((opt) => opt.value === value);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -63,6 +64,7 @@ export function CustomSelect({ options, value, onChange, placeholder = "请选�
       <button
         type="button"
         role="combobox"
+        aria-controls={listboxId}
         aria-expanded={isOpen}
         aria-haspopup="listbox"
         onClick={() => setIsOpen(!isOpen)}
@@ -88,6 +90,7 @@ export function CustomSelect({ options, value, onChange, placeholder = "请选�
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -4, scale: 0.98 }}
             transition={{ duration: 0.15 }}
+            id={listboxId}
             role="listbox"
             className="absolute top-full left-0 right-0 mt-1 bg-surface-container-low rounded-lg shadow-elevated border border-outline-variant/10 overflow-hidden z-50"
           >

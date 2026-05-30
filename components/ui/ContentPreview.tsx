@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useEffect, useMemo, useState } from "react";
+import { useRef, useEffect, useMemo } from "react";
 import markdownit from "markdown-it";
 import markdownitMark from "markdown-it-mark";
 import { preprocessLatex, preprocessDashedSep, postprocessDashedSepAsHtml } from "@/lib/utils";

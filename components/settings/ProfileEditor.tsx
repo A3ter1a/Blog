@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef } from "react";
+import Image from "next/image";
 import { Plus, Trash2, Camera, Edit3, Save, X, ChevronUp, ChevronDown } from "lucide-react";
 import { fileToDataUrl } from "@/lib/utils";
 import { CustomSelect } from "@/components/ui/CustomSelect";
@@ -145,6 +146,7 @@ export function ProfileEditor({ profile, onSave }: ProfileEditorProps) {
           <div className="flex items-center gap-3">
             <div className="w-12 h-12 rounded-full bg-surface-container-lowest overflow-hidden flex-shrink-0">
               {profile.avatar ? (
+                /* eslint-disable-next-line @next/next/no-img-element -- User profile avatars can be data URLs or arbitrary external URLs. */
                 <img src={profile.avatar} alt="" className="w-full h-full object-cover" />
               ) : (
                 <div className="w-full h-full editorial-gradient flex items-center justify-center text-on-primary text-lg font-bold">
@@ -203,6 +205,7 @@ export function ProfileEditor({ profile, onSave }: ProfileEditorProps) {
         <div className="relative">
           <div className="w-16 h-16 rounded-full bg-surface-container-low overflow-hidden">
             {editForm.avatar ? (
+              /* eslint-disable-next-line @next/next/no-img-element -- User profile avatars can be data URLs or arbitrary external URLs. */
               <img src={editForm.avatar} alt="" className="w-full h-full object-cover" />
             ) : (
               <div className="w-full h-full editorial-gradient flex items-center justify-center text-on-primary text-xl font-bold">
@@ -310,7 +313,13 @@ export function ProfileEditor({ profile, onSave }: ProfileEditorProps) {
                 </div>
                 <div className="flex items-center gap-2 flex-1 min-w-0">
                   <div className="w-8 h-8 flex items-center justify-center flex-shrink-0">
-                    <img src={iconMap[link.icon] || "/icons/email.svg"} alt={link.name} className="w-6 h-6" />
+                    <Image
+                      src={iconMap[link.icon] || "/icons/email.svg"}
+                      alt={link.name}
+                      width={24}
+                      height={24}
+                      className="w-6 h-6"
+                    />
                   </div>
                   <span className="text-sm font-medium text-on-surface truncate">{link.name}</span>
                 </div>

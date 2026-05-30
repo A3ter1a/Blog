@@ -1,7 +1,7 @@
 'use client';
 
 import { motion } from 'framer-motion';
-import { Upload, Scan, Brain, Check, X, Loader } from 'lucide-react';
+import { Upload, Scan, Brain, Check, X, Loader, type LucideIcon } from 'lucide-react';
 import type { ScanStage } from '@/hooks/useAIScan';
 
 interface AIProgressIndicatorProps {
@@ -9,7 +9,7 @@ interface AIProgressIndicatorProps {
   progress: number;
 }
 
-const stages: { key: ScanStage; label: string; icon: any }[] = [
+const stages: { key: ScanStage; label: string; icon: LucideIcon }[] = [
   { key: 'uploading', label: '上传图片', icon: Upload },
   { key: 'scanning', label: 'OCR 识别', icon: Scan },
   { key: 'analyzing', label: 'AI 分析', icon: Brain },

@@ -2,7 +2,6 @@
 
 import { Sparkles, Edit3 } from 'lucide-react';
 import type { Problem } from '@/lib/types';
-import { problemTypeMap, difficultyMap } from '@/lib/types';
 
 interface ProblemCompareProps {
   original?: Problem;     // AI-extracted
@@ -10,7 +9,7 @@ interface ProblemCompareProps {
   showDiff?: boolean;
 }
 
-export function ProblemCompare({ original, current, showDiff }: ProblemCompareProps) {
+export function ProblemCompare({ original, current }: ProblemCompareProps) {
   if (!original && !current) return null;
 
   return (

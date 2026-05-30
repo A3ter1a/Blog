@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { SearchBar } from "@/components/notes/SearchBar";
 import { TagFilter } from "@/components/notes/TagFilter";
@@ -8,7 +8,7 @@ import { NoteCard } from "@/components/notes/NoteCard";
 import { ExportDialog } from "@/components/export/ExportDialog";
 import { notesApi } from "@/lib/supabase";
 import { NoteType, Subject, Note } from "@/lib/types";
-import { CheckSquare, Square, Download, X, Trash2, AlertTriangle, Loader2, ArrowUpDown } from "lucide-react";
+import { CheckSquare, Square, Download, X, Trash2, AlertTriangle, Loader2 } from "lucide-react";
 
 export default function NotesPage() {
   const [searchQuery, setSearchQuery] = useState("");
@@ -26,12 +26,7 @@ export default function NotesPage() {
   const [showExportDialog, setShowExportDialog] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
-  // Load notes from Supabase
-  useEffect(() => {
-    loadNotes();
-  }, []);
-
-  const loadNotes = async () => {
+  const loadNotes = useCallback(async () => {
     try {
       setLoading(true);
       const data = await notesApi.getAll();
@@ -41,7 +36,14 @@ export default function NotesPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      void loadNotes();
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [loadNotes]);
 
   const filteredNotes = useMemo(() => {
     let result = notes.filter((note) => {
@@ -57,8 +59,8 @@ export default function NotesPage() {
 
     // Sort by date
     result = [...result].sort((a, b) => {
-      const dateA = a.createdAt instanceof Date ? a.createdAt.getTime() : new Date(a.createdAt as any).getTime();
-      const dateB = b.createdAt instanceof Date ? b.createdAt.getTime() : new Date(b.createdAt as any).getTime();
+      const dateA = a.createdAt instanceof Date ? a.createdAt.getTime() : new Date(a.createdAt).getTime();
+      const dateB = b.createdAt instanceof Date ? b.createdAt.getTime() : new Date(b.createdAt).getTime();
       return sortOrder === "desc" ? dateB - dateA : dateA - dateB;
     });
 

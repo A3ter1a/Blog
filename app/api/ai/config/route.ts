@@ -1,6 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { callDeepSeek } from '@/lib/ai-client';
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function getErrorMessage(error: unknown, fallback: string) {
+  return error instanceof Error ? error.message : fallback;
+}
+
 // Connection test endpoint — validates API keys for DeepSeek and Qwen
 export async function POST(req: NextRequest) {
   try {
@@ -40,19 +48,26 @@ export async function POST(req: NextRequest) {
 
       if (!res.ok) {
         const error = await res.json().catch(() => ({}));
-        throw new Error(error.error?.message || `Qwen API error: ${res.status}`);
+        const apiMessage = isRecord(error) && isRecord(error.error) && typeof error.error.message === 'string'
+          ? error.error.message
+          : undefined;
+        throw new Error(apiMessage || `Qwen API error: ${res.status}`);
       }
 
-      const data = await res.json();
-      const modelList = data.data?.map((m: any) => m.id).filter((id: string) => id.startsWith('qwen')) || [];
+      const data: unknown = await res.json();
+      const models = isRecord(data) && Array.isArray(data.data) ? data.data : [];
+      const modelList = models
+        .map((modelInfo) => (isRecord(modelInfo) && typeof modelInfo.id === 'string' ? modelInfo.id : null))
+        .filter((id): id is string => Boolean(id?.startsWith('qwen')));
       return NextResponse.json({ success: true, modelList });
     }
 
     return NextResponse.json({ error: `未知的 provider: ${provider}` }, { status: 400 });
-  } catch (error: any) {
-    console.error('[Config Test] Error:', error.message);
+  } catch (error: unknown) {
+    const message = getErrorMessage(error, '连接测试失败');
+    console.error('[Config Test] Error:', message);
     return NextResponse.json(
-      { error: error.message || '连接测试失败', success: false },
+      { error: message, success: false },
       { status: 500 }
     );
   }

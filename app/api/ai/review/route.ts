@@ -1,5 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { callDeepSeek } from '@/lib/ai-client';
+import { parseAIJson } from '@/lib/ai-json';
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function getString(value: unknown) {
+  return typeof value === 'string' ? value : '';
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -73,30 +82,31 @@ Tips: ${problem.tips || '(none)'}`;
       { temperature: 0.3, maxTokens: 2048, responseFormat: 'json_object' }
     );
 
-    let parsed: any;
+    let parsed: unknown;
     try {
-      const cleaned = content.replace(/^```(?:json)?\s*/, '').replace(/\s*```$/, '');
-      parsed = JSON.parse(cleaned);
+      parsed = parseAIJson(content);
     } catch {
       return NextResponse.json(
         { error: 'AI 返回格式解析失败，请重试', rawContent: content },
         { status: 422 }
       );
     }
+    const review = isRecord(parsed) ? parsed : {};
 
     return NextResponse.json({
       review: {
-        summary: parsed.summary || '',
-        hasIssues: parsed.hasIssues ?? false,
-        suggestions: Array.isArray(parsed.suggestions) ? parsed.suggestions : [],
+        summary: getString(review.summary),
+        hasIssues: typeof review.hasIssues === 'boolean' ? review.hasIssues : false,
+        suggestions: Array.isArray(review.suggestions) ? review.suggestions : [],
       },
       tokensUsed,
       success: true,
     });
-  } catch (error: any) {
-    console.error('[Review] Error:', error.message);
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'AI 检查失败';
+    console.error('[Review] Error:', message);
     return NextResponse.json(
-      { error: error.message || 'AI 检查失败', success: false },
+      { error: message, success: false },
       { status: 500 }
     );
   }

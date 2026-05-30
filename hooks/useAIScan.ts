@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useCallback } from 'react';
-import type { Problem, ProblemType, Difficulty, AIConfig } from '@/lib/types';
+import type { Problem, ProblemType, Difficulty, AIConfig, ProblemOption } from '@/lib/types';
 import { recordDeepSeekUsage, recordQwenUsage } from '@/lib/ai-usage';
 
 export type ScanStage = 'idle' | 'uploading' | 'scanning' | 'analyzing' | 'complete' | 'error';
@@ -19,6 +19,41 @@ export interface ScanState {
 const STORAGE_KEY = 'ai-config';
 const MAX_OCR_LENGTH = 4000;
 const FETCH_TIMEOUT = 180000; // 3 min per API call
+const PROBLEM_TYPES: ProblemType[] = ['choice', 'fill', 'calculation', 'proof', 'proofEssay'];
+const DIFFICULTIES: Difficulty[] = ['easy', 'medium', 'hard'];
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function toOptionalString(value: unknown): string | undefined {
+  return typeof value === 'string' ? value : undefined;
+}
+
+function toProblemType(value: unknown): ProblemType {
+  return typeof value === 'string' && PROBLEM_TYPES.includes(value as ProblemType)
+    ? value as ProblemType
+    : 'calculation';
+}
+
+function toDifficulty(value: unknown): Difficulty {
+  return typeof value === 'string' && DIFFICULTIES.includes(value as Difficulty)
+    ? value as Difficulty
+    : 'medium';
+}
+
+function toProblemOptions(value: unknown): ProblemOption[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+
+  const options = value.flatMap((option): ProblemOption[] => {
+    if (!isRecord(option)) return [];
+    const label = toOptionalString(option.label);
+    const content = toOptionalString(option.content);
+    return label && content ? [{ label, content }] : [];
+  });
+
+  return options.length > 0 ? options : undefined;
+}
 
 function getAIConfig(): AIConfig | null {
   try {
@@ -83,19 +118,19 @@ export function useAIScan() {
           throw new Error(err.error || `第 ${i + 1} 张图片 OCR 识别失败`);
         }
 
-        const ocrData = await ocrRes.json();
-        const rawText = ocrData.text || '';
+        const ocrData = await ocrRes.json() as { text?: unknown };
+        const rawText = toOptionalString(ocrData.text) || '';
         const ocrText = truncateText(rawText, MAX_OCR_LENGTH);
         recordQwenUsage(1);
 
         ocrDone++;
-        setScanState(prev => ({
+        setScanState({
           stage: 'scanning',
           progress: 5 + Math.round((ocrDone / N) * 45),
           currentImage: ocrDone,
           totalImages: N,
           ocrText,
-        }));
+        });
 
         // Step B: Analyze
         const analyzeRes = await fetch('/api/ai/analyze', {
@@ -115,9 +150,12 @@ export function useAIScan() {
           throw new Error(err.error || `第 ${i + 1} 张图片分析失败`);
         }
 
-        const analyzeData = await analyzeRes.json();
+        const analyzeData = await analyzeRes.json() as {
+          tokensUsed?: unknown;
+          problems?: unknown;
+        };
         if (analyzeData.tokensUsed) {
-          recordDeepSeekUsage(analyzeData.tokensUsed);
+          recordDeepSeekUsage(Number(analyzeData.tokensUsed));
         }
 
         analyzeDone++;
@@ -130,11 +168,13 @@ export function useAIScan() {
         }));
 
         const rawProblems = Array.isArray(analyzeData.problems) ? analyzeData.problems : [];
-        return rawProblems.map((p: any): Partial<Problem> => {
+        return rawProblems.map((p: unknown): Partial<Problem> => {
+          const problemData = isRecord(p) ? p : {};
           // Resolve suggestedChapter name → chapterId
           let chapterId: string | undefined;
-          if (p.suggestedChapter && chapterContext) {
-            const name = p.suggestedChapter.trim();
+          const suggestedChapter = toOptionalString(problemData.suggestedChapter);
+          if (suggestedChapter && chapterContext) {
+            const name = suggestedChapter.trim();
             const match = chapterContext.find(
               c => c.name === name ||
                    c.name.includes(name) ||
@@ -143,20 +183,20 @@ export function useAIScan() {
             if (match) chapterId = match.id;
           }
           return {
-            type: (p.type as ProblemType) || 'calculation',
-            difficulty: (p.difficulty as Difficulty) || 'medium',
-            question: p.question || '',
-            answer: p.answer || '',
-            explanation: p.explanation || '',
-            tips: p.tips,
-            options: Array.isArray(p.options) ? p.options : undefined,
+            type: toProblemType(problemData.type),
+            difficulty: toDifficulty(problemData.difficulty),
+            question: toOptionalString(problemData.question) || '',
+            answer: toOptionalString(problemData.answer) || '',
+            explanation: toOptionalString(problemData.explanation) || '',
+            tips: toOptionalString(problemData.tips),
+            options: toProblemOptions(problemData.options),
             tags: [],
             chapterId,
             aiResult: {
               rawQuestion: ocrText,
               rawAnswer: '',
               rawExplanation: '',
-              confidence: typeof p.confidence === 'number' ? p.confidence : 0.5,
+              confidence: typeof problemData.confidence === 'number' ? problemData.confidence : 0.5,
             },
           };
         });
@@ -170,10 +210,12 @@ export function useAIScan() {
         progress: 100,
         extractedProblems: allProblems,
       });
-    } catch (error: any) {
-      const msg = error.name === 'AbortError' || error.name === 'TimeoutError'
+    } catch (error: unknown) {
+      const errorName = error instanceof Error ? error.name : '';
+      const errorMessage = error instanceof Error ? error.message : '';
+      const msg = errorName === 'AbortError' || errorName === 'TimeoutError'
         ? `AI 扫描超时（超过 ${FETCH_TIMEOUT / 60000} 分钟），请重试或使用更小的图片`
-        : (error.message || '未知错误');
+        : (errorMessage || '未知错误');
       setScanState({
         stage: 'error',
         progress: 0,
