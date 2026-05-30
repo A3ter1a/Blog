@@ -2,7 +2,7 @@
 
 import { useState, useEffect, type ReactNode } from "react";
 import { motion, AnimatePresence, Reorder, useDragControls } from "framer-motion";
-import { Plus, X, ChevronDown, ChevronUp, GripVertical, Sparkles, Scan, Copy, Trash2 } from "lucide-react";
+import { Plus, X, ChevronDown, ChevronUp, GripVertical, Sparkles, Scan, Copy, Trash2, Wrench } from "lucide-react";
 import { Problem, ProblemType, Difficulty, problemTypeMap, difficultyMap, difficultyColorMap } from "@/lib/types";
 import { chaptersApi } from "@/lib/chapters-api";
 import { ChapterSelector } from "@/components/chapters/ChapterSelector";
@@ -10,6 +10,7 @@ import { ProblemCompare } from "./ProblemCompare";
 import { ProblemPreview } from "./ProblemPreview";
 import { OCRUploader } from "@/components/ai-assistant/OCRUploader";
 import type { ChapterContextItem } from "@/hooks/useAIScan";
+import { repairProblemMarkdownFields } from "@/lib/markdown";
 
 interface ProblemEditorProps {
   problems: Problem[];
@@ -85,6 +86,10 @@ export function ProblemEditor({ problems, onChange, noteId }: ProblemEditorProps
 
   const handleAcceptAI = (newProblems: Problem[]) => {
     onChange([...problems, ...newProblems]);
+  };
+
+  const handleRepairNewProblem = () => {
+    setNewProblem(repairProblemMarkdownFields(newProblem));
   };
 
   return (
@@ -215,7 +220,15 @@ export function ProblemEditor({ problems, onChange, noteId }: ProblemEditorProps
             <ProblemPreview problem={newProblem} />
 
             {/* Action Buttons */}
-            <div className="flex gap-2 pt-1">
+            <div className="flex flex-wrap gap-2 pt-1">
+              <button
+                onClick={handleRepairNewProblem}
+                disabled={!newProblem.question && !newProblem.answer && !newProblem.explanation && !newProblem.tips}
+                className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-primary/10 text-primary text-sm font-medium hover:bg-primary/15 disabled:opacity-40 transition-colors"
+              >
+                <Wrench className="w-4 h-4" />
+                一键修正
+              </button>
               <button
                 onClick={() => { setShowAddForm(false); setNewProblem(createEmptyProblemDraft()); }}
                 className="flex-1 px-3 py-2 rounded-lg bg-surface-container text-on-surface-variant text-sm hover:bg-surface-container-high transition-colors"
@@ -296,6 +309,10 @@ function ProblemCard({
     const current = options[optionIndex] || { label: "", content: "" };
     options[optionIndex] = { ...current, [field]: value };
     onUpdate({ options });
+  };
+
+  const handleRepairProblem = () => {
+    onUpdate(repairProblemMarkdownFields(problem));
   };
 
   return (
@@ -498,6 +515,16 @@ function ProblemCard({
                 className="w-full px-3 py-2 bg-surface-container rounded-lg text-sm text-on-surface outline-none focus:ring-2 focus:ring-primary/20 resize-y min-h-28 placeholder:text-on-surface-variant/40"
                 placeholder="输入解析，支持 Markdown 和 LaTeX..."
               />
+            </div>
+
+            <div className="flex justify-end">
+              <button
+                onClick={handleRepairProblem}
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-primary/10 text-primary text-sm font-medium hover:bg-primary/15 transition-colors"
+              >
+                <Wrench className="w-4 h-4" />
+                一键修正题目 Markdown
+              </button>
             </div>
 
             {/* AI comparison */}

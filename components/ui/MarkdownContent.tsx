@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import katex from "katex";
 import GithubSlugger from "github-slugger";
 import { renderMarkdownToHtml } from "@/lib/markdown";
@@ -120,13 +120,28 @@ export function MarkdownContent({
   const containerRef = useRef<HTMLDivElement>(null);
   const htmlContent = useMemo(() => renderMarkdownToHtml(content), [content]);
 
+  useLayoutEffect(() => {
+    if (containerRef.current) {
+      processContent(containerRef.current);
+    }
+  }, [htmlContent]);
+
   useEffect(() => {
-    const frame = requestAnimationFrame(() => {
+    const process = () => {
       if (containerRef.current) {
         processContent(containerRef.current);
       }
-    });
-    return () => cancelAnimationFrame(frame);
+    };
+
+    const frame = requestAnimationFrame(process);
+    const lateFrame = window.setTimeout(process, 120);
+    const animationFrame = window.setTimeout(process, 320);
+
+    return () => {
+      cancelAnimationFrame(frame);
+      window.clearTimeout(lateFrame);
+      window.clearTimeout(animationFrame);
+    };
   }, [htmlContent]);
 
   return (

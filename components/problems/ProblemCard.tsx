@@ -2,10 +2,11 @@
 
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ChevronDown, ChevronUp, Eye, EyeOff, Lightbulb, Pencil, Check, X, Sparkles, Loader2 } from "lucide-react";
+import { ChevronDown, ChevronUp, Eye, EyeOff, Lightbulb, Pencil, Check, X, Sparkles, Loader2, Wrench } from "lucide-react";
 import type { Problem, ProblemType, Difficulty } from "@/lib/types";
 import { problemTypeMap, difficultyMap, difficultyColorMap } from "@/lib/types";
 import { MarkdownContent } from "@/components/ui/MarkdownContent";
+import { repairMarkdown } from "@/lib/markdown";
 
 interface ProblemCardProps {
   problem: Problem;
@@ -124,6 +125,18 @@ export function ProblemCard({ problem, index, onUpdate }: ProblemCardProps) {
     } finally {
       setIsReviewing(false);
     }
+  };
+
+  const handleRepairEditData = () => {
+    setEditData(prev => ({
+      ...prev,
+      question: repairMarkdown(prev.question),
+      answer: repairMarkdown(prev.answer),
+      explanation: repairMarkdown(prev.explanation),
+      tips: repairMarkdown(prev.tips),
+    }));
+    setReviewResult(null);
+    setReviewError(null);
   };
 
   const handleApplySuggestion = (suggestion: { field: string; suggestion: string }) => {
@@ -318,6 +331,15 @@ export function ProblemCard({ problem, index, onUpdate }: ProblemCardProps) {
                   <Sparkles className="w-4 h-4" />
                 )}
                 AI 检查
+              </button>
+              <button
+                onClick={handleRepairEditData}
+                disabled={!editData.question.trim() && !editData.answer.trim() && !editData.explanation.trim() && !editData.tips.trim()}
+                className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-primary/10 border border-primary/15 text-primary text-sm hover:bg-primary/15 transition-colors disabled:opacity-40"
+                title="修正题干、答案、解析和提示里的 Markdown / LaTeX 格式"
+              >
+                <Wrench className="w-4 h-4" />
+                一键修正
               </button>
               <button
                 onClick={handleSave}

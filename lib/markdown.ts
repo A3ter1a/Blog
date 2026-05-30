@@ -2,6 +2,7 @@ import GithubSlugger from "github-slugger";
 import markdownit from "markdown-it";
 import markdownitMark from "markdown-it-mark";
 import { preprocessDashedSep, preprocessLatex, postprocessDashedSepAsHtml } from "@/lib/utils";
+import type { Problem } from "@/lib/types";
 
 const md = markdownit({
   html: false,
@@ -70,6 +71,20 @@ export function repairMarkdown(content: string): string {
   return repaired
     .replace(/\n{3,}/g, "\n\n")
     .trim();
+}
+
+export function repairProblemMarkdownFields<T extends Partial<Problem>>(problem: T): T {
+  return {
+    ...problem,
+    question: problem.question !== undefined ? repairMarkdown(problem.question) : problem.question,
+    answer: problem.answer !== undefined ? repairMarkdown(problem.answer) : problem.answer,
+    explanation: problem.explanation !== undefined ? repairMarkdown(problem.explanation) : problem.explanation,
+    tips: problem.tips !== undefined ? repairMarkdown(problem.tips) : problem.tips,
+    options: problem.options?.map((option) => ({
+      ...option,
+      content: repairMarkdown(option.content),
+    })),
+  };
 }
 
 export function normalizeMarkdownForRender(content: string): string {
