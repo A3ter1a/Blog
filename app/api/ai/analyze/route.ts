@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { callDeepSeek } from '@/lib/ai-client';
+import { parseAIJson } from '@/lib/ai-json';
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
 
 // DeepSeek analysis endpoint — classifies OCR text into structured Problem array
 export async function POST(req: NextRequest) {
@@ -43,6 +48,8 @@ Rules:
 - difficulty: "easy" for basic exercises, "medium" for standard problems, "hard" for challenging/advanced
 - options array ONLY for "choice" type, otherwise omit or empty
 - If unsure about any field, use your best guess and set lower confidence
+- Return valid JSON only. Do not include markdown fences, comments, or explanatory text outside the JSON object.
+- Escape LaTeX backslashes for JSON strings. For example, write "\\\\frac{x}{2}" instead of "\\frac{x}{2}".
 - CRITICAL for "explanation": Format ALL explanations with numbered steps (步骤1：..., 步骤2：..., ...). Each step should be a self-contained logical step. Use proper Markdown formatting (bold, italic, line breaks) to make the explanation readable. Never output a single wall of text — always break into clear, distinct steps.${chapterHint}`;
 
     const { content, tokensUsed } = await callDeepSeek(
@@ -55,48 +62,102 @@ Rules:
       { temperature: 0.3, maxTokens: 4096, responseFormat: 'json_object' }
     );
 
-    let parsed: any;
+    let parsed: unknown;
+    let totalTokensUsed = tokensUsed;
     try {
-      // Clean potential markdown code fences
-      const cleaned = content.replace(/^```(?:json)?\s*/, '').replace(/\s*```$/, '');
-      parsed = JSON.parse(cleaned);
-    } catch {
-      return NextResponse.json(
-        { error: 'AI 返回格式解析失败，请重试', rawContent: content },
-        { status: 422 }
-      );
+      parsed = parseAIJson(content);
+    } catch (firstParseError: unknown) {
+      try {
+        const repairPrompt = `Repair the following AI output into one valid JSON object only.
+It must match this shape: {"problems":[{"question":"","answer":"","explanation":"","type":"calculation","difficulty":"medium","suggestedChapter":null,"tips":null,"options":[],"confidence":0.5}]}.
+Keep the original math content. Escape all LaTeX backslashes correctly for JSON strings. Return JSON only.
+
+Broken output:
+${content}`;
+
+        const repaired = await callDeepSeek(
+          apiKey,
+          model,
+          [
+            { role: 'system', content: 'You repair malformed JSON. Return valid JSON only.' },
+            { role: 'user', content: repairPrompt },
+          ],
+          { temperature: 0, maxTokens: 4096, responseFormat: 'json_object' }
+        );
+
+        totalTokensUsed += repaired.tokensUsed;
+        parsed = parseAIJson(repaired.content);
+      } catch {
+        return NextResponse.json(
+          {
+            error: 'AI 返回格式解析失败，已尝试自动修复但仍失败',
+            parseError: firstParseError instanceof Error ? firstParseError.message : undefined,
+            rawContent: content,
+          },
+          { status: 422 }
+        );
+      }
     }
 
     // Normalize: support both {problems:[...]} and legacy single-object responses
-    let problems: any[];
-    if (Array.isArray(parsed.problems)) {
-      problems = parsed.problems;
-    } else if (parsed.question || parsed.type) {
+    const parsedObject = isRecord(parsed) ? parsed : {};
+    let problems: unknown[];
+    if (Array.isArray(parsed)) {
+      problems = parsed;
+    } else if (Array.isArray(parsedObject.problems)) {
+      problems = parsedObject.problems;
+    } else if (parsedObject.question || parsedObject.type) {
       // Backward compatibility: AI returned a single problem object
-      problems = [parsed];
+      problems = [parsedObject];
     } else {
       problems = [];
     }
 
+    const allowedTypes = new Set(['choice', 'fill', 'calculation', 'proof', 'proofEssay']);
+    const allowedDifficulties = new Set(['easy', 'medium', 'hard']);
+
+    const toString = (value: unknown) => {
+      if (value === null || value === undefined) return '';
+      return typeof value === 'string' ? value : String(value);
+    };
+
     return NextResponse.json({
-      problems: problems.map((p: any) => ({
-        question: p.question || '',
-        answer: p.answer || '',
-        explanation: p.explanation || '',
-        type: p.type || 'calculation',
-        difficulty: p.difficulty || 'medium',
-        suggestedChapter: p.suggestedChapter || null,
-        tips: p.tips || undefined,
-        options: Array.isArray(p.options) ? p.options : undefined,
-        confidence: typeof p.confidence === 'number' ? p.confidence : 0.5,
-      })),
-      tokensUsed,
+      problems: problems.map((problem) => {
+        const p = isRecord(problem) ? problem : {};
+        const type = toString(p.type);
+        const difficulty = toString(p.difficulty);
+
+        return {
+          question: toString(p.question),
+          answer: toString(p.answer),
+          explanation: toString(p.explanation),
+          type: allowedTypes.has(type) ? type : 'calculation',
+          difficulty: allowedDifficulties.has(difficulty) ? difficulty : 'medium',
+          suggestedChapter: p.suggestedChapter ? toString(p.suggestedChapter) : null,
+          tips: p.tips ? toString(p.tips) : undefined,
+          options: Array.isArray(p.options)
+            ? p.options
+                .map((rawOption, index) => {
+                  const option = isRecord(rawOption) ? rawOption : {};
+                  const content = isRecord(rawOption) ? option.content : rawOption;
+                  return {
+                    label: toString(option.label || String.fromCharCode(65 + index)),
+                    content: toString(content),
+                  };
+                })
+                .filter((option) => option.content.trim())
+            : undefined,
+          confidence: typeof p.confidence === 'number' ? p.confidence : 0.5,
+        };
+      }),
+      tokensUsed: totalTokensUsed,
       success: true,
     });
-  } catch (error: any) {
-    console.error('[Analyze] Error:', error.message);
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : '题目分析失败';
+    console.error('[Analyze] Error:', message);
     return NextResponse.json(
-      { error: error.message || '题目分析失败', success: false },
+      { error: message, success: false },
       { status: 500 }
     );
   }
