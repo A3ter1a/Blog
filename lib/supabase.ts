@@ -120,6 +120,26 @@ export async function assertAdminWrite(): Promise<void> {
   }
 }
 
+async function hasAdminSession(): Promise<boolean> {
+  const { data } = await getSupabase().auth.getSession();
+  const token = data.session?.access_token;
+
+  if (!token) return false;
+
+  try {
+    const res = await fetch("/api/auth/admin", {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+      cache: "no-store",
+    });
+
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
 // 字段转换：snake_case → camelCase
 function mapSnakeToCamel(row: NoteRow): Note {
   const createdAt = row.created_at ? new Date(row.created_at) : new Date();
@@ -184,7 +204,7 @@ export const notesApi = {
   // Get note by ID (fetch all fields for detail view)
   async getById(id: string): Promise<Note | null> {
     const supabase = getSupabase();
-    const { data, error } = await supabase
+    let query = supabase
       .from("notes")
       .select(`
         id,
@@ -200,8 +220,13 @@ export const notesApi = {
         updated_at,
         is_published
       `)
-      .eq("id", id)
-      .single();
+      .eq("id", id);
+
+    if (!(await hasAdminSession())) {
+      query = query.eq("is_published", true);
+    }
+
+    const { data, error } = await query.single();
 
     if (error) return null;
     return mapSnakeToCamel(data);
