@@ -19,6 +19,7 @@ export type NoteRow = {
 
 export type NoteInsert = Partial<NoteRow>;
 export type NoteUpdate = Partial<NoteRow>;
+export type NoteCreateInput = Omit<Note, "id" | "createdAt" | "updatedAt"> & Partial<Pick<Note, "createdAt" | "updatedAt">>;
 
 export type FlashcardRow = {
   id?: string;
@@ -101,6 +102,13 @@ const SITE_PROFILE_ID = "main";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
+
+function normalizeSearchTerm(query: string): string {
+  return query
+    .trim()
+    .replace(/[%,()*{}"\\]/g, " ")
+    .replace(/\s+/g, " ");
+}
 
 // 延迟初始化 - 只在变量存在时创建客户端
 let _supabase: SupabaseClient<Database> | null = null;
@@ -252,17 +260,19 @@ export const notesApi = {
   },
 
   // Create note
-  async create(note: Omit<Note, "id" | "createdAt" | "updatedAt">): Promise<Note> {
+  async create(note: NoteCreateInput): Promise<Note> {
     await assertAdminWrite();
     const supabase = getSupabase();
     const dbNote = mapCamelToSnake(note);
+    const createdAt = note.createdAt instanceof Date ? note.createdAt : new Date();
+    const updatedAt = note.updatedAt instanceof Date ? note.updatedAt : createdAt;
     
     const { data, error } = await supabase
       .from("notes")
       .insert([{
         ...dbNote,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
+        created_at: createdAt.toISOString(),
+        updated_at: updatedAt.toISOString(),
       }])
       .select()
       .single();
@@ -299,10 +309,12 @@ export const notesApi = {
 
   // Search notes (optimized field selection)
   async search(query: string, type?: NoteType, subject?: Subject): Promise<Note[]> {
+    const term = normalizeSearchTerm(query);
+    if (!term) return [];
+    const tagTerms = [...new Set(term.split(" ").filter(Boolean))];
+
     const supabase = getSupabase();
-    let q = supabase
-      .from("notes")
-      .select(`
+    const fields = `
         id,
         type,
         title,
@@ -312,16 +324,39 @@ export const notesApi = {
         created_at,
         updated_at,
         is_published
-      `)
-      .eq("is_published", true)
-      .or(`title.ilike.%${query}%,content.ilike.%${query}%`);
+      `;
 
-    if (type) q = q.eq("type", type);
-    if (subject) q = q.eq("subject", subject);
+    const baseQuery = () => {
+      let q = supabase
+        .from("notes")
+        .select(fields)
+        .eq("is_published", true);
 
-    const { data, error } = await q.order("created_at", { ascending: false });
-    if (error) throw error;
-    return (data || []).map(mapSnakeToCamel);
+      if (type) q = q.eq("type", type);
+      if (subject) q = q.eq("subject", subject);
+      return q;
+    };
+
+    const [textResult, tagResult] = await Promise.all([
+      baseQuery()
+        .or(`title.ilike.%${term}%,content.ilike.%${term}%`)
+        .order("created_at", { ascending: false }),
+      baseQuery()
+        .overlaps("tags", tagTerms)
+        .order("created_at", { ascending: false }),
+    ]);
+
+    if (textResult.error) throw textResult.error;
+    if (tagResult.error) throw tagResult.error;
+
+    const rowsById = new Map<string, NoteRow>();
+    for (const row of [...(textResult.data || []), ...(tagResult.data || [])]) {
+      if (row.id) rowsById.set(row.id, row);
+    }
+
+    return [...rowsById.values()]
+      .map(mapSnakeToCamel)
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
   },
 };
 

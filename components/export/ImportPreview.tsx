@@ -1,29 +1,56 @@
 "use client";
 
 import { motion, AnimatePresence } from "framer-motion";
-import { X, FileText, Tag } from "lucide-react";
+import { X, FileText, Tag, Loader2 } from "lucide-react";
 import { ParsedNote } from "@/lib/import";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/components/ui/Toast";
+import { notesApi, type NoteCreateInput } from "@/lib/supabase";
+import { useState } from "react";
 
 interface ImportPreviewProps {
   isOpen: boolean;
   onClose: () => void;
   parsedNotes: ParsedNote[];
+  onImported?: () => void;
 }
 
-export function ImportPreview({ isOpen, onClose, parsedNotes }: ImportPreviewProps) {
+function toNoteCreateInput(note: ParsedNote): NoteCreateInput {
+  const type = note.type ?? (note.problems && note.problems.length > 0 ? "problem" : "note");
+
+  return {
+    type,
+    title: note.title.trim() || "Untitled",
+    subject: type === "essay" ? undefined : note.subject,
+    tags: note.tags,
+    content: note.content,
+    videos: note.videos ?? [],
+    problems: type === "problem" ? note.problems ?? [] : undefined,
+    coverImage: note.coverImage || undefined,
+    createdAt: note.createdAt,
+    updatedAt: note.updatedAt,
+    isPublished: true,
+  };
+}
+
+export function ImportPreview({ isOpen, onClose, parsedNotes, onImported }: ImportPreviewProps) {
   const router = useRouter();
   const toast = useToast();
+  const [isSaving, setIsSaving] = useState(false);
 
   const handleEdit = (index: number) => {
     const note = parsedNotes[index];
+    const draft = toNoteCreateInput(note);
 
     const importData = {
-      title: note.title,
-      content: note.content,
-      tags: note.tags,
-      noteType: 'note',
+      title: draft.title,
+      content: draft.content,
+      tags: draft.tags,
+      noteType: draft.type,
+      subject: draft.subject,
+      problems: draft.problems,
+      coverImage: draft.coverImage,
+      videos: draft.videos,
     };
 
     sessionStorage.setItem('pendingImport', JSON.stringify(importData));
@@ -32,9 +59,30 @@ export function ImportPreview({ isOpen, onClose, parsedNotes }: ImportPreviewPro
     toast.success('已跳转到编辑页面');
   };
 
-  const handleSaveAll = () => {
-    toast.info('直接保存功能将在连接数据库后启用');
-    onClose();
+  const handleSaveAll = async () => {
+    if (isSaving || parsedNotes.length === 0) return;
+
+    setIsSaving(true);
+    let savedCount = 0;
+    let completed = false;
+
+    try {
+      for (const note of parsedNotes) {
+        await notesApi.create(toNoteCreateInput(note));
+        savedCount += 1;
+      }
+
+      completed = true;
+      toast.success(`已保存 ${savedCount} 篇笔记`);
+      onImported?.();
+      if (!onImported) onClose();
+      router.push("/notes");
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "未知错误";
+      toast.error(`批量保存失败：已保存 ${savedCount}/${parsedNotes.length} 篇。${message}`);
+    } finally {
+      if (!completed) setIsSaving(false);
+    }
   };
 
   return (
@@ -109,6 +157,7 @@ export function ImportPreview({ isOpen, onClose, parsedNotes }: ImportPreviewPro
               {parsedNotes.length === 1 && (
                 <button
                   onClick={() => handleEdit(0)}
+                  disabled={isSaving}
                   className="px-4 py-2 rounded-lg editorial-gradient text-on-primary text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-40 flex items-center gap-2"
                 >
                   去编辑
@@ -117,9 +166,11 @@ export function ImportPreview({ isOpen, onClose, parsedNotes }: ImportPreviewPro
               {parsedNotes.length > 1 && (
                 <button
                   onClick={handleSaveAll}
-                  className="px-4 py-2 rounded-lg editorial-gradient text-on-primary text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-40"
+                  disabled={isSaving}
+                  className="px-4 py-2 rounded-lg editorial-gradient text-on-primary text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2"
                 >
-                  保存全部 ({parsedNotes.length})
+                  {isSaving && <Loader2 className="w-4 h-4 animate-spin" />}
+                  {isSaving ? "保存中" : `保存全部 (${parsedNotes.length})`}
                 </button>
               )}
             </div>

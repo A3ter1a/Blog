@@ -9,6 +9,7 @@ import { Flashcard, ReviewQuality } from "@/lib/types";
 import { MarkdownContent } from "@/components/ui/MarkdownContent";
 import { AdminGate } from "@/components/auth/AdminGate";
 import { useAdminAuth } from "@/hooks/useAdminAuth";
+import { useToast } from "@/components/ui/Toast";
 
 // SM-2 Algorithm: Calculate next review based on quality
 function calculateSM2(
@@ -45,11 +46,13 @@ function calculateSM2(
 
 export default function FlashcardPage() {
   const { loading: authLoading, isAdmin } = useAdminAuth();
+  const { error: showError } = useToast();
   const [cards, setCards] = useState<Flashcard[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [loading, setLoading] = useState(true);
   const [isFlipped, setIsFlipped] = useState(false);
   const [reviewed, setReviewed] = useState(0);
+  const [reviewingQuality, setReviewingQuality] = useState<ReviewQuality | null>(null);
   const [noteTitles, setNoteTitles] = useState<Record<string, string>>({});
 
   const loadDueCards = useCallback(async () => {
@@ -76,10 +79,12 @@ export default function FlashcardPage() {
       setNoteTitles(titles);
     } catch (error) {
       console.error("Failed to load flashcards:", error);
+      const message = error instanceof Error ? error.message : "未知错误";
+      showError(`加载闪卡失败：${message}`);
     } finally {
       setLoading(false);
     }
-  }, [isAdmin]);
+  }, [isAdmin, showError]);
 
   useEffect(() => {
     if (authLoading || !isAdmin) return;
@@ -90,37 +95,46 @@ export default function FlashcardPage() {
   }, [authLoading, isAdmin, loadDueCards]);
 
   const handleReview = async (quality: ReviewQuality) => {
-    if (!isAdmin) return;
+    if (!isAdmin || reviewingQuality !== null) return;
     const current = cards[currentIndex];
     if (!current) return;
 
     const next = calculateSM2(current, quality);
 
-    await flashcardsApi.update(current.id, {
-      interval: next.interval,
-      repetition: next.repetition,
-      easeFactor: next.easeFactor,
-      nextReview: next.nextReview,
-      lastReview: new Date(),
-    });
+    setReviewingQuality(quality);
+    try {
+      await flashcardsApi.update(current.id, {
+        interval: next.interval,
+        repetition: next.repetition,
+        easeFactor: next.easeFactor,
+        nextReview: next.nextReview,
+        lastReview: new Date(),
+      });
 
-    setReviewed(prev => prev + 1);
+      setReviewed(prev => prev + 1);
 
-    // Move to next card
-    if (currentIndex < cards.length - 1) {
-      setCurrentIndex(currentIndex + 1);
-      setIsFlipped(false);
-    } else {
-      // All cards reviewed
-      setCurrentIndex(cards.length);
+      // Move to next card
+      if (currentIndex < cards.length - 1) {
+        setCurrentIndex(currentIndex + 1);
+        setIsFlipped(false);
+      } else {
+        // All cards reviewed
+        setCurrentIndex(cards.length);
+      }
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "未知错误";
+      showError(`保存复习结果失败：${message}`);
+    } finally {
+      setReviewingQuality(null);
     }
   };
 
   const handleRestart = () => {
+    if (reviewingQuality !== null) return;
     setCurrentIndex(0);
     setIsFlipped(false);
     setReviewed(0);
-    loadDueCards();
+    void loadDueCards();
   };
 
   const current = cards[currentIndex];
@@ -185,7 +199,8 @@ export default function FlashcardPage() {
               </p>
               <button
                 onClick={handleRestart}
-                className="px-6 py-3 rounded-xl bg-primary text-on-primary font-medium hover:bg-primary/90 transition-colors flex items-center gap-2 mx-auto"
+                disabled={reviewingQuality !== null}
+                className="px-6 py-3 rounded-xl bg-primary text-on-primary font-medium hover:bg-primary/90 transition-colors flex items-center gap-2 mx-auto disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 <RotateCcw className="w-4 h-4" />
                 刷新
@@ -302,17 +317,19 @@ export default function FlashcardPage() {
                   <div className="grid grid-cols-3 gap-3">
                     <button
                       onClick={() => handleReview(1)}
-                      className="p-4 rounded-xl bg-red-50 text-red-700 hover:bg-red-100 transition-colors flex flex-col items-center gap-2"
+                      disabled={reviewingQuality !== null}
+                      className="p-4 rounded-xl bg-red-50 text-red-700 hover:bg-red-100 transition-colors flex flex-col items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      <X className="w-6 h-6" />
+                      {reviewingQuality === 1 ? <Loader2 className="w-6 h-6 animate-spin" /> : <X className="w-6 h-6" />}
                       <span className="text-sm font-medium">忘记了</span>
                       <span className="text-xs opacity-70">1 天后</span>
                     </button>
                     <button
                       onClick={() => handleReview(3)}
-                      className="p-4 rounded-xl bg-amber-50 text-amber-700 hover:bg-amber-100 transition-colors flex flex-col items-center gap-2"
+                      disabled={reviewingQuality !== null}
+                      className="p-4 rounded-xl bg-amber-50 text-amber-700 hover:bg-amber-100 transition-colors flex flex-col items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      <Clock className="w-6 h-6" />
+                      {reviewingQuality === 3 ? <Loader2 className="w-6 h-6 animate-spin" /> : <Clock className="w-6 h-6" />}
                       <span className="text-sm font-medium">有点模糊</span>
                       <span className="text-xs opacity-70">
                         {calculateSM2(current, 3).interval} 天后
@@ -320,9 +337,10 @@ export default function FlashcardPage() {
                     </button>
                     <button
                       onClick={() => handleReview(5)}
-                      className="p-4 rounded-xl bg-green-50 text-green-700 hover:bg-green-100 transition-colors flex flex-col items-center gap-2"
+                      disabled={reviewingQuality !== null}
+                      className="p-4 rounded-xl bg-green-50 text-green-700 hover:bg-green-100 transition-colors flex flex-col items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      <Check className="w-6 h-6" />
+                      {reviewingQuality === 5 ? <Loader2 className="w-6 h-6 animate-spin" /> : <Check className="w-6 h-6" />}
                       <span className="text-sm font-medium">完全掌握</span>
                       <span className="text-xs opacity-70">
                         {calculateSM2(current, 5).interval} 天后

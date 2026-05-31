@@ -4,13 +4,12 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
 import { useRouter } from "next/navigation";
 import type { Editor } from "@tiptap/react";
-import { Save, RotateCcw, X, Image as ImageIcon, Sparkles, FolderTree, Columns, Maximize2, Eye } from "lucide-react";
+import { Save, RotateCcw, X, Image as ImageIcon, Sparkles, FolderTree, Columns, Maximize2, Eye, Loader2 } from "lucide-react";
 import { Subject, subjectMap, NoteType, typeMap, Video, Problem } from "@/lib/types";
 import { notesApi } from "@/lib/supabase";
 import { Playlist } from "@/components/video/Playlist";
 import { ProblemEditor } from "@/components/problems/ProblemEditor";
 import { ChapterManager } from "@/components/chapters/ChapterManager";
-import { fileToDataUrl } from "@/lib/utils";
 import { useToast } from "@/components/ui/Toast";
 import { RichTextEditor, RichTextEditorRef } from "@/components/editor/RichTextEditor";
 import { EditorToolbar } from "@/components/editor/EditorToolbar";
@@ -27,6 +26,8 @@ type ImportDraft = {
   noteType?: NoteType;
   subject?: Subject;
   problems?: Problem[];
+  coverImage?: string;
+  videos?: Video[];
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -53,6 +54,8 @@ function getPendingImportDraft(): ImportDraft | null {
       noteType: parsed.noteType === "note" || parsed.noteType === "problem" || parsed.noteType === "essay" ? parsed.noteType : undefined,
       subject: parsed.subject === "math" || parsed.subject === "english" || parsed.subject === "politics" || parsed.subject === "economics" ? parsed.subject : undefined,
       problems: Array.isArray(parsed.problems) ? (parsed.problems as Problem[]) : undefined,
+      coverImage: typeof parsed.coverImage === "string" ? parsed.coverImage : undefined,
+      videos: Array.isArray(parsed.videos) ? (parsed.videos as Video[]) : undefined,
     };
   } catch (error) {
     console.error("Failed to parse import data:", error);
@@ -72,9 +75,10 @@ export default function CreatePage() {
   const [subject, setSubject] = useState<Subject>(initialImportDraft?.subject ?? "math");
   const [tagInput, setTagInput] = useState(initialImportDraft?.tags?.join(", ") ?? "");
   const [content, setContent] = useState(initialImportDraft?.content ?? "");
-  const [videos, setVideos] = useState<Video[]>([]);
+  const [videos, setVideos] = useState<Video[]>(initialImportDraft?.videos ?? []);
   const [problems, setProblems] = useState<Problem[]>(initialImportDraft?.problems ?? []);
-  const [coverImage, setCoverImage] = useState("");
+  const [coverImage, setCoverImage] = useState(initialImportDraft?.coverImage ?? "");
+  const [isUploadingCover, setIsUploadingCover] = useState(false);
   const [showVideoSection, setShowVideoSection] = useState(false);
   const [editorReady, setEditorReady] = useState(false);
   const [showFormulaFixer, setShowFormulaFixer] = useState(false);
@@ -213,6 +217,7 @@ export default function CreatePage() {
     setTagInput("");
     setVideos([]);
     setProblems([]);
+    setCoverImage("");
   };
 
   // Editor toolbar handlers - only complex operations remain
@@ -233,6 +238,24 @@ export default function CreatePage() {
       }
     };
     input.click();
+  };
+
+  const handleCoverImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsUploadingCover(true);
+    try {
+      const ext = file.name.split(".").pop()?.toLowerCase() || "png";
+      const url = await uploadImage(file, generateFileName("cover", ext));
+      setCoverImage(url);
+      toast.success("封面图片已上传");
+    } catch (err: unknown) {
+      toast.error(`封面上传失败：${err instanceof Error ? err.message : "未知错误"}`);
+    } finally {
+      setIsUploadingCover(false);
+      e.target.value = "";
+    }
   };
 
   const isEssay = noteType === "essay";
@@ -318,21 +341,19 @@ export default function CreatePage() {
               className="flex-1 px-4 py-3 bg-surface-container-low rounded-xl input-soft text-on-surface placeholder:text-on-surface-variant/40"
             />
             <label
-              className="p-3 rounded-xl bg-surface-container-low text-on-surface-variant hover:bg-surface-container-high transition-colors cursor-pointer flex-shrink-0"
-              title="上传图片"
+              className={`p-3 rounded-xl bg-surface-container-low text-on-surface-variant hover:bg-surface-container-high transition-colors flex-shrink-0 ${
+                isUploadingCover ? "opacity-60 cursor-not-allowed" : "cursor-pointer"
+              }`}
+              title={isUploadingCover ? "上传中" : "上传图片"}
+              aria-disabled={isUploadingCover}
             >
-              <ImageIcon className="w-5 h-5" />
+              {isUploadingCover ? <Loader2 className="w-5 h-5 animate-spin" /> : <ImageIcon className="w-5 h-5" />}
               <input
                 type="file"
                 accept="image/*"
                 className="hidden"
-                onChange={async (e) => {
-                  const file = e.target.files?.[0];
-                  if (file) {
-                    const dataUrl = await fileToDataUrl(file);
-                    setCoverImage(dataUrl);
-                  }
-                }}
+                disabled={isUploadingCover}
+                onChange={handleCoverImageUpload}
               />
             </label>
             {coverImage && (
@@ -347,7 +368,7 @@ export default function CreatePage() {
           </div>
           {coverImage && (
             <div className="mt-3 rounded-xl overflow-hidden max-h-48">
-              {/* eslint-disable-next-line @next/next/no-img-element -- Cover previews are local data URLs before the note is saved. */}
+              {/* eslint-disable-next-line @next/next/no-img-element -- Cover previews can be external URLs or legacy data URLs. */}
               <img src={coverImage} alt="封面预览" className="w-full h-48 object-cover" />
             </div>
           )}

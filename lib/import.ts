@@ -1,4 +1,4 @@
-import type { NoteType, Subject, Problem } from './types';
+import type { NoteType, Subject, Problem, Video } from './types';
 import { sanitizeFileName } from './utils';
 
 type FrontMatterValue = string | string[];
@@ -30,7 +30,33 @@ function asSubject(value: unknown): Subject | undefined {
 
 function asDate(value: unknown): Date | undefined {
   const text = asString(value);
-  return text ? new Date(text) : undefined;
+  if (!text) return undefined;
+
+  const date = new Date(text);
+  return Number.isNaN(date.getTime()) ? undefined : date;
+}
+
+function asEncodedArray<T>(value: unknown): T[] | undefined {
+  if (Array.isArray(value)) return value as T[];
+
+  const text = asString(value);
+  if (!text) return undefined;
+
+  try {
+    const decoded = decodeURIComponent(text);
+    const parsed = JSON.parse(decoded);
+    return Array.isArray(parsed) ? parsed as T[] : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function asVideos(value: unknown): Video[] | undefined {
+  return asEncodedArray<Video>(value);
+}
+
+function asProblems(value: unknown): Problem[] | undefined {
+  return asEncodedArray<Problem>(value);
 }
 
 /**
@@ -43,6 +69,7 @@ export interface ParsedNote {
   createdAt?: Date;
   updatedAt?: Date;
   coverImage?: string;
+  videos?: Video[];
   type?: NoteType;
   subject?: Subject;
   problems?: Problem[];
@@ -112,11 +139,17 @@ export function parseFrontMatter(content: string): {
       currentArray = [];
     }
 
-    // Check for key: value
-    const colonIndex = line.indexOf(': ');
+    // Check for key: value, including array headers like "tags:"
+    const colonIndex = line.indexOf(':');
     if (colonIndex > 0) {
       const key = line.substring(0, colonIndex).trim();
-      let value = line.substring(colonIndex + 2).trim();
+      let value = line.substring(colonIndex + 1).trim();
+
+      if (!value) {
+        currentKey = key;
+        currentArray = [];
+        continue;
+      }
 
       // Parse inline array [a, b, c]
       if (value.startsWith('[') && value.endsWith(']')) {
@@ -127,7 +160,7 @@ export function parseFrontMatter(content: string): {
         // Remove quotes
         value = value.replace(/^["']|["']$/g, '');
         frontMatter[key] = value;
-        currentKey = key;
+        currentKey = '';
       }
     }
   }
@@ -157,9 +190,10 @@ export function importFromJSON(content: string): ParsedNote[] {
       createdAt: asDate(record.createdAt) || new Date(),
       updatedAt: asDate(record.updatedAt) || new Date(),
       coverImage: asString(record.coverImage),
+      videos: asVideos(record.videos),
       type: asNoteType(record.type),
       subject: asSubject(record.subject),
-      problems: Array.isArray(record.problems) ? record.problems as Problem[] : undefined,
+      problems: asProblems(record.problems),
       raw: record,
     };
   });
@@ -181,18 +215,20 @@ export function importFromMarkdown(content: string): ParsedNote {
       ? frontMatter.tags.split(',').map((t) => t.trim())
       : [];
   const allTags = [...new Set([...fmTags, ...inlineTags])];
-  const created = asString(frontMatter.created);
-  const updated = asString(frontMatter.updated);
+  const createdAt = asDate(frontMatter.created);
+  const updatedAt = asDate(frontMatter.updated);
 
   return {
     title: asString(frontMatter.title) || extractFirstHeading(body) || 'Untitled',
     content: body,
     tags: allTags,
-    createdAt: created ? new Date(created) : undefined,
-    updatedAt: updated ? new Date(updated) : undefined,
+    createdAt,
+    updatedAt,
     coverImage: asString(frontMatter.coverImage),
+    videos: asVideos(frontMatter.videos),
     type: asNoteType(frontMatter.type),
     subject: asSubject(frontMatter.subject),
+    problems: asProblems(frontMatter.problems),
     raw: frontMatter,
   };
 }

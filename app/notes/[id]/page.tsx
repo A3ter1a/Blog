@@ -21,15 +21,18 @@ import { TableOfContents } from "@/components/ui/TableOfContents";
 import { useReadingPreferences } from "@/lib/useReadingPreferences";
 import { ReadingProgress } from "@/components/ui/ReadingProgress";
 import { useAdminAuth } from "@/hooks/useAdminAuth";
+import { useToast } from "@/components/ui/Toast";
 
 export default function NoteReaderPage() {
   const router = useRouter();
   const params = useParams();
   const { preferences } = useReadingPreferences();
   const { isAdmin } = useAdminAuth();
+  const toast = useToast();
   const [note, setNote] = useState<Note | null>(null);
   const [loading, setLoading] = useState(true);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [isDeletingNote, setIsDeletingNote] = useState(false);
   const [isCoverExpanded, setIsCoverExpanded] = useState(false);
   const [isImmersiveMode, setIsImmersiveMode] = useState(false);
   const [inlineVideoIndex, setInlineVideoIndex] = useState<number | null>(null);
@@ -105,13 +108,18 @@ export default function NoteReaderPage() {
   }, [allProblems, chapters, selectedChapterId]);
 
   const handleDelete = async () => {
-    if (!isAdmin) return;
+    if (!isAdmin || isDeletingNote) return;
+    setIsDeletingNote(true);
     try {
       await notesApi.delete(params.id as string);
       setShowDeleteConfirm(false);
+      toast.success("笔记已删除");
       router.push("/notes");
-    } catch (error) {
+    } catch (error: unknown) {
       console.error("Failed to delete note:", error);
+      const message = error instanceof Error ? error.message : "未知错误";
+      toast.error(`删除失败：${message}`);
+      setIsDeletingNote(false);
     }
   };
 
@@ -300,10 +308,11 @@ export default function NoteReaderPage() {
               </Link>
               <button
                 onClick={() => setShowDeleteConfirm(true)}
-                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 transition-colors duration-200 text-sm font-medium"
+                disabled={isDeletingNote}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 transition-colors duration-200 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed"
               >
-                <Trash2 className="w-4 h-4" />
-                删除
+                {isDeletingNote ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                {isDeletingNote ? "删除中" : "删除"}
               </button>
             </div>
             )}
@@ -317,7 +326,9 @@ export default function NoteReaderPage() {
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
                 className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
-                onClick={() => setShowDeleteConfirm(false)}
+                onClick={() => {
+                  if (!isDeletingNote) setShowDeleteConfirm(false);
+                }}
               >
                 <motion.div
                   initial={{ scale: 0.95, opacity: 0 }}
@@ -338,15 +349,18 @@ export default function NoteReaderPage() {
                   <div className="flex gap-3 justify-end">
                     <button
                       onClick={() => setShowDeleteConfirm(false)}
-                      className="px-4 py-2 rounded-lg bg-surface-container-high text-on-surface-variant hover:bg-surface-container-highest transition-colors text-sm font-medium"
+                      disabled={isDeletingNote}
+                      className="px-4 py-2 rounded-lg bg-surface-container-high text-on-surface-variant hover:bg-surface-container-highest transition-colors text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed"
                     >
                       取消
                     </button>
                     <button
                       onClick={handleDelete}
-                      className="px-4 py-2 rounded-lg bg-red-600 text-white hover:bg-red-700 transition-colors text-sm font-medium"
+                      disabled={isDeletingNote}
+                      className="flex items-center gap-2 px-4 py-2 rounded-lg bg-red-600 text-white hover:bg-red-700 transition-colors text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed"
                     >
-                      确认删除
+                      {isDeletingNote && <Loader2 className="w-4 h-4 animate-spin" />}
+                      {isDeletingNote ? "删除中" : "确认删除"}
                     </button>
                   </div>
                 </motion.div>

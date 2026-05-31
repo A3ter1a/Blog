@@ -2,6 +2,10 @@ import JSZip from 'jszip';
 import { Note, problemTypeMap } from './types';
 import { sanitizeFileName } from './utils';
 
+function encodeFrontMatterJson(value: unknown): string {
+  return encodeURIComponent(JSON.stringify(value));
+}
+
 /**
  * Convert a single note to Markdown format with front matter
  */
@@ -15,6 +19,8 @@ ${note.tags.map(tag => `  - "${tag.replace(/"/g, '\\"')}"`).join('\n')}
 created: ${note.createdAt.toISOString()}
 updated: ${note.updatedAt.toISOString()}
 ${note.coverImage ? `coverImage: "${note.coverImage}"` : ''}
+${note.videos && note.videos.length > 0 ? `videos: ${encodeFrontMatterJson(note.videos)}` : ''}
+${note.problems && note.problems.length > 0 ? `problems: ${encodeFrontMatterJson(note.problems)}` : ''}
 ---
 
 `;

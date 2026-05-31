@@ -1,5 +1,34 @@
 import type { NextConfig } from "next";
 
+const securityHeaders = [
+  {
+    key: "Content-Security-Policy",
+    value:
+      "frame-src https://www.bilibili.com https://player.bilibili.com https://www.youtube.com; media-src 'self' blob: https: data:;",
+  },
+  {
+    key: "X-Content-Type-Options",
+    value: "nosniff",
+  },
+  {
+    key: "Referrer-Policy",
+    value: "strict-origin-when-cross-origin",
+  },
+  {
+    key: "Permissions-Policy",
+    value:
+      "camera=(), microphone=(), geolocation=(), payment=(), usb=(), serial=(), bluetooth=(), accelerometer=(), gyroscope=(), magnetometer=()",
+  },
+  {
+    key: "X-Frame-Options",
+    value: "DENY",
+  },
+  {
+    key: "X-Permitted-Cross-Domain-Policies",
+    value: "none",
+  },
+];
+
 const nextConfig: NextConfig = {
   // Image optimization
   images: {
@@ -19,16 +48,11 @@ const nextConfig: NextConfig = {
   async headers() {
     return [
       {
-        source: "/(.*)",
-        headers: [
-          {
-            key: "Content-Security-Policy",
-            value: "frame-src https://www.bilibili.com https://player.bilibili.com https://www.youtube.com; media-src 'self' blob: https: data:;"
-          }
-        ]
-      }
+        source: "/:path*",
+        headers: securityHeaders,
+      },
     ];
-  }
+  },
 };
 
 export default nextConfig;

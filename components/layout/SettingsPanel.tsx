@@ -337,6 +337,11 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
             isOpen={showImportPreview}
             onClose={() => setShowImportPreview(false)}
             parsedNotes={parsedNotes}
+            onImported={() => {
+              setParsedNotes([]);
+              setShowImportPreview(false);
+              onClose();
+            }}
           />
         </>
       )}

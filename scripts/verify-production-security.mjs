@@ -135,28 +135,119 @@ async function runRootWarning(baseUrl) {
   }
 }
 
+async function runHeaderChecks(baseUrl) {
+  const exactChecks = [
+    {
+      name: "安全头 X-Content-Type-Options",
+      key: "x-content-type-options",
+      expected: "nosniff",
+      risk: "缺少 nosniff 时，浏览器可能错误猜测资源类型，增加脚本注入风险。",
+    },
+    {
+      name: "安全头 Referrer-Policy",
+      key: "referrer-policy",
+      expected: "strict-origin-when-cross-origin",
+      risk: "缺少 Referrer-Policy 时，外链请求可能带出过多来源路径信息。",
+    },
+    {
+      name: "安全头 X-Frame-Options",
+      key: "x-frame-options",
+      expected: "DENY",
+      risk: "缺少 X-Frame-Options 时，页面可能被第三方网站嵌入并诱导点击。",
+    },
+    {
+      name: "安全头 X-Permitted-Cross-Domain-Policies",
+      key: "x-permitted-cross-domain-policies",
+      expected: "none",
+      risk: "缺少该头时，旧式跨域策略文件可能扩大资源暴露面。",
+    },
+  ];
+
+  const containsChecks = [
+    {
+      name: "CSP 允许受控视频嵌入",
+      key: "content-security-policy",
+      expectedParts: [
+        "frame-src https://www.bilibili.com https://player.bilibili.com https://www.youtube.com",
+        "media-src 'self' blob: https: data:",
+      ],
+      risk: "CSP 不符合预期时，可能误放开 iframe 或误拦截笔记里的视频播放。",
+    },
+    {
+      name: "Permissions-Policy 禁用高风险浏览器权限",
+      key: "permissions-policy",
+      expectedParts: ["camera=()", "microphone=()", "geolocation=()", "payment=()"],
+      risk: "缺少 Permissions-Policy 时，浏览器敏感能力的默认边界不够清楚。",
+    },
+  ];
+
+  let failed = 0;
+  let unreachable = 0;
+
+  try {
+    const res = await request(baseUrl, "/");
+
+    for (const check of exactChecks) {
+      const actual = res.headers.get(check.key);
+      const ok = actual === check.expected;
+      const marker = ok ? "PASS" : "FAIL";
+      console.log(`${marker} ${check.name}: ${actual || "缺失"}`);
+
+      if (!ok) {
+        failed += 1;
+        console.log(`     期望: ${check.expected}`);
+        console.log(`     风险: ${check.risk}`);
+      }
+    }
+
+    for (const check of containsChecks) {
+      const actual = res.headers.get(check.key) || "";
+      const ok = check.expectedParts.every((part) => actual.includes(part));
+      const marker = ok ? "PASS" : "FAIL";
+      console.log(`${marker} ${check.name}: ${actual || "缺失"}`);
+
+      if (!ok) {
+        failed += 1;
+        console.log(`     期望包含: ${check.expectedParts.join(" ; ")}`);
+        console.log(`     风险: ${check.risk}`);
+      }
+    }
+  } catch (error) {
+    unreachable += 1;
+    const message = error instanceof Error ? error.message : String(error);
+    console.log(`ERROR 安全头检查: 请求失败: ${message}`);
+    console.log("      说明: 当前机器无法连到目标地址，不能据此证明线上安全头已生效。");
+  }
+
+  return { failed, unreachable };
+}
+
 async function main() {
   const baseUrl = parseBaseUrl();
   console.log(`Asteroid 生产安全验收: ${baseUrl}`);
   console.log("");
 
   const { failed, unreachable } = await runStatusChecks(baseUrl);
+  const headerResult = await runHeaderChecks(baseUrl);
   await runRootWarning(baseUrl);
 
+  const totalFailed = failed + headerResult.failed;
+  const totalUnreachable = unreachable + headerResult.unreachable;
+
   console.log("");
-  if (unreachable > 0) {
-    console.log(`结果: ${unreachable} 个关键检查无法访问目标地址。请换网络、检查代理/TLS，或在 Vercel 部署环境外的正常网络中重试。`);
+  if (totalUnreachable > 0) {
+    console.log(`结果: ${totalUnreachable} 个关键检查无法访问目标地址。请换网络、检查代理/TLS，或在 Vercel 部署环境外的正常网络中重试。`);
     process.exitCode = 2;
     return;
   }
 
-  if (failed > 0) {
-    console.log(`结果: ${failed} 个关键检查未通过。请先处理生产部署或后台配置。`);
+  if (totalFailed > 0) {
+    console.log(`结果: ${totalFailed} 个关键检查未通过。请先处理生产部署或后台配置。`);
     process.exitCode = 1;
     return;
   }
 
-  console.log("结果: 关键未登录安全检查通过。仍需人工确认 Supabase RLS 已执行、管理员登录后功能可用。");
+  console.log("结果: 关键未登录安全检查和安全头检查通过。仍需人工确认 Supabase RLS 已执行、管理员登录后功能可用。");
 }
 
 main().catch((error) => {
