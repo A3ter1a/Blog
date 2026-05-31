@@ -12,6 +12,8 @@ import { CheckSquare, Square, Download, X, Trash2, AlertTriangle, Loader2 } from
 import { useAdminAuth } from "@/hooks/useAdminAuth";
 import { useToast } from "@/components/ui/Toast";
 
+const NOTES_PAGE_SIZE = 24;
+
 export default function NotesPage() {
   const { isAdmin } = useAdminAuth();
   const toast = useToast();
@@ -23,6 +25,8 @@ export default function NotesPage() {
   // Data state
   const [notes, setNotes] = useState<Note[]>([]);
   const [loading, setLoading] = useState(true);
+  const [hasMoreNotes, setHasMoreNotes] = useState(false);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
   
   // Selection state
   const [selectMode, setSelectMode] = useState(false);
@@ -34,17 +38,37 @@ export default function NotesPage() {
   const [isDeletingNotes, setIsDeletingNotes] = useState(false);
   const latestLoadId = useRef(0);
 
-  const loadNotes = useCallback(async () => {
-    const loadId = latestLoadId.current + 1;
-    latestLoadId.current = loadId;
+  const fetchNotesPage = useCallback(async (offset: number, append: boolean, loadId: number) => {
     const query = searchQuery.trim();
+    const typeFilter = selectedType === "all" ? undefined : selectedType;
+    const subjectFilter = selectedSubject === "all" ? undefined : selectedSubject;
 
     try {
-      setLoading(true);
-      const data = query ? await notesApi.searchSummaries(query) : await notesApi.getSummaries();
+      if (append) {
+        setIsLoadingMore(true);
+      } else {
+        setLoading(true);
+      }
+
+      const data = query
+        ? await notesApi.searchSummaries(query, typeFilter, subjectFilter, sortOrder)
+        : await notesApi.getSummaries({
+          type: typeFilter,
+          subject: subjectFilter,
+          sortOrder,
+          limit: NOTES_PAGE_SIZE + 1,
+          offset,
+        });
 
       if (latestLoadId.current === loadId) {
-        setNotes(data);
+        if (query) {
+          setNotes(data);
+          setHasMoreNotes(false);
+        } else {
+          const pageItems = data.slice(0, NOTES_PAGE_SIZE);
+          setNotes((current) => append ? [...current, ...pageItems] : pageItems);
+          setHasMoreNotes(data.length > NOTES_PAGE_SIZE);
+        }
       }
     } catch (error) {
       if (latestLoadId.current === loadId) {
@@ -52,20 +76,37 @@ export default function NotesPage() {
       }
     } finally {
       if (latestLoadId.current === loadId) {
-        setLoading(false);
+        if (append) {
+          setIsLoadingMore(false);
+        } else {
+          setLoading(false);
+        }
       }
     }
-  }, [searchQuery]);
+  }, [searchQuery, selectedSubject, selectedType, sortOrder]);
 
   useEffect(() => {
-    latestLoadId.current += 1;
+    const loadId = latestLoadId.current + 1;
+    latestLoadId.current = loadId;
     setLoading(true);
+    setIsLoadingMore(false);
+    setHasMoreNotes(false);
+    setNotes([]);
+    setSelectedNoteIds(new Set());
+
     const timer = window.setTimeout(() => {
-      void loadNotes();
+      void fetchNotesPage(0, false, loadId);
     }, searchQuery.trim() ? 250 : 0);
 
     return () => window.clearTimeout(timer);
-  }, [loadNotes, searchQuery]);
+  }, [fetchNotesPage, searchQuery]);
+
+  const handleLoadMore = useCallback(() => {
+    if (loading || isLoadingMore || !hasMoreNotes || searchQuery.trim()) return;
+    const loadId = latestLoadId.current + 1;
+    latestLoadId.current = loadId;
+    void fetchNotesPage(notes.length, true, loadId);
+  }, [fetchNotesPage, hasMoreNotes, isLoadingMore, loading, notes.length, searchQuery]);
 
   const filteredNotes = useMemo(() => {
     let result = notes.filter((note) => {
@@ -147,7 +188,9 @@ export default function NotesPage() {
         await notesApi.delete(id);
         deletedCount += 1;
       }
-      await loadNotes();
+      const loadId = latestLoadId.current + 1;
+      latestLoadId.current = loadId;
+      await fetchNotesPage(0, false, loadId);
       toast.success(`已删除 ${deletedCount} 篇笔记`);
       setSelectedNoteIds(new Set());
       setSelectMode(false);
@@ -157,7 +200,9 @@ export default function NotesPage() {
       const message = error instanceof Error ? error.message : "未知错误";
       toast.error(`批量删除失败：已删除 ${deletedCount}/${idsToDelete.length} 篇。${message}`);
       setSelectedNoteIds(new Set(idsToDelete.slice(deletedCount)));
-      await loadNotes();
+      const loadId = latestLoadId.current + 1;
+      latestLoadId.current = loadId;
+      await fetchNotesPage(0, false, loadId);
     } finally {
       setIsDeletingNotes(false);
     }
@@ -274,18 +319,32 @@ export default function NotesPage() {
               <span className="ml-3 text-on-surface-variant">加载笔记中...</span>
             </div>
           ) : filteredNotes.length > 0 ? (
-            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
-              {filteredNotes.map((note, index) => (
-                <NoteCard
-                  key={note.id}
-                  note={note}
-                  index={index}
-                  isSelected={selectedNoteIds.has(note.id)}
-                  onToggleSelect={selectMode ? handleToggleSelect : undefined}
-                  selectMode={selectMode}
-                />
-              ))}
-            </div>
+            <>
+              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
+                {filteredNotes.map((note, index) => (
+                  <NoteCard
+                    key={note.id}
+                    note={note}
+                    index={index}
+                    isSelected={selectedNoteIds.has(note.id)}
+                    onToggleSelect={selectMode ? handleToggleSelect : undefined}
+                    selectMode={selectMode}
+                  />
+                ))}
+              </div>
+              {hasMoreNotes && !searchQuery.trim() && (
+                <div className="flex justify-center pt-10">
+                  <button
+                    onClick={handleLoadMore}
+                    disabled={isLoadingMore}
+                    className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-surface-container-high text-on-surface-variant text-sm font-medium hover:bg-surface-container-highest transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {isLoadingMore && <Loader2 className="w-4 h-4 animate-spin" />}
+                    {isLoadingMore ? "加载中..." : "加载更多"}
+                  </button>
+                </div>
+              )}
+            </>
           ) : (
             <motion.div
               initial={{ opacity: 0 }}

@@ -20,6 +20,13 @@ export type NoteRow = {
 export type NoteInsert = Partial<NoteRow>;
 export type NoteUpdate = Partial<NoteRow>;
 export type NoteCreateInput = Omit<Note, "id" | "createdAt" | "updatedAt"> & Partial<Pick<Note, "createdAt" | "updatedAt">>;
+export type NoteSummaryQueryOptions = {
+  type?: NoteType;
+  subject?: Subject;
+  sortOrder?: "desc" | "asc";
+  limit?: number;
+  offset?: number;
+};
 
 export type FlashcardRow = {
   id?: string;
@@ -217,13 +224,23 @@ function mapCamelToSnake(note: Partial<Note>): NoteUpdate {
 // Notes API (使用 getSupabase() 确保延迟初始化)
 export const notesApi = {
   // Get note summaries for list view. This intentionally excludes content, videos, and problems.
-  async getSummaries(): Promise<Note[]> {
+  async getSummaries(options: NoteSummaryQueryOptions = {}): Promise<Note[]> {
     const supabase = getSupabase();
-    const { data, error } = await supabase
+    const ascending = options.sortOrder === "asc";
+    let query = supabase
       .from("notes")
       .select(NOTE_SUMMARY_FIELDS)
       .eq("is_published", true)
-      .order("created_at", { ascending: false });
+      .order("created_at", { ascending });
+
+    if (options.type) query = query.eq("type", options.type);
+    if (options.subject) query = query.or(`subject.eq.${options.subject},type.eq.essay`);
+    if (typeof options.limit === "number") {
+      const from = Math.max(0, options.offset ?? 0);
+      query = query.range(from, from + Math.max(1, options.limit) - 1);
+    }
+
+    const { data, error } = await query;
 
     if (error) throw error;
     return (data || []).map(mapSnakeToCamel);
@@ -314,12 +331,18 @@ export const notesApi = {
   },
 
   // Search note summaries. Content is searchable but not returned to the list page.
-  async searchSummaries(query: string, type?: NoteType, subject?: Subject): Promise<Note[]> {
+  async searchSummaries(
+    query: string,
+    type?: NoteType,
+    subject?: Subject,
+    sortOrder: "desc" | "asc" = "desc",
+  ): Promise<Note[]> {
     const term = normalizeSearchTerm(query);
     if (!term) return [];
     const tagTerms = [...new Set(term.split(" ").filter(Boolean))];
 
     const supabase = getSupabase();
+    const ascending = sortOrder === "asc";
 
     const baseQuery = () => {
       let q = supabase
@@ -328,17 +351,17 @@ export const notesApi = {
         .eq("is_published", true);
 
       if (type) q = q.eq("type", type);
-      if (subject) q = q.eq("subject", subject);
+      if (subject) q = q.or(`subject.eq.${subject},type.eq.essay`);
       return q;
     };
 
     const [textResult, tagResult] = await Promise.all([
       baseQuery()
         .or(`title.ilike.%${term}%,content.ilike.%${term}%`)
-        .order("created_at", { ascending: false }),
+        .order("created_at", { ascending }),
       baseQuery()
         .overlaps("tags", tagTerms)
-        .order("created_at", { ascending: false }),
+        .order("created_at", { ascending }),
     ]);
 
     if (textResult.error) throw textResult.error;
@@ -351,7 +374,10 @@ export const notesApi = {
 
     return [...rowsById.values()]
       .map(mapSnakeToCamel)
-      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+      .sort((a, b) => {
+        const diff = b.createdAt.getTime() - a.createdAt.getTime();
+        return sortOrder === "desc" ? diff : -diff;
+      });
   },
 
   // Backward-compatible alias. Prefer searchSummaries() for list pages.
