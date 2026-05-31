@@ -4,8 +4,10 @@ import { useState, useEffect } from 'react';
 import { Brain, Plug, RefreshCw, AlertCircle, Check, BarChart3 } from 'lucide-react';
 import type { AIConfig, AIUsageStats } from '@/lib/types';
 import { getUsageStats, recordDeepSeekUsage } from '@/lib/ai-usage';
+import { buildAuthHeaders } from '@/lib/fetch-with-auth';
 
 const STORAGE_KEY = 'ai-config';
+const ALLOW_CLIENT_AI_KEYS = process.env.NODE_ENV !== 'production';
 
 const defaultConfig: AIConfig = {
   deepseekApiKey: '',
@@ -33,20 +35,59 @@ export function AISettings() {
   const [testing, setTesting] = useState<string | null>(null);
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
   const [usage, setUsage] = useState<AIUsageStats>(getUsageStats());
+  const [serverConfig, setServerConfig] = useState<{
+    deepseekConfigured: boolean;
+    qwenConfigured: boolean;
+  } | null>(null);
 
   useEffect(() => {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved) {
       try {
         const nextConfig = { ...defaultConfig, ...JSON.parse(saved) };
+        if (!ALLOW_CLIENT_AI_KEYS) {
+          nextConfig.deepseekApiKey = '';
+          nextConfig.qwenApiKey = '';
+        }
         const timer = window.setTimeout(() => setConfig(nextConfig), 0);
         return () => window.clearTimeout(timer);
       } catch { /* ignore */ }
     }
   }, []);
 
+  useEffect(() => {
+    if (ALLOW_CLIENT_AI_KEYS) return;
+
+    let mounted = true;
+    void (async () => {
+      try {
+        const res = await fetch('/api/ai/config', {
+          headers: await buildAuthHeaders(),
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (mounted) {
+          setServerConfig({
+            deepseekConfigured: Boolean(data.deepseekConfigured),
+            qwenConfigured: Boolean(data.qwenConfigured),
+          });
+        }
+      } catch {
+        // Keep the panel usable; the test buttons will surface API errors.
+      }
+    })();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
   const saveConfig = () => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(config));
+    const safeConfig = ALLOW_CLIENT_AI_KEYS
+      ? config
+      : { ...config, deepseekApiKey: '', qwenApiKey: '' };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(safeConfig));
+    setConfig(safeConfig);
     setIsEditing(false);
   };
 
@@ -56,17 +97,17 @@ export function AISettings() {
     try {
       const body: ConfigTestBody = { provider };
       if (provider === 'deepseek') {
-        body.apiKey = config.deepseekApiKey;
+        if (ALLOW_CLIENT_AI_KEYS) body.apiKey = config.deepseekApiKey;
         body.model = config.deepseekModel;
       } else {
-        body.apiKey = config.qwenApiKey;
+        if (ALLOW_CLIENT_AI_KEYS) body.apiKey = config.qwenApiKey;
         body.model = config.qwenModel;
         body.endpoint = config.qwenApiEndpoint;
       }
 
       const res = await fetch('/api/ai/config', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: await buildAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify(body),
       });
 
@@ -85,6 +126,13 @@ export function AISettings() {
     }
     setTesting(null);
   };
+
+  const deepseekConfigured = ALLOW_CLIENT_AI_KEYS
+    ? Boolean(config.deepseekApiKey)
+    : Boolean(serverConfig?.deepseekConfigured);
+  const qwenConfigured = ALLOW_CLIENT_AI_KEYS
+    ? Boolean(config.qwenApiKey)
+    : Boolean(serverConfig?.qwenConfigured);
 
   return (
     <div className="space-y-4">
@@ -132,15 +180,15 @@ export function AISettings() {
       {!isEditing && (
         <div className="bg-surface-container-low rounded-xl p-4 space-y-3">
           <div className="flex items-center gap-2">
-            <div className={`w-2 h-2 rounded-full ${config.deepseekApiKey ? 'bg-green-500' : 'bg-outline-variant'}`} />
+            <div className={`w-2 h-2 rounded-full ${deepseekConfigured ? 'bg-green-500' : 'bg-outline-variant'}`} />
             <span className="text-sm text-on-surface-variant">
-              DeepSeek {config.deepseekApiKey ? `(${config.deepseekModel})` : '— 未配置'}
+              DeepSeek {deepseekConfigured ? `(${config.deepseekModel})` : '— 未配置'}
             </span>
           </div>
           <div className="flex items-center gap-2">
-            <div className={`w-2 h-2 rounded-full ${config.qwenApiKey ? 'bg-green-500' : 'bg-outline-variant'}`} />
+            <div className={`w-2 h-2 rounded-full ${qwenConfigured ? 'bg-green-500' : 'bg-outline-variant'}`} />
             <span className="text-sm text-on-surface-variant">
-              Qwen OCR {config.qwenApiKey ? `(${config.qwenModel})` : '— 未配置'}
+              Qwen OCR {qwenConfigured ? `(${config.qwenModel})` : '— 未配置'}
             </span>
           </div>
 
@@ -190,7 +238,7 @@ export function AISettings() {
             </div>
             <button
               onClick={() => testConnection('deepseek')}
-              disabled={!config.deepseekApiKey || testing !== null}
+              disabled={!deepseekConfigured || testing !== null}
               className="flex items-center gap-2 px-3 py-2 rounded-lg bg-primary/10 text-primary text-xs font-medium hover:bg-primary/20 transition-colors disabled:opacity-40"
             >
               {testing === 'deepseek' ? (
@@ -235,7 +283,7 @@ export function AISettings() {
             </div>
             <button
               onClick={() => testConnection('qwen')}
-              disabled={!config.qwenApiKey || testing !== null}
+              disabled={!qwenConfigured || testing !== null}
               className="flex items-center gap-2 px-3 py-2 rounded-lg bg-primary/10 text-primary text-xs font-medium hover:bg-primary/20 transition-colors disabled:opacity-40"
             >
               {testing === 'qwen' ? (

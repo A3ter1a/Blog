@@ -7,6 +7,7 @@ import { usePathname } from "next/navigation";
 import { Search, Settings } from "lucide-react";
 import { SearchOverlay } from "./SearchOverlay";
 import { SettingsPanel } from "./SettingsPanel";
+import { useAdminAuth } from "@/hooks/useAdminAuth";
 
 const navItems = [
   { name: "首页", href: "/" },
@@ -18,6 +19,7 @@ const navItems = [
 
 export function Navbar() {
   const pathname = usePathname();
+  const { isAdmin } = useAdminAuth();
   const [scrolled, setScrolled] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
@@ -59,7 +61,7 @@ export function Navbar() {
 
         {/* Desktop Navigation */}
         <div className="hidden md:flex gap-12 items-center">
-          {navItems.map((item) => {
+          {navItems.filter((item) => isAdmin || item.href !== "/create").map((item) => {
             const isActive = item.href === "/" 
               ? pathname === "/" 
               : pathname === item.href || pathname.startsWith(item.href + "/");

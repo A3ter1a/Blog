@@ -9,8 +9,10 @@ import { ExportDialog } from "@/components/export/ExportDialog";
 import { notesApi } from "@/lib/supabase";
 import { NoteType, Subject, Note } from "@/lib/types";
 import { CheckSquare, Square, Download, X, Trash2, AlertTriangle, Loader2 } from "lucide-react";
+import { useAdminAuth } from "@/hooks/useAdminAuth";
 
 export default function NotesPage() {
+  const { isAdmin } = useAdminAuth();
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedType, setSelectedType] = useState<NoteType | "all">("all");
   const [selectedSubject, setSelectedSubject] = useState<Subject | "all">("all");
@@ -94,6 +96,7 @@ export default function NotesPage() {
   };
 
   const handleBatchDelete = async () => {
+    if (!isAdmin) return;
     const idsToDelete = Array.from(selectedNoteIds);
     try {
       for (const id of idsToDelete) {
@@ -119,6 +122,7 @@ export default function NotesPage() {
         <div className="flex items-center justify-between mb-6">
           <h1 className="text-2xl font-bold text-on-surface font-headline">笔记列表</h1>
           <button
+            hidden={!isAdmin}
             onClick={() => {
               setSelectMode(!selectMode);
               setSelectedNoteIds(new Set());
@@ -134,7 +138,7 @@ export default function NotesPage() {
         </div>
 
         {/* Batch Actions Bar (visible in select mode) */}
-        {selectMode && (
+        {isAdmin && selectMode && (
           <motion.div
             initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { callDeepSeek } from '@/lib/ai-client';
 import { parseAIJson } from '@/lib/ai-json';
+import { requireAdminRequest, resolveAIKey } from '@/lib/server-admin-auth';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -12,10 +13,15 @@ function getString(value: unknown) {
 
 export async function POST(req: NextRequest) {
   try {
+    const adminError = await requireAdminRequest(req);
+    if (adminError) return adminError;
+
     const { problem, apiKey: clientApiKey, model: clientModel } = await req.json();
 
-    const apiKey = process.env.DEEPSEEK_API_KEY || clientApiKey;
-    const model = clientModel || 'deepseek-v4-flash';
+    const apiKey = resolveAIKey('deepseek', clientApiKey);
+    const model = typeof clientModel === 'string' && clientModel.trim()
+      ? clientModel.trim()
+      : 'deepseek-v4-flash';
 
     if (!problem || !apiKey) {
       return NextResponse.json({ error: '缺少必要参数 (problem, apiKey)' }, { status: 400 });

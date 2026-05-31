@@ -1,4 +1,5 @@
 import { getSupabase, type ChapterInsert, type ChapterRow, type ChapterUpdate } from './supabase';
+import { isAdminEmail } from './admin-auth';
 import type { Chapter } from './types';
 
 // Map snake_case DB row to camelCase Chapter
@@ -14,6 +15,15 @@ function mapChapter(row: ChapterRow): Chapter {
     createdAt: row.created_at ? new Date(row.created_at) : new Date(),
     updatedAt: row.updated_at ? new Date(row.updated_at) : new Date(),
   };
+}
+
+async function assertAdminWrite(): Promise<void> {
+  const { data, error } = await getSupabase().auth.getUser();
+  const email = data.user?.email;
+
+  if (error || !isAdminEmail(email)) {
+    throw new Error('需要管理员登录后才能修改章节');
+  }
 }
 
 export const chaptersApi = {
@@ -47,6 +57,7 @@ export const chaptersApi = {
 
   // Create a chapter
   async create(chapter: Omit<Chapter, 'id' | 'createdAt' | 'updatedAt'>): Promise<Chapter> {
+    await assertAdminWrite();
     const supabase = getSupabase();
     const newChapter: ChapterInsert = {
       note_id: chapter.noteId || null,
@@ -71,6 +82,7 @@ export const chaptersApi = {
 
   // Update a chapter
   async update(id: string, updates: Partial<Chapter>): Promise<Chapter> {
+    await assertAdminWrite();
     const supabase = getSupabase();
     const db: ChapterUpdate = { updated_at: new Date().toISOString() };
     if (updates.name !== undefined) db.name = updates.name;
@@ -92,6 +104,7 @@ export const chaptersApi = {
 
   // Delete a chapter
   async delete(id: string): Promise<void> {
+    await assertAdminWrite();
     const supabase = getSupabase();
     const { error } = await supabase.from('chapters').delete().eq('id', id);
     if (error) throw error;
@@ -99,6 +112,7 @@ export const chaptersApi = {
 
   // Reorder chapters (batch update sortOrder)
   async reorder(ids: string[]): Promise<void> {
+    await assertAdminWrite();
     const supabase = getSupabase();
     const updates: ChapterInsert[] = ids.map((id, index) => ({
       id,

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Upload, Type, ListTree, Eye, AlignLeft, XCircle } from "lucide-react";
 import type { Profile } from "@/lib/types";
@@ -9,6 +10,7 @@ import { ParsedNote, detectFormat, importFromJSON, importFromMarkdown, importFro
 import { ImportPreview } from "@/components/export/ImportPreview";
 import { ProfileEditor } from "@/components/settings/ProfileEditor";
 import { AISettings } from "@/components/settings/AISettings";
+import { useAdminAuth } from "@/hooks/useAdminAuth";
 
 interface SettingsPanelProps {
   isOpen: boolean;
@@ -31,6 +33,7 @@ const defaultProfile: Profile = {
 
 export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
   const { preferences, updatePreference } = useReadingPreferences();
+  const { isAdmin } = useAdminAuth();
 
   // Profile state
   const [profile, setProfile] = useState(defaultProfile);
@@ -235,18 +238,36 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
                 </div>
               </section>
 
-              {/* Profile */}
-              <section>
-                <ProfileEditor profile={profile} onSave={handleSaveProfile} />
-              </section>
+              {!isAdmin && (
+                <section className="rounded-xl bg-surface-container-low p-4">
+                  <h3 className="text-sm font-medium text-on-surface mb-2">管理员功能已保护</h3>
+                  <p className="text-xs text-on-surface-variant/70 mb-3">
+                    个人资料、AI 配置和导入入口只在管理员登录后显示。
+                  </p>
+                  <Link
+                    href="/login"
+                    onClick={onClose}
+                    className="inline-flex px-3 py-2 rounded-lg bg-primary text-on-primary text-xs font-medium"
+                  >
+                    管理员登录
+                  </Link>
+                </section>
+              )}
 
-              {/* AI Settings */}
-              <section>
-                <AISettings />
-              </section>
+              {isAdmin && (
+                <>
+                  {/* Profile */}
+                  <section>
+                    <ProfileEditor profile={profile} onSave={handleSaveProfile} />
+                  </section>
 
-              {/* Import */}
-              <section>
+                  {/* AI Settings */}
+                  <section>
+                    <AISettings />
+                  </section>
+
+                  {/* Import */}
+                  <section>
                 <h3 className="text-sm font-medium text-on-surface-variant mb-4 flex items-center gap-2">
                   <Upload className="w-4 h-4" />
                   导入笔记
@@ -285,7 +306,9 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
                     )}
                   </AnimatePresence>
                 </div>
-              </section>
+                  </section>
+                </>
+              )}
             </div>
           </motion.div>
 

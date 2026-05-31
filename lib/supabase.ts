@@ -1,5 +1,6 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { Note, NoteType, Subject, Flashcard, type Problem, type Video } from "./types";
+import { isAdminEmail } from "./admin-auth";
 
 export type NoteRow = {
   id?: string;
@@ -96,6 +97,15 @@ export function getSupabase(): SupabaseClient<Database> {
   return _supabase;
 }
 
+async function assertAdminWrite(): Promise<void> {
+  const { data, error } = await getSupabase().auth.getUser();
+  const email = data.user?.email;
+
+  if (error || !isAdminEmail(email)) {
+    throw new Error("需要管理员登录后才能修改数据");
+  }
+}
+
 // 字段转换：snake_case → camelCase
 function mapSnakeToCamel(row: NoteRow): Note {
   const createdAt = row.created_at ? new Date(row.created_at) : new Date();
@@ -185,6 +195,7 @@ export const notesApi = {
 
   // Create note
   async create(note: Omit<Note, "id" | "createdAt" | "updatedAt">): Promise<Note> {
+    await assertAdminWrite();
     const supabase = getSupabase();
     const dbNote = mapCamelToSnake(note);
     
@@ -204,6 +215,7 @@ export const notesApi = {
 
   // Update note
   async update(id: string, updates: Partial<Note>): Promise<Note> {
+    await assertAdminWrite();
     const supabase = getSupabase();
     const dbUpdates = mapCamelToSnake(updates);
     dbUpdates.updated_at = new Date().toISOString();
@@ -221,6 +233,7 @@ export const notesApi = {
 
   // Delete note
   async delete(id: string): Promise<void> {
+    await assertAdminWrite();
     const supabase = getSupabase();
     const { error } = await supabase.from("notes").delete().eq("id", id);
     if (error) throw error;
@@ -302,6 +315,7 @@ export const flashcardsApi = {
 
   // Create flashcard
   async create(card: Omit<Flashcard, "id" | "createdAt" | "updatedAt">): Promise<Flashcard> {
+    await assertAdminWrite();
     const supabase = getSupabase();
     const { data, error } = await supabase
       .from("flashcards")
@@ -325,6 +339,7 @@ export const flashcardsApi = {
 
   // Update flashcard (after review)
   async update(id: string, updates: Partial<Flashcard>): Promise<Flashcard> {
+    await assertAdminWrite();
     const supabase = getSupabase();
     const dbUpdates: FlashcardUpdate = { updated_at: new Date().toISOString() };
     if (updates.interval !== undefined) dbUpdates.interval = updates.interval;
@@ -346,6 +361,7 @@ export const flashcardsApi = {
 
   // Delete flashcard
   async delete(id: string): Promise<void> {
+    await assertAdminWrite();
     const supabase = getSupabase();
     const { error } = await supabase.from("flashcards").delete().eq("id", id);
     if (error) throw error;

@@ -7,6 +7,8 @@ import { ArrowLeft, RotateCcw, Check, X, Zap, Clock, BookOpen, Loader2 } from "l
 import { flashcardsApi, notesApi } from "@/lib/supabase";
 import { Flashcard, ReviewQuality } from "@/lib/types";
 import { MarkdownContent } from "@/components/ui/MarkdownContent";
+import { AdminGate } from "@/components/auth/AdminGate";
+import { useAdminAuth } from "@/hooks/useAdminAuth";
 
 // SM-2 Algorithm: Calculate next review based on quality
 function calculateSM2(
@@ -42,6 +44,7 @@ function calculateSM2(
 }
 
 export default function FlashcardPage() {
+  const { loading: authLoading, isAdmin } = useAdminAuth();
   const [cards, setCards] = useState<Flashcard[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -50,6 +53,12 @@ export default function FlashcardPage() {
   const [noteTitles, setNoteTitles] = useState<Record<string, string>>({});
 
   const loadDueCards = useCallback(async () => {
+    if (!isAdmin) {
+      setCards([]);
+      setLoading(false);
+      return;
+    }
+
     try {
       setLoading(true);
       const dueCards = await flashcardsApi.getDue(20);
@@ -70,16 +79,18 @@ export default function FlashcardPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [isAdmin]);
 
   useEffect(() => {
+    if (authLoading || !isAdmin) return;
     const timer = window.setTimeout(() => {
       void loadDueCards();
     }, 0);
     return () => window.clearTimeout(timer);
-  }, [loadDueCards]);
+  }, [authLoading, isAdmin, loadDueCards]);
 
   const handleReview = async (quality: ReviewQuality) => {
+    if (!isAdmin) return;
     const current = cards[currentIndex];
     if (!current) return;
 
@@ -116,6 +127,7 @@ export default function FlashcardPage() {
   const totalCards = cards.length;
 
   return (
+    <AdminGate>
     <div className="min-h-screen bg-surface pt-24">
       {/* Header */}
       <div className="bg-surface-container-low border-b border-outline-variant/20">
@@ -324,5 +336,6 @@ export default function FlashcardPage() {
         )}
       </div>
     </div>
+    </AdminGate>
   );
 }

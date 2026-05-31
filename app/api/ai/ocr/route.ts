@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { callQwenVision } from '@/lib/ai-client';
+import { requireAdminRequest, resolveAIKey } from '@/lib/server-admin-auth';
 
 function getErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback;
@@ -8,12 +9,18 @@ function getErrorMessage(error: unknown, fallback: string) {
 // Qwen Vision OCR endpoint — extracts text from problem images
 export async function POST(req: NextRequest) {
   try {
+    const adminError = await requireAdminRequest(req);
+    if (adminError) return adminError;
+
     const { imageBase64, apiKey: clientApiKey, model: clientModel, endpoint: clientEndpoint } = await req.json();
 
-    // Prefer server-side env vars, fall back to client-provided keys
-    const apiKey = process.env.QWEN_API_KEY || clientApiKey;
-    const model = clientModel || 'qwen-vl-max';
-    const endpoint = clientEndpoint || 'https://dashscope.aliyuncs.com/compatible-mode/v1';
+    const apiKey = resolveAIKey('qwen', clientApiKey);
+    const model = typeof clientModel === 'string' && clientModel.trim()
+      ? clientModel.trim()
+      : 'qwen-vl-max';
+    const endpoint = typeof clientEndpoint === 'string' && clientEndpoint.trim()
+      ? clientEndpoint.trim()
+      : 'https://dashscope.aliyuncs.com/compatible-mode/v1';
 
     if (!imageBase64 || !apiKey) {
       return NextResponse.json({ error: '缺少必要参数 (imageBase64, apiKey)' }, { status: 400 });

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { callDeepSeek } from '@/lib/ai-client';
+import { requireAdminRequest, resolveAIKey } from '@/lib/server-admin-auth';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -10,16 +11,34 @@ function getErrorMessage(error: unknown, fallback: string) {
 }
 
 // Connection test endpoint — validates API keys for DeepSeek and Qwen
+export async function GET(req: NextRequest) {
+  const adminError = await requireAdminRequest(req);
+  if (adminError) return adminError;
+
+  return NextResponse.json({
+    success: true,
+    deepseekConfigured: Boolean(process.env.DEEPSEEK_API_KEY),
+    qwenConfigured: Boolean(process.env.QWEN_API_KEY),
+  });
+}
+
 export async function POST(req: NextRequest) {
   try {
+    const adminError = await requireAdminRequest(req);
+    if (adminError) return adminError;
+
     const { provider, apiKey: clientApiKey, model: clientModel, endpoint: clientEndpoint } = await req.json();
 
     // Prefer server-side env vars, fall back to client-provided keys
     const apiKey = provider === 'deepseek'
-      ? (process.env.DEEPSEEK_API_KEY || clientApiKey)
-      : (process.env.QWEN_API_KEY || clientApiKey);
-    const model = clientModel || (provider === 'deepseek' ? 'deepseek-v4-flash' : 'qwen-vl-max');
-    const endpoint = clientEndpoint || 'https://dashscope.aliyuncs.com/compatible-mode/v1';
+      ? resolveAIKey('deepseek', clientApiKey)
+      : resolveAIKey('qwen', clientApiKey);
+    const model = typeof clientModel === 'string' && clientModel.trim()
+      ? clientModel.trim()
+      : (provider === 'deepseek' ? 'deepseek-v4-flash' : 'qwen-vl-max');
+    const endpoint = typeof clientEndpoint === 'string' && clientEndpoint.trim()
+      ? clientEndpoint.trim()
+      : 'https://dashscope.aliyuncs.com/compatible-mode/v1';
 
     if (!provider || !apiKey) {
       return NextResponse.json({ error: '缺少必要参数 (provider, apiKey)' }, { status: 400 });

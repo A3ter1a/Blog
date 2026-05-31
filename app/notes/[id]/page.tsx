@@ -20,11 +20,13 @@ import { MarkdownContent } from "@/components/ui/MarkdownContent";
 import { TableOfContents } from "@/components/ui/TableOfContents";
 import { useReadingPreferences } from "@/lib/useReadingPreferences";
 import { ReadingProgress } from "@/components/ui/ReadingProgress";
+import { useAdminAuth } from "@/hooks/useAdminAuth";
 
 export default function NoteReaderPage() {
   const router = useRouter();
   const params = useParams();
   const { preferences } = useReadingPreferences();
+  const { isAdmin } = useAdminAuth();
   const [note, setNote] = useState<Note | null>(null);
   const [loading, setLoading] = useState(true);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -103,6 +105,7 @@ export default function NoteReaderPage() {
   }, [allProblems, chapters, selectedChapterId]);
 
   const handleDelete = async () => {
+    if (!isAdmin) return;
     try {
       await notesApi.delete(params.id as string);
       setShowDeleteConfirm(false);
@@ -113,6 +116,7 @@ export default function NoteReaderPage() {
   };
 
   const handleUpdateProblem = async (updatedProblem: Problem) => {
+    if (!isAdmin) return;
     if (!note) return;
     const updatedProblems = (note.problems || []).map(p =>
       p.id === updatedProblem.id ? updatedProblem : p
@@ -285,6 +289,7 @@ export default function NoteReaderPage() {
             </div>
 
             {/* Action Buttons */}
+            {isAdmin && (
             <div className="flex gap-3 mt-6 pt-6 border-t border-outline-variant/10">
               <Link
                 href={`/create?edit=${note.id}`}
@@ -301,6 +306,7 @@ export default function NoteReaderPage() {
                 删除
               </button>
             </div>
+            )}
           </motion.header>
 
           {/* Delete Confirmation Modal */}
@@ -413,7 +419,7 @@ export default function NoteReaderPage() {
                               problem={problem}
                               index={allProblems.indexOf(problem)}
                               noteId={note?.id}
-                              onUpdate={handleUpdateProblem}
+                              onUpdate={isAdmin ? handleUpdateProblem : undefined}
                             />
                           ))}
                         </div>
@@ -428,7 +434,7 @@ export default function NoteReaderPage() {
                         problem={problem}
                         index={allProblems.indexOf(problem)}
                         noteId={note?.id}
-                        onUpdate={handleUpdateProblem}
+                        onUpdate={isAdmin ? handleUpdateProblem : undefined}
                       />
                     ))}
                   </div>
@@ -605,7 +611,7 @@ export default function NoteReaderPage() {
                       </div>
                     )}
                     {filteredProblems.map((problem) => (
-                      <ProblemCard key={problem.id} problem={problem} index={allProblems.indexOf(problem)} noteId={note?.id} onUpdate={handleUpdateProblem} />
+                      <ProblemCard key={problem.id} problem={problem} index={allProblems.indexOf(problem)} noteId={note?.id} onUpdate={isAdmin ? handleUpdateProblem : undefined} />
                     ))}
                   </div>
                 ) : (

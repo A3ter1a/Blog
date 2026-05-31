@@ -18,6 +18,7 @@ import { ContentPreview } from "@/components/ui/ContentPreview";
 import { FormulaFixer } from "@/components/editor/FormulaFixer";
 import { uploadImage, generateFileName } from "@/lib/supabase-storage";
 import { repairMarkdown } from "@/lib/markdown";
+import { AdminGate } from "@/components/auth/AdminGate";
 
 type ImportDraft = {
   title?: string;
@@ -238,6 +239,7 @@ export default function CreatePage() {
   const isProblem = noteType === "problem";
 
   return (
+    <AdminGate>
     <main className="pt-24 pb-20 min-h-screen">
       <div className="max-w-7xl mx-auto px-6">
         {/* Header */}
@@ -691,5 +693,6 @@ export default function CreatePage() {
         noteId={isEditMode ? editingId : undefined}
       />
     </main>
+    </AdminGate>
   );
 }

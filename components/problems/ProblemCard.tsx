@@ -7,6 +7,9 @@ import type { Problem, ProblemType, Difficulty } from "@/lib/types";
 import { problemTypeMap, difficultyMap, difficultyColorMap } from "@/lib/types";
 import { MarkdownContent } from "@/components/ui/MarkdownContent";
 import { repairMarkdown } from "@/lib/markdown";
+import { buildAuthHeaders } from "@/lib/fetch-with-auth";
+
+const ALLOW_CLIENT_AI_KEYS = process.env.NODE_ENV !== "production";
 
 interface ProblemCardProps {
   problem: Problem;
@@ -83,7 +86,7 @@ export function ProblemCard({ problem, index, onUpdate }: ProblemCardProps) {
     try {
       const raw = localStorage.getItem('ai-config');
       const config = raw ? JSON.parse(raw) : null;
-      if (!config?.deepseekApiKey) {
+      if (ALLOW_CLIENT_AI_KEYS && !config?.deepseekApiKey) {
         setReviewError('请先在设置中配置 DeepSeek API Key');
         setIsReviewing(false);
         return;
@@ -91,7 +94,7 @@ export function ProblemCard({ problem, index, onUpdate }: ProblemCardProps) {
 
       const res = await fetch('/api/ai/review', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: await buildAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           problem: {
             question: editData.question,
@@ -102,8 +105,8 @@ export function ProblemCard({ problem, index, onUpdate }: ProblemCardProps) {
             tags: editData.tags.split(/[,，]/).map((t: string) => t.trim()).filter(Boolean),
             tips: editData.tips || undefined,
           },
-          apiKey: config.deepseekApiKey,
-          model: config.deepseekModel,
+          apiKey: ALLOW_CLIENT_AI_KEYS ? config.deepseekApiKey : undefined,
+          model: config?.deepseekModel || 'deepseek-v4-flash',
         }),
         signal: AbortSignal.timeout(180000),
       });

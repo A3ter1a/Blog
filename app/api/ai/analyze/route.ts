@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { callDeepSeek } from '@/lib/ai-client';
 import { parseAIJson } from '@/lib/ai-json';
+import { requireAdminRequest, resolveAIKey } from '@/lib/server-admin-auth';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -9,11 +10,15 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 // DeepSeek analysis endpoint — classifies OCR text into structured Problem array
 export async function POST(req: NextRequest) {
   try {
+    const adminError = await requireAdminRequest(req);
+    if (adminError) return adminError;
+
     const { ocrText, apiKey: clientApiKey, model: clientModel, chapterContext } = await req.json();
 
-    // Prefer server-side env vars, fall back to client-provided keys
-    const apiKey = process.env.DEEPSEEK_API_KEY || clientApiKey;
-    const model = clientModel || 'deepseek-v4-flash';
+    const apiKey = resolveAIKey('deepseek', clientApiKey);
+    const model = typeof clientModel === 'string' && clientModel.trim()
+      ? clientModel.trim()
+      : 'deepseek-v4-flash';
 
     if (!ocrText || !apiKey) {
       return NextResponse.json({ error: '缺少必要参数 (ocrText, apiKey)' }, { status: 400 });

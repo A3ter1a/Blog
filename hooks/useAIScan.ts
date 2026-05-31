@@ -3,6 +3,7 @@
 import { useState, useCallback } from 'react';
 import type { Problem, ProblemType, Difficulty, AIConfig, ProblemOption } from '@/lib/types';
 import { recordDeepSeekUsage, recordQwenUsage } from '@/lib/ai-usage';
+import { buildAuthHeaders } from '@/lib/fetch-with-auth';
 
 export type ScanStage = 'idle' | 'uploading' | 'scanning' | 'analyzing' | 'complete' | 'error';
 
@@ -17,6 +18,7 @@ export interface ScanState {
 }
 
 const STORAGE_KEY = 'ai-config';
+const ALLOW_CLIENT_AI_KEYS = process.env.NODE_ENV !== 'production';
 const MAX_OCR_LENGTH = 4000;
 const FETCH_TIMEOUT = 180000; // 3 min per API call
 const PROBLEM_TYPES: ProblemType[] = ['choice', 'fill', 'calculation', 'proof', 'proofEssay'];
@@ -55,12 +57,20 @@ function toProblemOptions(value: unknown): ProblemOption[] | undefined {
   return options.length > 0 ? options : undefined;
 }
 
-function getAIConfig(): AIConfig | null {
+const defaultAIConfig: AIConfig = {
+  deepseekApiKey: '',
+  deepseekModel: 'deepseek-v4-flash',
+  qwenApiKey: '',
+  qwenModel: 'qwen-vl-max',
+  qwenApiEndpoint: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+};
+
+function getAIConfig(): AIConfig {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? JSON.parse(raw) : null;
+    return raw ? { ...defaultAIConfig, ...JSON.parse(raw) } : defaultAIConfig;
   } catch {
-    return null;
+    return defaultAIConfig;
   }
 }
 
@@ -103,10 +113,10 @@ export function useAIScan() {
         // Step A: OCR
         const ocrRes = await fetch('/api/ai/ocr', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: await buildAuthHeaders({ 'Content-Type': 'application/json' }),
           body: JSON.stringify({
             imageBase64: imgBase64,
-            apiKey: config.qwenApiKey,
+            apiKey: ALLOW_CLIENT_AI_KEYS ? config.qwenApiKey : undefined,
             model: config.qwenModel,
             endpoint: config.qwenApiEndpoint || 'https://dashscope.aliyuncs.com/compatible-mode/v1',
           }),
@@ -135,10 +145,10 @@ export function useAIScan() {
         // Step B: Analyze
         const analyzeRes = await fetch('/api/ai/analyze', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: await buildAuthHeaders({ 'Content-Type': 'application/json' }),
           body: JSON.stringify({
             ocrText,
-            apiKey: config.deepseekApiKey,
+            apiKey: ALLOW_CLIENT_AI_KEYS ? config.deepseekApiKey : undefined,
             model: config.deepseekModel || 'deepseek-v4-flash',
             chapterContext: chapterNames,
           }),
