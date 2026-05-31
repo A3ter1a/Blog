@@ -2,28 +2,12 @@
 
 import { useState, useRef } from "react";
 import Image from "next/image";
-import { Plus, Trash2, Camera, Edit3, Save, X, ChevronUp, ChevronDown } from "lucide-react";
-import { fileToDataUrl } from "@/lib/utils";
+import { Plus, Trash2, Camera, Edit3, Save, X, ChevronUp, ChevronDown, Loader2 } from "lucide-react";
+import type { Profile, ProfileLink } from "@/lib/types";
+import { generateFileName, uploadImage } from "@/lib/supabase-storage";
 import { CustomSelect } from "@/components/ui/CustomSelect";
 
-type LinkVariant = "default" | "secondary" | "dark" | "primary";
-
-interface ProfileLink {
-  name: string;
-  icon: string;
-  href: string;
-  variant: LinkVariant;
-  linkType?: "link" | "number";
-}
-
-interface Profile {
-  name: string;
-  avatar: string;
-  tagline: string;
-  badges: string[];
-  links: ProfileLink[];
-  footer: string;
-}
+type LinkVariant = ProfileLink["variant"];
 
 const iconMap: Record<string, string> = {
   mail: "/icons/email.svg",
@@ -49,29 +33,51 @@ const iconOptions = [
 
 interface ProfileEditorProps {
   profile: Profile;
-  onSave: (profile: Profile) => void;
+  onSave: (profile: Profile) => Promise<void> | void;
 }
 
 export function ProfileEditor({ profile, onSave }: ProfileEditorProps) {
   const [editForm, setEditForm] = useState(profile);
   const [isEditing, setIsEditing] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleSave = () => {
-    onSave(editForm);
-    setIsEditing(false);
+  const handleSave = async () => {
+    setError(null);
+    setIsSaving(true);
+    try {
+      await onSave(editForm);
+      setIsEditing(false);
+    } catch (saveError: unknown) {
+      setError(saveError instanceof Error ? saveError.message : "保存失败");
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleCancel = () => {
     setEditForm(profile);
+    setError(null);
     setIsEditing(false);
   };
 
   const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      const dataUrl = await fileToDataUrl(file);
-      setEditForm({ ...editForm, avatar: dataUrl });
+    if (!file) return;
+
+    setError(null);
+    setIsUploadingAvatar(true);
+    try {
+      const ext = file.name.split(".").pop()?.toLowerCase() || "png";
+      const url = await uploadImage(file, generateFileName("profile", ext));
+      setEditForm((current) => ({ ...current, avatar: url }));
+    } catch (uploadError: unknown) {
+      setError(uploadError instanceof Error ? uploadError.message : "头像上传失败");
+    } finally {
+      setIsUploadingAvatar(false);
+      e.target.value = "";
     }
   };
 
@@ -192,10 +198,11 @@ export function ProfileEditor({ profile, onSave }: ProfileEditorProps) {
           </button>
           <button
             onClick={handleSave}
+            disabled={isSaving || isUploadingAvatar}
             className="text-sm text-primary hover:text-primary-container transition-colors flex items-center gap-1 font-medium"
           >
-            <Save className="w-4 h-4" />
-            保存
+            {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+            {isSaving ? "保存中" : "保存"}
           </button>
         </div>
       </div>
@@ -215,9 +222,10 @@ export function ProfileEditor({ profile, onSave }: ProfileEditorProps) {
           </div>
           <button
             onClick={() => fileInputRef.current?.click()}
+            disabled={isUploadingAvatar}
             className="absolute bottom-0 right-0 w-6 h-6 rounded-full editorial-gradient flex items-center justify-center text-on-primary shadow-ambient"
           >
-            <Camera className="w-3 h-3" />
+            {isUploadingAvatar ? <Loader2 className="w-3 h-3 animate-spin" /> : <Camera className="w-3 h-3" />}
           </button>
           <input
             ref={fileInputRef}
@@ -229,9 +237,17 @@ export function ProfileEditor({ profile, onSave }: ProfileEditorProps) {
         </div>
         <div>
           <p className="text-sm font-medium text-on-surface">头像</p>
-          <p className="text-xs text-on-surface-variant/60">点击相机图标更换</p>
+          <p className="text-xs text-on-surface-variant/60">
+            {isUploadingAvatar ? "正在上传头像..." : "点击相机图标更换"}
+          </p>
         </div>
       </div>
+
+      {error && (
+        <div className="rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700">
+          {error}
+        </div>
+      )}
 
       {/* Name */}
       <div>

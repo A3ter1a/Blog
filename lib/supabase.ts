@@ -1,5 +1,6 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import { Note, NoteType, Subject, Flashcard, type Problem, type Video } from "./types";
+import { Note, NoteType, Subject, Flashcard, type Problem, type Profile, type Video } from "./types";
+import { DEFAULT_PROFILE, normalizeProfile } from "./profile";
 
 export type NoteRow = {
   id?: string;
@@ -51,6 +52,16 @@ export type ChapterRow = {
 export type ChapterInsert = Partial<ChapterRow>;
 export type ChapterUpdate = Partial<ChapterRow>;
 
+export type SiteProfileRow = {
+  id?: string;
+  profile?: Profile | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+};
+
+export type SiteProfileInsert = Partial<SiteProfileRow>;
+export type SiteProfileUpdate = Partial<SiteProfileRow>;
+
 type Database = {
   public: {
     Tables: {
@@ -72,6 +83,12 @@ type Database = {
         Update: ChapterUpdate;
         Relationships: [];
       };
+      site_profile: {
+        Row: SiteProfileRow;
+        Insert: SiteProfileInsert;
+        Update: SiteProfileUpdate;
+        Relationships: [];
+      };
     };
     Views: Record<string, never>;
     Functions: Record<string, never>;
@@ -79,6 +96,8 @@ type Database = {
     CompositeTypes: Record<string, never>;
   };
 };
+
+const SITE_PROFILE_ID = "main";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
@@ -303,6 +322,43 @@ export const notesApi = {
     const { data, error } = await q.order("created_at", { ascending: false });
     if (error) throw error;
     return (data || []).map(mapSnakeToCamel);
+  },
+};
+
+export const profileApi = {
+  async get(): Promise<Profile> {
+    try {
+      const supabase = getSupabase();
+      const { data, error } = await supabase
+        .from("site_profile")
+        .select("profile")
+        .eq("id", SITE_PROFILE_ID)
+        .maybeSingle();
+
+      if (error || !data?.profile) return DEFAULT_PROFILE;
+      return normalizeProfile(data.profile);
+    } catch {
+      return DEFAULT_PROFILE;
+    }
+  },
+
+  async update(profile: Profile): Promise<Profile> {
+    await assertAdminWrite();
+
+    const supabase = getSupabase();
+    const nextProfile = normalizeProfile(profile);
+    const { data, error } = await supabase
+      .from("site_profile")
+      .upsert({
+        id: SITE_PROFILE_ID,
+        profile: nextProfile,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: "id" })
+      .select("profile")
+      .single();
+
+    if (error) throw error;
+    return normalizeProfile(data.profile);
   },
 };
 

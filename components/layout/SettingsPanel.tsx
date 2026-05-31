@@ -5,60 +5,75 @@ import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Upload, Type, ListTree, Eye, AlignLeft, XCircle } from "lucide-react";
 import type { Profile } from "@/lib/types";
+import { DEFAULT_PROFILE, normalizeProfile } from "@/lib/profile";
+import { profileApi } from "@/lib/supabase";
 import { useReadingPreferences, TOCPosition } from "@/lib/useReadingPreferences";
 import { ParsedNote, detectFormat, importFromJSON, importFromMarkdown, importFromObsidian } from "@/lib/import";
 import { ImportPreview } from "@/components/export/ImportPreview";
 import { ProfileEditor } from "@/components/settings/ProfileEditor";
 import { AISettings } from "@/components/settings/AISettings";
 import { useAdminAuth } from "@/hooks/useAdminAuth";
+import { useToast } from "@/components/ui/Toast";
 
 interface SettingsPanelProps {
   isOpen: boolean;
   onClose: () => void;
 }
 
-const defaultProfile: Profile = {
-  name: "A3ter1a",
-  avatar: "",
-  tagline: "博观而约取，厚积而薄发。在这场孤独的修行中，我们终将听见远方的回响。",
-  badges: ["星月女神 Asteria", "考研人 | 数学 · 英语 · 政治 · 经济学"],
-  links: [
-    { name: "QQ", icon: "qq", href: "", variant: "default", linkType: "number" },
-    { name: "微信", icon: "wechat", href: "", variant: "secondary", linkType: "number" },
-    { name: "B站", icon: "bilibili", href: "", variant: "dark", linkType: "number" },
-    { name: "Github", icon: "github", href: "", variant: "primary", linkType: "link" },
-  ],
-  footer: "Asteroid — 知识的沉淀与共鸣",
-};
-
 export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
   const { preferences, updatePreference } = useReadingPreferences();
   const { isAdmin } = useAdminAuth();
+  const toast = useToast();
 
   // Profile state
-  const [profile, setProfile] = useState(defaultProfile);
+  const [profile, setProfile] = useState<Profile>(DEFAULT_PROFILE);
+  const [profileNotice, setProfileNotice] = useState<string | null>(null);
 
   // Import state
   const [importError, setImportError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isOpen) return;
-    const savedProfile = localStorage.getItem("about-profile");
-    if (savedProfile) {
-      try {
-        const parsed: Profile = JSON.parse(savedProfile);
-        const timer = window.setTimeout(() => setProfile(parsed), 0);
-        return () => window.clearTimeout(timer);
-      } catch {
-        const timer = window.setTimeout(() => setProfile(defaultProfile), 0);
-        return () => window.clearTimeout(timer);
-      }
-    }
-  }, [isOpen]);
+    let mounted = true;
+    setProfileNotice(null);
 
-  const handleSaveProfile = (newProfile: Profile) => {
-    setProfile(newProfile);
-    localStorage.setItem("about-profile", JSON.stringify(newProfile));
+    void (async () => {
+      const remoteProfile = await profileApi.get();
+      if (!mounted) return;
+
+      let nextProfile = remoteProfile;
+      if (isAdmin) {
+        const savedProfile = localStorage.getItem("about-profile");
+        if (savedProfile) {
+          try {
+            nextProfile = normalizeProfile(JSON.parse(savedProfile));
+            setProfileNotice("检测到旧本地资料，保存后会同步到线上。");
+          } catch {
+            localStorage.removeItem("about-profile");
+          }
+        }
+      }
+
+      setProfile(nextProfile);
+    })();
+
+    return () => {
+      mounted = false;
+    };
+  }, [isOpen, isAdmin]);
+
+  const handleSaveProfile = async (newProfile: Profile) => {
+    try {
+      const savedProfile = await profileApi.update(newProfile);
+      setProfile(savedProfile);
+      localStorage.removeItem("about-profile");
+      setProfileNotice(null);
+      toast.success("个人资料已同步到线上");
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "未知错误";
+      toast.error(`保存个人资料失败：${message}`);
+      throw error;
+    }
   };
 
   // Import notes from file (JSON or Markdown)
@@ -258,6 +273,11 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
                 <>
                   {/* Profile */}
                   <section>
+                    {profileNotice && (
+                      <div className="mb-3 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700">
+                        {profileNotice}
+                      </div>
+                    )}
                     <ProfileEditor profile={profile} onSave={handleSaveProfile} />
                   </section>
 

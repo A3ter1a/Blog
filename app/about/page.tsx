@@ -3,21 +3,9 @@
 import { useState, useEffect } from "react";
 import Image from "next/image";
 import { motion } from "framer-motion";
-
-// Default profile data
-const defaultProfile = {
-  name: "A3ter1a",
-  avatar: "",
-  tagline: "博观而约取，厚积而薄发。在这场孤独的修行中，我们终将听见远方的回响。",
-  badges: ["星月女神 Asteria", "考研人 | 数学 · 英语 · 政治 · 经济学"],
-  links: [
-    { name: "QQ", icon: "qq", href: "", variant: "default" as const, linkType: "number" as const },
-    { name: "微信", icon: "wechat", href: "", variant: "secondary" as const, linkType: "number" as const },
-    { name: "B站", icon: "bilibili", href: "#", variant: "dark" as const, linkType: "link" as const },
-    { name: "Github", icon: "github", href: "#", variant: "primary" as const, linkType: "link" as const },
-  ],
-  footer: "Asteroid — 知识的沉淀与共鸣",
-};
+import type { Profile } from "@/lib/types";
+import { DEFAULT_PROFILE } from "@/lib/profile";
+import { profileApi } from "@/lib/supabase";
 
 const iconMap: Record<string, string> = {
   mail: "/icons/email.svg",
@@ -31,18 +19,18 @@ const iconMap: Record<string, string> = {
 };
 
 export default function About() {
-  const [profile, setProfile] = useState(defaultProfile);
+  const [profile, setProfile] = useState<Profile>(DEFAULT_PROFILE);
 
-  // Load from localStorage on mount
   useEffect(() => {
-    const saved = localStorage.getItem("about-profile");
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        const timer = window.setTimeout(() => setProfile(parsed), 0);
-        return () => window.clearTimeout(timer);
-      } catch {}
-    }
+    let mounted = true;
+
+    void profileApi.get().then((nextProfile) => {
+      if (mounted) setProfile(nextProfile);
+    });
+
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   return (

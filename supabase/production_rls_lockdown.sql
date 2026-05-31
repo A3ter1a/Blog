@@ -4,6 +4,7 @@
 -- Goal:
 -- - Visitors can read published notes.
 -- - Visitors can read only chapters needed by published notes plus global templates.
+-- - Visitors can read the public About page profile.
 -- - Visitors cannot create, update, or delete notes, chapters, or flashcards.
 -- - Authenticated admins can create, update, and delete private content.
 -- - Flashcards are private to admins.
@@ -31,7 +32,7 @@ BEGIN
     SELECT schemaname, tablename, policyname
     FROM pg_policies
     WHERE (schemaname = 'public'
-      AND tablename IN ('notes', 'chapters', 'flashcards', 'admin_users'))
+      AND tablename IN ('notes', 'chapters', 'flashcards', 'admin_users', 'site_profile'))
       OR (schemaname = 'storage' AND tablename = 'objects')
   LOOP
     EXECUTE format(
@@ -52,17 +53,46 @@ CREATE TABLE IF NOT EXISTS public.admin_users (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
+CREATE TABLE IF NOT EXISTS public.site_profile (
+  id text PRIMARY KEY DEFAULT 'main',
+  profile jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT site_profile_singleton CHECK (id = 'main')
+);
+
+INSERT INTO public.site_profile (id, profile)
+VALUES (
+  'main',
+  jsonb_build_object(
+    'name', 'A3ter1a',
+    'avatar', '',
+    'tagline', '博观而约取，厚积而薄发。在这场孤独的修行中，我们终将听见远方的回响。',
+    'badges', jsonb_build_array('星月女神 Asteria', '考研人 | 数学 · 英语 · 政治 · 经济学'),
+    'links', jsonb_build_array(
+      jsonb_build_object('name', 'QQ', 'icon', 'qq', 'href', '', 'variant', 'default', 'linkType', 'number'),
+      jsonb_build_object('name', '微信', 'icon', 'wechat', 'href', '', 'variant', 'secondary', 'linkType', 'number'),
+      jsonb_build_object('name', 'B站', 'icon', 'bilibili', 'href', '#', 'variant', 'dark', 'linkType', 'link'),
+      jsonb_build_object('name', 'Github', 'icon', 'github', 'href', '#', 'variant', 'primary', 'linkType', 'link')
+    ),
+    'footer', 'Asteroid — 知识的沉淀与共鸣'
+  )
+)
+ON CONFLICT (id) DO NOTHING;
+
 INSERT INTO storage.buckets (id, name, public)
 VALUES ('note-images', 'note-images', true)
 ON CONFLICT (id) DO UPDATE
 SET public = true;
 
 ALTER TABLE public.admin_users ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.site_profile ENABLE ROW LEVEL SECURITY;
 
 ALTER TABLE public.notes FORCE ROW LEVEL SECURITY;
 ALTER TABLE public.chapters FORCE ROW LEVEL SECURITY;
 ALTER TABLE public.flashcards FORCE ROW LEVEL SECURITY;
 ALTER TABLE public.admin_users FORCE ROW LEVEL SECURITY;
+ALTER TABLE public.site_profile FORCE ROW LEVEL SECURITY;
 
 CREATE OR REPLACE FUNCTION public.is_admin()
 RETURNS boolean
@@ -182,6 +212,31 @@ CREATE POLICY "admin_read_admin_users"
   TO authenticated
   USING (public.is_admin());
 
+CREATE POLICY "public_read_site_profile"
+  ON public.site_profile
+  FOR SELECT
+  TO anon, authenticated
+  USING (id = 'main');
+
+CREATE POLICY "admin_insert_site_profile"
+  ON public.site_profile
+  FOR INSERT
+  TO authenticated
+  WITH CHECK (id = 'main' AND public.is_admin());
+
+CREATE POLICY "admin_update_site_profile"
+  ON public.site_profile
+  FOR UPDATE
+  TO authenticated
+  USING (id = 'main' AND public.is_admin())
+  WITH CHECK (id = 'main' AND public.is_admin());
+
+CREATE POLICY "admin_delete_site_profile"
+  ON public.site_profile
+  FOR DELETE
+  TO authenticated
+  USING (id = 'main' AND public.is_admin());
+
 CREATE POLICY "public_read_note_images"
   ON storage.objects
   FOR SELECT
@@ -213,7 +268,7 @@ COMMIT;
 -- select schemaname, tablename, policyname, cmd, roles, qual, with_check
 -- from pg_policies
 -- where schemaname = 'public'
---   and tablename in ('notes', 'chapters', 'flashcards', 'admin_users')
+--   and tablename in ('notes', 'chapters', 'flashcards', 'admin_users', 'site_profile')
 -- order by tablename, policyname;
 --
 -- select schemaname, tablename, policyname, cmd, roles, qual, with_check
@@ -228,6 +283,7 @@ COMMIT;
 --   'public.notes'::regclass,
 --   'public.chapters'::regclass,
 --   'public.flashcards'::regclass,
---   'public.admin_users'::regclass
+--   'public.admin_users'::regclass,
+--   'public.site_profile'::regclass
 -- )
 -- order by relname;
