@@ -11,21 +11,124 @@ import { NoteType, Subject, Note } from "@/lib/types";
 import { CheckSquare, Square, Download, X, Trash2, AlertTriangle, Loader2 } from "lucide-react";
 import { useAdminAuth } from "@/hooks/useAdminAuth";
 import { useToast } from "@/components/ui/Toast";
+import { readJsonStorage, removeStorage, writeJsonStorage } from "@/lib/browser-storage";
 
 const NOTES_PAGE_SIZE = 24;
+const NOTES_CACHE_PREFIX = "asteroid-notes-page:";
+const NOTES_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
+
+type NotesCachePayload = {
+  notes: Note[];
+  hasMoreNotes: boolean;
+  cachedAt: number;
+  expiresAt: number;
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function normalizeCachedNote(value: unknown): Note | null {
+  if (!isRecord(value)) return null;
+  if (typeof value.id !== "string" || typeof value.title !== "string") return null;
+  if (value.type !== "note" && value.type !== "problem" && value.type !== "essay") return null;
+
+  const createdAt = typeof value.createdAt === "string" || value.createdAt instanceof Date
+    ? new Date(value.createdAt)
+    : new Date();
+  const updatedAt = typeof value.updatedAt === "string" || value.updatedAt instanceof Date
+    ? new Date(value.updatedAt)
+    : createdAt;
+
+  return {
+    id: value.id,
+    type: value.type,
+    title: value.title,
+    content: typeof value.content === "string" ? value.content : "",
+    subject: value.subject === "math" || value.subject === "english" || value.subject === "politics" || value.subject === "economics"
+      ? value.subject
+      : undefined,
+    tags: Array.isArray(value.tags) ? value.tags.filter((tag): tag is string => typeof tag === "string") : [],
+    coverImage: typeof value.coverImage === "string" ? value.coverImage : undefined,
+    videos: [],
+    problems: [],
+    createdAt,
+    updatedAt,
+    isPublished: typeof value.isPublished === "boolean" ? value.isPublished : true,
+  };
+}
+
+function normalizeNotesCache(value: unknown): NotesCachePayload | null {
+  if (!isRecord(value) || !Array.isArray(value.notes)) return null;
+  if (typeof value.hasMoreNotes !== "boolean") return null;
+  if (typeof value.cachedAt !== "number" || typeof value.expiresAt !== "number") return null;
+
+  const notes = value.notes
+    .map(normalizeCachedNote)
+    .filter((note): note is Note => Boolean(note));
+
+  return {
+    notes,
+    hasMoreNotes: value.hasMoreNotes,
+    cachedAt: value.cachedAt,
+    expiresAt: value.expiresAt,
+  };
+}
+
+function getNotesCacheKey(
+  query: string,
+  selectedType: NoteType | "all",
+  selectedSubject: Subject | "all",
+  sortOrder: "desc" | "asc",
+): string | null {
+  if (query.trim()) return null;
+  return `${NOTES_CACHE_PREFIX}${selectedType}:${selectedSubject}:${sortOrder}`;
+}
+
+function readNotesCache(key: string | null): NotesCachePayload | null {
+  if (!key) return null;
+
+  const cached = readJsonStorage<NotesCachePayload | null>(key, null, normalizeNotesCache);
+  if (!cached) return null;
+
+  if (cached.expiresAt <= Date.now()) {
+    removeStorage(key);
+    return null;
+  }
+
+  return cached;
+}
+
+function writeNotesCache(key: string | null, notes: Note[], hasMoreNotes: boolean): void {
+  if (!key) return;
+
+  const cachedAt = Date.now();
+  writeJsonStorage<NotesCachePayload>(key, {
+    notes,
+    hasMoreNotes,
+    cachedAt,
+    expiresAt: cachedAt + NOTES_CACHE_TTL_MS,
+  });
+}
+
+function readInitialNotesCache(): NotesCachePayload | null {
+  return readNotesCache(getNotesCacheKey("", "all", "all", "desc"));
+}
 
 export default function NotesPage() {
   const { isAdmin } = useAdminAuth();
   const toast = useToast();
+  const [initialCache] = useState(readInitialNotesCache);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedType, setSelectedType] = useState<NoteType | "all">("all");
   const [selectedSubject, setSelectedSubject] = useState<Subject | "all">("all");
   const [sortOrder, setSortOrder] = useState<"desc" | "asc">("desc");
   
   // Data state
-  const [notes, setNotes] = useState<Note[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [hasMoreNotes, setHasMoreNotes] = useState(false);
+  const [notes, setNotes] = useState<Note[]>(initialCache?.notes ?? []);
+  const [loading, setLoading] = useState(!initialCache);
+  const [hasMoreNotes, setHasMoreNotes] = useState(initialCache?.hasMoreNotes ?? false);
+  const [isRefreshingNotes, setIsRefreshingNotes] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   
   // Selection state
@@ -37,17 +140,31 @@ export default function NotesPage() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isDeletingNotes, setIsDeletingNotes] = useState(false);
   const latestLoadId = useRef(0);
+  const notesRef = useRef<Note[]>(initialCache?.notes ?? []);
 
-  const fetchNotesPage = useCallback(async (offset: number, append: boolean, loadId: number) => {
+  const setVisibleNotes = useCallback((nextNotes: Note[]) => {
+    notesRef.current = nextNotes;
+    setNotes(nextNotes);
+  }, []);
+
+  const fetchNotesPage = useCallback(async (
+    offset: number,
+    append: boolean,
+    loadId: number,
+    showFullLoading = true,
+  ) => {
     const query = searchQuery.trim();
     const typeFilter = selectedType === "all" ? undefined : selectedType;
     const subjectFilter = selectedSubject === "all" ? undefined : selectedSubject;
+    const cacheKey = getNotesCacheKey(query, selectedType, selectedSubject, sortOrder);
 
     try {
       if (append) {
         setIsLoadingMore(true);
-      } else {
+      } else if (showFullLoading) {
         setLoading(true);
+      } else {
+        setIsRefreshingNotes(true);
       }
 
       const data = query
@@ -62,12 +179,15 @@ export default function NotesPage() {
 
       if (latestLoadId.current === loadId) {
         if (query) {
-          setNotes(data);
+          setVisibleNotes(data);
           setHasMoreNotes(false);
         } else {
           const pageItems = data.slice(0, NOTES_PAGE_SIZE);
-          setNotes((current) => append ? [...current, ...pageItems] : pageItems);
-          setHasMoreNotes(data.length > NOTES_PAGE_SIZE);
+          const nextHasMoreNotes = data.length > NOTES_PAGE_SIZE;
+          const nextNotes = append ? [...notesRef.current, ...pageItems] : pageItems;
+          setVisibleNotes(nextNotes);
+          setHasMoreNotes(nextHasMoreNotes);
+          writeNotesCache(cacheKey, nextNotes, nextHasMoreNotes);
         }
       }
     } catch (error) {
@@ -78,28 +198,39 @@ export default function NotesPage() {
       if (latestLoadId.current === loadId) {
         if (append) {
           setIsLoadingMore(false);
-        } else {
+        } else if (showFullLoading) {
           setLoading(false);
+        } else {
+          setIsRefreshingNotes(false);
         }
       }
     }
-  }, [searchQuery, selectedSubject, selectedType, sortOrder]);
+  }, [searchQuery, selectedSubject, selectedType, setVisibleNotes, sortOrder]);
 
   useEffect(() => {
     const loadId = latestLoadId.current + 1;
     latestLoadId.current = loadId;
-    setLoading(true);
     setIsLoadingMore(false);
-    setHasMoreNotes(false);
-    setNotes([]);
     setSelectedNoteIds(new Set());
 
+    const cacheKey = getNotesCacheKey(searchQuery, selectedType, selectedSubject, sortOrder);
+    const cached = readNotesCache(cacheKey);
+    if (cached) {
+      setVisibleNotes(cached.notes);
+      setHasMoreNotes(cached.hasMoreNotes);
+      setLoading(false);
+    } else {
+      setVisibleNotes([]);
+      setHasMoreNotes(false);
+      setLoading(true);
+    }
+
     const timer = window.setTimeout(() => {
-      void fetchNotesPage(0, false, loadId);
+      void fetchNotesPage(0, false, loadId, !cached);
     }, searchQuery.trim() ? 250 : 0);
 
     return () => window.clearTimeout(timer);
-  }, [fetchNotesPage, searchQuery]);
+  }, [fetchNotesPage, searchQuery, selectedSubject, selectedType, sortOrder]);
 
   const handleLoadMore = useCallback(() => {
     if (loading || isLoadingMore || !hasMoreNotes || searchQuery.trim()) return;
@@ -313,6 +444,12 @@ export default function NotesPage() {
 
         {/* Notes Grid */}
         <section>
+          {!loading && isRefreshingNotes && (
+            <div className="mb-4 flex items-center justify-center gap-2 text-xs text-on-surface-variant/50">
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              正在刷新
+            </div>
+          )}
           {loading ? (
             <div className="flex items-center justify-center py-20">
               <Loader2 className="w-8 h-8 animate-spin text-primary" />

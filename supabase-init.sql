@@ -30,6 +30,10 @@ CREATE INDEX IF NOT EXISTS idx_notes_type ON notes(type);
 CREATE INDEX IF NOT EXISTS idx_notes_subject ON notes(subject);
 CREATE INDEX IF NOT EXISTS idx_notes_created_at ON notes(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_notes_is_published ON notes(is_published);
+CREATE INDEX IF NOT EXISTS idx_notes_public_created_at ON notes(created_at DESC) WHERE is_published = true;
+CREATE INDEX IF NOT EXISTS idx_notes_public_type_created_at ON notes(type, created_at DESC) WHERE is_published = true;
+CREATE INDEX IF NOT EXISTS idx_notes_public_subject_created_at ON notes(subject, created_at DESC) WHERE is_published = true;
+CREATE INDEX IF NOT EXISTS idx_notes_tags_gin ON notes USING gin (tags);
 
 -- 4. 创建 RLS 策略（行级安全）
 ALTER TABLE notes ENABLE ROW LEVEL SECURITY;
