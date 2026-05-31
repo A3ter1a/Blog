@@ -7,10 +7,14 @@
 -- - Visitors cannot create, update, or delete notes, chapters, or flashcards.
 -- - Authenticated admins can create, update, and delete private content.
 -- - Flashcards are private to admins.
+-- - Note images are publicly readable but writable only by admins.
 --
 -- Important:
 -- This script intentionally removes all existing policies on the target tables
 -- before creating the production read-only baseline.
+-- It also resets policies on storage.objects because permissive storage policies
+-- would override the note-images restrictions below. If you add other buckets,
+-- create explicit policies for them after running this script.
 --
 -- Before or after running this script, add your Supabase Auth email as admin:
 -- insert into public.admin_users (email)
@@ -26,8 +30,9 @@ BEGIN
   FOR policy_record IN
     SELECT schemaname, tablename, policyname
     FROM pg_policies
-    WHERE schemaname = 'public'
-      AND tablename IN ('notes', 'chapters', 'flashcards', 'admin_users')
+    WHERE (schemaname = 'public'
+      AND tablename IN ('notes', 'chapters', 'flashcards', 'admin_users'))
+      OR (schemaname = 'storage' AND tablename = 'objects')
   LOOP
     EXECUTE format(
       'DROP POLICY IF EXISTS %I ON %I.%I',
@@ -46,6 +51,11 @@ CREATE TABLE IF NOT EXISTS public.admin_users (
   email text PRIMARY KEY,
   created_at timestamptz NOT NULL DEFAULT now()
 );
+
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('note-images', 'note-images', true)
+ON CONFLICT (id) DO UPDATE
+SET public = true;
 
 ALTER TABLE public.admin_users ENABLE ROW LEVEL SECURITY;
 
@@ -172,6 +182,31 @@ CREATE POLICY "admin_read_admin_users"
   TO authenticated
   USING (public.is_admin());
 
+CREATE POLICY "public_read_note_images"
+  ON storage.objects
+  FOR SELECT
+  TO anon, authenticated
+  USING (bucket_id = 'note-images');
+
+CREATE POLICY "admin_insert_note_images"
+  ON storage.objects
+  FOR INSERT
+  TO authenticated
+  WITH CHECK (bucket_id = 'note-images' AND public.is_admin());
+
+CREATE POLICY "admin_update_note_images"
+  ON storage.objects
+  FOR UPDATE
+  TO authenticated
+  USING (bucket_id = 'note-images' AND public.is_admin())
+  WITH CHECK (bucket_id = 'note-images' AND public.is_admin());
+
+CREATE POLICY "admin_delete_note_images"
+  ON storage.objects
+  FOR DELETE
+  TO authenticated
+  USING (bucket_id = 'note-images' AND public.is_admin());
+
 COMMIT;
 
 -- Optional verification queries:
@@ -180,6 +215,12 @@ COMMIT;
 -- where schemaname = 'public'
 --   and tablename in ('notes', 'chapters', 'flashcards', 'admin_users')
 -- order by tablename, policyname;
+--
+-- select schemaname, tablename, policyname, cmd, roles, qual, with_check
+-- from pg_policies
+-- where schemaname = 'storage'
+--   and tablename = 'objects'
+-- order by policyname;
 --
 -- select relname, relrowsecurity, relforcerowsecurity
 -- from pg_class

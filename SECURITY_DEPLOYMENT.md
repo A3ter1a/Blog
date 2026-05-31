@@ -26,7 +26,9 @@ on conflict (email) do nothing;
 ## Expected behavior after deployment
 
 - Public visitors can read published notes.
+- Public visitors can read note images from the `note-images` bucket.
 - Public visitors cannot create, edit, delete, import, review flashcards, or call AI APIs.
+- Public visitors cannot upload, overwrite, or delete note images.
 - `/debug` returns 404 outside development.
 - AI API keys stay on the server in production.
 - Client-provided AI keys are ignored in production.
@@ -35,3 +37,7 @@ on conflict (email) do nothing;
 
 UI hiding is only convenience. Supabase RLS is the real database protection.
 Do not deploy without applying the production RLS script.
+
+The production script resets `storage.objects` policies for the current app's
+`note-images` bucket. If you add more storage buckets later, add explicit
+policies for those buckets too.

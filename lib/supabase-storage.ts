@@ -1,4 +1,4 @@
-import { getSupabase } from "./supabase";
+import { assertAdminWrite, getSupabase } from "./supabase";
 
 const BUCKET_NAME = "note-images";
 
@@ -20,6 +20,7 @@ function checkSupabaseConfig() {
  */
 export async function uploadImage(file: File, path: string): Promise<string> {
   checkSupabaseConfig();
+  await assertAdminWrite();
   const supabase = getSupabase();
   
   const { error: uploadError } = await supabase.storage
@@ -54,6 +55,8 @@ export function generateFileName(prefix: string, ext: string): string {
  * @param url 图片的 public URL
  */
 export async function deleteImage(url: string): Promise<void> {
+  await assertAdminWrite();
+
   // 从 URL 中提取文件路径
   const urlObj = new URL(url);
   const pathParts = urlObj.pathname.split("/");
