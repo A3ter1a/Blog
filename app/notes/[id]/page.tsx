@@ -9,6 +9,8 @@ import { notesApi } from "@/lib/supabase";
 import { chaptersApi } from "@/lib/chapters-api";
 import { subjectMap, typeMap, Note, Chapter, Problem } from "@/lib/types";
 import { estimateReadingTime, getDescendantIds } from "@/lib/utils";
+import { getRootChapters } from "@/lib/chapter-utils";
+import { getProblemValidationIssues, normalizeProblem } from "@/lib/problem-utils";
 import { Playlist } from "@/components/video/Playlist";
 import { VideoPlayer } from "@/components/video/VideoPlayer";
 import { ProblemCard } from "@/components/problems/ProblemCard";
@@ -85,7 +87,7 @@ export default function NoteReaderPage() {
     const assignedProblemIds = new Set<string>();
 
     // First group by top-level chapters (with descendant problems)
-    const topLevel = chapters.filter(c => !c.parentId);
+    const topLevel = getRootChapters(chapters);
     topLevel.forEach(chapter => {
       const descendantIds = getDescendantIds(chapter.id, chapters);
       const chapterProblems = allProblems.filter(p => {
@@ -127,9 +129,17 @@ export default function NoteReaderPage() {
     if (!isAdmin) throw new Error("需要管理员登录后才能保存题目");
     if (!note) throw new Error("笔记尚未加载完成");
 
+    const normalizedProblem = normalizeProblem(updatedProblem);
+    const validationIssues = getProblemValidationIssues(normalizedProblem);
+    if (validationIssues.length > 0) {
+      const message = validationIssues[0];
+      toast.error(message);
+      throw new Error(message);
+    }
+
     const previousNote = note;
     const updatedProblems = (previousNote.problems || []).map(p =>
-      p.id === updatedProblem.id ? updatedProblem : p
+      p.id === normalizedProblem.id ? normalizedProblem : p
     );
 
     // Optimistic update

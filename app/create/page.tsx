@@ -124,6 +124,19 @@ export default function CreatePage() {
     setHasProblemChanges(true);
   }, []);
 
+  const handleChapterDeleted = useCallback((chapterId: string) => {
+    const affectedCount = problems.filter((problem) => problem.chapterId === chapterId).length;
+    if (affectedCount === 0) return;
+
+    setProblems((currentProblems) => currentProblems.map((problem) => {
+      if (problem.chapterId !== chapterId) return problem;
+      return { ...problem, chapterId: undefined };
+    }));
+
+    setHasProblemChanges(true);
+    toast.info(`已将 ${affectedCount} 道题移到无章节，保存笔记后生效`);
+  }, [problems, toast]);
+
   const handleAutoRepairMarkdown = useCallback(() => {
     const repaired = repairMarkdown(content);
     if (repaired === content.trim()) {
@@ -817,6 +830,7 @@ export default function CreatePage() {
         isOpen={showChapterManager}
         onClose={() => setShowChapterManager(false)}
         noteId={isEditMode ? editingId : undefined}
+        onChapterDeleted={handleChapterDeleted}
       />
     </main>
     </AdminGate>

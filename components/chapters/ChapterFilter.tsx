@@ -2,6 +2,7 @@
 
 import type { Chapter } from '@/lib/types';
 import { Layers } from 'lucide-react';
+import { getChildChapters, getRootChapters } from '@/lib/chapter-utils';
 
 interface ChapterFilterProps {
   chapters: Chapter[];
@@ -23,7 +24,7 @@ function ChapterNode({
   onSelect: (id: string) => void;
   depth?: number;
 }) {
-  const children = allChapters.filter(c => c.parentId === chapter.id);
+  const children = getChildChapters(allChapters, chapter.id);
 
   return (
     <div>
@@ -59,7 +60,7 @@ function ChapterNode({
 export function ChapterFilter({ chapters, selectedId, onSelect, className = '' }: ChapterFilterProps) {
   if (chapters.length === 0) return null;
 
-  const topLevel = chapters.filter(c => !c.parentId);
+  const topLevel = getRootChapters(chapters);
 
   return (
     <div className={`space-y-2 ${className}`}>

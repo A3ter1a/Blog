@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Plus, Trash2, Edit3, Save, X, FolderTree, Layers, Loader2 } from 'lucide-react';
 import type { Chapter } from '@/lib/types';
 import { chaptersApi } from '@/lib/chapters-api';
+import { getChildChapters, getRootChapters, hasSiblingChapterName, normalizeChapterName } from '@/lib/chapter-utils';
 
 const ROOT_CHAPTER_KEY = '__root__';
 
@@ -14,9 +15,10 @@ interface ChapterManagerProps {
   noteId?: string;
   selectedChapterId?: string;
   onSelectChapter?: (chapterId: string | undefined) => void;
+  onChapterDeleted?: (chapterId: string) => void;
 }
 
-export function ChapterManager({ isOpen, onClose, noteId, selectedChapterId, onSelectChapter }: ChapterManagerProps) {
+export function ChapterManager({ isOpen, onClose, noteId, selectedChapterId, onSelectChapter, onChapterDeleted }: ChapterManagerProps) {
   const [chapters, setChapters] = useState<Chapter[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<Partial<Chapter>>({});
@@ -52,18 +54,39 @@ export function ChapterManager({ isOpen, onClose, noteId, selectedChapterId, onS
     return () => window.clearTimeout(timer);
   }, [isOpen, loadChapters]);
 
-  const topLevel = chapters.filter(c => !c.parentId);
-  const getChildren = (parentId: string) => chapters.filter(c => c.parentId === parentId);
+  const topLevel = getRootChapters(chapters);
+  const getChildren = useCallback(
+    (parentId: string) => getChildChapters(chapters, parentId),
+    [chapters],
+  );
+
+  const startAddChapter = (parentId: string) => {
+    if (isMutating) return;
+    setEditingId(null);
+    setEditForm({});
+    setError(null);
+    setNewName('');
+    setShowAddChild(parentId);
+  };
 
   const handleCreate = async (parentId?: string) => {
-    if (!newName.trim() || isMutating) return;
+    if (isMutating) return;
+    const name = normalizeChapterName(newName);
+    if (!name) {
+      setError('请输入章节名称');
+      return;
+    }
+    if (hasSiblingChapterName(chapters, name, parentId)) {
+      setError('同级章节已存在这个名称');
+      return;
+    }
     const createKey = parentId ?? ROOT_CHAPTER_KEY;
     setError(null);
     setCreatingParentId(createKey);
     try {
       await chaptersApi.create({
         noteId,
-        name: newName.trim(),
+        name,
         parentId,
         sortOrder: chapters.length,
       });
@@ -79,11 +102,22 @@ export function ChapterManager({ isOpen, onClose, noteId, selectedChapterId, onS
   };
 
   const handleUpdate = async (id: string) => {
-    if (!editForm.name?.trim() || isMutating) return;
+    if (isMutating) return;
+    const currentChapter = chapters.find(chapter => chapter.id === id);
+    const name = normalizeChapterName(editForm.name || '');
+    if (!currentChapter) return;
+    if (!name) {
+      setError('请输入章节名称');
+      return;
+    }
+    if (hasSiblingChapterName(chapters, name, currentChapter.parentId, id)) {
+      setError('同级章节已存在这个名称');
+      return;
+    }
     setError(null);
     setUpdatingId(id);
     try {
-      await chaptersApi.update(id, editForm);
+      await chaptersApi.update(id, { ...editForm, name });
       setEditingId(null);
       setEditForm({});
       await loadChapters();
@@ -102,6 +136,7 @@ export function ChapterManager({ isOpen, onClose, noteId, selectedChapterId, onS
     try {
       await chaptersApi.delete(id);
       if (selectedChapterId === id && onSelectChapter) onSelectChapter(undefined);
+      onChapterDeleted?.(id);
       await loadChapters();
     } catch (err) {
       console.error('Failed to delete chapter:', err);
@@ -184,12 +219,12 @@ export function ChapterManager({ isOpen, onClose, noteId, selectedChapterId, onS
               <ChapterNode
                 key={chapter.id}
                 chapter={chapter}
-                childChapters={getChildren(chapter.id)}
+                getChildren={getChildren}
                 isSelected={chapter.id === selectedChapterId}
                 onSelect={() => onSelectChapter?.(chapter.id)}
                 onEdit={() => startEdit(chapter)}
                 onDelete={() => handleDelete(chapter.id)}
-                onAddChild={() => setShowAddChild(chapter.id)}
+                onAddChild={() => startAddChapter(chapter.id)}
                 editingId={editingId}
                 editForm={editForm}
                 onEditFormChange={setEditForm}
@@ -203,7 +238,7 @@ export function ChapterManager({ isOpen, onClose, noteId, selectedChapterId, onS
                 onChildSelect={(childId) => onSelectChapter?.(childId)}
                 onChildEdit={(child) => startEdit(child)}
                 onChildDelete={(childId) => handleDelete(childId)}
-                onChildAddChild={(childId) => setShowAddChild(childId)}
+                onChildAddChild={(childId) => startAddChapter(childId)}
                 onChildSaveEdit={(childId) => handleUpdate(childId)}
                 onChildConfirmChild={(childId) => handleCreate(childId)}
                 disabled={isMutating}
@@ -243,7 +278,7 @@ export function ChapterManager({ isOpen, onClose, noteId, selectedChapterId, onS
               </div>
             ) : (
               <button
-                onClick={() => setShowAddChild(ROOT_CHAPTER_KEY)}
+                onClick={() => startAddChapter(ROOT_CHAPTER_KEY)}
                 disabled={isMutating}
                 className="w-full px-4 py-3 rounded-xl border-2 border-dashed border-outline-variant/30 text-on-surface-variant hover:border-primary/50 hover:text-primary transition-all flex items-center justify-center gap-2 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
               >
@@ -261,7 +296,7 @@ export function ChapterManager({ isOpen, onClose, noteId, selectedChapterId, onS
 // Props interface for ChapterNode
 interface ChapterNodeProps {
   chapter: Chapter;
-  childChapters: Chapter[];
+  getChildren: (parentId: string) => Chapter[];
   isSelected: boolean;
   onSelect: () => void;
   onEdit: () => void;
@@ -291,7 +326,7 @@ interface ChapterNodeProps {
 }
 
 function ChapterNode({
-  chapter, childChapters, isSelected, onSelect, onEdit, onDelete, onAddChild,
+  chapter, getChildren, isSelected, onSelect, onEdit, onDelete, onAddChild,
   editingId, editForm, onEditFormChange, onSaveEdit, onCancelEdit,
   showAddChild, newChildName, onNewChildNameChange, onConfirmChild,
   selectedChapterId,
@@ -304,6 +339,7 @@ function ChapterNode({
   const isCreatingChild = creatingParentId === chapter.id;
   const isUpdating = updatingId === chapter.id;
   const isDeleting = deletingId === chapter.id;
+  const childChapters = getChildren(chapter.id);
 
   return (
     <div className="space-y-1">
@@ -389,7 +425,7 @@ function ChapterNode({
         <div key={child.id} className="ml-6">
           <ChapterNode
             chapter={child}
-            childChapters={[]}
+            getChildren={getChildren}
             isSelected={child.id === selectedChapterId}
             onSelect={() => onChildSelect(child.id)}
             onEdit={() => onChildEdit(child)}

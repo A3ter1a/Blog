@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { ChevronDown, Layers } from 'lucide-react';
 import type { Chapter } from '@/lib/types';
 import { chaptersApi } from '@/lib/chapters-api';
+import { getChildChapters, getRootChapters } from '@/lib/chapter-utils';
 
 interface ChapterSelectorProps {
   noteId?: string;
@@ -31,8 +32,11 @@ export function ChapterSelector({ noteId, value, onChange, className = '' }: Cha
   }, [loadChapters]);
 
   const selected = chapters.find(c => c.id === value);
-  const topLevel = chapters.filter(c => !c.parentId);
-  const getChildren = (parentId: string) => chapters.filter(c => c.parentId === parentId);
+  const topLevel = getRootChapters(chapters);
+  const getChildren = useCallback(
+    (parentId: string) => getChildChapters(chapters, parentId),
+    [chapters],
+  );
 
   const handleSelect = (chapterId: string) => {
     onChange(chapterId === value ? undefined : chapterId);
