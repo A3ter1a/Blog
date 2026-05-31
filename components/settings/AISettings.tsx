@@ -17,6 +17,11 @@ const defaultConfig: AIConfig = {
   qwenApiEndpoint: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
 };
 
+function sanitizeAIConfig(config: AIConfig): AIConfig {
+  if (ALLOW_CLIENT_AI_KEYS) return config;
+  return { ...config, deepseekApiKey: '', qwenApiKey: '' };
+}
+
 const DEEPSEEK_MODELS = [
   { value: 'deepseek-v4-flash', label: 'DeepSeek V4 Flash (快速)' },
   { value: 'deepseek-v4-pro', label: 'DeepSeek V4 Pro (高级)' },
@@ -44,10 +49,9 @@ export function AISettings() {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved) {
       try {
-        const nextConfig = { ...defaultConfig, ...JSON.parse(saved) };
-        if (!ALLOW_CLIENT_AI_KEYS) {
-          nextConfig.deepseekApiKey = '';
-          nextConfig.qwenApiKey = '';
+        const nextConfig = sanitizeAIConfig({ ...defaultConfig, ...JSON.parse(saved) });
+        if (!ALLOW_CLIENT_AI_KEYS && saved !== JSON.stringify(nextConfig)) {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(nextConfig));
         }
         const timer = window.setTimeout(() => setConfig(nextConfig), 0);
         return () => window.clearTimeout(timer);
@@ -83,9 +87,7 @@ export function AISettings() {
   }, []);
 
   const saveConfig = () => {
-    const safeConfig = ALLOW_CLIENT_AI_KEYS
-      ? config
-      : { ...config, deepseekApiKey: '', qwenApiKey: '' };
+    const safeConfig = sanitizeAIConfig(config);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(safeConfig));
     setConfig(safeConfig);
     setIsEditing(false);
@@ -148,7 +150,7 @@ export function AISettings() {
                 onClick={() => {
                   try {
                     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
-                    setConfig({ ...defaultConfig, ...saved });
+                    setConfig(sanitizeAIConfig({ ...defaultConfig, ...saved }));
                   } catch {
                     setConfig({ ...defaultConfig });
                   }
@@ -220,7 +222,8 @@ export function AISettings() {
                 type="password"
                 value={config.deepseekApiKey}
                 onChange={e => setConfig({ ...config, deepseekApiKey: e.target.value })}
-                placeholder="sk-..."
+                disabled={!ALLOW_CLIENT_AI_KEYS}
+                placeholder={ALLOW_CLIENT_AI_KEYS ? "sk-..." : "Server env only"}
                 className="w-full px-3 py-2 bg-surface-container-highest rounded-lg input-soft text-on-surface text-sm"
               />
             </div>
@@ -259,7 +262,8 @@ export function AISettings() {
                 type="password"
                 value={config.qwenApiKey}
                 onChange={e => setConfig({ ...config, qwenApiKey: e.target.value })}
-                placeholder="sk-..."
+                disabled={!ALLOW_CLIENT_AI_KEYS}
+                placeholder={ALLOW_CLIENT_AI_KEYS ? "sk-..." : "Server env only"}
                 className="w-full px-3 py-2 bg-surface-container-highest rounded-lg input-soft text-on-surface text-sm"
               />
             </div>
