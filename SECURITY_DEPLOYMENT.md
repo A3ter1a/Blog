@@ -1,5 +1,14 @@
 # Asteroid public deployment security checklist
 
+For a step-by-step Chinese checklist, see `PRODUCTION_SECURITY_CHECKLIST.md`.
+
+## Current production warning
+
+If the public homepage still shows the `Create` navigation entry to a signed-out
+visitor, the production deployment may still be running an old commit or stale
+cache. Confirm the deployment commit in Vercel before treating the site as
+secured.
+
 ## Required production setup
 
 1. Create a Supabase Auth user for the site owner/admin.
@@ -41,3 +50,34 @@ Do not deploy without applying the production RLS script.
 The production script resets `storage.objects` policies for the current app's
 `note-images` bucket. If you add more storage buckets later, add explicit
 policies for those buckets too.
+
+## Repeatable verification
+
+After the Vercel environment variables are set and the Supabase SQL script has
+been applied, run:
+
+```bash
+npm run verify:production-security
+```
+
+The command checks the live site by default:
+
+```text
+https://www.a3ter1a.cn
+```
+
+You can check another deployment URL with:
+
+```bash
+npm run verify:production-security -- --url https://your-preview-url.example
+```
+
+Expected critical results:
+
+- `/debug` returns `404`.
+- `/api/auth/admin` returns `401` when signed out.
+- `/api/ai/config` returns `401` when signed out.
+
+The script also warns if the homepage HTML still contains an obvious create
+entry. That warning is not a database security proof by itself, but it is a
+strong sign that the production deployment or cache should be checked manually.
