@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { readJsonStorage, writeJsonStorage } from "./browser-storage";
 
 export type TOCPosition = "left" | "right" | "hidden";
 
@@ -17,22 +18,33 @@ const DEFAULT_PREFERENCES: ReadingPreferences = {
 };
 
 const STORAGE_KEY = "reading-preferences";
+const TOC_POSITIONS: TOCPosition[] = ["left", "right", "hidden"];
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function normalizePreferences(value: unknown): ReadingPreferences {
+  const parsed = isRecord(value) ? value : {};
+  const tocPosition = typeof parsed.tocPosition === "string" && TOC_POSITIONS.includes(parsed.tocPosition as TOCPosition)
+    ? parsed.tocPosition as TOCPosition
+    : DEFAULT_PREFERENCES.tocPosition;
+
+  return {
+    fontSize: typeof parsed.fontSize === "number" ? parsed.fontSize : DEFAULT_PREFERENCES.fontSize,
+    tocPosition,
+    showProgressBar: typeof parsed.showProgressBar === "boolean"
+      ? parsed.showProgressBar
+      : DEFAULT_PREFERENCES.showProgressBar,
+  };
+}
 
 export function useReadingPreferences() {
   const [preferences, setPreferences] = useState<ReadingPreferences>(DEFAULT_PREFERENCES);
   const [isLoaded, setIsLoaded] = useState(false);
 
   useEffect(() => {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    let nextPreferences = DEFAULT_PREFERENCES;
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        nextPreferences = { ...DEFAULT_PREFERENCES, ...parsed };
-      } catch {
-        // Use defaults
-      }
-    }
+    const nextPreferences = readJsonStorage(STORAGE_KEY, DEFAULT_PREFERENCES, normalizePreferences);
     const timer = window.setTimeout(() => {
       setPreferences(nextPreferences);
       setIsLoaded(true);
@@ -46,7 +58,7 @@ export function useReadingPreferences() {
   ) => {
     const updated = { ...preferences, [key]: value };
     setPreferences(updated);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+    writeJsonStorage(STORAGE_KEY, updated);
   };
 
   return {

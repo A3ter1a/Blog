@@ -1,5 +1,7 @@
-// AI usage tracker — client-side via localStorage
+"use client";
+
 import type { AIUsageStats } from './types';
+import { readJsonStorage, removeStorage, writeJsonStorage } from './browser-storage';
 
 const STORAGE_KEY = 'ai-usage-stats';
 
@@ -10,26 +12,39 @@ function getDefaultStats(): AIUsageStats {
   };
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function getNumber(value: unknown): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : 0;
+}
+
+function getString(value: unknown): string | undefined {
+  return typeof value === 'string' ? value : undefined;
+}
+
+function normalizeUsageStats(value: unknown): AIUsageStats {
+  const parsed = isRecord(value) ? value : {};
+  const deepseek = isRecord(parsed.deepseek) ? parsed.deepseek : {};
+  const qwen = isRecord(parsed.qwen) ? parsed.qwen : {};
+
+  return {
+    deepseek: {
+      totalTokens: getNumber(deepseek.totalTokens),
+      totalCost: getNumber(deepseek.totalCost),
+      lastUsed: getString(deepseek.lastUsed),
+    },
+    qwen: {
+      totalImages: getNumber(qwen.totalImages),
+      totalCost: getNumber(qwen.totalCost),
+      lastUsed: getString(qwen.lastUsed),
+    },
+  };
+}
+
 export function getUsageStats(): AIUsageStats {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return getDefaultStats();
-    const parsed = JSON.parse(raw);
-    return {
-      deepseek: {
-        totalTokens: parsed.deepseek?.totalTokens || 0,
-        totalCost: parsed.deepseek?.totalCost || 0,
-        lastUsed: parsed.deepseek?.lastUsed,
-      },
-      qwen: {
-        totalImages: parsed.qwen?.totalImages || 0,
-        totalCost: parsed.qwen?.totalCost || 0,
-        lastUsed: parsed.qwen?.lastUsed,
-      },
-    };
-  } catch {
-    return getDefaultStats();
-  }
+  return readJsonStorage(STORAGE_KEY, getDefaultStats(), normalizeUsageStats);
 }
 
 export function recordDeepSeekUsage(tokens: number): void {
@@ -38,7 +53,7 @@ export function recordDeepSeekUsage(tokens: number): void {
   stats.deepseek.totalTokens += tokens;
   stats.deepseek.totalCost = Number((stats.deepseek.totalTokens / 1_000_000).toFixed(4));
   stats.deepseek.lastUsed = new Date().toISOString();
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(stats));
+  writeJsonStorage(STORAGE_KEY, stats);
 }
 
 export function recordQwenUsage(imageCount: number = 1): void {
@@ -47,9 +62,9 @@ export function recordQwenUsage(imageCount: number = 1): void {
   stats.qwen.totalImages += imageCount;
   stats.qwen.totalCost = Number((stats.qwen.totalImages * 0.002).toFixed(4));
   stats.qwen.lastUsed = new Date().toISOString();
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(stats));
+  writeJsonStorage(STORAGE_KEY, stats);
 }
 
 export function resetUsageStats(): void {
-  localStorage.removeItem(STORAGE_KEY);
+  removeStorage(STORAGE_KEY);
 }

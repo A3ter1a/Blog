@@ -2,9 +2,11 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, Trash2, Edit3, Save, X, FolderTree, Layers } from 'lucide-react';
+import { Plus, Trash2, Edit3, Save, X, FolderTree, Layers, Loader2 } from 'lucide-react';
 import type { Chapter } from '@/lib/types';
 import { chaptersApi } from '@/lib/chapters-api';
+
+const ROOT_CHAPTER_KEY = '__root__';
 
 interface ChapterManagerProps {
   isOpen: boolean;
@@ -22,8 +24,14 @@ export function ChapterManager({ isOpen, onClose, noteId, selectedChapterId, onS
   const [showAddChild, setShowAddChild] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loadError, setLoadError] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [creatingParentId, setCreatingParentId] = useState<string | null>(null);
+  const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const isMutating = Boolean(creatingParentId || updatingId || deletingId);
 
   const loadChapters = useCallback(async () => {
+    setIsLoading(true);
     try {
       const data = noteId ? await chaptersApi.getByNoteId(noteId) : await chaptersApi.getTemplates();
       setChapters(data);
@@ -31,6 +39,8 @@ export function ChapterManager({ isOpen, onClose, noteId, selectedChapterId, onS
     } catch (err) {
       console.error('Failed to load chapters:', err);
       setLoadError(true);
+    } finally {
+      setIsLoading(false);
     }
   }, [noteId]);
 
@@ -46,8 +56,10 @@ export function ChapterManager({ isOpen, onClose, noteId, selectedChapterId, onS
   const getChildren = (parentId: string) => chapters.filter(c => c.parentId === parentId);
 
   const handleCreate = async (parentId?: string) => {
-    if (!newName.trim()) return;
+    if (!newName.trim() || isMutating) return;
+    const createKey = parentId ?? ROOT_CHAPTER_KEY;
     setError(null);
+    setCreatingParentId(createKey);
     try {
       await chaptersApi.create({
         noteId,
@@ -57,40 +69,50 @@ export function ChapterManager({ isOpen, onClose, noteId, selectedChapterId, onS
       });
       setNewName('');
       setShowAddChild(null);
-      loadChapters();
+      await loadChapters();
     } catch (err) {
       console.error('Failed to create chapter:', err);
       setError('创建失败，请确认 Supabase 中已创建 chapters 表（运行 supabase/chapters_schema.sql）');
+    } finally {
+      setCreatingParentId(null);
     }
   };
 
   const handleUpdate = async (id: string) => {
-    if (!editForm.name?.trim()) return;
+    if (!editForm.name?.trim() || isMutating) return;
     setError(null);
+    setUpdatingId(id);
     try {
       await chaptersApi.update(id, editForm);
       setEditingId(null);
       setEditForm({});
-      loadChapters();
+      await loadChapters();
     } catch (err) {
       console.error('Failed to update chapter:', err);
       setError('更新失败，请重试');
+    } finally {
+      setUpdatingId(null);
     }
   };
 
   const handleDelete = async (id: string) => {
+    if (isMutating) return;
     setError(null);
+    setDeletingId(id);
     try {
       await chaptersApi.delete(id);
       if (selectedChapterId === id && onSelectChapter) onSelectChapter(undefined);
-      loadChapters();
+      await loadChapters();
     } catch (err) {
       console.error('Failed to delete chapter:', err);
       setError('删除失败，请重试');
+    } finally {
+      setDeletingId(null);
     }
   };
 
   const startEdit = (chapter: Chapter) => {
+    if (isMutating) return;
     setEditingId(chapter.id);
     setEditForm({ name: chapter.name, description: chapter.description, color: chapter.color });
   };
@@ -104,7 +126,9 @@ export function ChapterManager({ isOpen, onClose, noteId, selectedChapterId, onS
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
         className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm"
-        onClick={onClose}
+        onClick={() => {
+          if (!isMutating) onClose();
+        }}
       >
         <motion.div
           initial={{ opacity: 0, scale: 0.95 }}
@@ -120,7 +144,11 @@ export function ChapterManager({ isOpen, onClose, noteId, selectedChapterId, onS
               <Layers className="w-5 h-5 text-primary" />
               章节管理
             </h2>
-            <button onClick={onClose} className="p-2 rounded-full hover:bg-surface-container-high transition-colors">
+            <button
+              onClick={onClose}
+              disabled={isMutating}
+              className="p-2 rounded-full hover:bg-surface-container-high transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            >
               <X className="w-5 h-5 text-on-surface-variant" />
             </button>
           </div>
@@ -140,10 +168,16 @@ export function ChapterManager({ isOpen, onClose, noteId, selectedChapterId, onS
                 </button>
               </div>
             )}
-            {topLevel.length === 0 && !showAddChild && (
+            {!isLoading && topLevel.length === 0 && !showAddChild && (
               <p className="text-sm text-on-surface-variant/50 text-center py-8">
                 暂无章节，点击下方按钮创建
               </p>
+            )}
+            {isLoading && topLevel.length === 0 && (
+              <div className="flex items-center justify-center gap-2 py-8 text-sm text-on-surface-variant/60">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                加载章节中
+              </div>
             )}
 
             {topLevel.map(chapter => (
@@ -172,11 +206,15 @@ export function ChapterManager({ isOpen, onClose, noteId, selectedChapterId, onS
                 onChildAddChild={(childId) => setShowAddChild(childId)}
                 onChildSaveEdit={(childId) => handleUpdate(childId)}
                 onChildConfirmChild={(childId) => handleCreate(childId)}
+                disabled={isMutating}
+                creatingParentId={creatingParentId}
+                updatingId={updatingId}
+                deletingId={deletingId}
               />
             ))}
 
             {/* Add root chapter */}
-            {showAddChild === '__root__' ? (
+            {showAddChild === ROOT_CHAPTER_KEY ? (
               <div className="flex gap-2 p-3 bg-surface-container-low rounded-xl">
                 <input
                   type="text"
@@ -184,22 +222,30 @@ export function ChapterManager({ isOpen, onClose, noteId, selectedChapterId, onS
                   onChange={e => setNewName(e.target.value)}
                   placeholder="章节名称..."
                   className="flex-1 px-3 py-2 bg-surface-container rounded-lg text-sm text-on-surface outline-none focus:ring-2 focus:ring-primary/20"
-                  onKeyDown={e => { if (e.key === 'Enter') handleCreate(); }}
+                  disabled={isMutating}
+                  onKeyDown={e => { if (e.key === 'Enter' && !isMutating) handleCreate(); }}
                   autoFocus
                 />
-                <button onClick={() => handleCreate()}
-                  className="px-3 py-2 rounded-lg bg-primary text-on-primary text-sm font-medium">
-                  添加
+                <button
+                  onClick={() => handleCreate()}
+                  disabled={isMutating || !newName.trim()}
+                  className="px-3 py-2 rounded-lg bg-primary text-on-primary text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {creatingParentId === ROOT_CHAPTER_KEY ? <Loader2 className="w-4 h-4 animate-spin" /> : '添加'}
                 </button>
-                <button onClick={() => setShowAddChild(null)}
-                  className="px-3 py-2 rounded-lg bg-surface-container text-on-surface-variant text-sm">
+                <button
+                  onClick={() => setShowAddChild(null)}
+                  disabled={isMutating}
+                  className="px-3 py-2 rounded-lg bg-surface-container text-on-surface-variant text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                >
                   取消
                 </button>
               </div>
             ) : (
               <button
-                onClick={() => setShowAddChild('__root__')}
-                className="w-full px-4 py-3 rounded-xl border-2 border-dashed border-outline-variant/30 text-on-surface-variant hover:border-primary/50 hover:text-primary transition-all flex items-center justify-center gap-2 text-sm"
+                onClick={() => setShowAddChild(ROOT_CHAPTER_KEY)}
+                disabled={isMutating}
+                className="w-full px-4 py-3 rounded-xl border-2 border-dashed border-outline-variant/30 text-on-surface-variant hover:border-primary/50 hover:text-primary transition-all flex items-center justify-center gap-2 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <Plus className="w-4 h-4" />
                 添加章节
@@ -238,6 +284,10 @@ interface ChapterNodeProps {
   onChildAddChild: (chapterId: string) => void;
   onChildSaveEdit: (chapterId: string) => void;
   onChildConfirmChild: (chapterId: string) => void;
+  disabled: boolean;
+  creatingParentId: string | null;
+  updatingId: string | null;
+  deletingId: string | null;
 }
 
 function ChapterNode({
@@ -247,16 +297,24 @@ function ChapterNode({
   selectedChapterId,
   onChildSelect, onChildEdit, onChildDelete, onChildAddChild,
   onChildSaveEdit, onChildConfirmChild,
+  disabled, creatingParentId, updatingId, deletingId,
 }: ChapterNodeProps) {
   const isEditing = editingId === chapter.id;
   const isShowingAdd = showAddChild === chapter.id;
+  const isCreatingChild = creatingParentId === chapter.id;
+  const isUpdating = updatingId === chapter.id;
+  const isDeleting = deletingId === chapter.id;
 
   return (
     <div className="space-y-1">
       <div className={`flex items-center gap-2 px-3 py-2 rounded-xl transition-colors ${
         isSelected ? 'bg-primary/10 ring-1 ring-primary/20' : 'hover:bg-surface-container-low'
       }`}>
-        <button onClick={onSelect} className="flex items-center gap-2 flex-1 min-w-0 text-left">
+        <button
+          onClick={onSelect}
+          disabled={disabled}
+          className="flex items-center gap-2 flex-1 min-w-0 text-left disabled:cursor-not-allowed"
+        >
           <FolderTree className="w-4 h-4 text-on-surface-variant/50 flex-shrink-0" />
           {isEditing ? (
             <input
@@ -264,8 +322,13 @@ function ChapterNode({
               value={editForm.name || ''}
               onChange={e => onEditFormChange({ ...editForm, name: e.target.value })}
               className="flex-1 px-2 py-1 bg-surface-container rounded text-sm text-on-surface outline-none focus:ring-1 focus:ring-primary/20"
+              disabled={disabled || isUpdating}
               autoFocus
-              onKeyDown={e => { if (e.key === 'Enter') onSaveEdit(); if (e.key === 'Escape') onCancelEdit(); }}
+              onKeyDown={e => {
+                if (disabled) return;
+                if (e.key === 'Enter') onSaveEdit();
+                if (e.key === 'Escape') onCancelEdit();
+              }}
             />
           ) : (
             <span className="text-sm font-medium text-on-surface truncate">{chapter.name}</span>
@@ -275,23 +338,46 @@ function ChapterNode({
         <div className="flex items-center gap-0.5">
           {isEditing ? (
             <>
-              <button onClick={onSaveEdit} className="p-1.5 rounded-lg hover:bg-primary/10 text-primary">
-                <Save className="w-3.5 h-3.5" />
+              <button
+                onClick={onSaveEdit}
+                disabled={disabled || isUpdating}
+                className="p-1.5 rounded-lg hover:bg-primary/10 text-primary disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {isUpdating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
               </button>
-              <button onClick={onCancelEdit} className="p-1.5 rounded-lg hover:bg-surface-container-highest text-on-surface-variant">
+              <button
+                onClick={onCancelEdit}
+                disabled={disabled}
+                className="p-1.5 rounded-lg hover:bg-surface-container-highest text-on-surface-variant disabled:opacity-40 disabled:cursor-not-allowed"
+              >
                 <X className="w-3.5 h-3.5" />
               </button>
             </>
           ) : (
             <>
-              <button onClick={onAddChild} className="p-1.5 rounded-lg hover:bg-surface-container-highest text-on-surface-variant/50" title="添加子章节">
+              <button
+                onClick={onAddChild}
+                disabled={disabled}
+                className="p-1.5 rounded-lg hover:bg-surface-container-highest text-on-surface-variant/50 disabled:opacity-40 disabled:cursor-not-allowed"
+                title="添加子章节"
+              >
                 <Plus className="w-3.5 h-3.5" />
               </button>
-              <button onClick={onEdit} className="p-1.5 rounded-lg hover:bg-surface-container-highest text-on-surface-variant/50" title="编辑">
+              <button
+                onClick={onEdit}
+                disabled={disabled}
+                className="p-1.5 rounded-lg hover:bg-surface-container-highest text-on-surface-variant/50 disabled:opacity-40 disabled:cursor-not-allowed"
+                title="编辑"
+              >
                 <Edit3 className="w-3.5 h-3.5" />
               </button>
-              <button onClick={onDelete} className="p-1.5 rounded-lg hover:bg-red-50 text-on-surface-variant/50 hover:text-red-500" title="删除">
-                <Trash2 className="w-3.5 h-3.5" />
+              <button
+                onClick={onDelete}
+                disabled={disabled || isDeleting}
+                className="p-1.5 rounded-lg hover:bg-red-50 text-on-surface-variant/50 hover:text-red-500 disabled:opacity-40 disabled:cursor-not-allowed"
+                title="删除"
+              >
+                {isDeleting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
               </button>
             </>
           )}
@@ -325,6 +411,10 @@ function ChapterNode({
             onChildAddChild={onChildAddChild}
             onChildSaveEdit={onChildSaveEdit}
             onChildConfirmChild={onChildConfirmChild}
+            disabled={disabled}
+            creatingParentId={creatingParentId}
+            updatingId={updatingId}
+            deletingId={deletingId}
           />
         </div>
       ))}
@@ -338,10 +428,17 @@ function ChapterNode({
             onChange={e => onNewChildNameChange(e.target.value)}
             placeholder="子章节名称..."
             className="flex-1 px-3 py-1.5 bg-surface-container rounded-lg text-sm outline-none focus:ring-1 focus:ring-primary/20"
-            onKeyDown={e => { if (e.key === 'Enter') onConfirmChild(); }}
+            disabled={disabled}
+            onKeyDown={e => { if (e.key === 'Enter' && !disabled) onConfirmChild(); }}
             autoFocus
           />
-          <button onClick={onConfirmChild} className="px-2.5 py-1.5 rounded-lg bg-primary text-on-primary text-xs font-medium">添加</button>
+          <button
+            onClick={onConfirmChild}
+            disabled={disabled || !newChildName.trim()}
+            className="px-2.5 py-1.5 rounded-lg bg-primary text-on-primary text-xs font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {isCreatingChild ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : '添加'}
+          </button>
         </div>
       )}
     </div>

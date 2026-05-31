@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { callDeepSeek } from '@/lib/ai-client';
 import { requireAdminRequest, resolveAIKey } from '@/lib/server-admin-auth';
+import { DEFAULT_DEEPSEEK_MODEL, DEFAULT_QWEN_ENDPOINT, DEFAULT_QWEN_MODEL } from '@/lib/ai-config';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -35,10 +36,10 @@ export async function POST(req: NextRequest) {
       : resolveAIKey('qwen', clientApiKey);
     const model = typeof clientModel === 'string' && clientModel.trim()
       ? clientModel.trim()
-      : (provider === 'deepseek' ? 'deepseek-v4-flash' : 'qwen-vl-max');
+      : (provider === 'deepseek' ? DEFAULT_DEEPSEEK_MODEL : DEFAULT_QWEN_MODEL);
     const endpoint = typeof clientEndpoint === 'string' && clientEndpoint.trim()
       ? clientEndpoint.trim()
-      : 'https://dashscope.aliyuncs.com/compatible-mode/v1';
+      : DEFAULT_QWEN_ENDPOINT;
 
     if (!provider || !apiKey) {
       return NextResponse.json({ error: '缺少必要参数 (provider, apiKey)' }, { status: 400 });

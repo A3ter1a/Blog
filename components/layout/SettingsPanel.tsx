@@ -5,7 +5,7 @@ import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Upload, Type, ListTree, Eye, AlignLeft, XCircle } from "lucide-react";
 import type { Profile } from "@/lib/types";
-import { DEFAULT_PROFILE, normalizeProfile } from "@/lib/profile";
+import { DEFAULT_PROFILE } from "@/lib/profile";
 import { profileApi } from "@/lib/supabase";
 import { useReadingPreferences, TOCPosition } from "@/lib/useReadingPreferences";
 import { ParsedNote, detectFormat, importFromJSON, importFromMarkdown, importFromObsidian } from "@/lib/import";
@@ -27,7 +27,6 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
 
   // Profile state
   const [profile, setProfile] = useState<Profile>(DEFAULT_PROFILE);
-  const [profileNotice, setProfileNotice] = useState<string | null>(null);
 
   // Import state
   const [importError, setImportError] = useState<string | null>(null);
@@ -35,39 +34,22 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
   useEffect(() => {
     if (!isOpen) return;
     let mounted = true;
-    setProfileNotice(null);
 
     void (async () => {
       const remoteProfile = await profileApi.get();
       if (!mounted) return;
-
-      let nextProfile = remoteProfile;
-      if (isAdmin) {
-        const savedProfile = localStorage.getItem("about-profile");
-        if (savedProfile) {
-          try {
-            nextProfile = normalizeProfile(JSON.parse(savedProfile));
-            setProfileNotice("检测到旧本地资料，保存后会同步到线上。");
-          } catch {
-            localStorage.removeItem("about-profile");
-          }
-        }
-      }
-
-      setProfile(nextProfile);
+      setProfile(remoteProfile);
     })();
 
     return () => {
       mounted = false;
     };
-  }, [isOpen, isAdmin]);
+  }, [isOpen]);
 
   const handleSaveProfile = async (newProfile: Profile) => {
     try {
       const savedProfile = await profileApi.update(newProfile);
       setProfile(savedProfile);
-      localStorage.removeItem("about-profile");
-      setProfileNotice(null);
       toast.success("个人资料已同步到线上");
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : "未知错误";
@@ -273,11 +255,6 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
                 <>
                   {/* Profile */}
                   <section>
-                    {profileNotice && (
-                      <div className="mb-3 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700">
-                        {profileNotice}
-                      </div>
-                    )}
                     <ProfileEditor profile={profile} onSave={handleSaveProfile} />
                   </section>
 

@@ -48,7 +48,8 @@ export async function callQwenVision(
   model: string,
   endpoint: string,
   imageBase64: string,
-  prompt: string
+  prompt: string,
+  mimeType: string = 'image/jpeg'
 ): Promise<{ text: string }> {
   const baseUrl = endpoint.replace(/\/+$/, '');
 
@@ -67,7 +68,7 @@ export async function callQwenVision(
             {
               type: 'image_url',
               image_url: {
-                url: `data:image/jpeg;base64,${imageBase64}`,
+                url: `data:${mimeType};base64,${imageBase64}`,
               },
             },
             {

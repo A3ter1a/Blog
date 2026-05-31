@@ -5,27 +5,15 @@ import { Brain, Plug, RefreshCw, AlertCircle, Check, BarChart3 } from 'lucide-re
 import type { AIConfig, AIUsageStats } from '@/lib/types';
 import { getUsageStats, recordDeepSeekUsage } from '@/lib/ai-usage';
 import { buildAuthHeaders } from '@/lib/fetch-with-auth';
-
-const STORAGE_KEY = 'ai-config';
-const ALLOW_CLIENT_AI_KEYS = process.env.NODE_ENV !== 'production';
-
-const defaultConfig: AIConfig = {
-  deepseekApiKey: '',
-  deepseekModel: 'deepseek-v4-flash',
-  qwenApiKey: '',
-  qwenModel: 'qwen-vl-max',
-  qwenApiEndpoint: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
-};
-
-function sanitizeAIConfig(config: AIConfig): AIConfig {
-  if (ALLOW_CLIENT_AI_KEYS) return config;
-  return { ...config, deepseekApiKey: '', qwenApiKey: '' };
-}
-
-const DEEPSEEK_MODELS = [
-  { value: 'deepseek-v4-flash', label: 'DeepSeek V4 Flash (快速)' },
-  { value: 'deepseek-v4-pro', label: 'DeepSeek V4 Pro (高级)' },
-];
+import {
+  AI_CONFIG_STORAGE_KEY,
+  ALLOW_CLIENT_AI_KEYS,
+  DEEPSEEK_MODEL_OPTIONS,
+  DEFAULT_AI_CONFIG,
+  normalizeAIConfig,
+  sanitizeAIConfig,
+} from '@/lib/ai-config';
+import { readJsonStorage, writeJsonStorage } from '@/lib/browser-storage';
 
 type ConfigTestBody = {
   provider: 'deepseek' | 'qwen';
@@ -35,7 +23,7 @@ type ConfigTestBody = {
 };
 
 export function AISettings() {
-  const [config, setConfig] = useState<AIConfig>(defaultConfig);
+  const [config, setConfig] = useState<AIConfig>(DEFAULT_AI_CONFIG);
   const [isEditing, setIsEditing] = useState(false);
   const [testing, setTesting] = useState<string | null>(null);
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
@@ -46,17 +34,16 @@ export function AISettings() {
   } | null>(null);
 
   useEffect(() => {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) {
-      try {
-        const nextConfig = sanitizeAIConfig({ ...defaultConfig, ...JSON.parse(saved) });
-        if (!ALLOW_CLIENT_AI_KEYS && saved !== JSON.stringify(nextConfig)) {
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(nextConfig));
-        }
-        const timer = window.setTimeout(() => setConfig(nextConfig), 0);
-        return () => window.clearTimeout(timer);
-      } catch { /* ignore */ }
+    const nextConfig = sanitizeAIConfig(
+      readJsonStorage(AI_CONFIG_STORAGE_KEY, DEFAULT_AI_CONFIG, normalizeAIConfig)
+    );
+
+    if (!ALLOW_CLIENT_AI_KEYS) {
+      writeJsonStorage(AI_CONFIG_STORAGE_KEY, nextConfig);
     }
+
+    const timer = window.setTimeout(() => setConfig(nextConfig), 0);
+    return () => window.clearTimeout(timer);
   }, []);
 
   useEffect(() => {
@@ -88,7 +75,7 @@ export function AISettings() {
 
   const saveConfig = () => {
     const safeConfig = sanitizeAIConfig(config);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(safeConfig));
+    writeJsonStorage(AI_CONFIG_STORAGE_KEY, safeConfig);
     setConfig(safeConfig);
     setIsEditing(false);
   };
@@ -148,12 +135,9 @@ export function AISettings() {
             <>
               <button
                 onClick={() => {
-                  try {
-                    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
-                    setConfig(sanitizeAIConfig({ ...defaultConfig, ...saved }));
-                  } catch {
-                    setConfig({ ...defaultConfig });
-                  }
+                  setConfig(sanitizeAIConfig(
+                    readJsonStorage(AI_CONFIG_STORAGE_KEY, DEFAULT_AI_CONFIG, normalizeAIConfig)
+                  ));
                   setIsEditing(false);
                 }}
                 className="text-sm text-on-surface-variant hover:text-on-surface transition-colors"
@@ -234,7 +218,7 @@ export function AISettings() {
                 onChange={e => setConfig({ ...config, deepseekModel: e.target.value })}
                 className="w-full px-3 py-2 bg-surface-container-highest rounded-lg text-sm text-on-surface outline-none focus:ring-2 focus:ring-primary/20"
               >
-                {DEEPSEEK_MODELS.map(m => (
+                {DEEPSEEK_MODEL_OPTIONS.map(m => (
                   <option key={m.value} value={m.value}>{m.label}</option>
                 ))}
               </select>

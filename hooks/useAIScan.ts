@@ -1,11 +1,37 @@
 'use client';
 
-import { useState, useCallback } from 'react';
-import type { Problem, ProblemType, Difficulty, AIConfig, ProblemOption } from '@/lib/types';
+import { useState, useCallback, useRef, type SetStateAction } from 'react';
+import type { Problem, ProblemType, Difficulty, ProblemOption } from '@/lib/types';
 import { recordDeepSeekUsage, recordQwenUsage } from '@/lib/ai-usage';
 import { buildAuthHeaders } from '@/lib/fetch-with-auth';
+import {
+  AI_CONFIG_STORAGE_KEY,
+  ALLOW_CLIENT_AI_KEYS,
+  DEFAULT_AI_CONFIG,
+  DEFAULT_DEEPSEEK_MODEL,
+  DEFAULT_QWEN_ENDPOINT,
+  normalizeAIConfig,
+} from '@/lib/ai-config';
+import { readJsonStorage } from '@/lib/browser-storage';
+import { repairProblemMarkdownFields } from '@/lib/markdown';
+import { extractOptions } from '@/lib/utils';
 
 export type ScanStage = 'idle' | 'uploading' | 'scanning' | 'analyzing' | 'complete' | 'error';
+export type ScanImageStatus = 'queued' | 'scanning' | 'analyzing' | 'complete' | 'error';
+
+export interface ScanImageInput {
+  base64: string;
+  mimeType?: string;
+  name?: string;
+}
+
+export interface ScanImageProgress {
+  index: number;
+  name: string;
+  status: ScanImageStatus;
+  message?: string;
+  problemCount?: number;
+}
 
 export interface ScanState {
   stage: ScanStage;
@@ -13,14 +39,19 @@ export interface ScanState {
   ocrText?: string;
   currentImage?: number; // 1-indexed
   totalImages?: number;
+  completedImages?: number;
+  failedImages?: number;
   extractedProblems?: Partial<Problem>[];
+  imageProgress?: ScanImageProgress[];
+  warnings?: string[];
   error?: string;
 }
 
-const STORAGE_KEY = 'ai-config';
-const ALLOW_CLIENT_AI_KEYS = process.env.NODE_ENV !== 'production';
-const MAX_OCR_LENGTH = 4000;
+const MAX_OCR_LENGTH = 6000;
 const FETCH_TIMEOUT = 180000; // 3 min per API call
+const MAX_CONCURRENT_SCANS = 2;
+const PROGRESS_START = 5;
+const PROGRESS_SPAN = 90;
 const PROBLEM_TYPES: ProblemType[] = ['choice', 'fill', 'calculation', 'proof', 'proofEssay'];
 const DIFFICULTIES: Difficulty[] = ['easy', 'medium', 'hard'];
 
@@ -28,8 +59,16 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
 
+function toCleanString(value: unknown): string {
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'string') return value.trim();
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  return '';
+}
+
 function toOptionalString(value: unknown): string | undefined {
-  return typeof value === 'string' ? value : undefined;
+  const text = toCleanString(value);
+  return text || undefined;
 }
 
 function toProblemType(value: unknown): ProblemType {
@@ -44,39 +83,117 @@ function toDifficulty(value: unknown): Difficulty {
     : 'medium';
 }
 
+function toConfidence(value: unknown): number {
+  const confidence = Number(value);
+  if (!Number.isFinite(confidence)) return 0.5;
+  return Math.min(1, Math.max(0, confidence));
+}
+
 function toProblemOptions(value: unknown): ProblemOption[] | undefined {
   if (!Array.isArray(value)) return undefined;
 
-  const options = value.flatMap((option): ProblemOption[] => {
-    if (!isRecord(option)) return [];
-    const label = toOptionalString(option.label);
+  const options = value.flatMap((option, index): ProblemOption[] => {
+    if (!isRecord(option)) {
+      const content = toCleanString(option);
+      return content ? [{ label: String.fromCharCode(65 + index), content }] : [];
+    }
+
+    const label = toOptionalString(option.label) || String.fromCharCode(65 + index);
     const content = toOptionalString(option.content);
-    return label && content ? [{ label, content }] : [];
+    return content ? [{ label, content }] : [];
   });
 
   return options.length > 0 ? options : undefined;
 }
 
-const defaultAIConfig: AIConfig = {
-  deepseekApiKey: '',
-  deepseekModel: 'deepseek-v4-flash',
-  qwenApiKey: '',
-  qwenModel: 'qwen-vl-max',
-  qwenApiEndpoint: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
-};
-
-function getAIConfig(): AIConfig {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? { ...defaultAIConfig, ...JSON.parse(raw) } : defaultAIConfig;
-  } catch {
-    return defaultAIConfig;
-  }
+function getAIConfig() {
+  return readJsonStorage(AI_CONFIG_STORAGE_KEY, DEFAULT_AI_CONFIG, normalizeAIConfig);
 }
 
 function truncateText(text: string, maxLen: number): string {
   if (text.length <= maxLen) return text;
   return text.slice(0, maxLen) + '\n...(文本过长已截断)';
+}
+
+function normalizeScanInputs(inputs: Array<string | ScanImageInput>): ScanImageInput[] {
+  return inputs
+    .map((input, index) => {
+      if (typeof input === 'string') {
+        return { base64: input, mimeType: 'image/jpeg', name: `图片 ${index + 1}` };
+      }
+
+      return {
+        base64: input.base64,
+        mimeType: input.mimeType || 'image/jpeg',
+        name: input.name?.trim() || `图片 ${index + 1}`,
+      };
+    })
+    .filter((input) => input.base64.trim());
+}
+
+function getApiErrorMessage(value: unknown, fallback: string) {
+  if (isRecord(value) && typeof value.error === 'string' && value.error.trim()) {
+    return value.error;
+  }
+
+  return fallback;
+}
+
+function getErrorMessage(error: unknown, fallback: string) {
+  return error instanceof Error && error.message ? error.message : fallback;
+}
+
+function isAbortError(error: unknown) {
+  return error instanceof Error && (error.name === 'AbortError' || error.name === 'TimeoutError');
+}
+
+function findChapterId(suggestedChapter: string | undefined, chapterContext?: ChapterContextItem[]) {
+  if (!suggestedChapter || !chapterContext?.length) return undefined;
+
+  const name = suggestedChapter.trim();
+  const normalizedName = name.toLowerCase();
+  const match = chapterContext.find((chapter) => {
+    const chapterName = chapter.name.trim();
+    const normalizedChapterName = chapterName.toLowerCase();
+    return normalizedChapterName === normalizedName ||
+      normalizedChapterName.includes(normalizedName) ||
+      normalizedName.includes(normalizedChapterName);
+  });
+
+  return match?.id;
+}
+
+function normalizeProblem(
+  rawProblem: unknown,
+  ocrText: string,
+  chapterContext?: ChapterContextItem[]
+): Partial<Problem> | null {
+  const problemData = isRecord(rawProblem) ? rawProblem : {};
+  const question = toCleanString(problemData.question);
+
+  if (!question) return null;
+
+  const type = toProblemType(problemData.type);
+  const fallbackOptions = type === 'choice' ? extractOptions(question) : undefined;
+  const normalized = repairProblemMarkdownFields({
+    type,
+    difficulty: toDifficulty(problemData.difficulty),
+    question,
+    answer: toCleanString(problemData.answer),
+    explanation: toCleanString(problemData.explanation),
+    tips: toOptionalString(problemData.tips),
+    options: toProblemOptions(problemData.options) || fallbackOptions,
+    tags: [],
+    chapterId: findChapterId(toOptionalString(problemData.suggestedChapter), chapterContext),
+    aiResult: {
+      rawQuestion: ocrText,
+      rawAnswer: '',
+      rawExplanation: '',
+      confidence: toConfidence(problemData.confidence),
+    },
+  });
+
+  return normalized;
 }
 
 export interface ChapterContextItem {
@@ -86,157 +203,286 @@ export interface ChapterContextItem {
 
 export function useAIScan() {
   const [scanState, setScanState] = useState<ScanState>({ stage: 'idle', progress: 0 });
+  const activeRunRef = useRef(0);
+  const activeControllersRef = useRef<Set<AbortController>>(new Set());
 
-  const startScan = useCallback(async (imageBase64s: string[], chapterContext?: ChapterContextItem[]) => {
-    const config = getAIConfig();
-    if (!config) {
-      setScanState({ stage: 'error', progress: 0, error: '请先在设置中配置 AI API Key' });
-      return;
-    }
+  const abortActiveRequests = useCallback(() => {
+    activeControllersRef.current.forEach((controller) => controller.abort());
+    activeControllersRef.current.clear();
+  }, []);
 
-    const N = imageBase64s.length;
-    if (N === 0) return;
+  const setActiveState = useCallback((runId: number, next: SetStateAction<ScanState>) => {
+    if (activeRunRef.current !== runId) return;
+    setScanState(next);
+  }, []);
 
-    // Extract chapter names for the API prompt
-    const chapterNames = chapterContext?.map(c => c.name) || [];
+  const fetchWithTimeout = useCallback(async (url: string, init: RequestInit, runId: number) => {
+    const controller = new AbortController();
+    activeControllersRef.current.add(controller);
 
+    const timeoutId = window.setTimeout(() => controller.abort(), FETCH_TIMEOUT);
     try {
-      setScanState({ stage: 'uploading', progress: 5, currentImage: 1, totalImages: N });
+      return await fetch(url, {
+        ...init,
+        signal: controller.signal,
+      });
+    } finally {
+      window.clearTimeout(timeoutId);
+      activeControllersRef.current.delete(controller);
+      if (activeRunRef.current !== runId) controller.abort();
+    }
+  }, []);
 
-      // ── Phase 1+2: All images processed in parallel ──
-      // Each pipeline: OCR → analyze. N pipelines run concurrently.
-      // Total time ≈ max(slowest pipeline) instead of sum.
-      let ocrDone = 0;
-      let analyzeDone = 0;
+  const resetScan = useCallback(() => {
+    activeRunRef.current += 1;
+    abortActiveRequests();
+    setScanState({ stage: 'idle', progress: 0 });
+  }, [abortActiveRequests]);
 
-      const pipelines = imageBase64s.map(async (imgBase64, i) => {
-        // Step A: OCR
-        const ocrRes = await fetch('/api/ai/ocr', {
+  const startScan = useCallback(async (
+    imageInputs: Array<string | ScanImageInput>,
+    chapterContext?: ChapterContextItem[]
+  ) => {
+    const config = getAIConfig();
+    const images = normalizeScanInputs(imageInputs);
+    const totalImages = images.length;
+
+    if (totalImages === 0) return;
+
+    abortActiveRequests();
+    const runId = activeRunRef.current + 1;
+    activeRunRef.current = runId;
+
+    const initialImageProgress = images.map((image, index): ScanImageProgress => ({
+      index,
+      name: image.name || `图片 ${index + 1}`,
+      status: 'queued',
+      message: '等待处理',
+    }));
+
+    const problemBuckets: Partial<Problem>[][] = images.map(() => []);
+    const warnings: string[] = [];
+    let nextIndex = 0;
+    let completedImages = 0;
+    let failedImages = 0;
+    let finishedUnits = 0;
+
+    const totalUnits = totalImages * 2;
+    const chapterNames = chapterContext?.map((chapter) => chapter.name) || [];
+
+    const addProgressUnits = (
+      units: number,
+      stage: ScanStage,
+      currentImage: number,
+      ocrText?: string
+    ) => {
+      finishedUnits = Math.min(totalUnits, finishedUnits + units);
+      const progress = PROGRESS_START + Math.round((finishedUnits / totalUnits) * PROGRESS_SPAN);
+
+      setActiveState(runId, (prev) => ({
+        ...prev,
+        stage,
+        progress: Math.min(99, progress),
+        currentImage,
+        totalImages,
+        ocrText: ocrText ?? prev.ocrText,
+      }));
+    };
+
+    const updateImageProgress = (index: number, patch: Partial<ScanImageProgress>) => {
+      setActiveState(runId, (prev) => ({
+        ...prev,
+        imageProgress: (prev.imageProgress || initialImageProgress).map((item) => (
+          item.index === index ? { ...item, ...patch } : item
+        )),
+      }));
+    };
+
+    const readJsonError = async (response: Response, fallback: string) => {
+      const payload = await response.json().catch(() => ({}));
+      return getApiErrorMessage(payload, fallback);
+    };
+
+    const processImage = async (image: ScanImageInput, index: number) => {
+      let unitsDoneForImage = 0;
+
+      try {
+        updateImageProgress(index, { status: 'scanning', message: '正在识别文字' });
+
+        const ocrRes = await fetchWithTimeout('/api/ai/ocr', {
           method: 'POST',
           headers: await buildAuthHeaders({ 'Content-Type': 'application/json' }),
           body: JSON.stringify({
-            imageBase64: imgBase64,
+            imageBase64: image.base64,
+            mimeType: image.mimeType || 'image/jpeg',
             apiKey: ALLOW_CLIENT_AI_KEYS ? config.qwenApiKey : undefined,
             model: config.qwenModel,
-            endpoint: config.qwenApiEndpoint || 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+            endpoint: config.qwenApiEndpoint || DEFAULT_QWEN_ENDPOINT,
           }),
-          signal: AbortSignal.timeout(FETCH_TIMEOUT),
-        });
+        }, runId);
 
         if (!ocrRes.ok) {
-          const err = await ocrRes.json().catch(() => ({}));
-          throw new Error(err.error || `第 ${i + 1} 张图片 OCR 识别失败`);
+          throw new Error(await readJsonError(ocrRes, `第 ${index + 1} 张图片 OCR 识别失败`));
         }
 
         const ocrData = await ocrRes.json() as { text?: unknown };
-        const rawText = toOptionalString(ocrData.text) || '';
+        const rawText = toCleanString(ocrData.text);
+        if (!rawText) {
+          throw new Error(`第 ${index + 1} 张图片没有识别到文字，请换一张更清晰的图片`);
+        }
+
         const ocrText = truncateText(rawText, MAX_OCR_LENGTH);
         recordQwenUsage(1);
+        unitsDoneForImage += 1;
+        addProgressUnits(1, 'scanning', index + 1, ocrText);
+        updateImageProgress(index, { status: 'analyzing', message: '正在整理成题目' });
 
-        ocrDone++;
-        setScanState({
-          stage: 'scanning',
-          progress: 5 + Math.round((ocrDone / N) * 45),
-          currentImage: ocrDone,
-          totalImages: N,
-          ocrText,
-        });
-
-        // Step B: Analyze
-        const analyzeRes = await fetch('/api/ai/analyze', {
+        const analyzeRes = await fetchWithTimeout('/api/ai/analyze', {
           method: 'POST',
           headers: await buildAuthHeaders({ 'Content-Type': 'application/json' }),
           body: JSON.stringify({
             ocrText,
             apiKey: ALLOW_CLIENT_AI_KEYS ? config.deepseekApiKey : undefined,
-            model: config.deepseekModel || 'deepseek-v4-flash',
+            model: config.deepseekModel || DEFAULT_DEEPSEEK_MODEL,
             chapterContext: chapterNames,
           }),
-          signal: AbortSignal.timeout(FETCH_TIMEOUT),
-        });
+        }, runId);
 
         if (!analyzeRes.ok) {
-          const err = await analyzeRes.json().catch(() => ({}));
-          throw new Error(err.error || `第 ${i + 1} 张图片分析失败`);
+          throw new Error(await readJsonError(analyzeRes, `第 ${index + 1} 张图片分析失败`));
         }
 
         const analyzeData = await analyzeRes.json() as {
           tokensUsed?: unknown;
           problems?: unknown;
         };
-        if (analyzeData.tokensUsed) {
-          recordDeepSeekUsage(Number(analyzeData.tokensUsed));
+        const tokensUsed = Number(analyzeData.tokensUsed);
+        if (Number.isFinite(tokensUsed) && tokensUsed > 0) {
+          recordDeepSeekUsage(tokensUsed);
         }
 
-        analyzeDone++;
-        setScanState(prev => ({
-          stage: 'analyzing',
-          progress: 50 + Math.round((analyzeDone / N) * 45),
-          currentImage: analyzeDone,
-          totalImages: N,
-          ocrText: prev.ocrText,
-        }));
-
         const rawProblems = Array.isArray(analyzeData.problems) ? analyzeData.problems : [];
-        return rawProblems.map((p: unknown): Partial<Problem> => {
-          const problemData = isRecord(p) ? p : {};
-          // Resolve suggestedChapter name → chapterId
-          let chapterId: string | undefined;
-          const suggestedChapter = toOptionalString(problemData.suggestedChapter);
-          if (suggestedChapter && chapterContext) {
-            const name = suggestedChapter.trim();
-            const match = chapterContext.find(
-              c => c.name === name ||
-                   c.name.includes(name) ||
-                   name.includes(c.name)
-            );
-            if (match) chapterId = match.id;
-          }
-          return {
-            type: toProblemType(problemData.type),
-            difficulty: toDifficulty(problemData.difficulty),
-            question: toOptionalString(problemData.question) || '',
-            answer: toOptionalString(problemData.answer) || '',
-            explanation: toOptionalString(problemData.explanation) || '',
-            tips: toOptionalString(problemData.tips),
-            options: toProblemOptions(problemData.options),
-            tags: [],
-            chapterId,
-            aiResult: {
-              rawQuestion: ocrText,
-              rawAnswer: '',
-              rawExplanation: '',
-              confidence: typeof problemData.confidence === 'number' ? problemData.confidence : 0.5,
-            },
-          };
+        const problems = rawProblems
+          .map((problem) => normalizeProblem(problem, ocrText, chapterContext))
+          .filter((problem): problem is Partial<Problem> => Boolean(problem));
+
+        unitsDoneForImage += 1;
+        addProgressUnits(1, 'analyzing', index + 1, ocrText);
+        updateImageProgress(index, {
+          status: 'complete',
+          message: problems.length > 0 ? `提取到 ${problems.length} 道题` : '未提取到可用题目',
+          problemCount: problems.length,
         });
+
+        return problems;
+      } catch (error: unknown) {
+        const remainingUnits = 2 - unitsDoneForImage;
+        if (remainingUnits > 0 && activeRunRef.current === runId) {
+          addProgressUnits(remainingUnits, unitsDoneForImage > 0 ? 'analyzing' : 'scanning', index + 1);
+        }
+
+        throw error;
+      }
+    };
+
+    try {
+      setActiveState(runId, {
+        stage: 'uploading',
+        progress: PROGRESS_START,
+        currentImage: 1,
+        totalImages,
+        completedImages: 0,
+        failedImages: 0,
+        imageProgress: initialImageProgress,
+        warnings: [],
       });
 
-      const results = await Promise.all(pipelines);
-      const allProblems = results.flat();
+      const worker = async () => {
+        while (activeRunRef.current === runId) {
+          const index = nextIndex;
+          nextIndex += 1;
+          if (index >= totalImages) return;
 
-      setScanState({
+          try {
+            const problems = await processImage(images[index], index);
+            problemBuckets[index] = problems;
+            completedImages += 1;
+
+            if (problems.length === 0) {
+              warnings.push(`第 ${index + 1} 张图片识别完成，但没有提取到可用题目`);
+            }
+          } catch (error: unknown) {
+            if (activeRunRef.current !== runId) return;
+
+            failedImages += 1;
+            const message = isAbortError(error)
+              ? `第 ${index + 1} 张图片处理超时，请重试或使用更小、更清晰的图片`
+              : getErrorMessage(error, `第 ${index + 1} 张图片处理失败`);
+
+            warnings.push(message);
+            updateImageProgress(index, { status: 'error', message });
+          } finally {
+            if (activeRunRef.current === runId) {
+              setActiveState(runId, (prev) => ({
+                ...prev,
+                completedImages,
+                failedImages,
+                warnings: warnings.slice(),
+              }));
+            }
+          }
+        }
+      };
+
+      const workerCount = Math.min(MAX_CONCURRENT_SCANS, totalImages);
+      await Promise.all(Array.from({ length: workerCount }, () => worker()));
+
+      if (activeRunRef.current !== runId) return;
+
+      const allProblems = problemBuckets.flat();
+      if (allProblems.length === 0 && failedImages === totalImages) {
+        setActiveState(runId, (prev) => ({
+          ...prev,
+          stage: 'error',
+          progress: 0,
+          totalImages,
+          completedImages,
+          failedImages,
+          warnings,
+          error: warnings[0] || 'AI 扫描失败，请重试',
+        }));
+        return;
+      }
+
+      setActiveState(runId, (prev) => ({
+        ...prev,
         stage: 'complete',
         progress: 100,
+        totalImages,
+        completedImages,
+        failedImages,
         extractedProblems: allProblems,
-      });
+        warnings,
+      }));
     } catch (error: unknown) {
-      const errorName = error instanceof Error ? error.name : '';
-      const errorMessage = error instanceof Error ? error.message : '';
-      const msg = errorName === 'AbortError' || errorName === 'TimeoutError'
+      if (activeRunRef.current !== runId) return;
+
+      const msg = isAbortError(error)
         ? `AI 扫描超时（超过 ${FETCH_TIMEOUT / 60000} 分钟），请重试或使用更小的图片`
-        : (errorMessage || '未知错误');
-      setScanState({
+        : getErrorMessage(error, '未知错误');
+
+      setActiveState(runId, {
         stage: 'error',
         progress: 0,
+        totalImages,
+        completedImages,
+        failedImages,
+        imageProgress: initialImageProgress,
+        warnings,
         error: msg,
       });
     }
-  }, []);
+  }, [abortActiveRequests, fetchWithTimeout, setActiveState]);
 
-  const resetScan = useCallback(() => {
-    setScanState({ stage: 'idle', progress: 0 });
-  }, []);
-
-  return { scanState, startScan, resetScan };
+  return { scanState, startScan, resetScan, cancelScan: resetScan };
 }

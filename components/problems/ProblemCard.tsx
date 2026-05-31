@@ -8,8 +8,14 @@ import { problemTypeMap, difficultyMap, difficultyColorMap } from "@/lib/types";
 import { MarkdownContent } from "@/components/ui/MarkdownContent";
 import { repairMarkdown } from "@/lib/markdown";
 import { buildAuthHeaders } from "@/lib/fetch-with-auth";
-
-const ALLOW_CLIENT_AI_KEYS = process.env.NODE_ENV !== "production";
+import {
+  AI_CONFIG_STORAGE_KEY,
+  ALLOW_CLIENT_AI_KEYS,
+  DEFAULT_AI_CONFIG,
+  DEFAULT_DEEPSEEK_MODEL,
+  normalizeAIConfig,
+} from "@/lib/ai-config";
+import { readJsonStorage } from "@/lib/browser-storage";
 
 interface ProblemCardProps {
   problem: Problem;
@@ -84,9 +90,8 @@ export function ProblemCard({ problem, index, onUpdate }: ProblemCardProps) {
     setIsReviewing(true);
 
     try {
-      const raw = localStorage.getItem('ai-config');
-      const config = raw ? JSON.parse(raw) : null;
-      if (ALLOW_CLIENT_AI_KEYS && !config?.deepseekApiKey) {
+      const config = readJsonStorage(AI_CONFIG_STORAGE_KEY, DEFAULT_AI_CONFIG, normalizeAIConfig);
+      if (ALLOW_CLIENT_AI_KEYS && !config.deepseekApiKey) {
         setReviewError('请先在设置中配置 DeepSeek API Key');
         setIsReviewing(false);
         return;
@@ -106,7 +111,7 @@ export function ProblemCard({ problem, index, onUpdate }: ProblemCardProps) {
             tips: editData.tips || undefined,
           },
           apiKey: ALLOW_CLIENT_AI_KEYS ? config.deepseekApiKey : undefined,
-          model: config?.deepseekModel || 'deepseek-v4-flash',
+          model: config.deepseekModel || DEFAULT_DEEPSEEK_MODEL,
         }),
         signal: AbortSignal.timeout(180000),
       });

@@ -2,9 +2,19 @@ import { NextRequest, NextResponse } from 'next/server';
 import { callDeepSeek } from '@/lib/ai-client';
 import { parseAIJson } from '@/lib/ai-json';
 import { requireAdminRequest, resolveAIKey } from '@/lib/server-admin-auth';
+import { DEFAULT_DEEPSEEK_MODEL } from '@/lib/ai-config';
+import { repairProblemMarkdownFields } from '@/lib/markdown';
+import { extractOptions } from '@/lib/utils';
+import type { Difficulty, ProblemType } from '@/lib/types';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function clampConfidence(value: unknown) {
+  const confidence = Number(value);
+  if (!Number.isFinite(confidence)) return 0.5;
+  return Math.min(1, Math.max(0, confidence));
 }
 
 // DeepSeek analysis endpoint — classifies OCR text into structured Problem array
@@ -18,7 +28,7 @@ export async function POST(req: NextRequest) {
     const apiKey = resolveAIKey('deepseek', clientApiKey);
     const model = typeof clientModel === 'string' && clientModel.trim()
       ? clientModel.trim()
-      : 'deepseek-v4-flash';
+      : DEFAULT_DEEPSEEK_MODEL;
 
     if (!ocrText || !apiKey) {
       return NextResponse.json({ error: '缺少必要参数 (ocrText, apiKey)' }, { status: 400 });
@@ -29,7 +39,7 @@ export async function POST(req: NextRequest) {
       ? `\nAvailable chapters: ${chapterList.join(', ')}. Suggest the best matching chapter from this list, or suggest a new chapter name if none match.`
       : '\nSuggest an appropriate chapter name for this problem.';
 
-    const systemPrompt = `You are a math problem classifier. Given OCR-extracted text that may contain ONE or MULTIPLE math problems, output a JSON object with this structure:
+    const systemPrompt = `You are a math problem extraction assistant for a Chinese exam-study knowledge base. Given OCR text that may contain ONE or MULTIPLE math problems, extract clean structured problems and output a JSON object with this structure:
 {
   "problems": [
     {
@@ -48,14 +58,19 @@ export async function POST(req: NextRequest) {
 Rules:
 - Separate distinct problems into individual array items
 - If only one problem found, still wrap it in the problems array
+- If the image contains no usable problem, return {"problems":[]}
+- Output Chinese text for answer, explanation, and tips unless the source is clearly English
 - Preserve ALL LaTeX formulas ($...$ or $$...$$) in question/answer/explanation
+- Correct obvious OCR mistakes only when the intended math/text is clear; do not silently change uncertain content
+- If answer or explanation is not visible in the OCR text, solve the problem yourself and set confidence lower when the solution is inferred
 - type: "choice" for multiple-choice, "fill" for fill-in-blank, "calculation" for computation/solving, "proof" for theorem proving, "proofEssay" for proof-based essays
 - difficulty: "easy" for basic exercises, "medium" for standard problems, "hard" for challenging/advanced
+- For choice problems, move A/B/C/D options into the options array. Use labels without punctuation, for example "A", "B"
 - options array ONLY for "choice" type, otherwise omit or empty
 - If unsure about any field, use your best guess and set lower confidence
 - Return valid JSON only. Do not include markdown fences, comments, or explanatory text outside the JSON object.
 - Escape LaTeX backslashes for JSON strings. For example, write "\\\\frac{x}{2}" instead of "\\frac{x}{2}".
-- CRITICAL for "explanation": Format ALL explanations with numbered steps (步骤1：..., 步骤2：..., ...). Each step should be a self-contained logical step. Use proper Markdown formatting (bold, italic, line breaks) to make the explanation readable. Never output a single wall of text — always break into clear, distinct steps.${chapterHint}`;
+- CRITICAL for "explanation": Format ALL explanations with numbered steps (步骤 1：..., 步骤 2：..., ...). Each step should be a self-contained logical step. Use proper Markdown formatting and blank lines to make the explanation readable. Never output a single wall of text.${chapterHint}`;
 
     const { content, tokensUsed } = await callDeepSeek(
       apiKey,
@@ -123,38 +138,46 @@ ${content}`;
 
     const toString = (value: unknown) => {
       if (value === null || value === undefined) return '';
-      return typeof value === 'string' ? value : String(value);
+      return typeof value === 'string' ? value.trim() : String(value);
     };
 
-    return NextResponse.json({
-      problems: problems.map((problem) => {
-        const p = isRecord(problem) ? problem : {};
-        const type = toString(p.type);
-        const difficulty = toString(p.difficulty);
+    const normalizedProblems = problems.flatMap((problem) => {
+      const p = isRecord(problem) ? problem : {};
+      const type = toString(p.type);
+      const difficulty = toString(p.difficulty);
+      const normalizedType = (allowedTypes.has(type) ? type : 'calculation') as ProblemType;
+      const normalizedDifficulty = (allowedDifficulties.has(difficulty) ? difficulty : 'medium') as Difficulty;
+      const question = toString(p.question);
+      if (!question) return [];
 
-        return {
-          question: toString(p.question),
-          answer: toString(p.answer),
-          explanation: toString(p.explanation),
-          type: allowedTypes.has(type) ? type : 'calculation',
-          difficulty: allowedDifficulties.has(difficulty) ? difficulty : 'medium',
-          suggestedChapter: p.suggestedChapter ? toString(p.suggestedChapter) : null,
-          tips: p.tips ? toString(p.tips) : undefined,
-          options: Array.isArray(p.options)
-            ? p.options
-                .map((rawOption, index) => {
-                  const option = isRecord(rawOption) ? rawOption : {};
-                  const content = isRecord(rawOption) ? option.content : rawOption;
-                  return {
-                    label: toString(option.label || String.fromCharCode(65 + index)),
-                    content: toString(content),
-                  };
-                })
-                .filter((option) => option.content.trim())
-            : undefined,
-          confidence: typeof p.confidence === 'number' ? p.confidence : 0.5,
-        };
-      }),
+      const options = Array.isArray(p.options)
+        ? p.options
+            .map((rawOption, index) => {
+              const option = isRecord(rawOption) ? rawOption : {};
+              const content = isRecord(rawOption) ? option.content : rawOption;
+              return {
+                label: toString(option.label || String.fromCharCode(65 + index)),
+                content: toString(content),
+              };
+            })
+            .filter((option) => option.content.trim())
+        : undefined;
+
+      return [repairProblemMarkdownFields({
+        question,
+        answer: toString(p.answer),
+        explanation: toString(p.explanation),
+        type: normalizedType,
+        difficulty: normalizedDifficulty,
+        suggestedChapter: p.suggestedChapter ? toString(p.suggestedChapter) : null,
+        tips: p.tips ? toString(p.tips) : undefined,
+        options: normalizedType === 'choice' ? (options?.length ? options : extractOptions(question)) : undefined,
+        confidence: clampConfidence(p.confidence),
+      })];
+    });
+
+    return NextResponse.json({
+      problems: normalizedProblems,
       tokensUsed: totalTokensUsed,
       success: true,
     });

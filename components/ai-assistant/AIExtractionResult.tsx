@@ -9,7 +9,7 @@ import { MarkdownContent } from '@/components/ui/MarkdownContent';
 
 interface AIExtractionResultProps {
   extractedProblems: Partial<Problem>[];
-  onAcceptAll: () => void;
+  onAcceptAll: (acceptedIndices?: Set<number>) => void;
   onAcceptOne: (index: number) => void;
   onRetry: () => void;
 }
@@ -34,7 +34,7 @@ export function AIExtractionResult({ extractedProblems, onAcceptAll, onAcceptOne
         </span>
         {!allAccepted && (
           <button
-            onClick={onAcceptAll}
+            onClick={() => onAcceptAll(acceptedIndices)}
             className="text-xs font-medium text-primary hover:underline"
           >
             全部采纳
@@ -66,7 +66,7 @@ export function AIExtractionResult({ extractedProblems, onAcceptAll, onAcceptOne
       {/* Bottom actions */}
       <div className="flex gap-2 pt-2">
         <button
-          onClick={onAcceptAll}
+          onClick={() => onAcceptAll(acceptedIndices)}
           disabled={allAccepted || extractedProblems.length === 0}
           className="flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl editorial-gradient text-on-primary text-sm font-medium hover:opacity-90 transition-all disabled:opacity-40"
         >
