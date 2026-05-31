@@ -13,14 +13,16 @@ function parseBaseUrl() {
   return rawUrl.replace(/\/+$/, "");
 }
 
-async function request(baseUrl, path) {
+async function request(baseUrl, path, options = {}) {
   const res = await fetch(`${baseUrl}${path}`, {
-    method: "GET",
+    method: options.method || "GET",
     redirect: "manual",
     headers: {
       "Cache-Control": "no-cache",
       "User-Agent": "Asteroid-production-security-verifier/1.0",
+      ...(options.headers || {}),
     },
+    body: options.body,
   });
 
   return res;
@@ -34,21 +36,52 @@ async function runStatusChecks(baseUrl) {
   const checks = [
     {
       name: "/debug 生产环境不可访问",
+      method: "GET",
       path: "/debug",
       expected: [404],
       risk: "如果这里不是 404，Supabase 调试页面可能暴露到公网。",
     },
     {
       name: "未登录不能确认管理员身份",
+      method: "GET",
       path: "/api/auth/admin",
       expected: [401],
       risk: "如果这里不是 401，管理员鉴权接口可能存在绕过风险。",
     },
     {
       name: "未登录不能读取 AI 配置状态",
+      method: "GET",
       path: "/api/ai/config",
       expected: [401],
       risk: "如果这里不是 401，AI 配置接口可能没有被管理员保护。",
+    },
+    {
+      name: "未登录不能测试 AI 配置",
+      method: "POST",
+      path: "/api/ai/config",
+      expected: [401],
+      risk: "如果这里不是 401，未登录访客可能触发 AI key 测试或外部 API 调用。",
+    },
+    {
+      name: "未登录不能调用 DeepSeek 题目分析",
+      method: "POST",
+      path: "/api/ai/analyze",
+      expected: [401],
+      risk: "如果这里不是 401，未登录访客可能消耗 DeepSeek 配额或探测 AI 接口。",
+    },
+    {
+      name: "未登录不能调用 Qwen OCR",
+      method: "POST",
+      path: "/api/ai/ocr",
+      expected: [401],
+      risk: "如果这里不是 401，未登录访客可能消耗 Qwen OCR 配额或上传图片内容。",
+    },
+    {
+      name: "未登录不能调用 AI 复习检查",
+      method: "POST",
+      path: "/api/ai/review",
+      expected: [401],
+      risk: "如果这里不是 401，未登录访客可能消耗 DeepSeek 配额或绕过管理员功能边界。",
     },
   ];
 
@@ -57,10 +90,14 @@ async function runStatusChecks(baseUrl) {
 
   for (const check of checks) {
     try {
-      const res = await request(baseUrl, check.path);
+      const res = await request(baseUrl, check.path, {
+        method: check.method,
+        headers: check.method === "POST" ? { "Content-Type": "application/json" } : undefined,
+        body: check.method === "POST" ? "{}" : undefined,
+      });
       const ok = check.expected.includes(res.status);
       const marker = ok ? "PASS" : "FAIL";
-      console.log(`${marker} ${check.name}: HTTP ${res.status}, 期望 ${formatExpected(check.expected)}`);
+      console.log(`${marker} ${check.method} ${check.name}: HTTP ${res.status}, 期望 ${formatExpected(check.expected)}`);
 
       if (!ok) {
         failed += 1;

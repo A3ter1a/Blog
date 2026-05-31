@@ -95,6 +95,10 @@ npm run verify:production-security
 PASS /debug 生产环境不可访问: HTTP 404
 PASS 未登录不能确认管理员身份: HTTP 401
 PASS 未登录不能读取 AI 配置状态: HTTP 401
+PASS 未登录不能测试 AI 配置: HTTP 401
+PASS 未登录不能调用 DeepSeek 题目分析: HTTP 401
+PASS 未登录不能调用 Qwen OCR: HTTP 401
+PASS 未登录不能调用 AI 复习检查: HTTP 401
 ```
 
 如果脚本显示网络失败，不代表网站一定不安全，只代表当前电脑没有成功连到公网地址。可以换网络、检查代理，或稍后重试。

@@ -77,6 +77,7 @@ on conflict (email) do nothing;
 - `npm.cmd run build` 已通过。
 - 本地生产服务验证通过：`/debug` 返回 `404`，未登录访问 `/api/auth/admin` 和 `/api/ai/config` 返回 `401`。
 - 已新增 `npm run verify:production-security`，用于在 Vercel/Supabase 后台配置完成后重复检查公网关键安全门。
+- 自动验收脚本已加严：除 `/debug`、管理员鉴权和 AI 配置 GET 外，现在还会检查未登录状态下所有 AI POST 接口必须返回 `401`。
 - `npm run verify:production-security -- --url http://127.0.0.1:3011` 已在本地生产服务上验证通过，说明脚本成功路径可用。
 - 已新增 `PRODUCTION_SECURITY_CHECKLIST.md`，把 Vercel、Supabase、自动脚本和人工无痕窗口检查整理成逐项清单。
 - `npm.cmd run verify:production-security` 已对公网 `https://www.a3ter1a.cn` 验证通过：`/debug` 为 `404`，未登录 `/api/auth/admin` 和 `/api/ai/config` 为 `401`，首页 HTML 未发现明显创建入口。

@@ -77,6 +77,8 @@ Expected critical results:
 - `/debug` returns `404`.
 - `/api/auth/admin` returns `401` when signed out.
 - `/api/ai/config` returns `401` when signed out.
+- AI `POST` endpoints return `401` when signed out:
+  `/api/ai/config`, `/api/ai/analyze`, `/api/ai/ocr`, and `/api/ai/review`.
 
 The script also warns if the homepage HTML still contains an obvious create
 entry. That warning is not a database security proof by itself, but it is a
