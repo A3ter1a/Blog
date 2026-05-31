@@ -8,11 +8,13 @@
 
 当前处于“公网部署安全收尾验收”阶段。
 
-代码侧安全加固和生产安全验收工具已经完成并推送到 `main`，当前建议部署提交为：
+代码侧安全加固和生产安全验收工具已经完成并推送到 `main`，生产部署至少应包含这个安全验收基准提交：
 
 ```text
 b4258ff Add production security verification checklist
 ```
+
+如果 Vercel 已部署到它之后的 `main` 提交，也满足这个版本要求。
 
 接下来必须先确认 Vercel 和 Supabase 后台配置已经应用，然后再进入大规模架构优化。
 
@@ -46,7 +48,7 @@ values ('your_admin_email@example.com')
 on conflict (email) do nothing;
 ```
 
-4. 确认 Vercel 生产部署使用最新提交 `b4258ff`。
+4. 确认 Vercel 生产部署至少包含提交 `b4258ff`，或已经部署到它之后的 `main` 提交。
 
 ## 低风险改造顺序
 
@@ -78,7 +80,7 @@ on conflict (email) do nothing;
 - `npm run verify:production-security -- --url http://127.0.0.1:3011` 已在本地生产服务上验证通过，说明脚本成功路径可用。
 - 已新增 `PRODUCTION_SECURITY_CHECKLIST.md`，把 Vercel、Supabase、自动脚本和人工无痕窗口检查整理成逐项清单。
 - `npm.cmd run verify:production-security` 已对公网 `https://www.a3ter1a.cn` 验证通过：`/debug` 为 `404`，未登录 `/api/auth/admin` 和 `/api/ai/config` 为 `401`，首页 HTML 未发现明显创建入口。
-- 仍需在 Vercel 后台确认生产部署 commit 为 `b4258ff`，并在 Supabase 后台确认 RLS 锁定脚本已经执行。
+- 仍需在 Vercel 后台确认生产部署至少包含 `b4258ff`，并在 Supabase 后台确认 RLS 锁定脚本已经执行。
 - PowerShell `Get-Content` 读取部分中文文案时出现乱码，但 Node 按 UTF-8 读取能正常显示，初步判断是终端显示编码问题，不应直接按源文件损坏处理。
 
 ## 架构扫描第一轮记录

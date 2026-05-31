@@ -15,13 +15,13 @@
 
 ## 第一步：确认 Vercel 部署版本
 
-进入 Vercel 项目后台，确认生产环境部署使用的 commit 是：
+进入 Vercel 项目后台，确认生产环境部署至少包含这个安全验收基准提交：
 
 ```text
 b4258ff Add production security verification checklist
 ```
 
-如果不是这个提交，先重新部署 `main` 分支。
+如果部署在它之后的 `main` 提交上，也可以；如果部署比它更早，先重新部署 `main` 分支。
 
 风险解释：
 
