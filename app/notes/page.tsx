@@ -41,7 +41,7 @@ export default function NotesPage() {
 
     try {
       setLoading(true);
-      const data = query ? await notesApi.search(query) : await notesApi.getAll();
+      const data = query ? await notesApi.searchSummaries(query) : await notesApi.getSummaries();
 
       if (latestLoadId.current === loadId) {
         setNotes(data);

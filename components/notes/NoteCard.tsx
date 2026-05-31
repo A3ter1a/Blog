@@ -20,6 +20,7 @@ export function NoteCard({ note, index, isSelected = false, onToggleSelect, sele
   const isEssay = note.type === "essay";
   const [isCoverExpanded, setIsCoverExpanded] = useState(false);
   const createdAt = note.createdAt instanceof Date ? note.createdAt : new Date(String(note.createdAt));
+  const animationDelay = Math.min(index * 0.04, 0.32);
 
   const handleClick = (e: React.MouseEvent) => {
     if (selectMode && onToggleSelect) {
@@ -32,7 +33,7 @@ export function NoteCard({ note, index, isSelected = false, onToggleSelect, sele
     <motion.article
       initial={{ opacity: 0, y: 30 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: index * 0.1, duration: 0.4 }}
+      transition={{ delay: animationDelay, duration: 0.35 }}
       whileHover={{ y: -8, transition: { duration: 0.2 } }}
       onClick={handleClick}
       className={`group rounded-xl overflow-hidden transition-all duration-300 cursor-pointer ${
@@ -58,6 +59,8 @@ export function NoteCard({ note, index, isSelected = false, onToggleSelect, sele
                 <img
                   src={note.coverImage}
                   alt={note.title}
+                  loading={index < 3 ? "eager" : "lazy"}
+                  decoding="async"
                   className="w-full object-cover"
                 />
               </motion.div>

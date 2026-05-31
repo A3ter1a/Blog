@@ -99,6 +99,17 @@ type Database = {
 };
 
 const SITE_PROFILE_ID = "main";
+const NOTE_SUMMARY_FIELDS = `
+        id,
+        type,
+        title,
+        subject,
+        tags,
+        cover_image,
+        created_at,
+        updated_at,
+        is_published
+      `;
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
@@ -205,27 +216,22 @@ function mapCamelToSnake(note: Partial<Note>): NoteUpdate {
 
 // Notes API (使用 getSupabase() 确保延迟初始化)
 export const notesApi = {
-  // Get all notes (optimized: only fetch fields needed for list view)
-  async getAll(): Promise<Note[]> {
+  // Get note summaries for list view. This intentionally excludes content, videos, and problems.
+  async getSummaries(): Promise<Note[]> {
     const supabase = getSupabase();
     const { data, error } = await supabase
       .from("notes")
-      .select(`
-        id,
-        type,
-        title,
-        subject,
-        tags,
-        cover_image,
-        created_at,
-        updated_at,
-        is_published
-      `)
+      .select(NOTE_SUMMARY_FIELDS)
       .eq("is_published", true)
       .order("created_at", { ascending: false });
 
     if (error) throw error;
     return (data || []).map(mapSnakeToCamel);
+  },
+
+  // Backward-compatible alias. Prefer getSummaries() for list pages.
+  async getAll(): Promise<Note[]> {
+    return notesApi.getSummaries();
   },
 
   // Get note by ID (fetch all fields for detail view)
@@ -307,29 +313,18 @@ export const notesApi = {
     if (error) throw error;
   },
 
-  // Search notes (optimized field selection)
-  async search(query: string, type?: NoteType, subject?: Subject): Promise<Note[]> {
+  // Search note summaries. Content is searchable but not returned to the list page.
+  async searchSummaries(query: string, type?: NoteType, subject?: Subject): Promise<Note[]> {
     const term = normalizeSearchTerm(query);
     if (!term) return [];
     const tagTerms = [...new Set(term.split(" ").filter(Boolean))];
 
     const supabase = getSupabase();
-    const fields = `
-        id,
-        type,
-        title,
-        subject,
-        tags,
-        cover_image,
-        created_at,
-        updated_at,
-        is_published
-      `;
 
     const baseQuery = () => {
       let q = supabase
         .from("notes")
-        .select(fields)
+        .select(NOTE_SUMMARY_FIELDS)
         .eq("is_published", true);
 
       if (type) q = q.eq("type", type);
@@ -357,6 +352,11 @@ export const notesApi = {
     return [...rowsById.values()]
       .map(mapSnakeToCamel)
       .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+  },
+
+  // Backward-compatible alias. Prefer searchSummaries() for list pages.
+  async search(query: string, type?: NoteType, subject?: Subject): Promise<Note[]> {
+    return notesApi.searchSummaries(query, type, subject);
   },
 };
 

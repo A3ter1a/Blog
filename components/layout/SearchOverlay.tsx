@@ -18,23 +18,34 @@ export function SearchOverlay({ isOpen, onClose }: SearchOverlayProps) {
   const [results, setResults] = useState<Note[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const latestSearchId = useRef(0);
 
   // Debounced search
   const searchNotes = useCallback(async (searchQuery: string) => {
     if (!searchQuery.trim()) {
+      latestSearchId.current += 1;
       setResults([]);
+      setIsSearching(false);
       return;
     }
 
+    const searchId = latestSearchId.current + 1;
+    latestSearchId.current = searchId;
     setIsSearching(true);
     try {
-      const notes = await notesApi.search(searchQuery);
-      setResults(notes);
+      const notes = await notesApi.searchSummaries(searchQuery);
+      if (latestSearchId.current === searchId) {
+        setResults(notes);
+      }
     } catch (error) {
       console.error("Search failed:", error);
-      setResults([]);
+      if (latestSearchId.current === searchId) {
+        setResults([]);
+      }
     } finally {
-      setIsSearching(false);
+      if (latestSearchId.current === searchId) {
+        setIsSearching(false);
+      }
     }
   }, []);
 
