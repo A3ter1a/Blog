@@ -21,13 +21,15 @@ interface ProblemCardProps {
   problem: Problem;
   index: number;
   noteId?: string;
-  onUpdate?: (updated: Problem) => void;
+  onUpdate?: (updated: Problem) => void | Promise<void>;
 }
 
 export function ProblemCard({ problem, index, onUpdate }: ProblemCardProps) {
   const [showAnswer, setShowAnswer] = useState(false);
   const [showExplanation, setShowExplanation] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   // AI review state
   const [isReviewing, setIsReviewing] = useState(false);
@@ -50,6 +52,7 @@ export function ProblemCard({ problem, index, onUpdate }: ProblemCardProps) {
   });
 
   const handleStartEdit = () => {
+    setSaveError(null);
     setEditData({
       type: problem.type,
       difficulty: problem.difficulty,
@@ -62,8 +65,8 @@ export function ProblemCard({ problem, index, onUpdate }: ProblemCardProps) {
     setIsEditing(true);
   };
 
-  const handleSave = () => {
-    if (!onUpdate) return;
+  const handleSave = async () => {
+    if (!onUpdate || isSaving) return;
     const updated: Problem = {
       ...problem,
       type: editData.type,
@@ -74,14 +77,28 @@ export function ProblemCard({ problem, index, onUpdate }: ProblemCardProps) {
       tips: editData.tips || undefined,
       tags: editData.tags.split(/[,，]/).map(t => t.trim()).filter(Boolean),
     };
-    onUpdate(updated);
-    setIsEditing(false);
+
+    setIsSaving(true);
+    setSaveError(null);
+    try {
+      await onUpdate(updated);
+      setIsEditing(false);
+      setReviewResult(null);
+      setReviewError(null);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "保存失败，请稍后重试";
+      setSaveError(message);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleCancel = () => {
+    if (isSaving) return;
     setIsEditing(false);
     setReviewResult(null);
     setReviewError(null);
+    setSaveError(null);
   };
 
   const handleAIReview = async () => {
@@ -322,14 +339,15 @@ export function ProblemCard({ problem, index, onUpdate }: ProblemCardProps) {
             <div className="flex gap-2">
               <button
                 onClick={handleCancel}
-                className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-surface-container text-on-surface-variant text-sm hover:bg-surface-container-high transition-colors"
+                disabled={isSaving}
+                className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-surface-container text-on-surface-variant text-sm hover:bg-surface-container-high transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 <X className="w-4 h-4" />
                 取消
               </button>
               <button
                 onClick={handleAIReview}
-                disabled={isReviewing || !editData.question.trim()}
+                disabled={isReviewing || isSaving || !editData.question.trim()}
                 className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-700 text-sm hover:bg-amber-100 transition-colors disabled:opacity-40"
                 title="AI 智能检查"
               >
@@ -342,7 +360,7 @@ export function ProblemCard({ problem, index, onUpdate }: ProblemCardProps) {
               </button>
               <button
                 onClick={handleRepairEditData}
-                disabled={!editData.question.trim() && !editData.answer.trim() && !editData.explanation.trim() && !editData.tips.trim()}
+                disabled={isSaving || (!editData.question.trim() && !editData.answer.trim() && !editData.explanation.trim() && !editData.tips.trim())}
                 className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-primary/10 border border-primary/15 text-primary text-sm hover:bg-primary/15 transition-colors disabled:opacity-40"
                 title="修正题干、答案、解析和提示里的 Markdown / LaTeX 格式"
               >
@@ -351,13 +369,20 @@ export function ProblemCard({ problem, index, onUpdate }: ProblemCardProps) {
               </button>
               <button
                 onClick={handleSave}
-                disabled={!editData.question.trim()}
+                disabled={isSaving || !editData.question.trim()}
                 className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg editorial-gradient text-on-primary text-sm font-medium disabled:opacity-40 transition-all"
               >
-                <Check className="w-4 h-4" />
-                保存
+                {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                {isSaving ? "保存中" : "保存"}
               </button>
             </div>
+
+            {/* Save Error */}
+            {saveError && (
+              <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-red-600 text-xs">
+                {saveError}
+              </div>
+            )}
 
             {/* Review Error */}
             {reviewError && (

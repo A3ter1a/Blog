@@ -18,6 +18,7 @@ import { FormulaFixer } from "@/components/editor/FormulaFixer";
 import { uploadImage, generateFileName } from "@/lib/supabase-storage";
 import { repairMarkdown } from "@/lib/markdown";
 import { AdminGate } from "@/components/auth/AdminGate";
+import { getProblemsValidationIssues, normalizeProblem } from "@/lib/problem-utils";
 
 type ImportDraft = {
   title?: string;
@@ -68,8 +69,11 @@ export default function CreatePage() {
   const toast = useToast();
   const [initialImportDraft] = useState<ImportDraft | null>(getPendingImportDraft);
 
+  const [routeReady, setRouteReady] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
   const [editingId, setEditingId] = useState<string>("");
+  const [isLoadingExistingNote, setIsLoadingExistingNote] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [noteType, setNoteType] = useState<NoteType>(initialImportDraft?.noteType ?? "note");
   const [title, setTitle] = useState(initialImportDraft?.title ?? "");
   const [subject, setSubject] = useState<Subject>(initialImportDraft?.subject ?? "math");
@@ -77,8 +81,10 @@ export default function CreatePage() {
   const [content, setContent] = useState(initialImportDraft?.content ?? "");
   const [videos, setVideos] = useState<Video[]>(initialImportDraft?.videos ?? []);
   const [problems, setProblems] = useState<Problem[]>(initialImportDraft?.problems ?? []);
+  const [hasProblemChanges, setHasProblemChanges] = useState(false);
   const [coverImage, setCoverImage] = useState(initialImportDraft?.coverImage ?? "");
   const [isUploadingCover, setIsUploadingCover] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [showVideoSection, setShowVideoSection] = useState(false);
   const [editorReady, setEditorReady] = useState(false);
   const [showFormulaFixer, setShowFormulaFixer] = useState(false);
@@ -113,6 +119,11 @@ export default function CreatePage() {
     }
   }, [syncScroll]);
 
+  const handleProblemsChange = useCallback((nextProblems: Problem[]) => {
+    setProblems(nextProblems);
+    setHasProblemChanges(true);
+  }, []);
+
   const handleAutoRepairMarkdown = useCallback(() => {
     const repaired = repairMarkdown(content);
     if (repaired === content.trim()) {
@@ -130,12 +141,17 @@ export default function CreatePage() {
     const searchParams = new URLSearchParams(window.location.search);
     const editId = searchParams.get("edit");
     const importMode = searchParams.get("import");
+    let cancelled = false;
     
     if (editId) {
+      setIsEditMode(true);
+      setEditingId(editId);
+      setIsLoadingExistingNote(true);
+      setLoadError(null);
+
       notesApi.getById(editId).then((existingNote) => {
+        if (cancelled) return;
         if (existingNote) {
-          setIsEditMode(true);
-          setEditingId(editId);
           setNoteType(existingNote.type);
           setTitle(existingNote.title);
           setSubject(existingNote.subject || "math");
@@ -143,24 +159,70 @@ export default function CreatePage() {
           setContent(existingNote.content);
           setVideos(existingNote.videos || []);
           setProblems(existingNote.problems || []);
+          setHasProblemChanges(false);
           setCoverImage(existingNote.coverImage || "");
+        } else {
+          const message = "没有找到要编辑的笔记，可能已被删除或没有权限访问";
+          setLoadError(message);
+          toast.error(message);
         }
       }).catch((error) => {
+        if (cancelled) return;
         console.error("Failed to load note:", error);
+        const message = error instanceof Error ? error.message : "未知错误";
+        setLoadError(`加载笔记失败：${message}`);
         toast.error("加载笔记失败");
+      }).finally(() => {
+        if (!cancelled) {
+          setIsLoadingExistingNote(false);
+          setRouteReady(true);
+        }
       });
     } else if (importMode) {
+      setIsEditMode(false);
+      setEditingId("");
+      setLoadError(null);
+      setIsLoadingExistingNote(false);
+      setHasProblemChanges(false);
       if (initialImportDraft) {
         toast.success('已自动填充导入内容，请检查后发布');
         sessionStorage.removeItem('pendingImport');
       }
+      setRouteReady(true);
+    } else {
+      setIsEditMode(false);
+      setEditingId("");
+      setLoadError(null);
+      setIsLoadingExistingNote(false);
+      setHasProblemChanges(false);
+      setRouteReady(true);
     }
+
+    return () => {
+      cancelled = true;
+    };
   }, [initialImportDraft, toast]);
 
   const handleSave = async () => {
+    if (isSaving) return;
+
     if (!title.trim()) {
       toast.error("请输入标题");
       return;
+    }
+
+    if (isEditMode && !editingId) {
+      toast.error("编辑目标尚未加载完成，请稍后再试");
+      return;
+    }
+
+    const normalizedProblems = noteType === "problem" ? problems.map(normalizeProblem) : undefined;
+    if (normalizedProblems) {
+      const firstInvalidProblem = getProblemsValidationIssues(normalizedProblems)[0];
+      if (firstInvalidProblem) {
+        toast.error(`第 ${firstInvalidProblem.index + 1} 题：${firstInvalidProblem.issues[0]}`);
+        return;
+      }
     }
 
     const tags = tagInput.split(/[,，]/).map(t => t.trim()).filter(Boolean);
@@ -172,10 +234,11 @@ export default function CreatePage() {
       tags,
       content,
       videos,
-      problems: noteType === "problem" ? problems : undefined,
+      problems: normalizedProblems,
       coverImage: coverImage || undefined,
     };
 
+    setIsSaving(true);
     try {
       if (isEditMode) {
         await notesApi.update(editingId, {
@@ -188,6 +251,7 @@ export default function CreatePage() {
           problems: noteData.problems,
           coverImage: noteData.coverImage,
         });
+        setHasProblemChanges(false);
         toast.success("笔记已更新！");
         router.push(`/notes/${editingId}`);
       } else {
@@ -202,21 +266,26 @@ export default function CreatePage() {
           coverImage: noteData.coverImage,
           isPublished: true,
         });
+        setHasProblemChanges(false);
         toast.success("笔记已创建！");
         router.push(`/notes/${newNote.id}`);
       }
     } catch (error: unknown) {
       console.error("Failed to save note:", error);
       toast.error(`保存失败：${error instanceof Error ? error.message : "未知错误"}`);
+    } finally {
+      setIsSaving(false);
     }
   };
 
   const handleClear = () => {
+    if (isSaving) return;
     setTitle("");
     setContent("");
     setTagInput("");
     setVideos([]);
     setProblems([]);
+    setHasProblemChanges(true);
     setCoverImage("");
   };
 
@@ -260,6 +329,39 @@ export default function CreatePage() {
 
   const isEssay = noteType === "essay";
   const isProblem = noteType === "problem";
+
+  if (!routeReady || isLoadingExistingNote) {
+    return (
+      <AdminGate>
+        <main className="pt-32 pb-20 min-h-screen flex items-center justify-center">
+          <div className="flex items-center gap-3 text-on-surface-variant">
+            <Loader2 className="w-6 h-6 animate-spin text-primary" />
+            <span>正在准备编辑器...</span>
+          </div>
+        </main>
+      </AdminGate>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <AdminGate>
+        <main className="pt-32 pb-20 min-h-screen flex items-center justify-center px-6">
+          <div className="max-w-md text-center space-y-4">
+            <h1 className="text-2xl font-bold text-on-surface">无法编辑这篇笔记</h1>
+            <p className="text-sm text-on-surface-variant">{loadError}</p>
+            <button
+              type="button"
+              onClick={() => router.push("/notes")}
+              className="px-4 py-2 rounded-lg bg-surface-container-high text-on-surface-variant hover:bg-surface-container-highest transition-colors text-sm font-medium"
+            >
+              返回笔记列表
+            </button>
+          </div>
+        </main>
+      </AdminGate>
+    );
+  }
 
   return (
     <AdminGate>
@@ -444,8 +546,9 @@ export default function CreatePage() {
               </div>
               <ProblemEditor
                 problems={problems}
-                onChange={setProblems}
+                onChange={handleProblemsChange}
                 noteId={isEditMode ? editingId : undefined}
+                hasUnsavedChanges={isEditMode && hasProblemChanges}
               />
             </>
           ) : (
@@ -683,17 +786,19 @@ export default function CreatePage() {
         >
           <button
             onClick={handleClear}
-            className="px-6 py-3 rounded-xl bg-surface-container-low text-on-surface-variant hover:bg-surface-container-high transition-all duration-300 flex items-center gap-2"
+            disabled={isSaving}
+            className="px-6 py-3 rounded-xl bg-surface-container-low text-on-surface-variant hover:bg-surface-container-high transition-all duration-300 flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
           >
             <RotateCcw className="w-4 h-4" />
             清空
           </button>
           <button
             onClick={handleSave}
-            className="px-8 py-3 rounded-xl editorial-gradient text-on-primary font-medium hover:opacity-90 active:scale-[0.98] transition-all duration-300 shadow-elevated shadow-primary/10 flex items-center gap-2"
+            disabled={isSaving}
+            className="px-8 py-3 rounded-xl editorial-gradient text-on-primary font-medium hover:opacity-90 active:scale-[0.98] transition-all duration-300 shadow-elevated shadow-primary/10 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <Save className="w-4 h-4" />
-            发布
+            {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+            {isSaving ? "保存中" : isEditMode ? "更新" : "发布"}
           </button>
         </motion.div>
       </div>

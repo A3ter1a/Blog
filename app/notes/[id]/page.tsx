@@ -124,19 +124,30 @@ export default function NoteReaderPage() {
   };
 
   const handleUpdateProblem = async (updatedProblem: Problem) => {
-    if (!isAdmin) return;
-    if (!note) return;
-    const updatedProblems = (note.problems || []).map(p =>
+    if (!isAdmin) throw new Error("需要管理员登录后才能保存题目");
+    if (!note) throw new Error("笔记尚未加载完成");
+
+    const previousNote = note;
+    const updatedProblems = (previousNote.problems || []).map(p =>
       p.id === updatedProblem.id ? updatedProblem : p
     );
+
     // Optimistic update
-    setNote({ ...note, problems: updatedProblems });
+    setNote({ ...previousNote, problems: updatedProblems });
     try {
-      await notesApi.update(note.id, { problems: updatedProblems });
-    } catch (error) {
+      const savedNote = await notesApi.update(previousNote.id, { problems: updatedProblems });
+      setNote(current => current?.id === previousNote.id
+        ? { ...current, updatedAt: savedNote.updatedAt }
+        : current
+      );
+      toast.success("题目已保存");
+    } catch (error: unknown) {
       console.error("Failed to update problem:", error);
       // Revert on failure
-      setNote(note);
+      setNote(current => current?.id === previousNote.id ? previousNote : current);
+      const message = error instanceof Error ? error.message : "未知错误";
+      toast.error(`题目保存失败：${message}`);
+      throw error;
     }
   };
 

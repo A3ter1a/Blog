@@ -2,7 +2,7 @@
 
 import { useState, useEffect, type ReactNode } from "react";
 import { motion, AnimatePresence, Reorder, useDragControls } from "framer-motion";
-import { Plus, X, ChevronDown, ChevronUp, GripVertical, Sparkles, Scan, Copy, Trash2, Wrench } from "lucide-react";
+import { AlertCircle, Plus, X, ChevronDown, ChevronUp, GripVertical, Sparkles, Scan, Copy, Trash2, Wrench } from "lucide-react";
 import { Problem, ProblemType, Difficulty, problemTypeMap, difficultyMap, difficultyColorMap } from "@/lib/types";
 import { chaptersApi } from "@/lib/chapters-api";
 import { ChapterSelector } from "@/components/chapters/ChapterSelector";
@@ -11,11 +11,18 @@ import { ProblemPreview } from "./ProblemPreview";
 import { OCRUploader } from "@/components/ai-assistant/OCRUploader";
 import type { ChapterContextItem } from "@/hooks/useAIScan";
 import { repairProblemMarkdownFields } from "@/lib/markdown";
+import {
+  ensureChoiceOptions,
+  getProblemValidationIssues,
+  normalizeProblem,
+  normalizeProblemDraft,
+} from "@/lib/problem-utils";
 
 interface ProblemEditorProps {
   problems: Problem[];
   onChange: (problems: Problem[]) => void;
   noteId?: string;
+  hasUnsavedChanges?: boolean;
 }
 
 const createEmptyProblemDraft = (): Partial<Problem> => ({
@@ -27,10 +34,11 @@ const createEmptyProblemDraft = (): Partial<Problem> => ({
   tags: [],
 });
 
-export function ProblemEditor({ problems, onChange, noteId }: ProblemEditorProps) {
+export function ProblemEditor({ problems, onChange, noteId, hasUnsavedChanges = false }: ProblemEditorProps) {
   const [showAddForm, setShowAddForm] = useState(false);
   const [showAIScan, setShowAIScan] = useState(false);
   const [newProblem, setNewProblem] = useState<Partial<Problem>>(createEmptyProblemDraft());
+  const [newProblemError, setNewProblemError] = useState<string | null>(null);
 
   // Load chapter context for AI auto-classification
   const [chapterContext, setChapterContext] = useState<ChapterContextItem[]>([]);
@@ -42,33 +50,51 @@ export function ProblemEditor({ problems, onChange, noteId }: ProblemEditorProps
     }
   }, [noteId]);
 
+  const updateNewProblemType = (type: ProblemType) => {
+    setNewProblem((current) => ({
+      ...current,
+      type,
+      options: type === "choice" ? ensureChoiceOptions(current.options) : undefined,
+    }));
+    setNewProblemError(null);
+  };
+
+  const updateNewProblemOption = (optionIndex: number, field: "label" | "content", value: string) => {
+    setNewProblem((current) => {
+      const options = ensureChoiceOptions(current.options);
+      options[optionIndex] = { ...options[optionIndex], [field]: value };
+      return { ...current, options };
+    });
+    setNewProblemError(null);
+  };
+
   const handleAdd = () => {
-    if (!newProblem.question?.trim()) return;
+    const normalizedDraft = normalizeProblemDraft(newProblem);
+    const validationIssues = getProblemValidationIssues(normalizedDraft);
+
+    if (validationIssues.length > 0) {
+      setNewProblemError(validationIssues[0]);
+      return;
+    }
 
     const problem: Problem = {
       id: crypto.randomUUID(),
-      type: (newProblem.type as ProblemType) || "calculation",
-      difficulty: (newProblem.difficulty as Difficulty) || "medium",
-      question: newProblem.question || "",
-      answer: newProblem.answer || "",
-      explanation: newProblem.explanation || "",
-      tips: newProblem.tips || undefined,
-      options: newProblem.options?.length ? newProblem.options : undefined,
-      tags: newProblem.tags || [],
-      chapterId: newProblem.chapterId,
-      aiStatus: newProblem.aiStatus,
-      aiResult: newProblem.aiResult,
+      type: (normalizedDraft.type as ProblemType) || "calculation",
+      difficulty: (normalizedDraft.difficulty as Difficulty) || "medium",
+      question: normalizedDraft.question || "",
+      answer: normalizedDraft.answer || "",
+      explanation: normalizedDraft.explanation || "",
+      tips: normalizedDraft.tips || undefined,
+      options: normalizedDraft.type === "choice" ? normalizedDraft.options : undefined,
+      tags: normalizedDraft.tags || [],
+      chapterId: normalizedDraft.chapterId,
+      aiStatus: normalizedDraft.aiStatus,
+      aiResult: normalizedDraft.aiResult,
     };
 
     onChange([...problems, problem]);
-    setNewProblem({
-      type: "calculation",
-      difficulty: "medium",
-      question: "",
-      answer: "",
-      explanation: "",
-      tags: [],
-    });
+    setNewProblem(createEmptyProblemDraft());
+    setNewProblemError(null);
     setShowAddForm(false);
   };
 
@@ -85,26 +111,37 @@ export function ProblemEditor({ problems, onChange, noteId }: ProblemEditorProps
   };
 
   const handleAcceptAI = (newProblems: Problem[]) => {
-    onChange([...problems, ...newProblems]);
+    onChange([...problems, ...newProblems.map(normalizeProblem)]);
   };
 
   const handleRepairNewProblem = () => {
     setNewProblem(repairProblemMarkdownFields(newProblem));
+    setNewProblemError(null);
   };
+
+  const newProblemOptions = newProblem.type === "choice" ? ensureChoiceOptions(newProblem.options) : [];
 
   return (
     <div className="space-y-4">
       {/* Toolbar */}
-      <div className="flex items-center gap-2">
-        <button
-          onClick={() => setShowAIScan(true)}
-          className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium
-            bg-gradient-to-r from-violet-500/10 to-primary/10 border border-violet-200/20
-            text-primary hover:border-violet-300/40 transition-all"
-        >
-          <Scan className="w-3.5 h-3.5" />
-          AI 扫描
-        </button>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowAIScan(true)}
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium
+              bg-gradient-to-r from-violet-500/10 to-primary/10 border border-violet-200/20
+              text-primary hover:border-violet-300/40 transition-all"
+          >
+            <Scan className="w-3.5 h-3.5" />
+            AI 扫描
+          </button>
+        </div>
+        {hasUnsavedChanges && (
+          <div className="inline-flex items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs text-amber-700">
+            <AlertCircle className="w-3.5 h-3.5" />
+            题目修改未更新
+          </div>
+        )}
       </div>
 
       {/* Existing Problems (drag-and-drop) */}
@@ -158,7 +195,7 @@ export function ProblemEditor({ problems, onChange, noteId }: ProblemEditorProps
                 <label className="text-xs text-on-surface-variant/60 mb-1 block">题型</label>
                 <select
                   value={newProblem.type}
-                  onChange={(e) => setNewProblem({ ...newProblem, type: e.target.value as ProblemType })}
+                  onChange={(e) => updateNewProblemType(e.target.value as ProblemType)}
                   className="w-full px-3 py-2 bg-surface-container rounded-lg text-sm text-on-surface outline-none focus:ring-2 focus:ring-primary/20"
                 >
                   {(Object.entries(problemTypeMap) as [ProblemType, string][]).map(([key, label]) => (
@@ -185,19 +222,80 @@ export function ProblemEditor({ problems, onChange, noteId }: ProblemEditorProps
               <label className="text-xs text-on-surface-variant/60 mb-1 block">题目内容</label>
               <textarea
                 value={newProblem.question}
-                onChange={(e) => setNewProblem({ ...newProblem, question: e.target.value })}
+                onChange={(e) => {
+                  setNewProblem({ ...newProblem, question: e.target.value });
+                  setNewProblemError(null);
+                }}
                 placeholder="输入题目内容，支持 LaTeX 公式..."
                 rows={3}
                 className="w-full px-3 py-2 bg-surface-container rounded-lg text-sm text-on-surface outline-none focus:ring-2 focus:ring-primary/20 resize-none placeholder:text-on-surface-variant/40"
               />
             </div>
 
+            {newProblem.type === "choice" && (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs text-on-surface-variant/60 block">选项</label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setNewProblem({
+                        ...newProblem,
+                        options: [
+                          ...newProblemOptions,
+                          { label: String.fromCharCode(65 + newProblemOptions.length), content: "" },
+                        ],
+                      });
+                      setNewProblemError(null);
+                    }}
+                    className="text-xs text-primary hover:text-primary/80 transition-colors"
+                  >
+                    添加选项
+                  </button>
+                </div>
+                {newProblemOptions.map((option, optionIndex) => (
+                  <div key={`${option.label}-${optionIndex}`} className="grid grid-cols-[56px_1fr_28px] gap-2 items-start">
+                    <input
+                      value={option.label}
+                      onChange={(e) => updateNewProblemOption(optionIndex, "label", e.target.value)}
+                      className="w-full px-2 py-2 bg-surface-container rounded-lg text-sm text-on-surface outline-none focus:ring-2 focus:ring-primary/20"
+                      placeholder="A"
+                    />
+                    <textarea
+                      value={option.content}
+                      onChange={(e) => updateNewProblemOption(optionIndex, "content", e.target.value)}
+                      rows={1}
+                      className="w-full px-3 py-2 bg-surface-container rounded-lg text-sm text-on-surface outline-none focus:ring-2 focus:ring-primary/20 resize-y min-h-9 placeholder:text-on-surface-variant/40"
+                      placeholder="选项内容"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setNewProblem({
+                          ...newProblem,
+                          options: newProblemOptions.filter((_, i) => i !== optionIndex),
+                        });
+                        setNewProblemError(null);
+                      }}
+                      className="mt-1 p-1 rounded hover:bg-surface-container-highest transition-colors"
+                      title="删除选项"
+                    >
+                      <X className="w-4 h-4 text-on-surface-variant/40 hover:text-red-500" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
             {/* Answer */}
             <div>
               <label className="text-xs text-on-surface-variant/60 mb-1 block">答案</label>
               <textarea
                 value={newProblem.answer}
-                onChange={(e) => setNewProblem({ ...newProblem, answer: e.target.value })}
+                onChange={(e) => {
+                  setNewProblem({ ...newProblem, answer: e.target.value });
+                  setNewProblemError(null);
+                }}
                 placeholder="输入答案..."
                 rows={2}
                 className="w-full px-3 py-2 bg-surface-container rounded-lg text-sm text-on-surface outline-none focus:ring-2 focus:ring-primary/20 resize-none placeholder:text-on-surface-variant/40"
@@ -209,7 +307,10 @@ export function ProblemEditor({ problems, onChange, noteId }: ProblemEditorProps
               <label className="text-xs text-on-surface-variant/60 mb-1 block">解析</label>
               <textarea
                 value={newProblem.explanation}
-                onChange={(e) => setNewProblem({ ...newProblem, explanation: e.target.value })}
+                onChange={(e) => {
+                  setNewProblem({ ...newProblem, explanation: e.target.value });
+                  setNewProblemError(null);
+                }}
                 placeholder="输入解析..."
                 rows={2}
                 className="w-full px-3 py-2 bg-surface-container rounded-lg text-sm text-on-surface outline-none focus:ring-2 focus:ring-primary/20 resize-none placeholder:text-on-surface-variant/40"
@@ -217,7 +318,14 @@ export function ProblemEditor({ problems, onChange, noteId }: ProblemEditorProps
             </div>
 
             {/* Preview */}
-            <ProblemPreview problem={newProblem} />
+            <ProblemPreview problem={normalizeProblemDraft(newProblem)} />
+
+            {newProblemError && (
+              <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
+                <AlertCircle className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
+                <span>{newProblemError}</span>
+              </div>
+            )}
 
             {/* Action Buttons */}
             <div className="flex flex-wrap gap-2 pt-1">
@@ -230,7 +338,11 @@ export function ProblemEditor({ problems, onChange, noteId }: ProblemEditorProps
                 一键修正
               </button>
               <button
-                onClick={() => { setShowAddForm(false); setNewProblem(createEmptyProblemDraft()); }}
+                onClick={() => {
+                  setShowAddForm(false);
+                  setNewProblem(createEmptyProblemDraft());
+                  setNewProblemError(null);
+                }}
                 className="flex-1 px-3 py-2 rounded-lg bg-surface-container text-on-surface-variant text-sm hover:bg-surface-container-high transition-colors"
               >
                 取消
@@ -250,7 +362,10 @@ export function ProblemEditor({ problems, onChange, noteId }: ProblemEditorProps
       {/* Add Button */}
       {!showAddForm && (
         <button
-          onClick={() => setShowAddForm(true)}
+          onClick={() => {
+            setShowAddForm(true);
+            setNewProblemError(null);
+          }}
           className="w-full px-4 py-3 rounded-xl border-2 border-dashed border-outline-variant/30 text-on-surface-variant hover:border-primary/50 hover:text-primary transition-all duration-200 flex items-center justify-center gap-2 text-sm font-medium"
         >
           <Plus className="w-4 h-4" />
@@ -303,16 +418,18 @@ function ProblemCard({
 }) {
   const [expanded, setExpanded] = useState(false);
   const hasOptions = problem.type === "choice";
+  const choiceOptions = hasOptions ? ensureChoiceOptions(problem.options) : [];
+  const validationIssues = getProblemValidationIssues(hasOptions ? { ...problem, options: choiceOptions } : problem);
 
   const updateOption = (optionIndex: number, field: "label" | "content", value: string) => {
-    const options = [...(problem.options || [])];
+    const options = [...choiceOptions];
     const current = options[optionIndex] || { label: "", content: "" };
     options[optionIndex] = { ...current, [field]: value };
     onUpdate({ options });
   };
 
   const handleRepairProblem = () => {
-    onUpdate(repairProblemMarkdownFields(problem));
+    onUpdate(normalizeProblemDraft(repairProblemMarkdownFields(problem)));
   };
 
   return (
@@ -355,6 +472,11 @@ function ProblemCard({
             {problem.aiStatus === 'complete' && (
               <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 flex items-center gap-1">
                 <Sparkles className="w-3 h-3" /> AI
+              </span>
+            )}
+            {validationIssues.length > 0 && (
+              <span className="text-xs px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200 flex items-center gap-1">
+                <AlertCircle className="w-3 h-3" /> 需检查
               </span>
             )}
           </div>
@@ -404,7 +526,7 @@ function ProblemCard({
                       const nextType = e.target.value as ProblemType;
                       onUpdate({
                         type: nextType,
-                        options: nextType === "choice" ? (problem.options?.length ? problem.options : [{ label: "A", content: "" }]) : undefined,
+                        options: nextType === "choice" ? ensureChoiceOptions(problem.options) : undefined,
                       });
                     }}
                     className="w-full px-3 py-2 bg-surface-container rounded-lg text-sm text-on-surface outline-none focus:ring-2 focus:ring-primary/20"
@@ -429,6 +551,13 @@ function ProblemCard({
               </div>
             </div>
 
+            {validationIssues.length > 0 && (
+              <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
+                <AlertCircle className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
+                <span>{validationIssues[0]}</span>
+              </div>
+            )}
+
             <div>
               <label className="text-xs text-on-surface-variant/60 mb-1 block">题目内容</label>
               <textarea
@@ -447,8 +576,8 @@ function ProblemCard({
                   <button
                     onClick={() => onUpdate({
                       options: [
-                        ...(problem.options || []),
-                        { label: String.fromCharCode(65 + (problem.options?.length || 0)), content: "" },
+                        ...choiceOptions,
+                        { label: String.fromCharCode(65 + choiceOptions.length), content: "" },
                       ],
                     })}
                     className="text-xs text-primary hover:text-primary/80 transition-colors"
@@ -456,7 +585,7 @@ function ProblemCard({
                     添加选项
                   </button>
                 </div>
-                {(problem.options || []).map((option, optionIndex) => (
+                {choiceOptions.map((option, optionIndex) => (
                   <div key={`${option.label}-${optionIndex}`} className="grid grid-cols-[56px_1fr_28px] gap-2 items-start">
                     <input
                       value={option.label}
@@ -472,7 +601,7 @@ function ProblemCard({
                       placeholder="选项内容"
                     />
                     <button
-                      onClick={() => onUpdate({ options: (problem.options || []).filter((_, i) => i !== optionIndex) })}
+                      onClick={() => onUpdate({ options: choiceOptions.filter((_, i) => i !== optionIndex) })}
                       className="mt-1 p-1 rounded hover:bg-surface-container-highest transition-colors"
                       title="删除选项"
                     >
