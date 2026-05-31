@@ -23,13 +23,13 @@ function getBearerToken(req: NextRequest): string | null {
 export async function requireAdminRequest(req: NextRequest): Promise<NextResponse | null> {
   const token = getBearerToken(req);
   if (!token) {
-    return NextResponse.json({ error: "需要管理员登录", success: false }, { status: 401 });
+    return NextResponse.json({ error: "Admin login required", success: false }, { status: 401 });
   }
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   if (!supabaseUrl || !supabaseAnonKey) {
-    return NextResponse.json({ error: "Supabase 服务端配置缺失", success: false }, { status: 500 });
+    return NextResponse.json({ error: "Supabase server config is missing", success: false }, { status: 500 });
   }
 
   const supabase = createClient(supabaseUrl, supabaseAnonKey, {
@@ -41,11 +41,11 @@ export async function requireAdminRequest(req: NextRequest): Promise<NextRespons
 
   const { data, error } = await supabase.auth.getUser(token);
   if (error || !data.user) {
-    return NextResponse.json({ error: "登录状态无效", success: false }, { status: 401 });
+    return NextResponse.json({ error: "Invalid login session", success: false }, { status: 401 });
   }
 
   if (!isServerAdminEmail(data.user.email)) {
-    return NextResponse.json({ error: "没有管理员权限", success: false }, { status: 403 });
+    return NextResponse.json({ error: "Admin permission required", success: false }, { status: 403 });
   }
 
   return null;
