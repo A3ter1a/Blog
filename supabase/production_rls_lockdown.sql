@@ -52,6 +52,7 @@ ALTER TABLE public.admin_users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.notes FORCE ROW LEVEL SECURITY;
 ALTER TABLE public.chapters FORCE ROW LEVEL SECURITY;
 ALTER TABLE public.flashcards FORCE ROW LEVEL SECURITY;
+ALTER TABLE public.admin_users FORCE ROW LEVEL SECURITY;
 
 CREATE OR REPLACE FUNCTION public.is_admin()
 RETURNS boolean
@@ -66,6 +67,9 @@ AS $$
     WHERE lower(admin_users.email) = lower(coalesce(auth.jwt() ->> 'email', ''))
   );
 $$;
+
+REVOKE ALL ON FUNCTION public.is_admin() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.is_admin() TO authenticated;
 
 CREATE POLICY "public_read_published_notes"
   ON public.notes
@@ -176,3 +180,13 @@ COMMIT;
 -- where schemaname = 'public'
 --   and tablename in ('notes', 'chapters', 'flashcards', 'admin_users')
 -- order by tablename, policyname;
+--
+-- select relname, relrowsecurity, relforcerowsecurity
+-- from pg_class
+-- where oid in (
+--   'public.notes'::regclass,
+--   'public.chapters'::regclass,
+--   'public.flashcards'::regclass,
+--   'public.admin_users'::regclass
+-- )
+-- order by relname;
