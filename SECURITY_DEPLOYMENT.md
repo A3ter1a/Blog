@@ -7,13 +7,11 @@
 
 ```env
 ADMIN_EMAILS=your_admin_email@example.com
-NEXT_PUBLIC_ADMIN_EMAILS=your_admin_email@example.com
 DEEPSEEK_API_KEY=your_deepseek_api_key
 QWEN_API_KEY=your_qwen_api_key
 ```
 
-`ADMIN_EMAILS` protects server Route Handlers. `NEXT_PUBLIC_ADMIN_EMAILS`
-only controls client-side UI visibility and must match the same email list.
+`ADMIN_EMAILS` protects server Route Handlers. Keep it server-side only.
 The email list is not a password; Supabase Auth login and RLS remain required.
 
 3. Run `supabase/production_rls_lockdown.sql` in the Supabase SQL Editor.

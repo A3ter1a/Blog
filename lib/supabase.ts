@@ -1,6 +1,5 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { Note, NoteType, Subject, Flashcard, type Problem, type Video } from "./types";
-import { isAdminEmail } from "./admin-auth";
 
 export type NoteRow = {
   id?: string;
@@ -97,12 +96,27 @@ export function getSupabase(): SupabaseClient<Database> {
   return _supabase;
 }
 
-async function assertAdminWrite(): Promise<void> {
-  const { data, error } = await getSupabase().auth.getUser();
-  const email = data.user?.email;
+export async function assertAdminWrite(): Promise<void> {
+  const { data } = await getSupabase().auth.getSession();
+  const token = data.session?.access_token;
 
-  if (error || !isAdminEmail(email)) {
+  if (!token) {
     throw new Error("需要管理员登录后才能修改数据");
+  }
+
+  const res = await fetch("/api/auth/admin", {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+    cache: "no-store",
+  });
+
+  if (!res.ok) {
+    const data: unknown = await res.json().catch(() => null);
+    const message = data && typeof data === "object" && "error" in data && typeof data.error === "string"
+      ? data.error
+      : "需要管理员登录后才能修改数据";
+    throw new Error(message);
   }
 }
 

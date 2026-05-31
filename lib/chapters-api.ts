@@ -1,5 +1,4 @@
-import { getSupabase, type ChapterInsert, type ChapterRow, type ChapterUpdate } from './supabase';
-import { isAdminEmail } from './admin-auth';
+import { assertAdminWrite, getSupabase, type ChapterInsert, type ChapterRow, type ChapterUpdate } from './supabase';
 import type { Chapter } from './types';
 
 // Map snake_case DB row to camelCase Chapter
@@ -15,15 +14,6 @@ function mapChapter(row: ChapterRow): Chapter {
     createdAt: row.created_at ? new Date(row.created_at) : new Date(),
     updatedAt: row.updated_at ? new Date(row.updated_at) : new Date(),
   };
-}
-
-async function assertAdminWrite(): Promise<void> {
-  const { data, error } = await getSupabase().auth.getUser();
-  const email = data.user?.email;
-
-  if (error || !isAdminEmail(email)) {
-    throw new Error('需要管理员登录后才能修改章节');
-  }
 }
 
 export const chaptersApi = {
