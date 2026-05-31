@@ -4,21 +4,21 @@
 
 ## 当前结论
 
-本地最新版已经通过关键检查：
+当前自动验收已经通过关键未登录安全检查：
 
 - `/debug` 在生产模式返回 `404`
 - 未登录访问 `/api/auth/admin` 返回 `401`
 - 未登录访问 `/api/ai/config` 返回 `401`
 - 未登录首页不再显示明显的“创建”入口
 
-但公网仍需要单独确认，因为线上可能还没有部署到最新提交，或者缓存仍在使用旧版本。
+但 Supabase RLS 和管理员登录后的功能仍需要在后台与浏览器中单独确认。
 
 ## 第一步：确认 Vercel 部署版本
 
 进入 Vercel 项目后台，确认生产环境部署使用的 commit 是：
 
 ```text
-c9c2307 Clear client AI keys in production
+b4258ff Add production security verification checklist
 ```
 
 如果不是这个提交，先重新部署 `main` 分支。
