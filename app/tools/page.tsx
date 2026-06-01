@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Clock, ChevronRight } from "lucide-react";
+import { Clock, ChevronRight, Target } from "lucide-react";
 
 export default function ToolsPage() {
   const tools = [
@@ -14,6 +14,16 @@ export default function ToolsPage() {
       href: "#",
       comingSoon: false,
       note: "已在笔记页面自动显示",
+    },
+    {
+      id: "problem-practice",
+      title: "刷题",
+      description: "从题集里练题，并记录一刷、二刷和最近答题状态",
+      icon: Target,
+      color: "bg-green-500/10 text-green-600",
+      href: "/practice",
+      comingSoon: false,
+      note: "题集专用",
     },
   ];
 

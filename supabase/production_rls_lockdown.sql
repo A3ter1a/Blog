@@ -5,7 +5,7 @@
 -- - Visitors can read published notes.
 -- - Visitors can read only chapters needed by published notes plus global templates.
 -- - Visitors can read the public About page profile.
--- - Visitors cannot create, update, or delete notes, chapters, or flashcards.
+-- - Visitors cannot create, update, or delete notes, chapters, flashcards, or practice status.
 -- - Authenticated admins can create, update, and delete private content.
 -- - Flashcards are private to admins.
 -- - Note images are publicly readable but writable only by admins.
@@ -32,7 +32,7 @@ BEGIN
     SELECT schemaname, tablename, policyname
     FROM pg_policies
     WHERE (schemaname = 'public'
-      AND tablename IN ('notes', 'chapters', 'flashcards', 'admin_users', 'site_profile'))
+      AND tablename IN ('notes', 'chapters', 'flashcards', 'problem_practice_statuses', 'admin_users', 'site_profile'))
       OR (schemaname = 'storage' AND tablename = 'objects')
   LOOP
     EXECUTE format(
@@ -61,6 +61,29 @@ CREATE TABLE IF NOT EXISTS public.site_profile (
   CONSTRAINT site_profile_singleton CHECK (id = 'main')
 );
 
+CREATE TABLE IF NOT EXISTS public.problem_practice_statuses (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL DEFAULT auth.uid(),
+  note_id uuid NOT NULL REFERENCES public.notes(id) ON DELETE CASCADE,
+  problem_id text NOT NULL,
+  round integer NOT NULL DEFAULT 0 CHECK (round >= 0),
+  attempts integer NOT NULL DEFAULT 0 CHECK (attempts >= 0),
+  correct_count integer NOT NULL DEFAULT 0 CHECK (correct_count >= 0),
+  wrong_count integer NOT NULL DEFAULT 0 CHECK (wrong_count >= 0),
+  last_result text CHECK (last_result IN ('correct', 'wrong', 'skipped')),
+  is_mastered boolean NOT NULL DEFAULT false,
+  last_practiced_at timestamptz,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (user_id, note_id, problem_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_problem_practice_user_note
+  ON public.problem_practice_statuses (user_id, note_id);
+
+CREATE INDEX IF NOT EXISTS idx_problem_practice_last_practiced
+  ON public.problem_practice_statuses (user_id, last_practiced_at DESC);
+
 INSERT INTO public.site_profile (id, profile)
 VALUES (
   'main',
@@ -87,10 +110,12 @@ SET public = true;
 
 ALTER TABLE public.admin_users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.site_profile ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.problem_practice_statuses ENABLE ROW LEVEL SECURITY;
 
 ALTER TABLE public.notes FORCE ROW LEVEL SECURITY;
 ALTER TABLE public.chapters FORCE ROW LEVEL SECURITY;
 ALTER TABLE public.flashcards FORCE ROW LEVEL SECURITY;
+ALTER TABLE public.problem_practice_statuses FORCE ROW LEVEL SECURITY;
 ALTER TABLE public.admin_users FORCE ROW LEVEL SECURITY;
 ALTER TABLE public.site_profile FORCE ROW LEVEL SECURITY;
 
@@ -206,6 +231,31 @@ CREATE POLICY "admin_delete_flashcards"
   TO authenticated
   USING (public.is_admin());
 
+CREATE POLICY "admin_read_problem_practice_statuses"
+  ON public.problem_practice_statuses
+  FOR SELECT
+  TO authenticated
+  USING (user_id = auth.uid() AND public.is_admin());
+
+CREATE POLICY "admin_insert_problem_practice_statuses"
+  ON public.problem_practice_statuses
+  FOR INSERT
+  TO authenticated
+  WITH CHECK (user_id = auth.uid() AND public.is_admin());
+
+CREATE POLICY "admin_update_problem_practice_statuses"
+  ON public.problem_practice_statuses
+  FOR UPDATE
+  TO authenticated
+  USING (user_id = auth.uid() AND public.is_admin())
+  WITH CHECK (user_id = auth.uid() AND public.is_admin());
+
+CREATE POLICY "admin_delete_problem_practice_statuses"
+  ON public.problem_practice_statuses
+  FOR DELETE
+  TO authenticated
+  USING (user_id = auth.uid() AND public.is_admin());
+
 CREATE POLICY "admin_read_admin_users"
   ON public.admin_users
   FOR SELECT
@@ -268,7 +318,7 @@ COMMIT;
 -- select schemaname, tablename, policyname, cmd, roles, qual, with_check
 -- from pg_policies
 -- where schemaname = 'public'
---   and tablename in ('notes', 'chapters', 'flashcards', 'admin_users', 'site_profile')
+--   and tablename in ('notes', 'chapters', 'flashcards', 'problem_practice_statuses', 'admin_users', 'site_profile')
 -- order by tablename, policyname;
 --
 -- select schemaname, tablename, policyname, cmd, roles, qual, with_check
@@ -283,6 +333,7 @@ COMMIT;
 --   'public.notes'::regclass,
 --   'public.chapters'::regclass,
 --   'public.flashcards'::regclass,
+--   'public.problem_practice_statuses'::regclass,
 --   'public.admin_users'::regclass,
 --   'public.site_profile'::regclass
 -- )

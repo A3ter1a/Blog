@@ -1,5 +1,5 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import { Note, NoteType, Subject, Flashcard, type Problem, type Profile, type Video } from "./types";
+import { Note, NoteType, Subject, Flashcard, type PracticeResult, type Problem, type ProblemPracticeStatus, type Profile, type Video } from "./types";
 import { DEFAULT_PROFILE, normalizeProfile } from "./profile";
 
 export type NoteRow = {
@@ -45,6 +45,25 @@ export type FlashcardRow = {
 export type FlashcardInsert = Partial<FlashcardRow>;
 export type FlashcardUpdate = Partial<FlashcardRow>;
 
+export type ProblemPracticeStatusRow = {
+  id?: string;
+  user_id?: string | null;
+  note_id?: string | null;
+  problem_id?: string | null;
+  round?: number | null;
+  attempts?: number | null;
+  correct_count?: number | null;
+  wrong_count?: number | null;
+  last_result?: PracticeResult | null;
+  is_mastered?: boolean | null;
+  last_practiced_at?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+};
+
+export type ProblemPracticeStatusInsert = Partial<ProblemPracticeStatusRow>;
+export type ProblemPracticeStatusUpdate = Partial<ProblemPracticeStatusRow>;
+
 export type ChapterRow = {
   id?: string;
   note_id?: string | null;
@@ -83,6 +102,12 @@ type Database = {
         Row: FlashcardRow;
         Insert: FlashcardInsert;
         Update: FlashcardUpdate;
+        Relationships: [];
+      };
+      problem_practice_statuses: {
+        Row: ProblemPracticeStatusRow;
+        Insert: ProblemPracticeStatusInsert;
+        Update: ProblemPracticeStatusUpdate;
         Relationships: [];
       };
       chapters: {
@@ -141,11 +166,13 @@ export function getSupabase(): SupabaseClient<Database> {
   return _supabase;
 }
 
-export async function assertAdminWrite(): Promise<void> {
+export async function assertAdminWrite(): Promise<string> {
   const { data } = await getSupabase().auth.getSession();
-  const token = data.session?.access_token;
+  const session = data.session;
+  const token = session?.access_token;
+  const userId = session?.user.id;
 
-  if (!token) {
+  if (!token || !userId) {
     throw new Error("需要管理员登录后才能修改数据");
   }
 
@@ -163,6 +190,7 @@ export async function assertAdminWrite(): Promise<void> {
       : "需要管理员登录后才能修改数据";
     throw new Error(message);
   }
+  return userId;
 }
 
 async function hasAdminSession(): Promise<boolean> {
@@ -534,5 +562,88 @@ export const flashcardsApi = {
 
     if (error) throw error;
     return data?.length || 0;
+  },
+};
+
+function mapPracticeStatusSnakeToCamel(row: ProblemPracticeStatusRow): ProblemPracticeStatus {
+  const createdAt = row.created_at ? new Date(row.created_at) : new Date();
+  const updatedAt = row.updated_at ? new Date(row.updated_at) : createdAt;
+
+  return {
+    id: row.id ?? "",
+    noteId: row.note_id ?? "",
+    problemId: row.problem_id ?? "",
+    round: row.round ?? 0,
+    attempts: row.attempts ?? 0,
+    correctCount: row.correct_count ?? 0,
+    wrongCount: row.wrong_count ?? 0,
+    lastResult: row.last_result || undefined,
+    isMastered: row.is_mastered ?? false,
+    lastPracticedAt: row.last_practiced_at ? new Date(row.last_practiced_at) : undefined,
+    createdAt,
+    updatedAt,
+  };
+}
+
+export const problemPracticeApi = {
+  async getByNoteId(noteId: string): Promise<ProblemPracticeStatus[]> {
+    const supabase = getSupabase();
+    const { data, error } = await supabase
+      .from("problem_practice_statuses")
+      .select("*")
+      .eq("note_id", noteId);
+
+    if (error) throw error;
+    return (data || []).map(mapPracticeStatusSnakeToCamel);
+  },
+
+  async recordResult(
+    noteId: string,
+    problemId: string,
+    result: PracticeResult,
+    current?: ProblemPracticeStatus
+  ): Promise<ProblemPracticeStatus> {
+    const userId = await assertAdminWrite();
+    const supabase = getSupabase();
+    const now = new Date().toISOString();
+    const nextRound = (current?.round ?? 0) + 1;
+    const nextAttempts = (current?.attempts ?? 0) + 1;
+
+    const payload: ProblemPracticeStatusInsert = {
+      user_id: userId,
+      note_id: noteId,
+      problem_id: problemId,
+      round: nextRound,
+      attempts: nextAttempts,
+      correct_count: (current?.correctCount ?? 0) + (result === "correct" ? 1 : 0),
+      wrong_count: (current?.wrongCount ?? 0) + (result === "wrong" ? 1 : 0),
+      last_result: result,
+      is_mastered: result === "correct" && nextRound >= 2,
+      last_practiced_at: now,
+      updated_at: now,
+      created_at: current ? undefined : now,
+    };
+
+    const { data, error } = await supabase
+      .from("problem_practice_statuses")
+      .upsert(payload, { onConflict: "user_id,note_id,problem_id" })
+      .select()
+      .single();
+
+    if (error) throw error;
+    return mapPracticeStatusSnakeToCamel(data);
+  },
+
+  async reset(noteId: string, problemId: string): Promise<void> {
+    const userId = await assertAdminWrite();
+    const supabase = getSupabase();
+    const { error } = await supabase
+      .from("problem_practice_statuses")
+      .delete()
+      .eq("user_id", userId)
+      .eq("note_id", noteId)
+      .eq("problem_id", problemId);
+
+    if (error) throw error;
   },
 };

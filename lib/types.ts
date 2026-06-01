@@ -196,3 +196,20 @@ export interface Flashcard {
 }
 
 export type ReviewQuality = 0 | 1 | 2 | 3 | 4 | 5;
+
+export type PracticeResult = 'correct' | 'wrong' | 'skipped';
+
+export interface ProblemPracticeStatus {
+  id: string;
+  noteId: string;
+  problemId: string;
+  round: number;
+  attempts: number;
+  correctCount: number;
+  wrongCount: number;
+  lastResult?: PracticeResult;
+  isMastered: boolean;
+  lastPracticedAt?: Date;
+  createdAt: Date;
+  updatedAt: Date;
+}

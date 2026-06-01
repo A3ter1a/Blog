@@ -13,6 +13,7 @@ const navItems = [
   { name: "首页", href: "/" },
   { name: "笔记", href: "/notes" },
   { name: "创建", href: "/create" },
+  { name: "刷题", href: "/practice", adminOnly: true },
   { name: "工具", href: "/tools" },
   { name: "关于", href: "/about" },
 ];
@@ -61,7 +62,7 @@ export function Navbar() {
 
         {/* Desktop Navigation */}
         <div className="hidden md:flex gap-12 items-center">
-          {navItems.filter((item) => isAdmin || item.href !== "/create").map((item) => {
+          {navItems.filter((item) => isAdmin || (!item.adminOnly && item.href !== "/create")).map((item) => {
             const isActive = item.href === "/" 
               ? pathname === "/" 
               : pathname === item.href || pathname.startsWith(item.href + "/");
