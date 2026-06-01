@@ -26,6 +26,13 @@ export type NoteSummaryQueryOptions = {
   sortOrder?: "desc" | "asc";
   limit?: number;
   offset?: number;
+  includeCoverImage?: boolean;
+};
+
+export type NoteSearchSummaryOptions = {
+  limit?: number;
+  includeContent?: boolean;
+  includeCoverImage?: boolean;
 };
 
 export type FlashcardRow = {
@@ -131,7 +138,7 @@ type Database = {
 };
 
 const SITE_PROFILE_ID = "main";
-const NOTE_SUMMARY_FIELDS = `
+const NOTE_SUMMARY_FIELDS_WITH_COVER = `
         id,
         type,
         title,
@@ -142,6 +149,21 @@ const NOTE_SUMMARY_FIELDS = `
         updated_at,
         is_published
       `;
+
+const NOTE_SUMMARY_FIELDS_WITHOUT_COVER = `
+        id,
+        type,
+        title,
+        subject,
+        tags,
+        created_at,
+        updated_at,
+        is_published
+      `;
+
+function getNoteSummaryFields(includeCoverImage = true): string {
+  return includeCoverImage ? NOTE_SUMMARY_FIELDS_WITH_COVER : NOTE_SUMMARY_FIELDS_WITHOUT_COVER;
+}
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
@@ -257,7 +279,7 @@ export const notesApi = {
     const ascending = options.sortOrder === "asc";
     let query = supabase
       .from("notes")
-      .select(NOTE_SUMMARY_FIELDS)
+      .select(getNoteSummaryFields(options.includeCoverImage))
       .eq("is_published", true)
       .order("created_at", { ascending });
 
@@ -271,7 +293,28 @@ export const notesApi = {
     const { data, error } = await query;
 
     if (error) throw error;
-    return (data || []).map(mapSnakeToCamel);
+    return ((data || []) as NoteRow[]).map(mapSnakeToCamel);
+  },
+
+  async getSummaryCoverImages(ids: string[]): Promise<Record<string, string>> {
+    const uniqueIds = [...new Set(ids.filter(Boolean))];
+    if (uniqueIds.length === 0) return {};
+
+    const supabase = getSupabase();
+    const { data, error } = await supabase
+      .from("notes")
+      .select("id, cover_image")
+      .eq("is_published", true)
+      .in("id", uniqueIds);
+
+    if (error) throw error;
+
+    const rows = (data || []) as Array<Pick<NoteRow, "id" | "cover_image">>;
+    return Object.fromEntries(
+      rows
+        .filter((row) => row.id && row.cover_image)
+        .map((row) => [row.id as string, row.cover_image as string]),
+    );
   },
 
   // Backward-compatible alias. Prefer getSummaries() for list pages.
@@ -364,10 +407,12 @@ export const notesApi = {
     type?: NoteType,
     subject?: Subject,
     sortOrder: "desc" | "asc" = "desc",
+    options: NoteSearchSummaryOptions = {},
   ): Promise<Note[]> {
     const term = normalizeSearchTerm(query);
     if (!term) return [];
     const tagTerms = [...new Set(term.split(" ").filter(Boolean))];
+    const maxResults = Math.max(1, Math.min(options.limit ?? 48, 100));
 
     const supabase = getSupabase();
     const ascending = sortOrder === "asc";
@@ -375,7 +420,7 @@ export const notesApi = {
     const baseQuery = () => {
       let q = supabase
         .from("notes")
-        .select(NOTE_SUMMARY_FIELDS)
+        .select(getNoteSummaryFields(options.includeCoverImage))
         .eq("is_published", true);
 
       if (type) q = q.eq("type", type);
@@ -383,21 +428,36 @@ export const notesApi = {
       return q;
     };
 
-    const [textResult, tagResult] = await Promise.all([
+    const searchQueries = [
       baseQuery()
-        .or(`title.ilike.%${term}%,content.ilike.%${term}%`)
-        .order("created_at", { ascending }),
+        .ilike("title", `%${term}%`)
+        .order("created_at", { ascending })
+        .limit(maxResults),
       baseQuery()
         .overlaps("tags", tagTerms)
-        .order("created_at", { ascending }),
-    ]);
+        .order("created_at", { ascending })
+        .limit(maxResults),
+    ];
 
-    if (textResult.error) throw textResult.error;
-    if (tagResult.error) throw tagResult.error;
+    if (options.includeContent) {
+      searchQueries.push(
+        baseQuery()
+          .ilike("content", `%${term}%`)
+          .order("created_at", { ascending })
+          .limit(maxResults),
+      );
+    }
+
+    const results = await Promise.all(searchQueries);
+    for (const result of results) {
+      if (result.error) throw result.error;
+    }
 
     const rowsById = new Map<string, NoteRow>();
-    for (const row of [...(textResult.data || []), ...(tagResult.data || [])]) {
-      if (row.id) rowsById.set(row.id, row);
+    for (const result of results) {
+      for (const row of (result.data || []) as NoteRow[]) {
+        if (row.id) rowsById.set(row.id, row);
+      }
     }
 
     return [...rowsById.values()]
@@ -405,7 +465,8 @@ export const notesApi = {
       .sort((a, b) => {
         const diff = b.createdAt.getTime() - a.createdAt.getTime();
         return sortOrder === "desc" ? diff : -diff;
-      });
+      })
+      .slice(0, maxResults);
   },
 
   // Backward-compatible alias. Prefer searchSummaries() for list pages.

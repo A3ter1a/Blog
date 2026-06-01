@@ -12,7 +12,7 @@ import { CheckSquare, Square, Download, X, Trash2, AlertTriangle, Loader2 } from
 import { useAdminAuth } from "@/hooks/useAdminAuth";
 import { useToast } from "@/components/ui/Toast";
 import { getNotesCacheKey, readNotesCache, writeNotesCache } from "@/lib/notes-list-cache";
-import { NOTES_PAGE_SIZE } from "@/lib/notes-query";
+import { NOTES_PAGE_SIZE, NOTES_SEARCH_RESULT_LIMIT } from "@/lib/notes-query";
 
 interface NotesClientProps {
   initialNotes?: Note[];
@@ -49,12 +49,15 @@ export function NotesClient({
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isDeletingNotes, setIsDeletingNotes] = useState(false);
   const latestLoadId = useRef(0);
+  const latestCoverLoadId = useRef(0);
   const notesRef = useRef<Note[]>(initialNotes);
 
   const setVisibleNotes = useCallback((nextNotes: Note[]) => {
     notesRef.current = nextNotes;
     setNotes(nextNotes);
   }, []);
+
+  const visibleNoteIdsKey = useMemo(() => notes.map((note) => note.id).join("|"), [notes]);
 
   const fetchNotesPage = useCallback(async (
     offset: number,
@@ -77,13 +80,17 @@ export function NotesClient({
       }
 
       const data = query
-        ? await notesApi.searchSummaries(query, typeFilter, subjectFilter, sortOrder)
+        ? await notesApi.searchSummaries(query, typeFilter, subjectFilter, sortOrder, {
+          limit: NOTES_SEARCH_RESULT_LIMIT,
+          includeCoverImage: false,
+        })
         : await notesApi.getSummaries({
           type: typeFilter,
           subject: subjectFilter,
           sortOrder,
           limit: NOTES_PAGE_SIZE + 1,
           offset,
+          includeCoverImage: false,
         });
 
       if (latestLoadId.current === loadId) {
@@ -138,7 +145,9 @@ export function NotesClient({
       setLoading(false);
     } else if (canKeepInitialRouteData) {
       setLoading(false);
-      setIsRefreshingNotes(true);
+      setIsRefreshingNotes(false);
+      writeNotesCache(cacheKey, notesRef.current, initialHasMoreNotes);
+      return;
     } else {
       setVisibleNotes([]);
       setHasMoreNotes(false);
@@ -150,7 +159,33 @@ export function NotesClient({
     }, searchQuery.trim() ? 250 : 0);
 
     return () => window.clearTimeout(timer);
-  }, [fetchNotesPage, searchQuery, selectedSubject, selectedType, sortOrder]);
+  }, [fetchNotesPage, initialHasMoreNotes, searchQuery, selectedSubject, selectedType, sortOrder, setVisibleNotes]);
+
+  useEffect(() => {
+    const ids = visibleNoteIdsKey ? visibleNoteIdsKey.split("|") : [];
+    if (ids.length === 0) return;
+
+    const loadId = latestCoverLoadId.current + 1;
+    latestCoverLoadId.current = loadId;
+
+    void notesApi.getSummaryCoverImages(ids)
+      .then((coverImages) => {
+        if (latestCoverLoadId.current !== loadId) return;
+
+        setVisibleNotes(
+          notesRef.current.map((note) => {
+            const coverImage = coverImages[note.id];
+            if (!coverImage || coverImage === note.coverImage) return note;
+            return { ...note, coverImage };
+          }),
+        );
+      })
+      .catch((error) => {
+        if (latestCoverLoadId.current === loadId) {
+          console.warn("Failed to load note covers:", error);
+        }
+      });
+  }, [setVisibleNotes, visibleNoteIdsKey]);
 
   const handleLoadMore = useCallback(() => {
     if (loading || isLoadingMore || !hasMoreNotes || searchQuery.trim()) return;

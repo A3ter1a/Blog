@@ -17,6 +17,7 @@ async function getInitialNotes(): Promise<InitialNotesPayload> {
       sortOrder: "desc",
       limit: NOTES_PAGE_SIZE + 1,
       offset: 0,
+      includeCoverImage: false,
     });
 
     return {

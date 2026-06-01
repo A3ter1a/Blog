@@ -33,7 +33,10 @@ export function SearchOverlay({ isOpen, onClose }: SearchOverlayProps) {
     latestSearchId.current = searchId;
     setIsSearching(true);
     try {
-      const notes = await notesApi.searchSummaries(searchQuery);
+      const notes = await notesApi.searchSummaries(searchQuery, undefined, undefined, "desc", {
+        limit: 8,
+        includeCoverImage: false,
+      });
       if (latestSearchId.current === searchId) {
         setResults(notes);
       }
@@ -113,7 +116,7 @@ export function SearchOverlay({ isOpen, onClose }: SearchOverlayProps) {
                   type="text"
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
-                  placeholder="搜索笔记标题、内容或标签..."
+                  placeholder="搜索笔记标题或标签..."
                   className="flex-1 bg-transparent outline-none text-on-surface placeholder:text-on-surface-variant/40 text-lg"
                 />
                 {query && (
