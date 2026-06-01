@@ -1,4 +1,5 @@
-import { NotesClient, NOTES_PAGE_SIZE } from "@/components/notes/NotesClient";
+import { NotesClient } from "@/components/notes/NotesClient";
+import { NOTES_PAGE_SIZE } from "@/lib/notes-query";
 import { notesApi } from "@/lib/supabase";
 import type { Note } from "@/lib/types";
 

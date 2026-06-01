@@ -1,12 +1,11 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useCallback } from "react";
 import { motion } from "framer-motion";
 import { useRouter } from "next/navigation";
 import type { Editor } from "@tiptap/react";
 import { Save, RotateCcw, X, Image as ImageIcon, Sparkles, FolderTree, Columns, Maximize2, Eye, Loader2 } from "lucide-react";
 import { Subject, subjectMap, NoteType, typeMap, Video, Problem } from "@/lib/types";
-import { notesApi } from "@/lib/supabase";
 import { Playlist } from "@/components/video/Playlist";
 import { ProblemEditor } from "@/components/problems/ProblemEditor";
 import { ChapterManager } from "@/components/chapters/ChapterManager";
@@ -18,18 +17,9 @@ import { FormulaFixer } from "@/components/editor/FormulaFixer";
 import { uploadImage, generateFileName } from "@/lib/supabase-storage";
 import { repairMarkdown } from "@/lib/markdown";
 import { AdminGate } from "@/components/auth/AdminGate";
-import { getProblemsValidationIssues, normalizeProblem } from "@/lib/problem-utils";
-
-type ImportDraft = {
-  title?: string;
-  content?: string;
-  tags?: string[];
-  noteType?: NoteType;
-  subject?: Subject;
-  problems?: Problem[];
-  coverImage?: string;
-  videos?: Video[];
-};
+import { useCoverUpload } from "@/hooks/useCoverUpload";
+import { useNoteSave } from "@/hooks/useNoteSave";
+import { type ImportDraft, type NoteEditorDraft, useNoteEditorRoute } from "@/hooks/useNoteEditorRoute";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -69,11 +59,6 @@ export default function CreatePage() {
   const toast = useToast();
   const [initialImportDraft] = useState<ImportDraft | null>(getPendingImportDraft);
 
-  const [routeReady, setRouteReady] = useState(false);
-  const [isEditMode, setIsEditMode] = useState(false);
-  const [editingId, setEditingId] = useState<string>("");
-  const [isLoadingExistingNote, setIsLoadingExistingNote] = useState(false);
-  const [loadError, setLoadError] = useState<string | null>(null);
   const [noteType, setNoteType] = useState<NoteType>(initialImportDraft?.noteType ?? "note");
   const [title, setTitle] = useState(initialImportDraft?.title ?? "");
   const [subject, setSubject] = useState<Subject>(initialImportDraft?.subject ?? "math");
@@ -82,11 +67,16 @@ export default function CreatePage() {
   const [videos, setVideos] = useState<Video[]>(initialImportDraft?.videos ?? []);
   const [problems, setProblems] = useState<Problem[]>(initialImportDraft?.problems ?? []);
   const [hasProblemChanges, setHasProblemChanges] = useState(false);
-  const [coverImage, setCoverImage] = useState(initialImportDraft?.coverImage ?? "");
-  const [coverPreviewSrc, setCoverPreviewSrc] = useState(initialImportDraft?.coverImage ?? "");
-  const [coverUploadError, setCoverUploadError] = useState<string | null>(null);
-  const [isUploadingCover, setIsUploadingCover] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
+  const {
+    coverImage,
+    coverPreviewSrc,
+    coverUploadError,
+    isUploadingCover,
+    setCoverImageUrl,
+    clearCoverImage,
+    handleCoverImageUpload,
+  } = useCoverUpload(initialImportDraft?.coverImage ?? "");
+  const { isSaving, saveNote } = useNoteSave();
   const [showVideoSection, setShowVideoSection] = useState(false);
   const [editorReady, setEditorReady] = useState(false);
   const [showFormulaFixer, setShowFormulaFixer] = useState(false);
@@ -97,13 +87,42 @@ export default function CreatePage() {
   const editorScrollRef = useRef<HTMLDivElement>(null);
   const previewScrollRef = useRef<HTMLDivElement>(null);
   const isSyncingScroll = useRef(false);
-  const coverObjectUrlRef = useRef<string | null>(null);
 
-  const revokeCoverObjectUrl = useCallback(() => {
-    if (!coverObjectUrlRef.current) return;
-    URL.revokeObjectURL(coverObjectUrlRef.current);
-    coverObjectUrlRef.current = null;
-  }, []);
+  const applyDraft = useCallback((draft: NoteEditorDraft) => {
+    setNoteType(draft.noteType);
+    setTitle(draft.title);
+    setSubject(draft.subject);
+    setTagInput(draft.tagInput);
+    setContent(draft.content);
+    setVideos(draft.videos);
+    setProblems(draft.problems);
+    setHasProblemChanges(false);
+    setCoverImageUrl(draft.coverImage);
+  }, [setCoverImageUrl]);
+
+  const resetDraft = useCallback(() => {
+    setNoteType("note");
+    setTitle("");
+    setSubject("math");
+    setTagInput("");
+    setContent("");
+    setVideos([]);
+    setProblems([]);
+    setHasProblemChanges(false);
+    setCoverImageUrl("");
+  }, [setCoverImageUrl]);
+
+  const {
+    routeReady,
+    isEditMode,
+    editingId,
+    isLoadingExistingNote,
+    loadError,
+  } = useNoteEditorRoute({
+    initialImportDraft,
+    applyDraft,
+    resetDraft,
+  });
 
   // Synchronize scroll between editor and preview panels
   const syncScroll = useCallback((source: HTMLDivElement, target: HTMLDivElement) => {
@@ -158,178 +177,30 @@ export default function CreatePage() {
     toast.success("已自动修正 Markdown 语法");
   }, [content, toast]);
 
-  // Load note data if in edit mode or import mode
-  useEffect(() => {
-    const searchParams = new URLSearchParams(window.location.search);
-    const editId = searchParams.get("edit");
-    const importMode = searchParams.get("import");
-    let cancelled = false;
-    
-    if (editId) {
-      setIsEditMode(true);
-      setEditingId(editId);
-      setIsLoadingExistingNote(true);
-      setLoadError(null);
-
-      notesApi.getById(editId).then((existingNote) => {
-        if (cancelled) return;
-        if (existingNote) {
-          setNoteType(existingNote.type);
-          setTitle(existingNote.title);
-          setSubject(existingNote.subject || "math");
-          setTagInput(existingNote.tags.join(", "));
-          setContent(existingNote.content);
-          setVideos(existingNote.videos || []);
-          setProblems(existingNote.problems || []);
-          setHasProblemChanges(false);
-          setCoverImage(existingNote.coverImage || "");
-          setCoverPreviewSrc(existingNote.coverImage || "");
-          setCoverUploadError(null);
-        } else {
-          const message = "没有找到要编辑的笔记，可能已被删除或没有权限访问";
-          setLoadError(message);
-          toast.error(message);
-        }
-      }).catch((error) => {
-        if (cancelled) return;
-        console.error("Failed to load note:", error);
-        const message = error instanceof Error ? error.message : "未知错误";
-        setLoadError(`加载笔记失败：${message}`);
-        toast.error("加载笔记失败");
-      }).finally(() => {
-        if (!cancelled) {
-          setIsLoadingExistingNote(false);
-          setRouteReady(true);
-        }
-      });
-    } else if (importMode) {
-      setIsEditMode(false);
-      setEditingId("");
-      setLoadError(null);
-      setIsLoadingExistingNote(false);
-      setHasProblemChanges(false);
-      if (initialImportDraft) {
-        toast.success('已自动填充导入内容，请检查后发布');
-        sessionStorage.removeItem('pendingImport');
-      }
-      setRouteReady(true);
-    } else {
-      setIsEditMode(false);
-      setEditingId("");
-      setLoadError(null);
-      setIsLoadingExistingNote(false);
-      setHasProblemChanges(false);
-      setRouteReady(true);
-    }
-
-    return () => {
-      cancelled = true;
-    };
-  }, [initialImportDraft, toast]);
-
-  useEffect(() => {
-    return () => {
-      revokeCoverObjectUrl();
-    };
-  }, [revokeCoverObjectUrl]);
-
   const handleSave = async () => {
-    if (isSaving) return;
-
-    if (isUploadingCover) {
-      toast.error("封面图片还在上传，请稍后再保存");
-      return;
-    }
-
-    if (coverImage.startsWith("blob:")) {
-      toast.error("封面图片还没有上传成功，请重新上传后再保存");
-      return;
-    }
-
-    if (!title.trim()) {
-      toast.error("请输入标题");
-      return;
-    }
-
-    if (isEditMode && !editingId) {
-      toast.error("编辑目标尚未加载完成，请稍后再试");
-      return;
-    }
-
-    const normalizedProblems = noteType === "problem" ? problems.map(normalizeProblem) : undefined;
-    if (normalizedProblems) {
-      const firstInvalidProblem = getProblemsValidationIssues(normalizedProblems)[0];
-      if (firstInvalidProblem) {
-        toast.error(`第 ${firstInvalidProblem.index + 1} 题：${firstInvalidProblem.issues[0]}`);
-        return;
-      }
-    }
-
-    const tags = tagInput.split(/[,，]/).map(t => t.trim()).filter(Boolean);
-
-    const noteData = {
+    const result = await saveNote({
+      isEditMode,
+      editingId,
       noteType,
       title,
-      subject: noteType === "essay" ? undefined : subject,
-      tags,
+      subject,
+      tagInput,
       content,
       videos,
-      problems: normalizedProblems,
-      coverImage: coverImage || undefined,
-    };
+      problems,
+      coverImage,
+      isUploadingCover,
+    });
 
-    setIsSaving(true);
-    try {
-      if (isEditMode) {
-        await notesApi.update(editingId, {
-          type: noteData.noteType,
-          title: noteData.title,
-          subject: noteData.subject,
-          tags: noteData.tags,
-          content: noteData.content,
-          videos: noteData.videos,
-          problems: noteData.problems,
-          coverImage: noteData.coverImage,
-        });
-        setHasProblemChanges(false);
-        toast.success("笔记已更新！");
-        router.push(`/notes/${editingId}`);
-      } else {
-        const newNote = await notesApi.create({
-          type: noteData.noteType,
-          title: noteData.title,
-          subject: noteData.subject,
-          tags: noteData.tags,
-          content: noteData.content,
-          videos: noteData.videos,
-          problems: noteData.problems,
-          coverImage: noteData.coverImage,
-          isPublished: true,
-        });
-        setHasProblemChanges(false);
-        toast.success("笔记已创建！");
-        router.push(`/notes/${newNote.id}`);
-      }
-    } catch (error: unknown) {
-      console.error("Failed to save note:", error);
-      toast.error(`保存失败：${error instanceof Error ? error.message : "未知错误"}`);
-    } finally {
-      setIsSaving(false);
-    }
+    if (!result) return;
+    setHasProblemChanges(false);
+    router.push("/notes/" + result.id);
   };
 
   const handleClear = () => {
     if (isSaving) return;
-    setTitle("");
-    setContent("");
-    setTagInput("");
-    setVideos([]);
-    setProblems([]);
+    resetDraft();
     setHasProblemChanges(true);
-    setCoverImage("");
-    setCoverPreviewSrc("");
-    setCoverUploadError(null);
-    revokeCoverObjectUrl();
   };
 
   // Editor toolbar handlers - only complex operations remain
@@ -364,43 +235,6 @@ export default function CreatePage() {
       }
     };
     input.click();
-  };
-
-  const handleCoverImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    if (!file.type.startsWith("image/")) {
-      setCoverUploadError("请选择图片文件");
-      toast.error("请选择图片文件");
-      e.target.value = "";
-      return;
-    }
-
-    revokeCoverObjectUrl();
-    const previousCoverImage = coverImage;
-    const previewUrl = URL.createObjectURL(file);
-    coverObjectUrlRef.current = previewUrl;
-    setCoverPreviewSrc(previewUrl);
-    setCoverUploadError(null);
-    setIsUploadingCover(true);
-    try {
-      const ext = file.name.split(".").pop()?.toLowerCase() || "png";
-      const url = await uploadImage(file, generateFileName("cover", ext));
-      revokeCoverObjectUrl();
-      setCoverImage(url);
-      setCoverPreviewSrc(url);
-      toast.success("封面图片已上传");
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "未知错误";
-      revokeCoverObjectUrl();
-      setCoverPreviewSrc(previousCoverImage);
-      setCoverUploadError(`上传失败：${message}`);
-      toast.error(`封面上传失败：${message}`);
-    } finally {
-      setIsUploadingCover(false);
-      e.target.value = "";
-    }
   };
 
   const isEssay = noteType === "essay";
@@ -514,12 +348,7 @@ export default function CreatePage() {
             <input
               type="text"
               value={coverImage}
-              onChange={(e) => {
-                revokeCoverObjectUrl();
-                setCoverImage(e.target.value);
-                setCoverPreviewSrc(e.target.value);
-                setCoverUploadError(null);
-              }}
+              onChange={(e) => setCoverImageUrl(e.target.value)}
               placeholder="输入图片 URL..."
               className="flex-1 px-4 py-3 bg-surface-container-low rounded-xl input-soft text-on-surface placeholder:text-on-surface-variant/40"
             />
@@ -542,12 +371,7 @@ export default function CreatePage() {
             {coverImage && (
               <button
                 type="button"
-                onClick={() => {
-                  revokeCoverObjectUrl();
-                  setCoverImage("");
-                  setCoverPreviewSrc("");
-                  setCoverUploadError(null);
-                }}
+                onClick={clearCoverImage}
                 className="p-3 rounded-xl bg-surface-container-low text-on-surface-variant hover:bg-surface-container-high transition-colors flex-shrink-0"
               >
                 <X className="w-5 h-5" />
