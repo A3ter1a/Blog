@@ -49,17 +49,13 @@ QWEN_API_KEY=你的 Qwen key
 - `NEXT_PUBLIC_*` 会进入前端包，公网访客可能看到。
 - 服务端变量不会直接暴露给浏览器，是当前更安全的做法。
 
-## 第三步：执行 Supabase RLS 锁定脚本
+## 第三步：确认 Supabase RLS 生产策略
 
-在 Supabase SQL Editor 执行：
-
-```text
-supabase/production_rls_lockdown.sql
-```
+在 Supabase SQL Editor 或后台策略页确认生产 RLS 与 Storage 策略已经生效。
 
 执行前要知道：
 
-- 这个脚本会重建 `notes`、`chapters`、`flashcards`、`admin_users` 和 `storage.objects` 的相关策略。
+- 生产策略应覆盖 `notes`、`chapters`、`flashcards`、`admin_users` 和 `storage.objects`。
 - 它的目标是让访客只能读公开内容，不能写入、修改、删除数据。
 - 如果未来新增 Storage bucket，需要额外补策略。
 
@@ -142,7 +138,7 @@ https://www.a3ter1a.cn
 
 - Vercel 生产部署确认是最新提交
 - Vercel 生产环境变量确认存在且不是 `NEXT_PUBLIC_*`
-- Supabase RLS 脚本已经执行
+- Supabase RLS 生产策略已经生效
 - 管理员邮箱已加入 `admin_users`
 - 自动验收脚本关键检查通过
 - 未登录人工检查通过

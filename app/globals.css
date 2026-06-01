@@ -254,6 +254,14 @@ h1, h2, h3, h4, h5, h6 {
   text-underline-offset: 0.18em;
 }
 
+.markdown-surface img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 1em auto;
+  border-radius: var(--radius-lg);
+}
+
 .markdown-surface table {
   display: block;
   width: 100%;

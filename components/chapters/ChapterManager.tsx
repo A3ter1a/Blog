@@ -95,7 +95,7 @@ export function ChapterManager({ isOpen, onClose, noteId, selectedChapterId, onS
       await loadChapters();
     } catch (err) {
       console.error('Failed to create chapter:', err);
-      setError('创建失败，请确认 Supabase 中已创建 chapters 表（运行 supabase/chapters_schema.sql）');
+      setError('创建失败，请确认 Supabase 中已创建 chapters 表');
     } finally {
       setCreatingParentId(null);
     }
@@ -192,7 +192,7 @@ export function ChapterManager({ isOpen, onClose, noteId, selectedChapterId, onS
           <div className="flex-1 overflow-y-auto p-4 space-y-2">
             {loadError && (
               <div className="p-3 rounded-xl bg-amber-50 text-amber-700 text-sm mb-3">
-                无法加载章节，请确认 Supabase 中已创建 chapters 表。运行: supabase/chapters_schema.sql
+                无法加载章节，请确认 Supabase 中已创建 chapters 表。
               </div>
             )}
             {error && (

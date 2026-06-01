@@ -23,7 +23,7 @@ QWEN_API_KEY=your_qwen_api_key
 `ADMIN_EMAILS` protects server Route Handlers. Keep it server-side only.
 The email list is not a password; Supabase Auth login and RLS remain required.
 
-3. Run `supabase/production_rls_lockdown.sql` in the Supabase SQL Editor.
+3. Confirm the production RLS and Storage policies in the Supabase SQL Editor.
 4. Add the admin email to the `admin_users` table:
 
 ```sql
@@ -45,15 +45,15 @@ on conflict (email) do nothing;
 ## Important reminder
 
 UI hiding is only convenience. Supabase RLS is the real database protection.
-Do not deploy without applying the production RLS script.
+Do not deploy without applying the production RLS policies.
 
-The production script resets `storage.objects` policies for the current app's
-`note-images` bucket. If you add more storage buckets later, add explicit
-policies for those buckets too.
+The Storage policies should allow public reads from the current app's
+`note-images` bucket while keeping uploads and deletes admin-only. If you add
+more storage buckets later, add explicit policies for those buckets too.
 
 ## Repeatable verification
 
-After the Vercel environment variables are set and the Supabase SQL script has
+After the Vercel environment variables are set and the Supabase policies have
 been applied, run:
 
 ```bash

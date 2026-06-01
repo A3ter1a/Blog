@@ -71,7 +71,7 @@ export default function PracticePage() {
         notesApi.getById(noteId),
         problemPracticeApi.getByNoteId(noteId).catch((error) => {
           console.error("Failed to load practice statuses:", error);
-          toast.error("刷题状态加载失败，请确认已执行 supabase/problem_practice_schema.sql");
+          toast.error("刷题状态加载失败，请确认 Supabase 中已创建 problem_practice_statuses 表");
           return [];
         }),
       ]);

@@ -340,13 +340,27 @@ export default function CreatePage() {
     input.onchange = async (e) => {
       const file = (e.target as HTMLInputElement).files?.[0];
       if (!file) return;
+      if (!file.type.startsWith("image/")) {
+        toast.error("请选择图片文件");
+        input.value = "";
+        return;
+      }
+      if (!editorRef.current?.editor) {
+        toast.error("编辑器还没有准备好，请稍后再试");
+        input.value = "";
+        return;
+      }
+
       try {
-        const path = generateFileName("note", file.name.split(".").pop() || "png");
+        const ext = file.name.split(".").pop()?.toLowerCase() || "png";
+        const path = generateFileName("note", ext);
         const url = await uploadImage(file, path);
-        editorRef.current?.insertImage(url);
+        editorRef.current.insertImage(url);
         toast.success("图片已插入");
       } catch (err: unknown) {
         toast.error(`图片上传失败：${err instanceof Error ? err.message : "未知错误"}`);
+      } finally {
+        input.value = "";
       }
     };
     input.click();
@@ -364,9 +378,9 @@ export default function CreatePage() {
     }
 
     revokeCoverObjectUrl();
+    const previousCoverImage = coverImage;
     const previewUrl = URL.createObjectURL(file);
     coverObjectUrlRef.current = previewUrl;
-    setCoverImage(previewUrl);
     setCoverPreviewSrc(previewUrl);
     setCoverUploadError(null);
     setIsUploadingCover(true);
@@ -379,9 +393,10 @@ export default function CreatePage() {
       toast.success("封面图片已上传");
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "未知错误";
+      revokeCoverObjectUrl();
+      setCoverPreviewSrc(previousCoverImage);
       setCoverUploadError(`上传失败：${message}`);
       toast.error(`封面上传失败：${message}`);
-      toast.error(`封面上传失败：${err instanceof Error ? err.message : "未知错误"}`);
     } finally {
       setIsUploadingCover(false);
       e.target.value = "";
@@ -553,7 +568,7 @@ export default function CreatePage() {
           {coverPreviewSrc && (
             <div className="mt-3 rounded-xl overflow-hidden max-h-48">
               {/* eslint-disable-next-line @next/next/no-img-element -- Cover previews can be external URLs or legacy data URLs. */}
-              <img src={coverImage} alt="封面预览" className="w-full h-48 object-cover" />
+              <img src={coverPreviewSrc} alt="封面预览" className="w-full h-48 object-cover" />
             </div>
           )}
         </motion.div>
