@@ -83,6 +83,8 @@ export default function CreatePage() {
   const [problems, setProblems] = useState<Problem[]>(initialImportDraft?.problems ?? []);
   const [hasProblemChanges, setHasProblemChanges] = useState(false);
   const [coverImage, setCoverImage] = useState(initialImportDraft?.coverImage ?? "");
+  const [coverPreviewSrc, setCoverPreviewSrc] = useState(initialImportDraft?.coverImage ?? "");
+  const [coverUploadError, setCoverUploadError] = useState<string | null>(null);
   const [isUploadingCover, setIsUploadingCover] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [showVideoSection, setShowVideoSection] = useState(false);
@@ -95,6 +97,13 @@ export default function CreatePage() {
   const editorScrollRef = useRef<HTMLDivElement>(null);
   const previewScrollRef = useRef<HTMLDivElement>(null);
   const isSyncingScroll = useRef(false);
+  const coverObjectUrlRef = useRef<string | null>(null);
+
+  const revokeCoverObjectUrl = useCallback(() => {
+    if (!coverObjectUrlRef.current) return;
+    URL.revokeObjectURL(coverObjectUrlRef.current);
+    coverObjectUrlRef.current = null;
+  }, []);
 
   // Synchronize scroll between editor and preview panels
   const syncScroll = useCallback((source: HTMLDivElement, target: HTMLDivElement) => {
@@ -174,6 +183,8 @@ export default function CreatePage() {
           setProblems(existingNote.problems || []);
           setHasProblemChanges(false);
           setCoverImage(existingNote.coverImage || "");
+          setCoverPreviewSrc(existingNote.coverImage || "");
+          setCoverUploadError(null);
         } else {
           const message = "没有找到要编辑的笔记，可能已被删除或没有权限访问";
           setLoadError(message);
@@ -216,8 +227,24 @@ export default function CreatePage() {
     };
   }, [initialImportDraft, toast]);
 
+  useEffect(() => {
+    return () => {
+      revokeCoverObjectUrl();
+    };
+  }, [revokeCoverObjectUrl]);
+
   const handleSave = async () => {
     if (isSaving) return;
+
+    if (isUploadingCover) {
+      toast.error("封面图片还在上传，请稍后再保存");
+      return;
+    }
+
+    if (coverImage.startsWith("blob:")) {
+      toast.error("封面图片还没有上传成功，请重新上传后再保存");
+      return;
+    }
 
     if (!title.trim()) {
       toast.error("请输入标题");
@@ -300,6 +327,9 @@ export default function CreatePage() {
     setProblems([]);
     setHasProblemChanges(true);
     setCoverImage("");
+    setCoverPreviewSrc("");
+    setCoverUploadError(null);
+    revokeCoverObjectUrl();
   };
 
   // Editor toolbar handlers - only complex operations remain
@@ -326,13 +356,31 @@ export default function CreatePage() {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    if (!file.type.startsWith("image/")) {
+      setCoverUploadError("请选择图片文件");
+      toast.error("请选择图片文件");
+      e.target.value = "";
+      return;
+    }
+
+    revokeCoverObjectUrl();
+    const previewUrl = URL.createObjectURL(file);
+    coverObjectUrlRef.current = previewUrl;
+    setCoverImage(previewUrl);
+    setCoverPreviewSrc(previewUrl);
+    setCoverUploadError(null);
     setIsUploadingCover(true);
     try {
       const ext = file.name.split(".").pop()?.toLowerCase() || "png";
       const url = await uploadImage(file, generateFileName("cover", ext));
+      revokeCoverObjectUrl();
       setCoverImage(url);
+      setCoverPreviewSrc(url);
       toast.success("封面图片已上传");
     } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "未知错误";
+      setCoverUploadError(`上传失败：${message}`);
+      toast.error(`封面上传失败：${message}`);
       toast.error(`封面上传失败：${err instanceof Error ? err.message : "未知错误"}`);
     } finally {
       setIsUploadingCover(false);
@@ -451,7 +499,12 @@ export default function CreatePage() {
             <input
               type="text"
               value={coverImage}
-              onChange={(e) => setCoverImage(e.target.value)}
+              onChange={(e) => {
+                revokeCoverObjectUrl();
+                setCoverImage(e.target.value);
+                setCoverPreviewSrc(e.target.value);
+                setCoverUploadError(null);
+              }}
               placeholder="输入图片 URL..."
               className="flex-1 px-4 py-3 bg-surface-container-low rounded-xl input-soft text-on-surface placeholder:text-on-surface-variant/40"
             />
@@ -474,14 +527,30 @@ export default function CreatePage() {
             {coverImage && (
               <button
                 type="button"
-                onClick={() => setCoverImage("")}
+                onClick={() => {
+                  revokeCoverObjectUrl();
+                  setCoverImage("");
+                  setCoverPreviewSrc("");
+                  setCoverUploadError(null);
+                }}
                 className="p-3 rounded-xl bg-surface-container-low text-on-surface-variant hover:bg-surface-container-high transition-colors flex-shrink-0"
               >
                 <X className="w-5 h-5" />
               </button>
             )}
           </div>
-          {coverImage && (
+          {coverUploadError && (
+            <div className="mt-3 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-600">
+              {coverUploadError}
+            </div>
+          )}
+          {isUploadingCover && (
+            <div className="mt-3 flex items-center gap-2 text-sm text-on-surface-variant/60">
+              <Loader2 className="w-4 h-4 animate-spin text-primary" />
+              正在上传封面图片...
+            </div>
+          )}
+          {coverPreviewSrc && (
             <div className="mt-3 rounded-xl overflow-hidden max-h-48">
               {/* eslint-disable-next-line @next/next/no-img-element -- Cover previews can be external URLs or legacy data URLs. */}
               <img src={coverImage} alt="封面预览" className="w-full h-48 object-cover" />
