@@ -422,15 +422,9 @@ function PracticeProblemView({
         )}
 
         {showAnswer && (
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="rounded-xl bg-green-50 p-5">
-              <h3 className="mb-3 text-sm font-semibold text-green-700">答案</h3>
-              <MarkdownContent content={problem.answer || "暂无答案"} className="text-green-950" />
-            </div>
-            <div className="rounded-xl bg-primary/5 p-5">
-              <h3 className="mb-3 text-sm font-semibold text-primary">解析</h3>
-              <MarkdownContent content={problem.explanation || "暂无解析"} className="text-on-surface" />
-            </div>
+          <div className="rounded-xl bg-green-50 p-5">
+            <h3 className="mb-3 text-sm font-semibold text-green-700">答案</h3>
+            <MarkdownContent content={problem.answer || "暂无答案"} className="text-green-950" />
           </div>
         )}
       </div>
