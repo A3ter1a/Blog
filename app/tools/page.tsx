@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { BookOpen, ChevronRight, Clock, Target } from "lucide-react";
+import { BookOpen, ChevronRight, Clock } from "lucide-react";
 
 export default function ToolsPage() {
   const tools = [
@@ -16,24 +16,14 @@ export default function ToolsPage() {
       note: "已在笔记页面自动显示",
     },
     {
-      id: "problem-practice",
-      title: "刷题",
-      description: "从题集里练题，并记录一刷、二刷和最近答题状态",
-      icon: Target,
-      color: "bg-green-500/10 text-green-600",
-      href: "/practice",
-      comingSoon: false,
-      note: "题集专用",
-    },
-    {
       id: "math3-catalog",
       title: "数三知识目录",
-      description: "按考纲章节整理数学三知识点，支持难度显示和重点加星",
+      description: "按考纲章节整理数学三知识点，并在目录内挂载题集刷题",
       icon: BookOpen,
       color: "bg-violet-500/10 text-violet-600",
       href: "/tools/math3-catalog",
       comingSoon: false,
-      note: "考纲目录",
+      note: "考纲目录 / 刷题",
     },
   ];
 

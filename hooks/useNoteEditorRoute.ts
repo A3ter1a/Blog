@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useToast } from "@/components/ui/Toast";
+import { splitMath3PracticeTags } from "@/lib/math3-practice";
 import { notesApi } from "@/lib/supabase";
 import type { NoteType, Problem, Subject, Video } from "@/lib/types";
 
@@ -25,6 +26,7 @@ export type NoteEditorDraft = {
   videos: Video[];
   problems: Problem[];
   coverImage: string;
+  preservedMath3PracticeTags: string[];
 };
 
 type UseNoteEditorRouteOptions = {
@@ -42,15 +44,18 @@ type UseNoteEditorRouteResult = {
 };
 
 function draftFromImport(importDraft: ImportDraft): NoteEditorDraft {
+  const { visibleTags, math3PracticeTags } = splitMath3PracticeTags(importDraft.tags);
+
   return {
     noteType: importDraft.noteType ?? "note",
     title: importDraft.title ?? "",
     subject: importDraft.subject ?? "math",
-    tagInput: importDraft.tags?.join(", ") ?? "",
+    tagInput: visibleTags.join(", "),
     content: importDraft.content ?? "",
     videos: importDraft.videos ?? [],
     problems: importDraft.problems ?? [],
     coverImage: importDraft.coverImage ?? "",
+    preservedMath3PracticeTags: math3PracticeTags,
   };
 }
 
@@ -81,15 +86,18 @@ export function useNoteEditorRoute({
       notesApi.getById(editId).then((existingNote) => {
         if (cancelled) return;
         if (existingNote) {
+          const { visibleTags, math3PracticeTags } = splitMath3PracticeTags(existingNote.tags);
+
           applyDraft({
             noteType: existingNote.type,
             title: existingNote.title,
             subject: existingNote.subject || "math",
-            tagInput: existingNote.tags.join(", "),
+            tagInput: visibleTags.join(", "),
             content: existingNote.content,
             videos: existingNote.videos || [],
             problems: existingNote.problems || [],
             coverImage: existingNote.coverImage || "",
+            preservedMath3PracticeTags: math3PracticeTags,
           });
         } else {
           const message = "没有找到要编辑的笔记，可能已被删除或没有权限访问";

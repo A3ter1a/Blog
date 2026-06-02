@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   BookOpen,
   Calculator,
@@ -8,12 +8,18 @@ import {
   ChevronDown,
   Circle,
   GraduationCap,
+  Layers,
   ListChecks,
   ListFilter,
+  Loader2,
+  Plus,
   Search,
   Star,
+  Target,
+  Trash2,
   X,
 } from "lucide-react";
+import { PracticeSession } from "@/components/practice/PracticeSession";
 import {
   difficultyMeta,
   math3KnowledgeChapterIds,
@@ -26,10 +32,23 @@ import {
   MATH3_KNOWLEDGE_STAR_STORAGE_KEY,
   type KnowledgeDifficulty,
   type Math3KnowledgeAreaId,
+  type Math3KnowledgeArea,
   type Math3KnowledgeChapter,
   type Math3KnowledgePoint,
 } from "@/lib/math3-knowledge";
 import { readJsonStorage, writeJsonStorage } from "@/lib/browser-storage";
+import {
+  getAreaPracticeProblemSetIds,
+  getLinkedProblemSetIds,
+  getMath3ScopeKey,
+  getVisibleNoteTags,
+  setMath3ScopeLinked,
+  type Math3PracticeScope,
+} from "@/lib/math3-practice";
+import { notesApi } from "@/lib/supabase";
+import type { Note } from "@/lib/types";
+import { useAdminAuth } from "@/hooks/useAdminAuth";
+import { useToast } from "@/components/ui/Toast";
 
 type AreaFilter = "all" | Math3KnowledgeAreaId;
 type DifficultyFilter = "all" | KnowledgeDifficulty;
@@ -99,6 +118,8 @@ function matchesQuery(point: Math3KnowledgePoint, query: string): boolean {
 }
 
 export function Math3KnowledgeCatalog() {
+  const toast = useToast();
+  const { isAdmin } = useAdminAuth();
   const [areaFilter, setAreaFilter] = useState<AreaFilter>("all");
   const [difficultyFilter, setDifficultyFilter] = useState<DifficultyFilter>("all");
   const [masteryFilter, setMasteryFilter] = useState<MasteryFilter>("all");
@@ -107,6 +128,11 @@ export function Math3KnowledgeCatalog() {
   const [starredIds, setStarredIds] = useState<string[]>([]);
   const [masteredIds, setMasteredIds] = useState<string[]>([]);
   const [collapsedChapterIds, setCollapsedChapterIds] = useState<string[]>([]);
+  const [problemSets, setProblemSets] = useState<Note[]>([]);
+  const [isLoadingProblemSets, setIsLoadingProblemSets] = useState(true);
+  const [problemSetLoadError, setProblemSetLoadError] = useState<string | null>(null);
+  const [updatingScopeKey, setUpdatingScopeKey] = useState<string | null>(null);
+  const [activePracticeScope, setActivePracticeScope] = useState<Math3PracticeScope | null>(null);
 
   useEffect(() => {
     setStarredIds(readJsonStorage(MATH3_KNOWLEDGE_STAR_STORAGE_KEY, [], normalizePointIds));
@@ -115,6 +141,41 @@ export function Math3KnowledgeCatalog() {
       readJsonStorage(MATH3_KNOWLEDGE_COLLAPSED_CHAPTERS_STORAGE_KEY, [], normalizeChapterIds)
     );
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadProblemSetSummaries() {
+      setIsLoadingProblemSets(true);
+      setProblemSetLoadError(null);
+
+      try {
+        const sets = await notesApi.getSummaries({
+          type: "problem",
+          subject: "math",
+          sortOrder: "desc",
+          limit: 200,
+          offset: 0,
+          includeCoverImage: false,
+        });
+
+        if (!cancelled) setProblemSets(sets);
+      } catch (error) {
+        if (cancelled) return;
+        const message = error instanceof Error ? error.message : "未知错误";
+        setProblemSetLoadError(message);
+        toast.error(`题集列表加载失败：${message}`);
+      } finally {
+        if (!cancelled) setIsLoadingProblemSets(false);
+      }
+    }
+
+    void loadProblemSetSummaries();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [toast]);
 
   const starredSet = useMemo(() => new Set(starredIds), [starredIds]);
   const masteredSet = useMemo(() => new Set(masteredIds), [masteredIds]);
@@ -167,6 +228,49 @@ export function Math3KnowledgeCatalog() {
   const progressPercent = math3KnowledgeTotals.points > 0
     ? Math.round((masteredCount / math3KnowledgeTotals.points) * 100)
     : 0;
+  const activePracticeSetIds = useMemo(() => {
+    if (!activePracticeScope) return [];
+
+    if (activePracticeScope.type === "area") {
+      const area = math3KnowledgeAreas.find((item) => item.id === activePracticeScope.id);
+      return area ? getAreaPracticeProblemSetIds(problemSets, area) : [];
+    }
+
+    return getLinkedProblemSetIds(problemSets, activePracticeScope);
+  }, [activePracticeScope, problemSets]);
+
+  const handleToggleProblemSetLink = useCallback(async (
+    scope: Math3PracticeScope,
+    noteId: string,
+    linked: boolean,
+  ) => {
+    if (!isAdmin) {
+      toast.error("需要管理员登录后才能调整题集挂载");
+      return;
+    }
+
+    const scopeKey = getMath3ScopeKey(scope);
+    const targetSet = problemSets.find((set) => set.id === noteId);
+    if (!targetSet) return;
+
+    const nextTags = setMath3ScopeLinked(targetSet.tags, scope, linked);
+    const previousProblemSets = problemSets;
+    setUpdatingScopeKey(`${scopeKey}:${noteId}`);
+    setProblemSets((current) => current.map((set) => (
+      set.id === noteId ? { ...set, tags: nextTags } : set
+    )));
+
+    try {
+      await notesApi.update(noteId, { tags: nextTags });
+      toast.success(linked ? "题集已放入目录" : "题集已从目录移除");
+    } catch (error) {
+      setProblemSets(previousProblemSets);
+      const message = error instanceof Error ? error.message : "未知错误";
+      toast.error(`题集挂载更新失败：${message}`);
+    } finally {
+      setUpdatingScopeKey(null);
+    }
+  }, [isAdmin, problemSets, toast]);
 
   const toggleStar = (pointId: string) => {
     setStarredIds((current) => {
@@ -364,17 +468,39 @@ export function Math3KnowledgeCatalog() {
           </div>
         </section>
 
+        {problemSetLoadError && (
+          <section className="mb-6 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+            题集列表暂时无法加载：{problemSetLoadError}
+          </section>
+        )}
+
+        {activePracticeScope && (
+          <div className="mb-8">
+            <PracticeSession
+              scopeTitle={activePracticeScope.title}
+              scopeDescription={
+                activePracticeScope.type === "area"
+                  ? "本队列会汇总这个模块本身以及它下面各章节挂载的题集。"
+                  : "本队列只使用这个章节子栏中挂载的题集。"
+              }
+              problemSetIds={activePracticeSetIds}
+              onClose={() => setActivePracticeScope(null)}
+            />
+          </div>
+        )}
+
         <section className="mb-6 grid gap-3 md:grid-cols-3">
           {math3KnowledgeAreas.map((area) => (
-            <div key={area.id} className="rounded-lg border border-outline-variant/20 bg-surface-container-lowest p-4">
-              <div className="flex items-center justify-between gap-3">
-                <span className={`rounded-full border px-3 py-1 text-xs font-medium ${areaTone[area.id]}`}>
-                  {area.shortTitle}
-                </span>
-                <span className="text-xs font-semibold text-on-surface-variant">{area.examWeight}</span>
-              </div>
-              <p className="mt-3 text-sm leading-6 text-on-surface-variant">{area.description}</p>
-            </div>
+            <AreaPracticeCard
+              key={area.id}
+              area={area}
+              problemSets={problemSets}
+              isAdmin={isAdmin}
+              isLoadingProblemSets={isLoadingProblemSets}
+              updatingScopeKey={updatingScopeKey}
+              onToggleProblemSetLink={handleToggleProblemSetLink}
+              onStartPractice={setActivePracticeScope}
+            />
           ))}
         </section>
 
@@ -410,13 +536,20 @@ export function Math3KnowledgeCatalog() {
                   {area.chapters.map((chapter) => (
                     <ChapterBlock
                       key={chapter.id}
+                      areaId={area.id}
                       chapter={chapter}
+                      problemSets={problemSets}
                       starredSet={starredSet}
                       masteredSet={masteredSet}
                       collapsed={collapsedChapterSet.has(chapter.id) && !forceExpandedChapters}
+                      isAdmin={isAdmin}
+                      isLoadingProblemSets={isLoadingProblemSets}
+                      updatingScopeKey={updatingScopeKey}
                       onToggleStar={toggleStar}
                       onToggleMastered={toggleMastered}
                       onToggleChapter={() => toggleChapter(chapter.id)}
+                      onToggleProblemSetLink={handleToggleProblemSetLink}
+                      onStartPractice={setActivePracticeScope}
                     />
                   ))}
                 </div>
@@ -479,45 +612,273 @@ function DifficultyStat({ label, value, tone }: { label: string; value: number; 
   );
 }
 
+function getAreaPracticeName(area: Math3KnowledgeArea): string {
+  if (area.id === "calculus") return "高数";
+  if (area.id === "linear-algebra") return "线代";
+  return "概率";
+}
+
+function AreaPracticeCard({
+  area,
+  problemSets,
+  isAdmin,
+  isLoadingProblemSets,
+  updatingScopeKey,
+  onToggleProblemSetLink,
+  onStartPractice,
+}: {
+  area: Math3KnowledgeArea;
+  problemSets: Note[];
+  isAdmin: boolean;
+  isLoadingProblemSets: boolean;
+  updatingScopeKey: string | null;
+  onToggleProblemSetLink: (scope: Math3PracticeScope, noteId: string, linked: boolean) => void;
+  onStartPractice: (scope: Math3PracticeScope) => void;
+}) {
+  const practiceName = getAreaPracticeName(area);
+  const scope: Math3PracticeScope = {
+    type: "area",
+    id: area.id,
+    title: `${practiceName}刷题`,
+  };
+  const directLinkedSetIds = getLinkedProblemSetIds(problemSets, scope);
+  const aggregateSetIds = getAreaPracticeProblemSetIds(problemSets, area);
+
+  return (
+    <div className="rounded-lg border border-outline-variant/20 bg-surface-container-lowest p-4">
+      <div className="flex items-center justify-between gap-3">
+        <span className={`rounded-full border px-3 py-1 text-xs font-medium ${areaTone[area.id]}`}>
+          {area.shortTitle}
+        </span>
+        <span className="text-xs font-semibold text-on-surface-variant">{area.examWeight}</span>
+      </div>
+      <p className="mt-3 text-sm leading-6 text-on-surface-variant">{area.description}</p>
+
+      <div className="mt-4 flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          onClick={() => onStartPractice(scope)}
+          className="inline-flex h-9 items-center gap-2 rounded-lg bg-primary/10 px-3 text-sm font-medium text-primary transition-colors hover:bg-primary/15"
+        >
+          <Target className="h-4 w-4" />
+          刷整个{practiceName}
+        </button>
+        <span className="text-xs text-on-surface-variant">
+          汇总 {aggregateSetIds.length} 个题集
+        </span>
+      </div>
+
+      <div className="mt-4">
+        <ProblemSetLinkPanel
+          scope={scope}
+          title={`${practiceName}整体题集`}
+          problemSets={problemSets}
+          linkedSetIds={directLinkedSetIds}
+          isAdmin={isAdmin}
+          isLoadingProblemSets={isLoadingProblemSets}
+          updatingScopeKey={updatingScopeKey}
+          onToggleProblemSetLink={onToggleProblemSetLink}
+        />
+      </div>
+    </div>
+  );
+}
+
+function ProblemSetLinkPanel({
+  scope,
+  title,
+  problemSets,
+  linkedSetIds,
+  isAdmin,
+  isLoadingProblemSets,
+  updatingScopeKey,
+  onToggleProblemSetLink,
+}: {
+  scope: Math3PracticeScope;
+  title: string;
+  problemSets: Note[];
+  linkedSetIds: string[];
+  isAdmin: boolean;
+  isLoadingProblemSets: boolean;
+  updatingScopeKey: string | null;
+  onToggleProblemSetLink: (scope: Math3PracticeScope, noteId: string, linked: boolean) => void;
+}) {
+  const [selectedSetId, setSelectedSetId] = useState("");
+  const scopeKey = getMath3ScopeKey(scope);
+  const linkedIdSet = useMemo(() => new Set(linkedSetIds), [linkedSetIds]);
+  const linkedSets = useMemo(
+    () => problemSets.filter((set) => linkedIdSet.has(set.id)),
+    [linkedIdSet, problemSets],
+  );
+  const availableSets = useMemo(
+    () => problemSets.filter((set) => !linkedIdSet.has(set.id)),
+    [linkedIdSet, problemSets],
+  );
+
+  useEffect(() => {
+    setSelectedSetId("");
+  }, [scopeKey]);
+
+  const selectedUpdatingKey = selectedSetId ? `${scopeKey}:${selectedSetId}` : "";
+  const isUpdatingSelected = Boolean(selectedSetId && updatingScopeKey === selectedUpdatingKey);
+
+  return (
+    <div className="rounded-lg border border-outline-variant/20 bg-surface-container-low p-3">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <div className="inline-flex items-center gap-2 text-xs font-semibold text-on-surface-variant">
+          <Layers className="h-3.5 w-3.5" />
+          {title}
+        </div>
+        <span className="text-xs text-on-surface-variant">{linkedSets.length} 个</span>
+      </div>
+
+      {isLoadingProblemSets ? (
+        <div className="flex items-center gap-2 py-2 text-xs text-on-surface-variant">
+          <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
+          加载题集...
+        </div>
+      ) : linkedSets.length === 0 ? (
+        <p className="text-xs leading-5 text-on-surface-variant">
+          还没有题集放入这个目录栏。
+        </p>
+      ) : (
+        <div className="space-y-2">
+          {linkedSets.map((set) => {
+            const updatingKey = `${scopeKey}:${set.id}`;
+            const visibleTags = getVisibleNoteTags(set.tags);
+            return (
+              <div
+                key={set.id}
+                className="flex items-start justify-between gap-2 rounded-md bg-surface-container-lowest px-3 py-2"
+              >
+                <div className="min-w-0">
+                  <div className="line-clamp-2 text-xs font-medium text-on-surface">{set.title}</div>
+                  {visibleTags.length > 0 && (
+                    <div className="mt-1 line-clamp-1 text-[11px] text-on-surface-variant/70">
+                      {visibleTags.slice(0, 3).join(" · ")}
+                    </div>
+                  )}
+                </div>
+                {isAdmin && (
+                  <button
+                    type="button"
+                    onClick={() => onToggleProblemSetLink(scope, set.id, false)}
+                    disabled={updatingScopeKey === updatingKey}
+                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-on-surface-variant/60 transition-colors hover:bg-red-50 hover:text-red-600 disabled:opacity-40"
+                    aria-label="移出目录栏"
+                    title="移出目录栏"
+                  >
+                    {updatingScopeKey === updatingKey
+                      ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      : <Trash2 className="h-3.5 w-3.5" />}
+                  </button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {isAdmin ? (
+        <div className="mt-3 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
+          <select
+            value={selectedSetId}
+            onChange={(event) => setSelectedSetId(event.target.value)}
+            disabled={isLoadingProblemSets || availableSets.length === 0}
+            className="h-9 min-w-0 rounded-lg border border-outline-variant/30 bg-surface-container-lowest px-2 text-xs text-on-surface outline-none focus:border-primary/50 disabled:opacity-50"
+          >
+            <option value="">
+              {availableSets.length === 0 ? "没有可添加题集" : "选择题集放入目录栏"}
+            </option>
+            {availableSets.map((set) => (
+              <option key={set.id} value={set.id}>{set.title}</option>
+            ))}
+          </select>
+          <button
+            type="button"
+            onClick={() => {
+              if (!selectedSetId) return;
+              onToggleProblemSetLink(scope, selectedSetId, true);
+              setSelectedSetId("");
+            }}
+            disabled={!selectedSetId || isUpdatingSelected}
+            className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-primary/10 px-3 text-xs font-medium text-primary transition-colors hover:bg-primary/15 disabled:opacity-40"
+          >
+            {isUpdatingSelected ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
+            放入
+          </button>
+        </div>
+      ) : (
+        <p className="mt-3 text-[11px] leading-5 text-on-surface-variant/70">
+          管理员登录后可以调整题集归属。
+        </p>
+      )}
+    </div>
+  );
+}
+
 function ChapterBlock({
+  areaId,
   chapter,
+  problemSets,
   starredSet,
   masteredSet,
   collapsed,
+  isAdmin,
+  isLoadingProblemSets,
+  updatingScopeKey,
   onToggleStar,
   onToggleMastered,
   onToggleChapter,
+  onToggleProblemSetLink,
+  onStartPractice,
 }: {
+  areaId: Math3KnowledgeAreaId;
   chapter: VisibleChapter;
+  problemSets: Note[];
   starredSet: Set<string>;
   masteredSet: Set<string>;
   collapsed: boolean;
+  isAdmin: boolean;
+  isLoadingProblemSets: boolean;
+  updatingScopeKey: string | null;
   onToggleStar: (pointId: string) => void;
   onToggleMastered: (pointId: string) => void;
   onToggleChapter: () => void;
+  onToggleProblemSetLink: (scope: Math3PracticeScope, noteId: string, linked: boolean) => void;
+  onStartPractice: (scope: Math3PracticeScope) => void;
 }) {
   const masteredPointCount = chapter.points.filter((pointItem) => masteredSet.has(pointItem.id)).length;
   const chapterProgressPercent = chapter.points.length > 0
     ? Math.round((masteredPointCount / chapter.points.length) * 100)
     : 0;
+  const scope: Math3PracticeScope = {
+    type: "chapter",
+    id: chapter.id,
+    title: `${chapter.title}刷题`,
+    areaId,
+  };
+  const linkedSetIds = getLinkedProblemSetIds(problemSets, scope);
 
   return (
     <article className="overflow-hidden rounded-lg border border-outline-variant/20 bg-surface-container-lowest">
-      <button
-        type="button"
-        onClick={onToggleChapter}
-        aria-expanded={!collapsed}
-        className="block w-full border-b border-outline-variant/20 bg-surface-container-low px-4 py-4 text-left transition-colors hover:bg-surface-container"
-      >
-        <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
-          <div>
-            <div className="flex items-center gap-2">
-              <ChevronDown className={`h-4 w-4 shrink-0 text-on-surface-variant transition-transform ${collapsed ? "-rotate-90" : ""}`} />
-              <h3 className="font-headline text-lg font-bold text-on-surface">{chapter.title}</h3>
+      <div className="border-b border-outline-variant/20 bg-surface-container-low px-4 py-4">
+        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+          <button
+            type="button"
+            onClick={onToggleChapter}
+            aria-expanded={!collapsed}
+            className="min-w-0 flex-1 text-left"
+          >
+            <div>
+              <div className="flex items-center gap-2">
+                <ChevronDown className={`h-4 w-4 shrink-0 text-on-surface-variant transition-transform ${collapsed ? "-rotate-90" : ""}`} />
+                <h3 className="font-headline text-lg font-bold text-on-surface">{chapter.title}</h3>
+              </div>
+              <p className="mt-1 text-sm leading-6 text-on-surface-variant">{chapter.summary}</p>
             </div>
-            <p className="mt-1 text-sm leading-6 text-on-surface-variant">{chapter.summary}</p>
-          </div>
-          <div className="flex w-fit flex-wrap items-center gap-2">
+          </button>
+          <div className="flex w-fit flex-wrap items-center gap-2 md:justify-end">
             <span className="inline-flex items-center gap-1 rounded-full bg-surface-container-lowest px-3 py-1 text-xs font-medium text-on-surface-variant">
               <Calculator className="h-3.5 w-3.5" />
               {chapter.points.length} 点
@@ -526,6 +887,18 @@ function ChapterBlock({
               <CheckCircle2 className="h-3.5 w-3.5" />
               {masteredPointCount}/{chapter.points.length}
             </span>
+            <span className="inline-flex items-center gap-1 rounded-full bg-surface-container-lowest px-3 py-1 text-xs font-medium text-on-surface-variant">
+              <Layers className="h-3.5 w-3.5" />
+              {linkedSetIds.length} 题集
+            </span>
+            <button
+              type="button"
+              onClick={() => onStartPractice(scope)}
+              className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-primary/10 px-3 text-xs font-medium text-primary transition-colors hover:bg-primary/15"
+            >
+              <Target className="h-3.5 w-3.5" />
+              刷本章
+            </button>
           </div>
         </div>
         <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-surface-container-lowest">
@@ -534,10 +907,22 @@ function ChapterBlock({
             style={{ width: `${chapterProgressPercent}%` }}
           />
         </div>
-      </button>
+      </div>
 
       {!collapsed && (
         <div className="divide-y divide-outline-variant/15">
+          <div className="p-4">
+            <ProblemSetLinkPanel
+              scope={scope}
+              title="题集子栏"
+              problemSets={problemSets}
+              linkedSetIds={linkedSetIds}
+              isAdmin={isAdmin}
+              isLoadingProblemSets={isLoadingProblemSets}
+              updatingScopeKey={updatingScopeKey}
+              onToggleProblemSetLink={onToggleProblemSetLink}
+            />
+          </div>
           {chapter.points.map((pointItem) => (
             <KnowledgePointRow
               key={pointItem.id}

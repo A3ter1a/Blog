@@ -6,6 +6,7 @@ import { subjectMap, typeMap, type Note } from "@/lib/types";
 import { FileText, BookOpen, Calendar, ChevronDown, Check, Clock } from "lucide-react";
 import { useState } from "react";
 import { estimateReadingTime } from "@/lib/utils";
+import { getVisibleNoteTags } from "@/lib/math3-practice";
 
 interface NoteCardProps {
   note: Note;
@@ -21,6 +22,7 @@ export function NoteCard({ note, index, isSelected = false, onToggleSelect, sele
   const [isCoverExpanded, setIsCoverExpanded] = useState(false);
   const createdAt = note.createdAt instanceof Date ? note.createdAt : new Date(String(note.createdAt));
   const animationDelay = Math.min(index * 0.04, 0.32);
+  const visibleTags = getVisibleNoteTags(note.tags);
 
   const handleClick = (e: React.MouseEvent) => {
     if (selectMode && onToggleSelect) {
@@ -151,7 +153,7 @@ export function NoteCard({ note, index, isSelected = false, onToggleSelect, sele
 
           {/* Tags */}
           <div className="flex flex-wrap gap-2 mb-4">
-            {note.tags.slice(0, 3).map((tag) => (
+            {visibleTags.slice(0, 3).map((tag) => (
               <span
                 key={tag}
                 className="px-2 py-1 rounded-md text-xs bg-surface-container-highest text-on-surface-variant"

@@ -10,6 +10,7 @@ import { chaptersApi } from "@/lib/chapters-api";
 import { subjectMap, typeMap, Note, Chapter, Problem } from "@/lib/types";
 import { estimateReadingTime, getDescendantIds } from "@/lib/utils";
 import { getRootChapters } from "@/lib/chapter-utils";
+import { getVisibleNoteTags } from "@/lib/math3-practice";
 import { getProblemValidationIssues, normalizeProblem } from "@/lib/problem-utils";
 import { Playlist } from "@/components/video/Playlist";
 import { VideoPlayer } from "@/components/video/VideoPlayer";
@@ -139,6 +140,7 @@ export function NoteReaderClient({
 
     return groups.length > 1 ? groups : null;
   }, [allProblems, chapters, selectedChapterId]);
+  const visibleTags = useMemo(() => getVisibleNoteTags(note?.tags ?? []), [note?.tags]);
 
   const handleDelete = async () => {
     if (!isAdmin || isDeletingNote) return;
@@ -336,7 +338,7 @@ export function NoteReaderClient({
               <span className="flex items-center gap-2">
                 <Tag className="w-4 h-4" />
                 <div className="flex items-center gap-2 flex-wrap">
-                  {note.tags.map((tag) => (
+                  {visibleTags.map((tag) => (
                     <span
                       key={tag}
                       className="px-2 py-1 rounded-md bg-surface-container-high text-on-surface-variant text-xs"
@@ -649,12 +651,12 @@ export function NoteReaderClient({
                     </span>
                   </>
                 )}
-                {note.tags.length > 0 && (
+                {visibleTags.length > 0 && (
                   <>
                     <span className="text-on-surface-variant/30">·</span>
                     <span className="flex items-center gap-2">
                       <Tag className="w-4 h-4" />
-                      {note.tags.join("、")}
+                      {visibleTags.join("、")}
                     </span>
                   </>
                 )}
