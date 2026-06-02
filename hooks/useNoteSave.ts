@@ -2,7 +2,7 @@
 
 import { useCallback, useState } from "react";
 import { useToast } from "@/components/ui/Toast";
-import { mergeVisibleTagsWithMath3Tags } from "@/lib/math3-practice";
+import { getMath3PracticeTagsFromProblems, mergeVisibleTagsWithMath3Tags } from "@/lib/math3-practice";
 import { getProblemsValidationIssues, normalizeProblem } from "@/lib/problem-utils";
 import { notesApi } from "@/lib/supabase";
 import type { NoteType, Problem, Subject, Video } from "@/lib/types";
@@ -70,7 +70,10 @@ export function useNoteSave(): UseNoteSaveResult {
     }
 
     const visibleTags = draft.tagInput.split(/[,，]/).map((tag) => tag.trim()).filter(Boolean);
-    const tags = mergeVisibleTagsWithMath3Tags(visibleTags, draft.preservedMath3PracticeTags);
+    const generatedMath3Tags = draft.noteType === "problem" && draft.subject === "math" && normalizedProblems
+      ? getMath3PracticeTagsFromProblems(normalizedProblems)
+      : [];
+    const tags = mergeVisibleTagsWithMath3Tags(visibleTags, draft.preservedMath3PracticeTags, generatedMath3Tags);
     const noteData = {
       type: draft.noteType,
       title: draft.title,

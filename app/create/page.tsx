@@ -477,6 +477,7 @@ export default function CreatePage() {
                 problems={problems}
                 onChange={handleProblemsChange}
                 noteId={isEditMode ? editingId : undefined}
+                subject={subject}
                 hasUnsavedChanges={isEditMode && hasProblemChanges}
               />
             </>

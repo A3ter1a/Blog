@@ -16,7 +16,9 @@ import { useToast } from "@/components/ui/Toast";
 import { useAdminAuth } from "@/hooks/useAdminAuth";
 import {
   flattenPracticeProblems,
+  getMath3ScopeProblemSetStats,
   getPracticeProblemKey,
+  type Math3PracticeScope,
   type PracticeProblemItem,
 } from "@/lib/math3-practice";
 import { notesApi, problemPracticeApi } from "@/lib/supabase";
@@ -40,6 +42,7 @@ type PracticeSessionProps = {
   scopeTitle: string;
   scopeDescription?: string;
   problemSetIds: string[];
+  scope?: Math3PracticeScope;
   onClose?: () => void;
 };
 
@@ -102,6 +105,7 @@ export function PracticeSession({
   scopeTitle,
   scopeDescription,
   problemSetIds,
+  scope,
   onClose,
 }: PracticeSessionProps) {
   const toast = useToast();
@@ -121,6 +125,7 @@ export function PracticeSession({
     [problemSetIds],
   );
   const problemSetIdsKey = normalizedProblemSetIds.join("|");
+  const scopeKey = scope ? `${scope.type}:${scope.id}` : "all";
 
   useEffect(() => {
     const requestId = loadRequestRef.current + 1;
@@ -170,9 +175,24 @@ export function PracticeSession({
     }
 
     void loadPracticeSets();
-  }, [normalizedProblemSetIds, problemSetIdsKey, toast]);
+  }, [normalizedProblemSetIds, problemSetIdsKey, scopeKey, toast]);
 
-  const problems = useMemo(() => flattenPracticeProblems(problemSets), [problemSets]);
+  const problemSetStats = useMemo(() => {
+    if (scope) return getMath3ScopeProblemSetStats(problemSets, scope);
+
+    return problemSets.map((set) => ({
+      noteId: set.id,
+      title: set.title,
+      totalProblems: set.problems?.length ?? 0,
+      matchedProblems: set.problems?.length ?? 0,
+      matchedPointIds: [],
+    }));
+  }, [problemSets, scope]);
+  const problemSetStatsById = useMemo(
+    () => new Map(problemSetStats.map((item) => [item.noteId, item])),
+    [problemSetStats],
+  );
+  const problems = useMemo(() => flattenPracticeProblems(problemSets, scope), [problemSets, scope]);
   const problemIndexByKey = useMemo(
     () => new Map(problems.map((problem, index) => [problem.practiceKey, index])),
     [problems],
@@ -320,7 +340,7 @@ export function PracticeSession({
             <h3 className="mb-3 text-sm font-semibold text-on-surface">题集来源</h3>
             {normalizedProblemSetIds.length === 0 ? (
               <p className="text-sm leading-6 text-on-surface-variant">
-                这个目录范围还没有挂载题集，先在章节子栏里添加题集。
+                这个目录范围还没有匹配到题集。请到数学题集编辑页，给小题分配数三知识点。
               </p>
             ) : isLoading ? (
               <div className="flex items-center gap-2 py-3 text-sm text-on-surface-variant">
@@ -329,12 +349,22 @@ export function PracticeSession({
               </div>
             ) : (
               <div className="space-y-2">
-                {problemSets.map((set) => (
-                  <div key={set.id} className="rounded-md bg-surface-container-lowest px-3 py-2">
-                    <div className="line-clamp-2 text-sm font-medium text-on-surface">{set.title}</div>
-                    <div className="mt-1 text-xs text-on-surface-variant">{set.problems?.length ?? 0} 题</div>
-                  </div>
-                ))}
+                {problemSets.map((set) => {
+                  const sourceStat = problemSetStatsById.get(set.id);
+                  const totalProblems = sourceStat?.totalProblems ?? set.problems?.length ?? 0;
+                  const matchedProblems = scope ? sourceStat?.matchedProblems ?? 0 : totalProblems;
+
+                  return (
+                    <div key={set.id} className="rounded-md bg-surface-container-lowest px-3 py-2">
+                      <div className="line-clamp-2 text-sm font-medium text-on-surface">{set.title}</div>
+                      <div className="mt-1 text-xs text-on-surface-variant">
+                        {scope
+                          ? `本范围 ${matchedProblems} 题 / 原题集 ${totalProblems} 题`
+                          : `${totalProblems} 题`}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
@@ -428,9 +458,9 @@ export function PracticeSession({
           ) : loadError ? (
             <EmptyPracticeState text={loadError} tone="text-red-600" />
           ) : normalizedProblemSetIds.length === 0 ? (
-            <EmptyPracticeState text="先把题集挂到目录章节里，再从这里开始刷题。" />
+            <EmptyPracticeState text="这个目录范围还没有匹配到题集。请到数学题集编辑页给小题分配数三知识点。" />
           ) : problems.length === 0 ? (
-            <EmptyPracticeState text="已挂载的题集里还没有题目。" />
+            <EmptyPracticeState text="相关题集里暂时没有符合当前知识点范围的小题。" />
           ) : !currentProblem ? (
             <EmptyPracticeState text="当前队列没有符合条件的题目。" />
           ) : (

@@ -28,6 +28,14 @@ export interface PracticeProblemItem extends Problem {
   sourceProblemIndex: number;
 }
 
+export interface Math3ScopeProblemSetStat {
+  noteId: string;
+  title: string;
+  totalProblems: number;
+  matchedProblems: number;
+  matchedPointIds: string[];
+}
+
 function uniqueStrings(values: string[]): string[] {
   return Array.from(new Set(values.filter(Boolean)));
 }
@@ -55,9 +63,15 @@ export function getVisibleNoteTags(tags: string[] = []): string[] {
 export function mergeVisibleTagsWithMath3Tags(
   visibleTags: string[],
   preservedTags: string[] = [],
+  generatedMath3Tags?: string[],
 ): string[] {
   const userTags = uniqueStrings(visibleTags.map((tag) => tag.trim()).filter(Boolean));
-  const math3Tags = splitMath3PracticeTags(preservedTags).math3PracticeTags;
+  const preservedMath3Tags = splitMath3PracticeTags(preservedTags).math3PracticeTags;
+
+  const math3Tags = generatedMath3Tags === undefined
+    ? preservedMath3Tags
+    : splitMath3PracticeTags(generatedMath3Tags).math3PracticeTags;
+
   return uniqueStrings([...userTags, ...math3Tags]);
 }
 
@@ -73,29 +87,21 @@ export function getMath3PointTag(pointId: string): string {
   return `${MATH3_POINT_TAG_PREFIX}${pointId}`;
 }
 
-export function getMath3ScopeKey(scope: Math3PracticeScope): string {
-  return `${scope.type}:${scope.id}`;
+export function getMath3PointIdsFromTags(tags: string[] = []): string[] {
+  return uniqueStrings(
+    tags
+      .filter((tag) => tag.startsWith(MATH3_POINT_TAG_PREFIX))
+      .map((tag) => tag.slice(MATH3_POINT_TAG_PREFIX.length))
+      .filter((pointId) => Boolean(getMath3PointById(pointId)))
+  );
 }
 
-export function getMath3ScopeTag(scope: Math3PracticeScope): string {
-  return scope.type === "area" ? getMath3AreaTag(scope.id) : getMath3ChapterTag(scope.id);
-}
-
-export function setMath3ScopeLinked(
-  tags: string[],
-  scope: Math3PracticeScope,
-  linked: boolean,
-  pointIds: string[] = [],
-): string[] {
-  const scopeTag = getMath3ScopeTag(scope);
-  const pointTagsToAdd = pointIds.map(getMath3PointTag);
-  const chapterPointTags = scope.type === "chapter"
-    ? getMath3ChapterPointIds(scope.id).map(getMath3PointTag)
-    : [];
-  const pointTagsToRemove = new Set(scope.type === "chapter" ? chapterPointTags : pointTagsToAdd);
-  const nextTags = tags.filter((tag) => tag !== scopeTag && !pointTagsToRemove.has(tag));
-  if (linked) nextTags.push(scopeTag, ...pointTagsToAdd);
-  return uniqueStrings(nextTags);
+export function setMath3ProblemPointTags(tags: string[] = [], pointIds: string[] = []): string[] {
+  const validPointTags = uniqueStrings(pointIds)
+    .filter((pointId) => Boolean(getMath3PointById(pointId)))
+    .map(getMath3PointTag);
+  const nonPointTags = tags.filter((tag) => !tag.startsWith(MATH3_POINT_TAG_PREFIX));
+  return uniqueStrings([...nonPointTags, ...validPointTags]);
 }
 
 export function getMath3AreaById(areaId: Math3KnowledgeAreaId): Math3KnowledgeArea | undefined {
@@ -138,35 +144,60 @@ export function getMath3ChapterPointIds(chapterId: string): string[] {
   return result ? result.chapter.points.map((pointItem) => pointItem.id) : [];
 }
 
+export function getMath3ScopePointIds(scope: Math3PracticeScope): string[] {
+  if (scope.type === "chapter") return getMath3ChapterPointIds(scope.id);
+
+  const area = getMath3AreaById(scope.id);
+  return area?.chapters.flatMap((chapter) => chapter.points.map((pointItem) => pointItem.id)) ?? [];
+}
+
+export function getMath3PracticeTagsFromProblems(problems: Problem[] = []): string[] {
+  return uniqueStrings(
+    problems.flatMap((problem) =>
+      getMath3PointIdsFromTags(problem.tags).map(getMath3PointTag)
+    )
+  );
+}
+
+function getMath3ScopePointTagSet(scope: Math3PracticeScope): Set<string> {
+  return new Set(getMath3ScopePointIds(scope).map(getMath3PointTag));
+}
+
+function problemMatchesMath3PointTagSet(problem: Problem, pointTagSet: Set<string>): boolean {
+  return (problem.tags ?? []).some((tag) => pointTagSet.has(tag));
+}
+
+function legacyNoteScopeTagsMatchMath3Scope(tags: string[] = [], scope: Math3PracticeScope): boolean {
+  if (scope.type === "chapter") {
+    return tags.includes(getMath3ChapterTag(scope.id));
+  }
+
+  const area = getMath3AreaById(scope.id);
+  if (!area) return false;
+
+  const chapterTags = new Set(area.chapters.map((chapter) => getMath3ChapterTag(chapter.id)));
+  return tags.includes(getMath3AreaTag(scope.id)) || tags.some((tag) => chapterTags.has(tag));
+}
+
+function noteTagsMatchMath3Scope(
+  tags: string[] = [],
+  scope: Math3PracticeScope,
+  pointTagSet = getMath3ScopePointTagSet(scope),
+): boolean {
+  return legacyNoteScopeTagsMatchMath3Scope(tags, scope) || tags.some((tag) => pointTagSet.has(tag));
+}
+
 export function getLinkedProblemSetIds(
   problemSets: Note[],
   scope: Math3PracticeScope,
 ): string[] {
-  const scopeTag = getMath3ScopeTag(scope);
-  const pointTags = scope.type === "chapter"
-    ? new Set(getMath3ChapterPointIds(scope.id).map(getMath3PointTag))
-    : null;
+  const pointTagSet = getMath3ScopePointTagSet(scope);
 
   return problemSets
-    .filter((set) => set.tags.includes(scopeTag) || Boolean(pointTags && set.tags.some((tag) => pointTags.has(tag))))
-    .map((set) => set.id);
-}
-
-export function getAreaPracticeProblemSetIds(
-  problemSets: Note[],
-  area: Math3KnowledgeArea,
-): string[] {
-  const areaTag = getMath3AreaTag(area.id);
-  const chapterTags = new Set(area.chapters.map((chapter) => getMath3ChapterTag(chapter.id)));
-  const pointTags = new Set(area.chapters.flatMap((chapter) =>
-    chapter.points.map((pointItem) => getMath3PointTag(pointItem.id))
-  ));
-
-  return problemSets
-    .filter((set) => (
-      set.tags.includes(areaTag) ||
-      set.tags.some((tag) => chapterTags.has(tag) || pointTags.has(tag))
-    ))
+    .filter((set) =>
+      noteTagsMatchMath3Scope(set.tags, scope, pointTagSet) ||
+      (set.problems ?? []).some((problem) => problemMatchesMath3PointTagSet(problem, pointTagSet))
+    )
     .map((set) => set.id);
 }
 
@@ -174,14 +205,54 @@ export function getPracticeProblemKey(noteId: string, problemId: string): string
   return `${noteId}:${problemId}`;
 }
 
-export function flattenPracticeProblems(problemSets: Note[]): PracticeProblemItem[] {
+export function flattenPracticeProblems(problemSets: Note[], scope?: Math3PracticeScope): PracticeProblemItem[] {
+  const pointTagSet = scope ? getMath3ScopePointTagSet(scope) : null;
+
   return problemSets.flatMap((set) =>
-    (set.problems ?? []).map((problem, index) => ({
-      ...problem,
-      practiceKey: getPracticeProblemKey(set.id, problem.id),
-      sourceNoteId: set.id,
-      sourceNoteTitle: set.title,
-      sourceProblemIndex: index,
-    }))
+    (set.problems ?? [])
+      .map((problem, index) => ({ problem, index }))
+      .filter(({ problem }) => {
+        if (!scope) return true;
+        const problemPointIds = getMath3PointIdsFromTags(problem.tags);
+        if (problemPointIds.length > 0) {
+          return pointTagSet ? problemMatchesMath3PointTagSet(problem, pointTagSet) : true;
+        }
+
+        return legacyNoteScopeTagsMatchMath3Scope(set.tags, scope);
+      })
+      .map(({ problem, index }) => ({
+        ...problem,
+        practiceKey: getPracticeProblemKey(set.id, problem.id),
+        sourceNoteId: set.id,
+        sourceNoteTitle: set.title,
+        sourceProblemIndex: index,
+      }))
   );
+}
+
+export function getMath3ScopeProblemSetStats(
+  problemSets: Note[],
+  scope: Math3PracticeScope,
+): Math3ScopeProblemSetStat[] {
+  const scopePointIdSet = new Set(getMath3ScopePointIds(scope));
+
+  return problemSets
+    .map((set) => {
+      const matchedProblems = flattenPracticeProblems([set], scope);
+      const matchedPointIds = uniqueStrings([
+        ...getMath3PointIdsFromTags(set.tags).filter((pointId) => scopePointIdSet.has(pointId)),
+        ...(set.problems ?? []).flatMap((problem) =>
+          getMath3PointIdsFromTags(problem.tags).filter((pointId) => scopePointIdSet.has(pointId))
+        ),
+      ]);
+
+      return {
+        noteId: set.id,
+        title: set.title,
+        totalProblems: set.problems?.length ?? 0,
+        matchedProblems: matchedProblems.length,
+        matchedPointIds,
+      };
+    })
+    .filter((stat) => stat.matchedProblems > 0 || stat.matchedPointIds.length > 0);
 }

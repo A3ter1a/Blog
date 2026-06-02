@@ -18,7 +18,7 @@ export default function ToolsPage() {
     {
       id: "math3-catalog",
       title: "数三知识目录",
-      description: "按考纲章节整理数学三知识点，并在目录内挂载题集刷题",
+      description: "按考纲章节整理数学三知识点，并按小题知识点归属生成刷题队列",
       icon: BookOpen,
       color: "bg-violet-500/10 text-violet-600",
       href: "/tools/math3-catalog",

@@ -1,10 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
-  AlertCircle,
   BookOpen,
-  Brain,
   Calculator,
   CheckCircle2,
   ChevronDown,
@@ -14,23 +12,12 @@ import {
   ListChecks,
   ListFilter,
   Loader2,
-  Plus,
   Search,
-  Sparkles,
   Star,
   Target,
-  Trash2,
   X,
 } from "lucide-react";
 import { PracticeSession } from "@/components/practice/PracticeSession";
-import { recordDeepSeekUsage } from "@/lib/ai-usage";
-import {
-  AI_CONFIG_STORAGE_KEY,
-  ALLOW_CLIENT_AI_KEYS,
-  DEFAULT_AI_CONFIG,
-  DEFAULT_DEEPSEEK_MODEL,
-  normalizeAIConfig,
-} from "@/lib/ai-config";
 import {
   difficultyMeta,
   math3KnowledgeChapterIds,
@@ -49,19 +36,14 @@ import {
 } from "@/lib/math3-knowledge";
 import { readJsonStorage, writeJsonStorage } from "@/lib/browser-storage";
 import {
-  getAreaPracticeProblemSetIds,
-  getMath3ChapterById,
   getLinkedProblemSetIds,
-  getMath3ScopeKey,
-  getMath3PointById,
+  getMath3PointIdsFromTags,
+  getMath3ScopePointIds,
   getVisibleNoteTags,
-  setMath3ScopeLinked,
   type Math3PracticeScope,
 } from "@/lib/math3-practice";
 import { notesApi } from "@/lib/supabase";
-import { buildAuthHeaders } from "@/lib/fetch-with-auth";
 import type { Note } from "@/lib/types";
-import { useAdminAuth } from "@/hooks/useAdminAuth";
 import { useToast } from "@/components/ui/Toast";
 
 type AreaFilter = "all" | Math3KnowledgeAreaId;
@@ -79,29 +61,6 @@ interface VisibleArea {
   examWeight: string;
   description: string;
   chapters: VisibleChapter[];
-}
-
-interface Math3ClassificationRecommendation {
-  areaId: Math3KnowledgeAreaId;
-  chapterId: string;
-  pointIds: string[];
-  confidence: number;
-  reason: string;
-  evidence: string[];
-}
-
-interface ClassificationReviewState {
-  noteId: string;
-  noteTitle: string;
-  requestedScope: Math3PracticeScope;
-  recommendations: Math3ClassificationRecommendation[];
-  selectedChapterId: string;
-  selectedPointIds: string[];
-}
-
-interface ChapterOption {
-  area: Math3KnowledgeArea;
-  chapter: Math3KnowledgeChapter;
 }
 
 const areaOptions: Array<{ value: AreaFilter; label: string }> = [
@@ -132,9 +91,6 @@ const areaTone: Record<Math3KnowledgeAreaId, string> = {
 
 const validKnowledgePointIds = new Set(math3KnowledgePointIds);
 const validKnowledgeChapterIds = new Set(math3KnowledgeChapterIds);
-const chapterOptions: ChapterOption[] = math3KnowledgeAreas.flatMap((area) =>
-  area.chapters.map((chapter) => ({ area, chapter }))
-);
 
 function normalizeIds(value: unknown, validIds: Set<string>): string[] {
   if (!Array.isArray(value)) return [];
@@ -157,97 +113,8 @@ function matchesQuery(point: Math3KnowledgePoint, query: string): boolean {
   return searchable.includes(query);
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
-
-function toCleanString(value: unknown): string {
-  if (value === null || value === undefined) return "";
-  return typeof value === "string" ? value.trim() : String(value).trim();
-}
-
-function toStringArray(value: unknown): string[] {
-  if (!Array.isArray(value)) return [];
-  return Array.from(new Set(value.map(toCleanString).filter(Boolean)));
-}
-
-function clampConfidence(value: unknown): number {
-  const confidence = Number(value);
-  if (!Number.isFinite(confidence)) return 0.5;
-  return Math.min(1, Math.max(0, confidence));
-}
-
-function getAIConfig() {
-  return readJsonStorage(AI_CONFIG_STORAGE_KEY, DEFAULT_AI_CONFIG, normalizeAIConfig);
-}
-
-function getChapterOption(chapterId: string): ChapterOption | undefined {
-  return chapterOptions.find((option) => option.chapter.id === chapterId);
-}
-
-function getChapterPointIds(chapterId: string): string[] {
-  return getChapterOption(chapterId)?.chapter.points.map((pointItem) => pointItem.id) ?? [];
-}
-
-function getScopeFromChapterId(chapterId: string): Math3PracticeScope | null {
-  const option = getChapterOption(chapterId);
-  if (!option) return null;
-
-  return {
-    type: "chapter",
-    id: option.chapter.id,
-    title: `${option.chapter.title}刷题`,
-    areaId: option.area.id,
-  };
-}
-
-function normalizeClassificationRecommendations(value: unknown): Math3ClassificationRecommendation[] {
-  const items = Array.isArray(value) ? value : [];
-  const seenChapters = new Set<string>();
-  const recommendations: Math3ClassificationRecommendation[] = [];
-
-  for (const item of items) {
-    const raw = isRecord(item) ? item : {};
-    const chapterId = toCleanString(raw.chapterId);
-    const chapter = getMath3ChapterById(chapterId);
-    if (!chapter || seenChapters.has(chapterId)) continue;
-
-    const validPointIds = new Set(chapter.chapter.points.map((pointItem) => pointItem.id));
-    const pointIds = toStringArray(raw.pointIds)
-      .filter((pointId) => validPointIds.has(pointId))
-      .slice(0, 6);
-
-    recommendations.push({
-      areaId: chapter.area.id,
-      chapterId,
-      pointIds,
-      confidence: clampConfidence(raw.confidence),
-      reason: toCleanString(raw.reason) || "AI 未给出详细理由。",
-      evidence: toStringArray(raw.evidence).slice(0, 4),
-    });
-    seenChapters.add(chapterId);
-  }
-
-  return recommendations;
-}
-
-function getFallbackChapterId(scope: Math3PracticeScope, recommendations: Math3ClassificationRecommendation[]): string {
-  if (recommendations[0]?.chapterId) return recommendations[0].chapterId;
-  if (scope.type === "chapter") return scope.id;
-
-  const area = math3KnowledgeAreas.find((item) => item.id === scope.id);
-  return area?.chapters[0]?.id ?? chapterOptions[0]?.chapter.id ?? "";
-}
-
-function getConfidenceLabel(confidence: number): string {
-  if (confidence >= 0.8) return "高";
-  if (confidence >= 0.55) return "中";
-  return "低";
-}
-
 export function Math3KnowledgeCatalog() {
   const toast = useToast();
-  const { isAdmin } = useAdminAuth();
   const [areaFilter, setAreaFilter] = useState<AreaFilter>("all");
   const [difficultyFilter, setDifficultyFilter] = useState<DifficultyFilter>("all");
   const [masteryFilter, setMasteryFilter] = useState<MasteryFilter>("all");
@@ -259,7 +126,6 @@ export function Math3KnowledgeCatalog() {
   const [problemSets, setProblemSets] = useState<Note[]>([]);
   const [isLoadingProblemSets, setIsLoadingProblemSets] = useState(true);
   const [problemSetLoadError, setProblemSetLoadError] = useState<string | null>(null);
-  const [updatingScopeKey, setUpdatingScopeKey] = useState<string | null>(null);
   const [activePracticeScope, setActivePracticeScope] = useState<Math3PracticeScope | null>(null);
 
   useEffect(() => {
@@ -358,48 +224,8 @@ export function Math3KnowledgeCatalog() {
     : 0;
   const activePracticeSetIds = useMemo(() => {
     if (!activePracticeScope) return [];
-
-    if (activePracticeScope.type === "area") {
-      const area = math3KnowledgeAreas.find((item) => item.id === activePracticeScope.id);
-      return area ? getAreaPracticeProblemSetIds(problemSets, area) : [];
-    }
-
     return getLinkedProblemSetIds(problemSets, activePracticeScope);
   }, [activePracticeScope, problemSets]);
-
-  const handleToggleProblemSetLink = useCallback(async (
-    scope: Math3PracticeScope,
-    noteId: string,
-    linked: boolean,
-    pointIds: string[] = [],
-  ) => {
-    if (!isAdmin) {
-      toast.error("需要管理员登录后才能调整题集挂载");
-      return;
-    }
-
-    const scopeKey = getMath3ScopeKey(scope);
-    const targetSet = problemSets.find((set) => set.id === noteId);
-    if (!targetSet) return;
-
-    const nextTags = setMath3ScopeLinked(targetSet.tags, scope, linked, pointIds);
-    const previousProblemSets = problemSets;
-    setUpdatingScopeKey(`${scopeKey}:${noteId}`);
-    setProblemSets((current) => current.map((set) => (
-      set.id === noteId ? { ...set, tags: nextTags } : set
-    )));
-
-    try {
-      await notesApi.update(noteId, { tags: nextTags });
-      toast.success(linked ? "题集已放入目录" : "题集已从目录移除");
-    } catch (error) {
-      setProblemSets(previousProblemSets);
-      const message = error instanceof Error ? error.message : "未知错误";
-      toast.error(`题集挂载更新失败：${message}`);
-    } finally {
-      setUpdatingScopeKey(null);
-    }
-  }, [isAdmin, problemSets, toast]);
 
   const toggleStar = (pointId: string) => {
     setStarredIds((current) => {
@@ -609,10 +435,11 @@ export function Math3KnowledgeCatalog() {
               scopeTitle={activePracticeScope.title}
               scopeDescription={
                 activePracticeScope.type === "area"
-                  ? "本队列会汇总这个模块本身以及它下面各章节挂载的题集。"
-                  : "本队列只使用这个章节子栏中挂载的题集。"
+                  ? "本队列按小题知识点归属，汇总这个模块下的相关题目。"
+                  : "本队列只抽取归到本章知识点的小题。"
               }
               problemSetIds={activePracticeSetIds}
+              scope={activePracticeScope}
               onClose={() => setActivePracticeScope(null)}
             />
           </div>
@@ -624,10 +451,7 @@ export function Math3KnowledgeCatalog() {
               key={area.id}
               area={area}
               problemSets={problemSets}
-              isAdmin={isAdmin}
               isLoadingProblemSets={isLoadingProblemSets}
-              updatingScopeKey={updatingScopeKey}
-              onToggleProblemSetLink={handleToggleProblemSetLink}
               onStartPractice={setActivePracticeScope}
             />
           ))}
@@ -671,13 +495,10 @@ export function Math3KnowledgeCatalog() {
                       starredSet={starredSet}
                       masteredSet={masteredSet}
                       collapsed={collapsedChapterSet.has(chapter.id) && !forceExpandedChapters}
-                      isAdmin={isAdmin}
                       isLoadingProblemSets={isLoadingProblemSets}
-                      updatingScopeKey={updatingScopeKey}
                       onToggleStar={toggleStar}
                       onToggleMastered={toggleMastered}
                       onToggleChapter={() => toggleChapter(chapter.id)}
-                      onToggleProblemSetLink={handleToggleProblemSetLink}
                       onStartPractice={setActivePracticeScope}
                     />
                   ))}
@@ -750,23 +571,12 @@ function getAreaPracticeName(area: Math3KnowledgeArea): string {
 function AreaPracticeCard({
   area,
   problemSets,
-  isAdmin,
   isLoadingProblemSets,
-  updatingScopeKey,
-  onToggleProblemSetLink,
   onStartPractice,
 }: {
   area: Math3KnowledgeArea;
   problemSets: Note[];
-  isAdmin: boolean;
   isLoadingProblemSets: boolean;
-  updatingScopeKey: string | null;
-  onToggleProblemSetLink: (
-    scope: Math3PracticeScope,
-    noteId: string,
-    linked: boolean,
-    pointIds?: string[],
-  ) => Promise<void>;
   onStartPractice: (scope: Math3PracticeScope) => void;
 }) {
   const practiceName = getAreaPracticeName(area);
@@ -776,7 +586,6 @@ function AreaPracticeCard({
     title: `${practiceName}刷题`,
   };
   const directLinkedSetIds = getLinkedProblemSetIds(problemSets, scope);
-  const aggregateSetIds = getAreaPracticeProblemSetIds(problemSets, area);
 
   return (
     <div className="rounded-lg border border-outline-variant/20 bg-surface-container-lowest p-4">
@@ -798,20 +607,17 @@ function AreaPracticeCard({
           刷整个{practiceName}
         </button>
         <span className="text-xs text-on-surface-variant">
-          汇总 {aggregateSetIds.length} 个题集
+          汇总 {directLinkedSetIds.length} 个题集
         </span>
       </div>
 
       <div className="mt-4">
         <ProblemSetLinkPanel
           scope={scope}
-          title={`${practiceName}整体题集`}
+          title={`${practiceName}相关题集`}
           problemSets={problemSets}
           linkedSetIds={directLinkedSetIds}
-          isAdmin={isAdmin}
           isLoadingProblemSets={isLoadingProblemSets}
-          updatingScopeKey={updatingScopeKey}
-          onToggleProblemSetLink={onToggleProblemSetLink}
         />
       </div>
     </div>
@@ -823,181 +629,20 @@ function ProblemSetLinkPanel({
   title,
   problemSets,
   linkedSetIds,
-  isAdmin,
   isLoadingProblemSets,
-  updatingScopeKey,
-  onToggleProblemSetLink,
 }: {
   scope: Math3PracticeScope;
   title: string;
   problemSets: Note[];
   linkedSetIds: string[];
-  isAdmin: boolean;
   isLoadingProblemSets: boolean;
-  updatingScopeKey: string | null;
-  onToggleProblemSetLink: (
-    scope: Math3PracticeScope,
-    noteId: string,
-    linked: boolean,
-    pointIds?: string[],
-  ) => Promise<void>;
 }) {
-  const toast = useToast();
-  const [selectedSetId, setSelectedSetId] = useState("");
-  const [review, setReview] = useState<ClassificationReviewState | null>(null);
-  const [classificationError, setClassificationError] = useState<string | null>(null);
-  const [isClassifying, setIsClassifying] = useState(false);
-  const [isConfirmingReview, setIsConfirmingReview] = useState(false);
-  const scopeKey = getMath3ScopeKey(scope);
   const linkedIdSet = useMemo(() => new Set(linkedSetIds), [linkedSetIds]);
+  const scopePointIdSet = useMemo(() => new Set(getMath3ScopePointIds(scope)), [scope]);
   const linkedSets = useMemo(
     () => problemSets.filter((set) => linkedIdSet.has(set.id)),
     [linkedIdSet, problemSets],
   );
-  const availableSets = useMemo(
-    () => problemSets.filter((set) => !linkedIdSet.has(set.id)),
-    [linkedIdSet, problemSets],
-  );
-
-  useEffect(() => {
-    setSelectedSetId("");
-    setReview(null);
-    setClassificationError(null);
-  }, [scopeKey]);
-
-  useEffect(() => {
-    setReview(null);
-    setClassificationError(null);
-  }, [selectedSetId]);
-
-  const handleRequestClassification = async () => {
-    if (!selectedSetId || isClassifying) return;
-
-    setIsClassifying(true);
-    setClassificationError(null);
-
-    try {
-      const fullSet = await notesApi.getById(selectedSetId);
-      const fallbackSet = problemSets.find((set) => set.id === selectedSetId);
-      const problemSet = fullSet ?? fallbackSet;
-      if (!problemSet || problemSet.type !== "problem") {
-        throw new Error("没有找到这个题集，可能已经被删除或权限不足。");
-      }
-
-      const config = getAIConfig();
-      const response = await fetch("/api/ai/math3-classify", {
-        method: "POST",
-        headers: await buildAuthHeaders({ "Content-Type": "application/json" }),
-        body: JSON.stringify({
-          problemSet: {
-            title: problemSet.title,
-            content: problemSet.content,
-            tags: getVisibleNoteTags(problemSet.tags),
-            problems: problemSet.problems ?? [],
-          },
-          apiKey: ALLOW_CLIENT_AI_KEYS ? config.deepseekApiKey : undefined,
-          model: config.deepseekModel || DEFAULT_DEEPSEEK_MODEL,
-        }),
-      });
-
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        const message = isRecord(payload) && typeof payload.error === "string"
-          ? payload.error
-          : "AI 归类请求失败";
-        throw new Error(message);
-      }
-
-      const recommendations = normalizeClassificationRecommendations(
-        isRecord(payload) ? payload.recommendations : []
-      );
-      const tokensUsed = Number(isRecord(payload) ? payload.tokensUsed : 0);
-      if (Number.isFinite(tokensUsed) && tokensUsed > 0) {
-        recordDeepSeekUsage(tokensUsed);
-      }
-
-      const selectedChapterId = getFallbackChapterId(scope, recommendations);
-      const selectedPointIds = recommendations.find((item) => item.chapterId === selectedChapterId)?.pointIds ?? [];
-
-      setReview({
-        noteId: problemSet.id,
-        noteTitle: problemSet.title,
-        requestedScope: scope,
-        recommendations,
-        selectedChapterId,
-        selectedPointIds,
-      });
-
-      toast.info(recommendations.length > 0 ? "AI 推荐已生成，请人工确认" : "AI 没有给出可用章节，请手动选择后确认");
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "AI 归类失败";
-      setClassificationError(message);
-      toast.error(`AI 归类失败：${message}`);
-    } finally {
-      setIsClassifying(false);
-    }
-  };
-
-  const updateReviewChapter = (chapterId: string) => {
-    setReview((current) => {
-      if (!current) return current;
-      const recommendation = current.recommendations.find((item) => item.chapterId === chapterId);
-      return {
-        ...current,
-        selectedChapterId: chapterId,
-        selectedPointIds: recommendation?.pointIds ?? [],
-      };
-    });
-  };
-
-  const toggleReviewPoint = (pointId: string) => {
-    setReview((current) => {
-      if (!current) return current;
-      const pointSet = new Set(current.selectedPointIds);
-      if (pointSet.has(pointId)) {
-        pointSet.delete(pointId);
-      } else {
-        pointSet.add(pointId);
-      }
-
-      const validPointIds = new Set(getChapterPointIds(current.selectedChapterId));
-      return {
-        ...current,
-        selectedPointIds: Array.from(pointSet).filter((id) => validPointIds.has(id)),
-      };
-    });
-  };
-
-  const confirmReview = async () => {
-    if (!review || isConfirmingReview) return;
-    const targetScope = getScopeFromChapterId(review.selectedChapterId);
-    if (!targetScope) {
-      toast.error("请选择一个有效章节后再确认");
-      return;
-    }
-
-    setIsConfirmingReview(true);
-    try {
-      await onToggleProblemSetLink(targetScope, review.noteId, true, review.selectedPointIds);
-      setReview(null);
-      setSelectedSetId("");
-    } finally {
-      setIsConfirmingReview(false);
-    }
-  };
-
-  const confirmCurrentScope = async () => {
-    if (!review || isConfirmingReview) return;
-
-    setIsConfirmingReview(true);
-    try {
-      await onToggleProblemSetLink(review.requestedScope, review.noteId, true);
-      setReview(null);
-      setSelectedSetId("");
-    } finally {
-      setIsConfirmingReview(false);
-    }
-  };
 
   return (
     <div className="rounded-lg border border-outline-variant/20 bg-surface-container-low p-3">
@@ -1016,13 +661,14 @@ function ProblemSetLinkPanel({
         </div>
       ) : linkedSets.length === 0 ? (
         <p className="text-xs leading-5 text-on-surface-variant">
-          还没有题集放入这个目录栏。
+          这个范围还没有匹配到题集。请到数学题集编辑页给小题分配数三知识点。
         </p>
       ) : (
         <div className="space-y-2">
           {linkedSets.map((set) => {
-            const updatingKey = `${scopeKey}:${set.id}`;
             const visibleTags = getVisibleNoteTags(set.tags);
+            const coveredPointCount = getMath3PointIdsFromTags(set.tags)
+              .filter((pointId) => scopePointIdSet.has(pointId)).length;
             return (
               <div
                 key={set.id}
@@ -1035,247 +681,16 @@ function ProblemSetLinkPanel({
                       {visibleTags.slice(0, 3).join(" · ")}
                     </div>
                   )}
+                  {coveredPointCount > 0 && (
+                    <div className="mt-1 text-[11px] text-on-surface-variant/70">
+                      覆盖 {coveredPointCount} 个知识点
+                    </div>
+                  )}
                 </div>
-                {isAdmin && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      void onToggleProblemSetLink(scope, set.id, false);
-                    }}
-                    disabled={updatingScopeKey === updatingKey}
-                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-on-surface-variant/60 transition-colors hover:bg-red-50 hover:text-red-600 disabled:opacity-40"
-                    aria-label="移出目录栏"
-                    title="移出目录栏"
-                  >
-                    {updatingScopeKey === updatingKey
-                      ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      : <Trash2 className="h-3.5 w-3.5" />}
-                  </button>
-                )}
               </div>
             );
           })}
         </div>
-      )}
-
-      {isAdmin ? (
-        <div className="mt-3 space-y-3">
-          <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
-            <select
-              value={selectedSetId}
-              onChange={(event) => setSelectedSetId(event.target.value)}
-              disabled={isLoadingProblemSets || availableSets.length === 0 || isClassifying}
-              className="h-9 min-w-0 rounded-lg border border-outline-variant/30 bg-surface-container-lowest px-2 text-xs text-on-surface outline-none focus:border-primary/50 disabled:opacity-50"
-            >
-              <option value="">
-                {availableSets.length === 0 ? "没有可添加题集" : "选择题集给 AI 审核"}
-              </option>
-              {availableSets.map((set) => (
-                <option key={set.id} value={set.id}>{set.title}</option>
-              ))}
-            </select>
-            <button
-              type="button"
-              onClick={handleRequestClassification}
-              disabled={!selectedSetId || isClassifying}
-              className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-primary/10 px-3 text-xs font-medium text-primary transition-colors hover:bg-primary/15 disabled:opacity-40"
-            >
-              {isClassifying ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Brain className="h-3.5 w-3.5" />}
-              AI 审核
-            </button>
-          </div>
-
-          {classificationError && (
-            <div className="flex gap-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[11px] leading-5 text-red-700">
-              <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-              <span>{classificationError}</span>
-            </div>
-          )}
-
-          {review && (
-            <ClassificationReviewPanel
-              review={review}
-              isConfirming={isConfirmingReview}
-              onChangeChapter={updateReviewChapter}
-              onTogglePoint={toggleReviewPoint}
-              onConfirm={confirmReview}
-              onUseCurrentScope={confirmCurrentScope}
-              onCancel={() => setReview(null)}
-            />
-          )}
-        </div>
-      ) : (
-        <p className="mt-3 text-[11px] leading-5 text-on-surface-variant/70">
-          管理员登录后可以调整题集归属。
-        </p>
-      )}
-    </div>
-  );
-}
-
-function ClassificationReviewPanel({
-  review,
-  isConfirming,
-  onChangeChapter,
-  onTogglePoint,
-  onConfirm,
-  onUseCurrentScope,
-  onCancel,
-}: {
-  review: ClassificationReviewState;
-  isConfirming: boolean;
-  onChangeChapter: (chapterId: string) => void;
-  onTogglePoint: (pointId: string) => void;
-  onConfirm: () => void;
-  onUseCurrentScope: () => void;
-  onCancel: () => void;
-}) {
-  const selectedChapter = getChapterOption(review.selectedChapterId);
-  const selectedPointSet = new Set(review.selectedPointIds);
-
-  return (
-    <div className="rounded-lg border border-primary/20 bg-primary/5 p-3">
-      <div className="mb-3 flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary">
-            <Sparkles className="h-3.5 w-3.5" />
-            AI 审核结果
-          </div>
-          <p className="mt-1 line-clamp-2 text-xs text-on-surface-variant">{review.noteTitle}</p>
-        </div>
-        <button
-          type="button"
-          onClick={onCancel}
-          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-on-surface-variant hover:bg-surface-container-high"
-          aria-label="取消审核"
-          title="取消审核"
-        >
-          <X className="h-3.5 w-3.5" />
-        </button>
-      </div>
-
-      {review.recommendations.length > 0 ? (
-        <div className="mb-3 space-y-2">
-          {review.recommendations.map((recommendation, index) => (
-            <RecommendationCard
-              key={recommendation.chapterId}
-              recommendation={recommendation}
-              index={index}
-            />
-          ))}
-        </div>
-      ) : (
-        <p className="mb-3 rounded-md bg-surface-container-lowest px-3 py-2 text-xs leading-5 text-on-surface-variant">
-          AI 没有返回可用章节。你可以在下方手动选择最终章节，或者仍放入当前栏。
-        </p>
-      )}
-
-      <div className="space-y-2">
-        <label className="block text-[11px] font-semibold text-on-surface-variant">
-          人工确认最终章节
-        </label>
-        <select
-          value={review.selectedChapterId}
-          onChange={(event) => onChangeChapter(event.target.value)}
-          className="h-9 w-full rounded-lg border border-outline-variant/30 bg-surface-container-lowest px-2 text-xs text-on-surface outline-none focus:border-primary/50"
-        >
-          {math3KnowledgeAreas.map((area) => (
-            <optgroup key={area.id} label={area.title}>
-              {area.chapters.map((chapter) => (
-                <option key={chapter.id} value={chapter.id}>
-                  {chapter.title}
-                </option>
-              ))}
-            </optgroup>
-          ))}
-        </select>
-      </div>
-
-      {selectedChapter && (
-        <div className="mt-3">
-          <div className="mb-2 text-[11px] font-semibold text-on-surface-variant">
-            相关知识点
-          </div>
-          <div className="max-h-36 overflow-y-auto rounded-md bg-surface-container-lowest p-2">
-            <div className="flex flex-wrap gap-1.5">
-              {selectedChapter.chapter.points.map((pointItem) => (
-                <button
-                  key={pointItem.id}
-                  type="button"
-                  onClick={() => onTogglePoint(pointItem.id)}
-                  aria-pressed={selectedPointSet.has(pointItem.id)}
-                  className={`rounded-full border px-2 py-1 text-[11px] transition-colors ${
-                    selectedPointSet.has(pointItem.id)
-                      ? "border-primary/30 bg-primary/10 text-primary"
-                      : "border-outline-variant/30 text-on-surface-variant hover:border-primary/30 hover:text-primary"
-                  }`}
-                >
-                  {pointItem.title}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-
-      <div className="mt-3 flex flex-wrap justify-end gap-2">
-        <button
-          type="button"
-          onClick={onUseCurrentScope}
-          disabled={isConfirming}
-          className="inline-flex h-8 items-center justify-center rounded-lg border border-outline-variant/30 px-3 text-xs font-medium text-on-surface-variant transition-colors hover:border-primary/30 hover:text-primary disabled:opacity-40"
-        >
-          仍放入当前栏
-        </button>
-        <button
-          type="button"
-          onClick={onConfirm}
-          disabled={isConfirming || !review.selectedChapterId}
-          className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg bg-primary px-3 text-xs font-medium text-on-primary transition-colors hover:bg-primary/90 disabled:opacity-40"
-        >
-          {isConfirming ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
-          确认放入
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function RecommendationCard({
-  recommendation,
-  index,
-}: {
-  recommendation: Math3ClassificationRecommendation;
-  index: number;
-}) {
-  const chapter = getMath3ChapterById(recommendation.chapterId);
-  const pointTitles = recommendation.pointIds
-    .map((pointId) => getMath3PointById(pointId)?.point.title)
-    .filter((title): title is string => Boolean(title));
-
-  return (
-    <div className="rounded-md bg-surface-container-lowest px-3 py-2">
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary">
-          推荐 {index + 1}
-        </span>
-        <span className="text-xs font-medium text-on-surface">
-          {chapter ? `${chapter.area.title} / ${chapter.chapter.title}` : recommendation.chapterId}
-        </span>
-        <span className="text-[11px] text-on-surface-variant">
-          可信度 {getConfidenceLabel(recommendation.confidence)} · {Math.round(recommendation.confidence * 100)}%
-        </span>
-      </div>
-      <p className="mt-1 text-[11px] leading-5 text-on-surface-variant">{recommendation.reason}</p>
-      {pointTitles.length > 0 && (
-        <p className="mt-1 line-clamp-2 text-[11px] text-on-surface-variant/80">
-          知识点：{pointTitles.join("、")}
-        </p>
-      )}
-      {recommendation.evidence.length > 0 && (
-        <p className="mt-1 line-clamp-2 text-[11px] text-on-surface-variant/80">
-          依据：{recommendation.evidence.join("；")}
-        </p>
       )}
     </div>
   );
@@ -1288,13 +703,10 @@ function ChapterBlock({
   starredSet,
   masteredSet,
   collapsed,
-  isAdmin,
   isLoadingProblemSets,
-  updatingScopeKey,
   onToggleStar,
   onToggleMastered,
   onToggleChapter,
-  onToggleProblemSetLink,
   onStartPractice,
 }: {
   areaId: Math3KnowledgeAreaId;
@@ -1303,18 +715,10 @@ function ChapterBlock({
   starredSet: Set<string>;
   masteredSet: Set<string>;
   collapsed: boolean;
-  isAdmin: boolean;
   isLoadingProblemSets: boolean;
-  updatingScopeKey: string | null;
   onToggleStar: (pointId: string) => void;
   onToggleMastered: (pointId: string) => void;
   onToggleChapter: () => void;
-  onToggleProblemSetLink: (
-    scope: Math3PracticeScope,
-    noteId: string,
-    linked: boolean,
-    pointIds?: string[],
-  ) => Promise<void>;
   onStartPractice: (scope: Math3PracticeScope) => void;
 }) {
   const masteredPointCount = chapter.points.filter((pointItem) => masteredSet.has(pointItem.id)).length;
@@ -1383,13 +787,10 @@ function ChapterBlock({
           <div className="p-4">
             <ProblemSetLinkPanel
               scope={scope}
-              title="题集子栏"
+              title="相关题集"
               problemSets={problemSets}
               linkedSetIds={linkedSetIds}
-              isAdmin={isAdmin}
               isLoadingProblemSets={isLoadingProblemSets}
-              updatingScopeKey={updatingScopeKey}
-              onToggleProblemSetLink={onToggleProblemSetLink}
             />
           </div>
           {chapter.points.map((pointItem) => (
