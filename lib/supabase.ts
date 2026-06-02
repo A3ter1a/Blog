@@ -353,6 +353,35 @@ export const notesApi = {
     return mapSnakeToCamel(data);
   },
 
+  // Get the fields required by the practice page without loading note content, videos, or cover image.
+  async getPracticeSet(id: string): Promise<Note | null> {
+    const supabase = getSupabase();
+    let query = supabase
+      .from("notes")
+      .select(`
+        id,
+        type,
+        title,
+        subject,
+        tags,
+        problems,
+        created_at,
+        updated_at,
+        is_published
+      `)
+      .eq("id", id)
+      .eq("type", "problem");
+
+    if (!(await hasAdminSession())) {
+      query = query.eq("is_published", true);
+    }
+
+    const { data, error } = await query.single();
+
+    if (error) return null;
+    return mapSnakeToCamel(data);
+  },
+
   // Create note
   async create(note: NoteCreateInput): Promise<Note> {
     await assertAdminWrite();

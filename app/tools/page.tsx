@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Clock, ChevronRight, Target } from "lucide-react";
+import { BookOpen, ChevronRight, Clock, Target } from "lucide-react";
 
 export default function ToolsPage() {
   const tools = [
@@ -25,6 +25,16 @@ export default function ToolsPage() {
       comingSoon: false,
       note: "题集专用",
     },
+    {
+      id: "math3-catalog",
+      title: "数三知识目录",
+      description: "按考纲章节整理数学三知识点，支持难度显示和重点加星",
+      icon: BookOpen,
+      color: "bg-violet-500/10 text-violet-600",
+      href: "/tools/math3-catalog",
+      comingSoon: false,
+      note: "考纲目录",
+    },
   ];
 
   return (
@@ -46,48 +56,61 @@ export default function ToolsPage() {
         <div className="grid gap-4">
           {tools.map((tool) => {
             const Icon = tool.icon;
+            const isLink = tool.href !== "#";
+            const cardContent = (
+              <div className="flex items-start gap-4">
+                {/* Icon */}
+                <div className={`flex-shrink-0 w-12 h-12 rounded-lg ${tool.color} flex items-center justify-center`}>
+                  <Icon className="w-6 h-6" />
+                </div>
+
+                {/* Content */}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-lg font-semibold text-on-surface">
+                      {tool.title}
+                    </h3>
+                    {!tool.comingSoon && tool.note && (
+                      <span className="px-2 py-0.5 text-xs rounded-full bg-green-500/10 text-green-600">
+                        已上线
+                      </span>
+                    )}
+                  </div>
+                  <p className="mt-1 text-sm text-on-surface-variant">
+                    {tool.description}
+                  </p>
+                  {tool.note && (
+                    <p className="mt-2 text-xs text-on-surface-variant/60">
+                      {tool.note}
+                    </p>
+                  )}
+                </div>
+
+                {/* Arrow */}
+                {isLink && (
+                  <ChevronRight className="w-5 h-5 text-on-surface-variant/40 group-hover:text-primary transition-colors" />
+                )}
+              </div>
+            );
+
+            const cardClassName = `group relative block bg-surface-container-lowest rounded-xl border border-outline-variant/20 p-6 transition-all hover:shadow-ambient ${
+              tool.comingSoon ? "opacity-60" : isLink ? "cursor-pointer hover:border-primary/30" : ""
+            }`;
+
+            if (isLink) {
+              return (
+                <Link key={tool.id} href={tool.href} className={cardClassName}>
+                  {cardContent}
+                </Link>
+              );
+            }
+
             return (
               <div
                 key={tool.id}
-                className={`group relative bg-surface-container-lowest rounded-xl border border-outline-variant/20 p-6 transition-all hover:shadow-ambient ${
-                  tool.comingSoon ? "opacity-60" : "cursor-pointer hover:border-primary/30"
-                }`}
+                className={cardClassName}
               >
-                <div className="flex items-start gap-4">
-                  {/* Icon */}
-                  <div className={`flex-shrink-0 w-12 h-12 rounded-lg ${tool.color} flex items-center justify-center`}>
-                    <Icon className="w-6 h-6" />
-                  </div>
-
-                  {/* Content */}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <h3 className="text-lg font-semibold text-on-surface">
-                        {tool.title}
-                      </h3>
-                      {!tool.comingSoon && tool.note && (
-                        <span className="px-2 py-0.5 text-xs rounded-full bg-green-500/10 text-green-600">
-                          已上线
-                        </span>
-                      )}
-                    </div>
-                    <p className="mt-1 text-sm text-on-surface-variant">
-                      {tool.description}
-                    </p>
-                    {tool.note && (
-                      <p className="mt-2 text-xs text-on-surface-variant/60">
-                        {tool.note}
-                      </p>
-                    )}
-                  </div>
-
-                  {/* Arrow */}
-                  {tool.href !== "#" && (
-                    <Link href={tool.href}>
-                      <ChevronRight className="w-5 h-5 text-on-surface-variant/40 group-hover:text-primary transition-colors" />
-                    </Link>
-                  )}
-                </div>
+                {cardContent}
               </div>
             );
           })}

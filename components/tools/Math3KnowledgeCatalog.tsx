@@ -1,0 +1,429 @@
+"use client";
+
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { BookOpen, Calculator, GraduationCap, ListChecks, ListFilter, Search, Star, X } from "lucide-react";
+import {
+  difficultyMeta,
+  math3KnowledgeAreas,
+  math3KnowledgeTotals,
+  MATH3_KNOWLEDGE_SOURCE,
+  MATH3_KNOWLEDGE_STAR_STORAGE_KEY,
+  type KnowledgeDifficulty,
+  type Math3KnowledgeAreaId,
+  type Math3KnowledgeChapter,
+  type Math3KnowledgePoint,
+} from "@/lib/math3-knowledge";
+import { readJsonStorage, writeJsonStorage } from "@/lib/browser-storage";
+
+type AreaFilter = "all" | Math3KnowledgeAreaId;
+type DifficultyFilter = "all" | KnowledgeDifficulty;
+
+interface VisibleChapter extends Math3KnowledgeChapter {
+  points: Math3KnowledgePoint[];
+}
+
+interface VisibleArea {
+  id: Math3KnowledgeAreaId;
+  title: string;
+  shortTitle: string;
+  examWeight: string;
+  description: string;
+  chapters: VisibleChapter[];
+}
+
+const areaOptions: Array<{ value: AreaFilter; label: string }> = [
+  { value: "all", label: "全部" },
+  { value: "calculus", label: "微积分" },
+  { value: "linear-algebra", label: "线代" },
+  { value: "probability-statistics", label: "概率统计" },
+];
+
+const difficultyOptions: Array<{ value: DifficultyFilter; label: string }> = [
+  { value: "all", label: "全部难度" },
+  { value: "basic", label: "基础" },
+  { value: "core", label: "核心" },
+  { value: "advanced", label: "综合" },
+];
+
+const areaTone: Record<Math3KnowledgeAreaId, string> = {
+  calculus: "bg-blue-500/10 text-blue-700 border-blue-500/20",
+  "linear-algebra": "bg-violet-500/10 text-violet-700 border-violet-500/20",
+  "probability-statistics": "bg-cyan-500/10 text-cyan-700 border-cyan-500/20",
+};
+
+function normalizeStarredIds(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return Array.from(new Set(value.filter((item): item is string => typeof item === "string")));
+}
+
+function matchesQuery(point: Math3KnowledgePoint, query: string): boolean {
+  if (!query) return true;
+  const searchable = `${point.title} ${point.tags.join(" ")}`.toLowerCase();
+  return searchable.includes(query);
+}
+
+export function Math3KnowledgeCatalog() {
+  const [areaFilter, setAreaFilter] = useState<AreaFilter>("all");
+  const [difficultyFilter, setDifficultyFilter] = useState<DifficultyFilter>("all");
+  const [query, setQuery] = useState("");
+  const [onlyStarred, setOnlyStarred] = useState(false);
+  const [starredIds, setStarredIds] = useState<string[]>([]);
+
+  useEffect(() => {
+    setStarredIds(readJsonStorage(MATH3_KNOWLEDGE_STAR_STORAGE_KEY, [], normalizeStarredIds));
+  }, []);
+
+  const starredSet = useMemo(() => new Set(starredIds), [starredIds]);
+  const normalizedQuery = query.trim().toLowerCase();
+
+  const visibleAreas = useMemo<VisibleArea[]>(() => {
+    return math3KnowledgeAreas
+      .filter((area) => areaFilter === "all" || area.id === areaFilter)
+      .map((area) => ({
+        ...area,
+        chapters: area.chapters
+          .map((chapter) => ({
+            ...chapter,
+            points: chapter.points.filter((pointItem) => {
+              if (difficultyFilter !== "all" && pointItem.difficulty !== difficultyFilter) return false;
+              if (onlyStarred && !starredSet.has(pointItem.id)) return false;
+              return matchesQuery(pointItem, normalizedQuery);
+            }),
+          }))
+          .filter((chapter) => chapter.points.length > 0),
+      }))
+      .filter((area) => area.chapters.length > 0);
+  }, [areaFilter, difficultyFilter, normalizedQuery, onlyStarred, starredSet]);
+
+  const visiblePointCount = useMemo(
+    () => visibleAreas.reduce(
+      (sum, area) => sum + area.chapters.reduce((chapterSum, chapter) => chapterSum + chapter.points.length, 0),
+      0
+    ),
+    [visibleAreas]
+  );
+
+  const difficultyCounts = useMemo(() => {
+    const counts: Record<KnowledgeDifficulty, number> = { basic: 0, core: 0, advanced: 0 };
+    for (const area of math3KnowledgeAreas) {
+      for (const chapter of area.chapters) {
+        for (const pointItem of chapter.points) {
+          counts[pointItem.difficulty] += 1;
+        }
+      }
+    }
+    return counts;
+  }, []);
+
+  const toggleStar = (pointId: string) => {
+    setStarredIds((current) => {
+      const next = current.includes(pointId)
+        ? current.filter((id) => id !== pointId)
+        : [...current, pointId];
+      writeJsonStorage(MATH3_KNOWLEDGE_STAR_STORAGE_KEY, next);
+      return next;
+    });
+  };
+
+  const resetFilters = () => {
+    setAreaFilter("all");
+    setDifficultyFilter("all");
+    setOnlyStarred(false);
+    setQuery("");
+  };
+
+  return (
+    <div className="min-h-screen bg-surface pt-24">
+      <section className="border-b border-outline-variant/20 bg-surface-container-low">
+        <div className="mx-auto max-w-6xl px-4 py-8">
+          <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+            <div className="max-w-3xl">
+              <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-primary/15 bg-primary/5 px-3 py-1 text-xs font-medium text-primary">
+                <GraduationCap className="h-4 w-4" />
+                数三考研
+              </div>
+              <h1 className="font-headline text-3xl font-bold text-on-surface md:text-4xl">
+                知识目录
+              </h1>
+              <p className="mt-3 text-sm leading-6 text-on-surface-variant md:text-base">
+                依据 {MATH3_KNOWLEDGE_SOURCE} 整理，按模块、章节和知识点拆分成复习清单。
+              </p>
+            </div>
+
+            <div className="grid grid-cols-3 gap-3 rounded-lg border border-outline-variant/20 bg-surface-container-lowest p-3 shadow-ambient lg:min-w-[360px]">
+              <StatCard label="章节" value={math3KnowledgeTotals.chapters.toString()} />
+              <StatCard label="知识点" value={math3KnowledgeTotals.points.toString()} />
+              <StatCard label="已加星" value={starredIds.length.toString()} />
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <main className="mx-auto max-w-6xl px-4 py-8">
+        <section className="mb-6 rounded-lg border border-outline-variant/20 bg-surface-container-lowest p-4 shadow-ambient">
+          <div className="grid gap-4 lg:grid-cols-[1fr_auto] lg:items-center">
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-on-surface-variant/50" />
+              <input
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="搜索知识点、公式、章节关键词"
+                className="h-11 w-full rounded-lg border border-outline-variant/30 bg-surface-container-low px-10 text-sm text-on-surface outline-none transition-colors placeholder:text-on-surface-variant/45 focus:border-primary/50 focus:bg-surface-container-lowest"
+              />
+              {query && (
+                <button
+                  type="button"
+                  onClick={() => setQuery("")}
+                  className="absolute right-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-on-surface-variant hover:bg-surface-container-high"
+                  aria-label="清空搜索"
+                  title="清空搜索"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              )}
+            </div>
+
+            <button
+              type="button"
+              onClick={resetFilters}
+              className="inline-flex h-11 items-center justify-center gap-2 rounded-lg border border-outline-variant/30 px-4 text-sm font-medium text-on-surface-variant transition-colors hover:border-primary/40 hover:text-primary"
+            >
+              <X className="h-4 w-4" />
+              重置
+            </button>
+          </div>
+
+          <div className="mt-4 grid gap-4 xl:grid-cols-[1fr_1fr_auto] xl:items-center">
+            <FilterGroup icon={<BookOpen className="h-4 w-4" />} label="模块">
+              {areaOptions.map((option) => (
+                <FilterButton
+                  key={option.value}
+                  active={areaFilter === option.value}
+                  onClick={() => setAreaFilter(option.value)}
+                >
+                  {option.label}
+                </FilterButton>
+              ))}
+            </FilterGroup>
+
+            <FilterGroup icon={<ListFilter className="h-4 w-4" />} label="难度">
+              {difficultyOptions.map((option) => (
+                <FilterButton
+                  key={option.value}
+                  active={difficultyFilter === option.value}
+                  onClick={() => setDifficultyFilter(option.value)}
+                >
+                  {option.label}
+                </FilterButton>
+              ))}
+            </FilterGroup>
+
+            <button
+              type="button"
+              onClick={() => setOnlyStarred((value) => !value)}
+              aria-pressed={onlyStarred}
+              className={`inline-flex h-10 items-center justify-center gap-2 rounded-lg border px-4 text-sm font-medium transition-colors ${
+                onlyStarred
+                  ? "border-amber-500/30 bg-amber-500/10 text-amber-700"
+                  : "border-outline-variant/30 text-on-surface-variant hover:border-amber-500/30 hover:text-amber-700"
+              }`}
+            >
+              <Star className={`h-4 w-4 ${onlyStarred ? "fill-current" : ""}`} />
+              只看加星
+            </button>
+          </div>
+        </section>
+
+        <section className="mb-6 grid gap-3 md:grid-cols-3">
+          {math3KnowledgeAreas.map((area) => (
+            <div key={area.id} className="rounded-lg border border-outline-variant/20 bg-surface-container-lowest p-4">
+              <div className="flex items-center justify-between gap-3">
+                <span className={`rounded-full border px-3 py-1 text-xs font-medium ${areaTone[area.id]}`}>
+                  {area.shortTitle}
+                </span>
+                <span className="text-xs font-semibold text-on-surface-variant">{area.examWeight}</span>
+              </div>
+              <p className="mt-3 text-sm leading-6 text-on-surface-variant">{area.description}</p>
+            </div>
+          ))}
+        </section>
+
+        <section className="mb-6 grid gap-3 md:grid-cols-4">
+          <DifficultyStat label="当前显示" value={visiblePointCount} tone="border-primary/20 bg-primary/5 text-primary" />
+          <DifficultyStat label="基础" value={difficultyCounts.basic} tone={difficultyMeta.basic.tone} />
+          <DifficultyStat label="核心" value={difficultyCounts.core} tone={difficultyMeta.core.tone} />
+          <DifficultyStat label="综合" value={difficultyCounts.advanced} tone={difficultyMeta.advanced.tone} />
+        </section>
+
+        {visibleAreas.length === 0 ? (
+          <div className="rounded-lg border border-dashed border-outline-variant/40 bg-surface-container-lowest p-10 text-center">
+            <ListChecks className="mx-auto h-10 w-10 text-on-surface-variant/40" />
+            <p className="mt-3 text-sm text-on-surface-variant">没有匹配的知识点。</p>
+          </div>
+        ) : (
+          <div className="space-y-8">
+            {visibleAreas.map((area) => (
+              <section key={area.id} className="space-y-4">
+                <div className="flex flex-wrap items-end justify-between gap-3 border-b border-outline-variant/20 pb-3">
+                  <div>
+                    <div className={`mb-2 inline-flex rounded-full border px-3 py-1 text-xs font-medium ${areaTone[area.id]}`}>
+                      {area.examWeight}
+                    </div>
+                    <h2 className="font-headline text-2xl font-bold text-on-surface">{area.title}</h2>
+                  </div>
+                  <div className="text-sm text-on-surface-variant">
+                    {area.chapters.length} 章 / {area.chapters.reduce((sum, chapter) => sum + chapter.points.length, 0)} 个知识点
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  {area.chapters.map((chapter) => (
+                    <ChapterBlock
+                      key={chapter.id}
+                      chapter={chapter}
+                      starredSet={starredSet}
+                      onToggleStar={toggleStar}
+                    />
+                  ))}
+                </div>
+              </section>
+            ))}
+          </div>
+        )}
+      </main>
+    </div>
+  );
+}
+
+function StatCard({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-md bg-surface-container-low px-3 py-3 text-center">
+      <div className="text-xl font-bold text-primary">{value}</div>
+      <div className="mt-1 text-xs text-on-surface-variant">{label}</div>
+    </div>
+  );
+}
+
+function FilterGroup({ icon, label, children }: { icon: ReactNode; label: string; children: ReactNode }) {
+  return (
+    <div className="min-w-0">
+      <div className="mb-2 flex items-center gap-2 text-xs font-medium text-on-surface-variant">
+        {icon}
+        {label}
+      </div>
+      <div className="flex flex-wrap gap-2">{children}</div>
+    </div>
+  );
+}
+
+function FilterButton({ active, onClick, children }: {
+  active: boolean;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`h-9 rounded-lg border px-3 text-sm font-medium transition-colors ${
+        active
+          ? "border-primary/30 bg-primary/10 text-primary"
+          : "border-outline-variant/30 text-on-surface-variant hover:border-primary/30 hover:text-primary"
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
+function DifficultyStat({ label, value, tone }: { label: string; value: number; tone: string }) {
+  return (
+    <div className={`rounded-lg border p-4 ${tone}`}>
+      <div className="text-2xl font-bold">{value}</div>
+      <div className="mt-1 text-xs font-medium">{label}</div>
+    </div>
+  );
+}
+
+function ChapterBlock({
+  chapter,
+  starredSet,
+  onToggleStar,
+}: {
+  chapter: VisibleChapter;
+  starredSet: Set<string>;
+  onToggleStar: (pointId: string) => void;
+}) {
+  return (
+    <article className="overflow-hidden rounded-lg border border-outline-variant/20 bg-surface-container-lowest">
+      <div className="border-b border-outline-variant/20 bg-surface-container-low px-4 py-4">
+        <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+          <div>
+            <h3 className="font-headline text-lg font-bold text-on-surface">{chapter.title}</h3>
+            <p className="mt-1 text-sm leading-6 text-on-surface-variant">{chapter.summary}</p>
+          </div>
+          <span className="inline-flex w-fit items-center gap-1 rounded-full bg-surface-container-lowest px-3 py-1 text-xs font-medium text-on-surface-variant">
+            <Calculator className="h-3.5 w-3.5" />
+            {chapter.points.length} 点
+          </span>
+        </div>
+      </div>
+
+      <div className="divide-y divide-outline-variant/15">
+        {chapter.points.map((pointItem) => (
+          <KnowledgePointRow
+            key={pointItem.id}
+            pointItem={pointItem}
+            starred={starredSet.has(pointItem.id)}
+            onToggleStar={() => onToggleStar(pointItem.id)}
+          />
+        ))}
+      </div>
+    </article>
+  );
+}
+
+function KnowledgePointRow({
+  pointItem,
+  starred,
+  onToggleStar,
+}: {
+  pointItem: Math3KnowledgePoint;
+  starred: boolean;
+  onToggleStar: () => void;
+}) {
+  const difficulty = difficultyMeta[pointItem.difficulty];
+
+  return (
+    <div className="grid gap-3 px-4 py-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
+      <div className="min-w-0">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className={`rounded-full border px-2 py-0.5 text-xs font-medium ${difficulty.tone}`}>
+            {difficulty.label}
+          </span>
+          {pointItem.tags.map((tag) => (
+            <span key={tag} className="rounded-full bg-surface-container-low px-2 py-0.5 text-xs text-on-surface-variant">
+              {tag}
+            </span>
+          ))}
+        </div>
+        <p className="mt-2 text-sm font-medium leading-6 text-on-surface">{pointItem.title}</p>
+      </div>
+
+      <button
+        type="button"
+        onClick={onToggleStar}
+        aria-pressed={starred}
+        aria-label={starred ? "取消重点" : "标为重点"}
+        title={starred ? "取消重点" : "标为重点"}
+        className={`flex h-9 w-9 items-center justify-center rounded-full border transition-colors ${
+          starred
+            ? "border-amber-500/30 bg-amber-500/10 text-amber-600"
+            : "border-outline-variant/30 text-on-surface-variant/60 hover:border-amber-500/30 hover:text-amber-600"
+        }`}
+      >
+        <Star className={`h-4 w-4 ${starred ? "fill-current" : ""}`} />
+      </button>
+    </div>
+  );
+}

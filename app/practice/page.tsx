@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { ArrowLeft, BookOpen, Check, ChevronLeft, ChevronRight, Loader2, RotateCcw, Target, X } from "lucide-react";
 import { AdminGate } from "@/components/auth/AdminGate";
@@ -11,6 +11,18 @@ import type { Note, PracticeResult, Problem, ProblemPracticeStatus } from "@/lib
 import { difficultyMap, problemTypeMap } from "@/lib/types";
 
 const PROBLEM_SET_LIMIT = 100;
+const PROGRESS_WINDOW_SIZE = 45;
+
+type PracticeFilter = "all" | "review" | "wrong" | "unpracticed" | "unmastered" | "mastered";
+
+const PRACTICE_FILTERS: Array<{ value: PracticeFilter; label: string }> = [
+  { value: "all", label: "全部" },
+  { value: "review", label: "待回看" },
+  { value: "wrong", label: "答错" },
+  { value: "unpracticed", label: "未刷" },
+  { value: "unmastered", label: "未掌握" },
+  { value: "mastered", label: "已掌握" },
+];
 
 function getRoundLabel(round: number): string {
   const labels = ["未刷", "一刷", "二刷", "三刷", "四刷", "五刷"];
@@ -36,13 +48,44 @@ function toStatusMap(statuses: ProblemPracticeStatus[]): Record<string, ProblemP
   return Object.fromEntries(statuses.map((status) => [status.problemId, status]));
 }
 
+function isPracticed(status?: ProblemPracticeStatus): boolean {
+  return (status?.round ?? 0) > 0;
+}
+
+function isReviewStatus(status?: ProblemPracticeStatus): boolean {
+  return status?.lastResult === "wrong" || status?.lastResult === "skipped";
+}
+
+function matchesPracticeFilter(status: ProblemPracticeStatus | undefined, filter: PracticeFilter): boolean {
+  if (filter === "all") return true;
+  if (filter === "review") return isReviewStatus(status);
+  if (filter === "wrong") return status?.lastResult === "wrong";
+  if (filter === "unpracticed") return !isPracticed(status);
+  if (filter === "unmastered") return !status?.isMastered;
+  return Boolean(status?.isMastered);
+}
+
+function getProgressWindow(currentIndex: number, total: number): [number, number] {
+  if (total <= PROGRESS_WINDOW_SIZE) return [0, total];
+
+  const half = Math.floor(PROGRESS_WINDOW_SIZE / 2);
+  const start = Math.min(
+    Math.max(currentIndex - half, 0),
+    Math.max(total - PROGRESS_WINDOW_SIZE, 0),
+  );
+
+  return [start, start + PROGRESS_WINDOW_SIZE];
+}
+
 export default function PracticePage() {
   const toast = useToast();
+  const loadRequestRef = useRef(0);
   const [problemSets, setProblemSets] = useState<Note[]>([]);
   const [selectedSetId, setSelectedSetId] = useState("");
   const [selectedSet, setSelectedSet] = useState<Note | null>(null);
   const [statusMap, setStatusMap] = useState<Record<string, ProblemPracticeStatus>>({});
   const [currentIndex, setCurrentIndex] = useState(0);
+  const [practiceFilter, setPracticeFilter] = useState<PracticeFilter>("all");
   const [showAnswer, setShowAnswer] = useState(false);
   const [isLoadingSets, setIsLoadingSets] = useState(true);
   const [isLoadingSet, setIsLoadingSet] = useState(false);
@@ -50,25 +93,59 @@ export default function PracticePage() {
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const problems = useMemo(() => selectedSet?.problems ?? [], [selectedSet]);
-  const currentProblem = problems[currentIndex];
+  const problemIndexById = useMemo(() => (
+    new Map(problems.map((problem, index) => [problem.id, index]))
+  ), [problems]);
+  const filteredProblems = useMemo(() => (
+    problems.filter((problem) => matchesPracticeFilter(statusMap[problem.id], practiceFilter))
+  ), [practiceFilter, problems, statusMap]);
+  const activeIndex = filteredProblems.length === 0
+    ? 0
+    : Math.min(currentIndex, filteredProblems.length - 1);
+  const currentProblem = filteredProblems[activeIndex];
   const currentStatus = currentProblem ? statusMap[currentProblem.id] : undefined;
+  const [progressStart, progressEnd] = getProgressWindow(activeIndex, filteredProblems.length);
+  const visibleProgressProblems = filteredProblems.slice(progressStart, progressEnd);
 
   const stats = useMemo(() => {
-    const practiced = problems.filter((problem) => (statusMap[problem.id]?.round ?? 0) > 0).length;
-    const wrong = problems.filter((problem) => statusMap[problem.id]?.lastResult === "wrong").length;
-    const mastered = problems.filter((problem) => statusMap[problem.id]?.isMastered).length;
+    let practiced = 0;
+    let wrong = 0;
+    let mastered = 0;
+    let review = 0;
 
-    return { total: problems.length, practiced, wrong, mastered };
+    for (const problem of problems) {
+      const status = statusMap[problem.id];
+      if (isPracticed(status)) practiced += 1;
+      if (status?.lastResult === "wrong") wrong += 1;
+      if (status?.isMastered) mastered += 1;
+      if (isReviewStatus(status)) review += 1;
+    }
+
+    const unpracticed = problems.length - practiced;
+    const unmastered = problems.length - mastered;
+
+    return { total: problems.length, practiced, wrong, mastered, review, unpracticed, unmastered };
   }, [problems, statusMap]);
+
+  const filterCounts = useMemo<Record<PracticeFilter, number>>(() => ({
+    all: stats.total,
+    review: stats.review,
+    wrong: stats.wrong,
+    unpracticed: stats.unpracticed,
+    unmastered: stats.unmastered,
+    mastered: stats.mastered,
+  }), [stats]);
 
   const loadProblemSet = useCallback(async (noteId: string) => {
     if (!noteId) return;
 
+    const requestId = loadRequestRef.current + 1;
+    loadRequestRef.current = requestId;
     setIsLoadingSet(true);
     setLoadError(null);
     try {
       const [note, statuses] = await Promise.all([
-        notesApi.getById(noteId),
+        notesApi.getPracticeSet(noteId),
         problemPracticeApi.getByNoteId(noteId).catch((error) => {
           console.error("Failed to load practice statuses:", error);
           toast.error("刷题状态加载失败，请确认 Supabase 中已创建 problem_practice_statuses 表");
@@ -80,18 +157,22 @@ export default function PracticePage() {
         throw new Error("没有找到这个题集");
       }
 
+      if (requestId !== loadRequestRef.current) return;
+
       setSelectedSet(note);
       setStatusMap(toStatusMap(statuses));
       setCurrentIndex(0);
+      setPracticeFilter("all");
       setShowAnswer(false);
     } catch (error) {
+      if (requestId !== loadRequestRef.current) return;
       const message = error instanceof Error ? error.message : "未知错误";
       setLoadError(message);
       setSelectedSet(null);
       setStatusMap({});
       toast.error(`题集加载失败：${message}`);
     } finally {
-      setIsLoadingSet(false);
+      if (requestId === loadRequestRef.current) setIsLoadingSet(false);
     }
   }, [toast]);
 
@@ -112,10 +193,11 @@ export default function PracticePage() {
         if (cancelled) return;
 
         setProblemSets(sets);
+        setIsLoadingSets(false);
         const firstSet = sets[0];
         if (firstSet) {
           setSelectedSetId(firstSet.id);
-          await loadProblemSet(firstSet.id);
+          void loadProblemSet(firstSet.id);
         }
       } catch (error) {
         if (cancelled) return;
@@ -131,6 +213,7 @@ export default function PracticePage() {
 
     return () => {
       cancelled = true;
+      loadRequestRef.current += 1;
     };
   }, [loadProblemSet, toast]);
 
@@ -141,8 +224,14 @@ export default function PracticePage() {
   };
 
   const moveToProblem = (index: number) => {
-    if (index < 0 || index >= problems.length || recordingResult) return;
+    if (index < 0 || index >= filteredProblems.length || recordingResult) return;
     setCurrentIndex(index);
+    setShowAnswer(false);
+  };
+
+  const handleFilterChange = (filter: PracticeFilter) => {
+    setPracticeFilter(filter);
+    setCurrentIndex(0);
     setShowAnswer(false);
   };
 
@@ -221,7 +310,7 @@ export default function PracticePage() {
                     <div className="text-xs text-on-surface-variant">已刷</div>
                   </div>
                   <div>
-                    <div className="text-xl font-bold text-red-600">{stats.wrong}</div>
+                    <div className="text-xl font-bold text-red-600">{stats.review}</div>
                     <div className="text-xs text-on-surface-variant">待回看</div>
                   </div>
                   <div>
@@ -269,26 +358,79 @@ export default function PracticePage() {
 
             {problems.length > 0 && (
               <div className="rounded-xl bg-surface-container-lowest p-4 shadow-ambient">
-                <h2 className="mb-3 text-sm font-semibold text-on-surface">题目进度</h2>
-                <div className="grid grid-cols-5 gap-2">
-                  {problems.map((problem, index) => {
-                    const status = statusMap[problem.id];
-                    return (
-                      <button
-                        key={problem.id}
-                        onClick={() => moveToProblem(index)}
-                        className={`h-9 rounded-lg text-xs font-semibold transition-colors ${
-                          index === currentIndex
-                            ? "bg-primary text-on-primary"
-                            : getStatusTone(status)
-                        }`}
-                        title={getRoundLabel(status?.round ?? 0)}
-                      >
-                        {index + 1}
-                      </button>
-                    );
-                  })}
+                <h2 className="mb-3 text-sm font-semibold text-on-surface">练习队列</h2>
+                <div className="grid grid-cols-2 gap-2">
+                  {PRACTICE_FILTERS.map((filter) => (
+                    <button
+                      key={filter.value}
+                      onClick={() => handleFilterChange(filter.value)}
+                      className={`rounded-lg px-3 py-2 text-left text-sm transition-colors ${
+                        practiceFilter === filter.value
+                          ? "bg-primary text-on-primary"
+                          : "bg-surface-container-high text-on-surface-variant hover:bg-surface-container-highest"
+                      }`}
+                    >
+                      <span className="block font-medium">{filter.label}</span>
+                      <span className="text-xs opacity-80">{filterCounts[filter.value]} 题</span>
+                    </button>
+                  ))}
                 </div>
+              </div>
+            )}
+
+            {problems.length > 0 && (
+              <div className="rounded-xl bg-surface-container-lowest p-4 shadow-ambient">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <h2 className="text-sm font-semibold text-on-surface">题目进度</h2>
+                  <span className="text-xs text-on-surface-variant">
+                    {filteredProblems.length > 0
+                      ? `${progressStart + 1}-${progressEnd} / ${filteredProblems.length}`
+                      : "0 / 0"}
+                  </span>
+                </div>
+                {filteredProblems.length === 0 ? (
+                  <p className="py-4 text-sm text-on-surface-variant">当前队列没有符合条件的题目。</p>
+                ) : (
+                  <div className="grid grid-cols-5 gap-2">
+                    {progressStart > 0 && (
+                      <button
+                        onClick={() => moveToProblem(Math.max(0, progressStart - PROGRESS_WINDOW_SIZE))}
+                        className="h-9 rounded-lg bg-surface-container-high text-xs font-semibold text-on-surface-variant transition-colors hover:bg-surface-container-highest"
+                        title="上一段"
+                      >
+                        <ChevronLeft className="mx-auto h-4 w-4" />
+                      </button>
+                    )}
+                    {visibleProgressProblems.map((problem, offset) => {
+                      const index = progressStart + offset;
+                      const originalIndex = problemIndexById.get(problem.id) ?? index;
+                      const status = statusMap[problem.id];
+                      return (
+                        <button
+                          key={problem.id}
+                          onClick={() => moveToProblem(index)}
+                          className={`h-9 rounded-lg text-xs font-semibold transition-colors ${
+                            index === activeIndex
+                              ? "bg-primary text-on-primary"
+                              : getStatusTone(status)
+                          }`}
+                          title={`原第 ${originalIndex + 1} 题 · ${getRoundLabel(status?.round ?? 0)}`}
+                        >
+                          {originalIndex + 1}
+                        </button>
+                      );
+                    })}
+                    {progressEnd < filteredProblems.length && (
+                      <button
+                        onClick={() => moveToProblem(progressEnd)}
+                        className="h-9 rounded-lg bg-surface-container-high text-xs font-semibold text-on-surface-variant transition-colors hover:bg-surface-container-highest"
+                        title="下一段"
+                      >
+                        <ChevronRight className="mx-auto h-4 w-4" />
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
             )}
           </aside>
@@ -308,22 +450,29 @@ export default function PracticePage() {
                 <BookOpen className="mb-3 h-10 w-10 opacity-50" />
                 <p>选择一个题集开始刷题。</p>
               </div>
-            ) : !currentProblem ? (
+            ) : problems.length === 0 ? (
               <div className="flex min-h-[420px] flex-col items-center justify-center text-center text-on-surface-variant">
                 <BookOpen className="mb-3 h-10 w-10 opacity-50" />
                 <p>这个题集还没有题目。</p>
               </div>
+            ) : !currentProblem ? (
+              <div className="flex min-h-[420px] flex-col items-center justify-center text-center text-on-surface-variant">
+                <BookOpen className="mb-3 h-10 w-10 opacity-50" />
+                <p>当前队列没有符合条件的题目。</p>
+              </div>
             ) : (
               <PracticeProblemView
                 problem={currentProblem}
-                index={currentIndex}
-                total={problems.length}
+                index={activeIndex}
+                total={filteredProblems.length}
+                originalIndex={problemIndexById.get(currentProblem.id) ?? activeIndex}
+                allTotal={problems.length}
                 status={currentStatus}
                 showAnswer={showAnswer}
                 recordingResult={recordingResult}
                 onToggleAnswer={() => setShowAnswer((value) => !value)}
-                onPrevious={() => moveToProblem(currentIndex - 1)}
-                onNext={() => moveToProblem(currentIndex + 1)}
+                onPrevious={() => moveToProblem(activeIndex - 1)}
+                onNext={() => moveToProblem(activeIndex + 1)}
                 onRecordResult={handleRecordResult}
                 onReset={handleResetCurrent}
               />
@@ -339,6 +488,8 @@ function PracticeProblemView({
   problem,
   index,
   total,
+  originalIndex,
+  allTotal,
   status,
   showAnswer,
   recordingResult,
@@ -351,6 +502,8 @@ function PracticeProblemView({
   problem: Problem;
   index: number;
   total: number;
+  originalIndex: number;
+  allTotal: number;
   status?: ProblemPracticeStatus;
   showAnswer: boolean;
   recordingResult: PracticeResult | null;
@@ -366,7 +519,9 @@ function PracticeProblemView({
         <div>
           <div className="flex flex-wrap items-center gap-2 text-xs">
             <span className="rounded-full bg-primary/10 px-2.5 py-1 font-medium text-primary">
-              第 {index + 1} / {total} 题
+              {total === allTotal
+                ? `第 ${originalIndex + 1} / ${allTotal} 题`
+                : `队列 ${index + 1} / ${total} · 原第 ${originalIndex + 1} 题`}
             </span>
             <span className="rounded-full bg-surface-container-high px-2.5 py-1 text-on-surface-variant">
               {problemTypeMap[problem.type]}
