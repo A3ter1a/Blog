@@ -1,11 +1,27 @@
 "use client";
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { BookOpen, Calculator, GraduationCap, ListChecks, ListFilter, Search, Star, X } from "lucide-react";
+import {
+  BookOpen,
+  Calculator,
+  CheckCircle2,
+  ChevronDown,
+  Circle,
+  GraduationCap,
+  ListChecks,
+  ListFilter,
+  Search,
+  Star,
+  X,
+} from "lucide-react";
 import {
   difficultyMeta,
+  math3KnowledgeChapterIds,
   math3KnowledgeAreas,
+  math3KnowledgePointIds,
   math3KnowledgeTotals,
+  MATH3_KNOWLEDGE_COLLAPSED_CHAPTERS_STORAGE_KEY,
+  MATH3_KNOWLEDGE_MASTERED_STORAGE_KEY,
   MATH3_KNOWLEDGE_SOURCE,
   MATH3_KNOWLEDGE_STAR_STORAGE_KEY,
   type KnowledgeDifficulty,
@@ -17,6 +33,7 @@ import { readJsonStorage, writeJsonStorage } from "@/lib/browser-storage";
 
 type AreaFilter = "all" | Math3KnowledgeAreaId;
 type DifficultyFilter = "all" | KnowledgeDifficulty;
+type MasteryFilter = "all" | "unmastered" | "mastered";
 
 interface VisibleChapter extends Math3KnowledgeChapter {
   points: Math3KnowledgePoint[];
@@ -45,15 +62,34 @@ const difficultyOptions: Array<{ value: DifficultyFilter; label: string }> = [
   { value: "advanced", label: "综合" },
 ];
 
+const masteryOptions: Array<{ value: MasteryFilter; label: string }> = [
+  { value: "all", label: "全部进度" },
+  { value: "unmastered", label: "未掌握" },
+  { value: "mastered", label: "已掌握" },
+];
+
 const areaTone: Record<Math3KnowledgeAreaId, string> = {
   calculus: "bg-blue-500/10 text-blue-700 border-blue-500/20",
   "linear-algebra": "bg-violet-500/10 text-violet-700 border-violet-500/20",
   "probability-statistics": "bg-cyan-500/10 text-cyan-700 border-cyan-500/20",
 };
 
-function normalizeStarredIds(value: unknown): string[] {
+const validKnowledgePointIds = new Set(math3KnowledgePointIds);
+const validKnowledgeChapterIds = new Set(math3KnowledgeChapterIds);
+
+function normalizeIds(value: unknown, validIds: Set<string>): string[] {
   if (!Array.isArray(value)) return [];
-  return Array.from(new Set(value.filter((item): item is string => typeof item === "string")));
+  return Array.from(
+    new Set(value.filter((item): item is string => typeof item === "string" && validIds.has(item)))
+  );
+}
+
+function normalizePointIds(value: unknown): string[] {
+  return normalizeIds(value, validKnowledgePointIds);
+}
+
+function normalizeChapterIds(value: unknown): string[] {
+  return normalizeIds(value, validKnowledgeChapterIds);
 }
 
 function matchesQuery(point: Math3KnowledgePoint, query: string): boolean {
@@ -65,16 +101,26 @@ function matchesQuery(point: Math3KnowledgePoint, query: string): boolean {
 export function Math3KnowledgeCatalog() {
   const [areaFilter, setAreaFilter] = useState<AreaFilter>("all");
   const [difficultyFilter, setDifficultyFilter] = useState<DifficultyFilter>("all");
+  const [masteryFilter, setMasteryFilter] = useState<MasteryFilter>("all");
   const [query, setQuery] = useState("");
   const [onlyStarred, setOnlyStarred] = useState(false);
   const [starredIds, setStarredIds] = useState<string[]>([]);
+  const [masteredIds, setMasteredIds] = useState<string[]>([]);
+  const [collapsedChapterIds, setCollapsedChapterIds] = useState<string[]>([]);
 
   useEffect(() => {
-    setStarredIds(readJsonStorage(MATH3_KNOWLEDGE_STAR_STORAGE_KEY, [], normalizeStarredIds));
+    setStarredIds(readJsonStorage(MATH3_KNOWLEDGE_STAR_STORAGE_KEY, [], normalizePointIds));
+    setMasteredIds(readJsonStorage(MATH3_KNOWLEDGE_MASTERED_STORAGE_KEY, [], normalizePointIds));
+    setCollapsedChapterIds(
+      readJsonStorage(MATH3_KNOWLEDGE_COLLAPSED_CHAPTERS_STORAGE_KEY, [], normalizeChapterIds)
+    );
   }, []);
 
   const starredSet = useMemo(() => new Set(starredIds), [starredIds]);
+  const masteredSet = useMemo(() => new Set(masteredIds), [masteredIds]);
+  const collapsedChapterSet = useMemo(() => new Set(collapsedChapterIds), [collapsedChapterIds]);
   const normalizedQuery = query.trim().toLowerCase();
+  const forceExpandedChapters = Boolean(normalizedQuery) || difficultyFilter !== "all" || masteryFilter !== "all" || onlyStarred;
 
   const visibleAreas = useMemo<VisibleArea[]>(() => {
     return math3KnowledgeAreas
@@ -87,13 +133,15 @@ export function Math3KnowledgeCatalog() {
             points: chapter.points.filter((pointItem) => {
               if (difficultyFilter !== "all" && pointItem.difficulty !== difficultyFilter) return false;
               if (onlyStarred && !starredSet.has(pointItem.id)) return false;
+              if (masteryFilter === "mastered" && !masteredSet.has(pointItem.id)) return false;
+              if (masteryFilter === "unmastered" && masteredSet.has(pointItem.id)) return false;
               return matchesQuery(pointItem, normalizedQuery);
             }),
           }))
           .filter((chapter) => chapter.points.length > 0),
       }))
       .filter((area) => area.chapters.length > 0);
-  }, [areaFilter, difficultyFilter, normalizedQuery, onlyStarred, starredSet]);
+  }, [areaFilter, difficultyFilter, masteredSet, masteryFilter, normalizedQuery, onlyStarred, starredSet]);
 
   const visiblePointCount = useMemo(
     () => visibleAreas.reduce(
@@ -115,6 +163,11 @@ export function Math3KnowledgeCatalog() {
     return counts;
   }, []);
 
+  const masteredCount = masteredIds.length;
+  const progressPercent = math3KnowledgeTotals.points > 0
+    ? Math.round((masteredCount / math3KnowledgeTotals.points) * 100)
+    : 0;
+
   const toggleStar = (pointId: string) => {
     setStarredIds((current) => {
       const next = current.includes(pointId)
@@ -125,9 +178,36 @@ export function Math3KnowledgeCatalog() {
     });
   };
 
+  const toggleMastered = (pointId: string) => {
+    setMasteredIds((current) => {
+      const next = current.includes(pointId)
+        ? current.filter((id) => id !== pointId)
+        : [...current, pointId];
+      writeJsonStorage(MATH3_KNOWLEDGE_MASTERED_STORAGE_KEY, next);
+      return next;
+    });
+  };
+
+  const toggleChapter = (chapterId: string) => {
+    setCollapsedChapterIds((current) => {
+      const next = current.includes(chapterId)
+        ? current.filter((id) => id !== chapterId)
+        : [...current, chapterId];
+      writeJsonStorage(MATH3_KNOWLEDGE_COLLAPSED_CHAPTERS_STORAGE_KEY, next);
+      return next;
+    });
+  };
+
+  const setAllChaptersCollapsed = (collapsed: boolean) => {
+    const next = collapsed ? math3KnowledgeChapterIds : [];
+    setCollapsedChapterIds(next);
+    writeJsonStorage(MATH3_KNOWLEDGE_COLLAPSED_CHAPTERS_STORAGE_KEY, next);
+  };
+
   const resetFilters = () => {
     setAreaFilter("all");
     setDifficultyFilter("all");
+    setMasteryFilter("all");
     setOnlyStarred(false);
     setQuery("");
   };
@@ -150,9 +230,10 @@ export function Math3KnowledgeCatalog() {
               </p>
             </div>
 
-            <div className="grid grid-cols-3 gap-3 rounded-lg border border-outline-variant/20 bg-surface-container-lowest p-3 shadow-ambient lg:min-w-[360px]">
+            <div className="grid grid-cols-2 gap-3 rounded-lg border border-outline-variant/20 bg-surface-container-lowest p-3 shadow-ambient sm:grid-cols-4 lg:min-w-[460px]">
               <StatCard label="章节" value={math3KnowledgeTotals.chapters.toString()} />
               <StatCard label="知识点" value={math3KnowledgeTotals.points.toString()} />
+              <StatCard label="已掌握" value={masteredCount.toString()} />
               <StatCard label="已加星" value={starredIds.length.toString()} />
             </div>
           </div>
@@ -193,7 +274,7 @@ export function Math3KnowledgeCatalog() {
             </button>
           </div>
 
-          <div className="mt-4 grid gap-4 xl:grid-cols-[1fr_1fr_auto] xl:items-center">
+          <div className="mt-4 grid gap-4 xl:grid-cols-[1fr_1fr_1fr_auto] xl:items-center">
             <FilterGroup icon={<BookOpen className="h-4 w-4" />} label="模块">
               {areaOptions.map((option) => (
                 <FilterButton
@@ -218,6 +299,18 @@ export function Math3KnowledgeCatalog() {
               ))}
             </FilterGroup>
 
+            <FilterGroup icon={<CheckCircle2 className="h-4 w-4" />} label="进度">
+              {masteryOptions.map((option) => (
+                <FilterButton
+                  key={option.value}
+                  active={masteryFilter === option.value}
+                  onClick={() => setMasteryFilter(option.value)}
+                >
+                  {option.label}
+                </FilterButton>
+              ))}
+            </FilterGroup>
+
             <button
               type="button"
               onClick={() => setOnlyStarred((value) => !value)}
@@ -231,6 +324,43 @@ export function Math3KnowledgeCatalog() {
               <Star className={`h-4 w-4 ${onlyStarred ? "fill-current" : ""}`} />
               只看加星
             </button>
+          </div>
+        </section>
+
+        <section className="mb-6 rounded-lg border border-outline-variant/20 bg-surface-container-lowest p-4">
+          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-sm font-medium text-on-surface">掌握进度</span>
+                <span className="text-sm font-semibold text-primary">{progressPercent}%</span>
+              </div>
+              <div className="mt-2 h-2 overflow-hidden rounded-full bg-surface-container-low">
+                <div
+                  className="h-full rounded-full bg-primary transition-all"
+                  style={{ width: `${progressPercent}%` }}
+                />
+              </div>
+              <p className="mt-2 text-xs text-on-surface-variant">
+                已掌握 {masteredCount} / {math3KnowledgeTotals.points} 个知识点，加星 {starredIds.length} 个。
+              </p>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setAllChaptersCollapsed(false)}
+                className="h-9 rounded-lg border border-outline-variant/30 px-3 text-sm font-medium text-on-surface-variant transition-colors hover:border-primary/30 hover:text-primary"
+              >
+                展开全部
+              </button>
+              <button
+                type="button"
+                onClick={() => setAllChaptersCollapsed(true)}
+                className="h-9 rounded-lg border border-outline-variant/30 px-3 text-sm font-medium text-on-surface-variant transition-colors hover:border-primary/30 hover:text-primary"
+              >
+                折叠全部
+              </button>
+            </div>
           </div>
         </section>
 
@@ -282,7 +412,11 @@ export function Math3KnowledgeCatalog() {
                       key={chapter.id}
                       chapter={chapter}
                       starredSet={starredSet}
+                      masteredSet={masteredSet}
+                      collapsed={collapsedChapterSet.has(chapter.id) && !forceExpandedChapters}
                       onToggleStar={toggleStar}
+                      onToggleMastered={toggleMastered}
+                      onToggleChapter={() => toggleChapter(chapter.id)}
                     />
                   ))}
                 </div>
@@ -348,37 +482,74 @@ function DifficultyStat({ label, value, tone }: { label: string; value: number; 
 function ChapterBlock({
   chapter,
   starredSet,
+  masteredSet,
+  collapsed,
   onToggleStar,
+  onToggleMastered,
+  onToggleChapter,
 }: {
   chapter: VisibleChapter;
   starredSet: Set<string>;
+  masteredSet: Set<string>;
+  collapsed: boolean;
   onToggleStar: (pointId: string) => void;
+  onToggleMastered: (pointId: string) => void;
+  onToggleChapter: () => void;
 }) {
+  const masteredPointCount = chapter.points.filter((pointItem) => masteredSet.has(pointItem.id)).length;
+  const chapterProgressPercent = chapter.points.length > 0
+    ? Math.round((masteredPointCount / chapter.points.length) * 100)
+    : 0;
+
   return (
     <article className="overflow-hidden rounded-lg border border-outline-variant/20 bg-surface-container-lowest">
-      <div className="border-b border-outline-variant/20 bg-surface-container-low px-4 py-4">
+      <button
+        type="button"
+        onClick={onToggleChapter}
+        aria-expanded={!collapsed}
+        className="block w-full border-b border-outline-variant/20 bg-surface-container-low px-4 py-4 text-left transition-colors hover:bg-surface-container"
+      >
         <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
           <div>
-            <h3 className="font-headline text-lg font-bold text-on-surface">{chapter.title}</h3>
+            <div className="flex items-center gap-2">
+              <ChevronDown className={`h-4 w-4 shrink-0 text-on-surface-variant transition-transform ${collapsed ? "-rotate-90" : ""}`} />
+              <h3 className="font-headline text-lg font-bold text-on-surface">{chapter.title}</h3>
+            </div>
             <p className="mt-1 text-sm leading-6 text-on-surface-variant">{chapter.summary}</p>
           </div>
-          <span className="inline-flex w-fit items-center gap-1 rounded-full bg-surface-container-lowest px-3 py-1 text-xs font-medium text-on-surface-variant">
-            <Calculator className="h-3.5 w-3.5" />
-            {chapter.points.length} 点
-          </span>
+          <div className="flex w-fit flex-wrap items-center gap-2">
+            <span className="inline-flex items-center gap-1 rounded-full bg-surface-container-lowest px-3 py-1 text-xs font-medium text-on-surface-variant">
+              <Calculator className="h-3.5 w-3.5" />
+              {chapter.points.length} 点
+            </span>
+            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-3 py-1 text-xs font-medium text-emerald-700">
+              <CheckCircle2 className="h-3.5 w-3.5" />
+              {masteredPointCount}/{chapter.points.length}
+            </span>
+          </div>
         </div>
-      </div>
-
-      <div className="divide-y divide-outline-variant/15">
-        {chapter.points.map((pointItem) => (
-          <KnowledgePointRow
-            key={pointItem.id}
-            pointItem={pointItem}
-            starred={starredSet.has(pointItem.id)}
-            onToggleStar={() => onToggleStar(pointItem.id)}
+        <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-surface-container-lowest">
+          <div
+            className="h-full rounded-full bg-emerald-500 transition-all"
+            style={{ width: `${chapterProgressPercent}%` }}
           />
-        ))}
-      </div>
+        </div>
+      </button>
+
+      {!collapsed && (
+        <div className="divide-y divide-outline-variant/15">
+          {chapter.points.map((pointItem) => (
+            <KnowledgePointRow
+              key={pointItem.id}
+              pointItem={pointItem}
+              starred={starredSet.has(pointItem.id)}
+              mastered={masteredSet.has(pointItem.id)}
+              onToggleStar={() => onToggleStar(pointItem.id)}
+              onToggleMastered={() => onToggleMastered(pointItem.id)}
+            />
+          ))}
+        </div>
+      )}
     </article>
   );
 }
@@ -386,18 +557,28 @@ function ChapterBlock({
 function KnowledgePointRow({
   pointItem,
   starred,
+  mastered,
   onToggleStar,
+  onToggleMastered,
 }: {
   pointItem: Math3KnowledgePoint;
   starred: boolean;
+  mastered: boolean;
   onToggleStar: () => void;
+  onToggleMastered: () => void;
 }) {
   const difficulty = difficultyMeta[pointItem.difficulty];
 
   return (
-    <div className="grid gap-3 px-4 py-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
+    <div className={`grid gap-3 px-4 py-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-center ${mastered ? "bg-emerald-500/[0.03]" : ""}`}>
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-2">
+          {mastered && (
+            <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2 py-0.5 text-xs font-medium text-emerald-700">
+              <CheckCircle2 className="h-3 w-3" />
+              已掌握
+            </span>
+          )}
           <span className={`rounded-full border px-2 py-0.5 text-xs font-medium ${difficulty.tone}`}>
             {difficulty.label}
           </span>
@@ -410,20 +591,37 @@ function KnowledgePointRow({
         <p className="mt-2 text-sm font-medium leading-6 text-on-surface">{pointItem.title}</p>
       </div>
 
-      <button
-        type="button"
-        onClick={onToggleStar}
-        aria-pressed={starred}
-        aria-label={starred ? "取消重点" : "标为重点"}
-        title={starred ? "取消重点" : "标为重点"}
-        className={`flex h-9 w-9 items-center justify-center rounded-full border transition-colors ${
-          starred
-            ? "border-amber-500/30 bg-amber-500/10 text-amber-600"
-            : "border-outline-variant/30 text-on-surface-variant/60 hover:border-amber-500/30 hover:text-amber-600"
-        }`}
-      >
-        <Star className={`h-4 w-4 ${starred ? "fill-current" : ""}`} />
-      </button>
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={onToggleMastered}
+          aria-pressed={mastered}
+          aria-label={mastered ? "标为未掌握" : "标为已掌握"}
+          title={mastered ? "标为未掌握" : "标为已掌握"}
+          className={`flex h-9 w-9 items-center justify-center rounded-full border transition-colors ${
+            mastered
+              ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-600"
+              : "border-outline-variant/30 text-on-surface-variant/60 hover:border-emerald-500/30 hover:text-emerald-600"
+          }`}
+        >
+          {mastered ? <CheckCircle2 className="h-4 w-4" /> : <Circle className="h-4 w-4" />}
+        </button>
+
+        <button
+          type="button"
+          onClick={onToggleStar}
+          aria-pressed={starred}
+          aria-label={starred ? "取消重点" : "标为重点"}
+          title={starred ? "取消重点" : "标为重点"}
+          className={`flex h-9 w-9 items-center justify-center rounded-full border transition-colors ${
+            starred
+              ? "border-amber-500/30 bg-amber-500/10 text-amber-600"
+              : "border-outline-variant/30 text-on-surface-variant/60 hover:border-amber-500/30 hover:text-amber-600"
+          }`}
+        >
+          <Star className={`h-4 w-4 ${starred ? "fill-current" : ""}`} />
+        </button>
+      </div>
     </div>
   );
 }

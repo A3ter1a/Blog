@@ -26,6 +26,8 @@ export interface Math3KnowledgeArea {
 
 export const MATH3_KNOWLEDGE_SOURCE = "2025 年考研数学三大纲原文（完整版）";
 export const MATH3_KNOWLEDGE_STAR_STORAGE_KEY = "math3-knowledge-starred-v1";
+export const MATH3_KNOWLEDGE_MASTERED_STORAGE_KEY = "math3-knowledge-mastered-v1";
+export const MATH3_KNOWLEDGE_COLLAPSED_CHAPTERS_STORAGE_KEY = "math3-knowledge-collapsed-chapters-v1";
 
 export const difficultyMeta: Record<KnowledgeDifficulty, { label: string; tone: string }> = {
   basic: { label: "基础", tone: "bg-emerald-500/10 text-emerald-700 border-emerald-500/20" },
@@ -418,4 +420,12 @@ export const math3KnowledgeTotals = math3KnowledgeAreas.reduce(
     return totals;
   },
   { chapters: 0, points: 0 }
+);
+
+export const math3KnowledgePointIds = math3KnowledgeAreas.flatMap((area) =>
+  area.chapters.flatMap((chapter) => chapter.points.map((pointItem) => pointItem.id))
+);
+
+export const math3KnowledgeChapterIds = math3KnowledgeAreas.flatMap((area) =>
+  area.chapters.map((chapter) => chapter.id)
 );
