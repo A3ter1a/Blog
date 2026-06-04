@@ -1,117 +1,165 @@
-"use client";
-
 import Link from "next/link";
-import { BookOpen, ChevronRight, ClipboardCheck, Clock } from "lucide-react";
+import {
+  ArrowRight,
+  BookOpen,
+  ChevronRight,
+  ClipboardCheck,
+  Clock,
+  Layers,
+  ListChecks,
+  Target,
+} from "lucide-react";
+
+const primaryTools = [
+  {
+    id: "math3-self-test",
+    title: "数学三自测",
+    description: "生成安心卷、模拟卷或拔高卷，进入计时考试并保存复盘记录。",
+    href: "/tools/math3-self-test",
+    icon: ClipboardCheck,
+    tone: "border-emerald-500/20 bg-emerald-500/10 text-emerald-700",
+    metric: "AI 组卷",
+  },
+  {
+    id: "math3-catalog",
+    title: "数学三知识目录",
+    description: "按考纲章节管理知识点，并从目录范围进入刷题队列。",
+    href: "/tools/math3-catalog",
+    icon: BookOpen,
+    tone: "border-violet-500/20 bg-violet-500/10 text-violet-700",
+    metric: "目录刷题",
+  },
+];
+
+const supportTools = [
+  {
+    id: "reading-time",
+    title: "阅读时间",
+    description: "笔记阅读页自动显示预计阅读时间，帮助安排复习节奏。",
+    href: "/notes",
+    icon: Clock,
+    tone: "border-blue-500/20 bg-blue-500/10 text-blue-700",
+    metric: "笔记内置",
+  },
+];
+
+const workflowSteps = [
+  { title: "整理", description: "在笔记和题集中沉淀材料", icon: Layers },
+  { title: "定位", description: "用数学三目录锁定章节范围", icon: Target },
+  { title: "检验", description: "用刷题和自测暴露薄弱点", icon: ListChecks },
+];
 
 export default function ToolsPage() {
-  const tools = [
-    {
-      id: "reading-time",
-      title: "预计阅读时间",
-      description: "根据笔记内容估算阅读所需时间",
-      icon: Clock,
-      color: "bg-blue-500/10 text-blue-600",
-      href: "#",
-      comingSoon: false,
-      note: "已在笔记页自动显示",
-    },
-    {
-      id: "math3-self-test",
-      title: "数学三自测",
-      description: "生成安心卷、模拟卷或拔高卷，进入计时考试并保存复盘记录",
-      icon: ClipboardCheck,
-      color: "bg-emerald-500/10 text-emerald-600",
-      href: "/tools/math3-self-test",
-      comingSoon: false,
-      note: "AI 组卷 / 分步评分",
-    },
-    {
-      id: "math3-catalog",
-      title: "数学三知识目录",
-      description: "按考纲章节整理数学三知识点，并按小题知识点归属生成刷题队列",
-      icon: BookOpen,
-      color: "bg-violet-500/10 text-violet-600",
-      href: "/tools/math3-catalog",
-      comingSoon: false,
-      note: "考纲目录 / 刷题",
-    },
-  ];
+  return (
+    <main className="min-h-screen bg-surface pt-24">
+      <section className="border-b border-outline-variant/20 bg-surface-container-low">
+        <div className="mx-auto max-w-7xl px-4 py-8">
+          <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px] lg:items-end">
+            <div>
+              <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-primary/15 bg-primary/5 px-3 py-1 text-xs font-medium text-primary">
+                <Target className="h-4 w-4" />
+                学习工具台
+              </div>
+              <h1 className="font-headline text-3xl font-bold text-on-surface md:text-4xl">
+                工具
+              </h1>
+              <p className="mt-3 max-w-2xl text-sm leading-6 text-on-surface-variant md:text-base">
+                把笔记、题集、数学三目录和模拟自测串成一条复习工作流。
+              </p>
+            </div>
+
+            <div className="grid grid-cols-3 gap-2 rounded-lg border border-outline-variant/20 bg-surface-container-lowest p-3 shadow-ambient">
+              {workflowSteps.map((step) => {
+                const Icon = step.icon;
+                return (
+                  <div key={step.title} className="rounded-md bg-surface-container-low px-3 py-3">
+                    <Icon className="mb-2 h-4 w-4 text-primary" />
+                    <div className="text-sm font-semibold text-on-surface">{step.title}</div>
+                    <div className="mt-1 text-xs leading-5 text-on-surface-variant">{step.description}</div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <div className="mx-auto max-w-7xl px-4 py-8">
+        <section className="grid gap-4 lg:grid-cols-2">
+          {primaryTools.map((tool) => (
+            <ToolCard key={tool.id} tool={tool} priority />
+          ))}
+        </section>
+
+        <section className="mt-8">
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <h2 className="text-sm font-semibold text-on-surface">辅助能力</h2>
+            <Link
+              href="/notes"
+              className="inline-flex items-center gap-1 text-sm font-medium text-primary transition-colors hover:text-primary-container"
+            >
+              查看笔记
+              <ArrowRight className="h-4 w-4" />
+            </Link>
+          </div>
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {supportTools.map((tool) => (
+              <ToolCard key={tool.id} tool={tool} />
+            ))}
+          </div>
+        </section>
+      </div>
+    </main>
+  );
+}
+
+function ToolCard({
+  tool,
+  priority = false,
+}: {
+  tool: {
+    title: string;
+    description: string;
+    href: string;
+    icon: typeof ClipboardCheck;
+    tone: string;
+    metric: string;
+  };
+  priority?: boolean;
+}) {
+  const Icon = tool.icon;
 
   return (
-    <div className="min-h-screen bg-surface pt-24">
-      <div className="bg-surface-container-low border-b border-outline-variant/20">
-        <div className="max-w-4xl mx-auto px-4 py-8">
-          <h1 className="text-3xl font-bold font-headline text-on-surface">
-            工具
-          </h1>
-          <p className="mt-2 text-on-surface-variant">
-            辅助学习的高效工具集
+    <Link
+      href={tool.href}
+      className={`group block rounded-lg border border-outline-variant/20 bg-surface-container-lowest p-5 shadow-ambient transition-all hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-float ${
+        priority ? "min-h-52" : ""
+      }`}
+    >
+      <div className="flex h-full flex-col justify-between gap-5">
+        <div>
+          <div className="flex items-start justify-between gap-4">
+            <div className={`flex h-11 w-11 items-center justify-center rounded-lg border ${tool.tone}`}>
+              <Icon className="h-5 w-5" />
+            </div>
+            <span className="rounded-full bg-surface-container-low px-2.5 py-1 text-xs font-medium text-on-surface-variant">
+              {tool.metric}
+            </span>
+          </div>
+
+          <h3 className="mt-5 font-headline text-xl font-bold text-on-surface group-hover:text-primary">
+            {tool.title}
+          </h3>
+          <p className="mt-2 text-sm leading-6 text-on-surface-variant">
+            {tool.description}
           </p>
         </div>
-      </div>
 
-      <div className="max-w-4xl mx-auto px-4 py-8">
-        <div className="grid gap-4">
-          {tools.map((tool) => {
-            const Icon = tool.icon;
-            const isLink = tool.href !== "#";
-            const cardContent = (
-              <div className="flex items-start gap-4">
-                <div className={`flex-shrink-0 w-12 h-12 rounded-lg ${tool.color} flex items-center justify-center`}>
-                  <Icon className="w-6 h-6" />
-                </div>
-
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <h3 className="text-lg font-semibold text-on-surface">
-                      {tool.title}
-                    </h3>
-                    {!tool.comingSoon && tool.note && (
-                      <span className="px-2 py-0.5 text-xs rounded-full bg-green-500/10 text-green-600">
-                        已上线
-                      </span>
-                    )}
-                  </div>
-                  <p className="mt-1 text-sm text-on-surface-variant">
-                    {tool.description}
-                  </p>
-                  {tool.note && (
-                    <p className="mt-2 text-xs text-on-surface-variant/60">
-                      {tool.note}
-                    </p>
-                  )}
-                </div>
-
-                {isLink && (
-                  <ChevronRight className="w-5 h-5 text-on-surface-variant/40 group-hover:text-primary transition-colors" />
-                )}
-              </div>
-            );
-
-            const cardClassName = `group relative block bg-surface-container-lowest rounded-xl border border-outline-variant/20 p-6 transition-all hover:shadow-ambient ${
-              tool.comingSoon ? "opacity-60" : isLink ? "cursor-pointer hover:border-primary/30" : ""
-            }`;
-
-            if (isLink) {
-              return (
-                <Link key={tool.id} href={tool.href} className={cardClassName}>
-                  {cardContent}
-                </Link>
-              );
-            }
-
-            return (
-              <div key={tool.id} className={cardClassName}>
-                {cardContent}
-              </div>
-            );
-          })}
-        </div>
-
-        <div className="mt-12 text-center text-sm text-on-surface-variant/60">
-          更多实用工具正在开发中。
+        <div className="flex items-center justify-between border-t border-outline-variant/15 pt-4 text-sm font-medium text-primary">
+          <span>进入</span>
+          <ChevronRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
         </div>
       </div>
-    </div>
+    </Link>
   );
 }

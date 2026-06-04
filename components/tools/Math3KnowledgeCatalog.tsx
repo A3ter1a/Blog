@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   BookOpen,
   Calculator,
@@ -115,6 +115,7 @@ function matchesQuery(point: Math3KnowledgePoint, query: string): boolean {
 
 export function Math3KnowledgeCatalog() {
   const toast = useToast();
+  const practiceSessionRef = useRef<HTMLDivElement | null>(null);
   const [areaFilter, setAreaFilter] = useState<AreaFilter>("all");
   const [difficultyFilter, setDifficultyFilter] = useState<DifficultyFilter>("all");
   const [masteryFilter, setMasteryFilter] = useState<MasteryFilter>("all");
@@ -226,6 +227,20 @@ export function Math3KnowledgeCatalog() {
     if (!activePracticeScope) return [];
     return getLinkedProblemSetIds(problemSets, activePracticeScope);
   }, [activePracticeScope, problemSets]);
+
+  useEffect(() => {
+    if (!activePracticeScope) return;
+
+    const timer = window.setTimeout(() => {
+      practiceSessionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 0);
+
+    return () => window.clearTimeout(timer);
+  }, [activePracticeScope]);
+
+  const handleStartPractice = (scope: Math3PracticeScope) => {
+    setActivePracticeScope(scope);
+  };
 
   const toggleStar = (pointId: string) => {
     setStarredIds((current) => {
@@ -430,7 +445,7 @@ export function Math3KnowledgeCatalog() {
         )}
 
         {activePracticeScope && (
-          <div className="mb-8">
+          <div ref={practiceSessionRef} className="mb-8 scroll-mt-24">
             <PracticeSession
               scopeTitle={activePracticeScope.title}
               scopeDescription={
@@ -452,7 +467,7 @@ export function Math3KnowledgeCatalog() {
               area={area}
               problemSets={problemSets}
               isLoadingProblemSets={isLoadingProblemSets}
-              onStartPractice={setActivePracticeScope}
+              onStartPractice={handleStartPractice}
             />
           ))}
         </section>
@@ -499,7 +514,7 @@ export function Math3KnowledgeCatalog() {
                       onToggleStar={toggleStar}
                       onToggleMastered={toggleMastered}
                       onToggleChapter={() => toggleChapter(chapter.id)}
-                      onStartPractice={setActivePracticeScope}
+                      onStartPractice={handleStartPractice}
                     />
                   ))}
                 </div>

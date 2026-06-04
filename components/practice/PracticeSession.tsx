@@ -6,9 +6,13 @@ import {
   Check,
   ChevronLeft,
   ChevronRight,
+  Eye,
+  EyeOff,
+  ListChecks,
   Loader2,
   LockKeyhole,
   RotateCcw,
+  SkipForward,
   X,
 } from "lucide-react";
 import { MarkdownContent } from "@/components/ui/MarkdownContent";
@@ -237,6 +241,7 @@ export function PracticeSession({
     unmastered: stats.unmastered,
     mastered: stats.mastered,
   }), [stats]);
+  const practicedPercent = stats.total > 0 ? Math.round((stats.practiced / stats.total) * 100) : 0;
 
   const moveToProblem = (index: number) => {
     if (index < 0 || index >= filteredProblems.length || recordingResult) return;
@@ -296,34 +301,48 @@ export function PracticeSession({
   };
 
   return (
-    <section className="rounded-lg border border-primary/20 bg-surface-container-lowest shadow-ambient">
-      <div className="border-b border-outline-variant/15 px-4 py-4">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-          <div>
+    <section className="relative overflow-hidden rounded-lg border border-primary/20 bg-surface-container-lowest shadow-ambient">
+      <div className="border-b border-outline-variant/15 bg-surface-container-low px-4 py-4 md:px-5">
+        <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
+          <div className="min-w-0 flex-1">
             <div className="mb-2 inline-flex items-center gap-2 rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
               <BookOpen className="h-3.5 w-3.5" />
-              正在刷题
+              刷题器
             </div>
-            <h2 className="font-headline text-xl font-bold text-on-surface">{scopeTitle}</h2>
+            <h2 className="font-headline text-xl font-bold text-on-surface md:text-2xl">{scopeTitle}</h2>
             {scopeDescription && (
-              <p className="mt-1 text-sm leading-6 text-on-surface-variant">{scopeDescription}</p>
+              <p className="mt-2 max-w-3xl text-sm leading-6 text-on-surface-variant">{scopeDescription}</p>
             )}
           </div>
 
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="flex flex-col gap-3 xl:min-w-[460px]">
             {stats.total > 0 && (
-              <div className="grid grid-cols-4 gap-3 text-center">
-                <SessionStat label="总题数" value={stats.total} />
-                <SessionStat label="已刷" value={stats.practiced} tone="text-primary" />
-                <SessionStat label="待回看" value={stats.review} tone="text-red-600" />
-                <SessionStat label="已掌握" value={stats.mastered} tone="text-green-600" />
-              </div>
+              <>
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                  <SessionStat label="总题数" value={stats.total} />
+                  <SessionStat label="已刷" value={stats.practiced} tone="text-primary" />
+                  <SessionStat label="待回看" value={stats.review} tone="text-red-600" />
+                  <SessionStat label="已掌握" value={stats.mastered} tone="text-green-600" />
+                </div>
+                <div>
+                  <div className="mb-1 flex items-center justify-between text-xs text-on-surface-variant">
+                    <span>刷题进度</span>
+                    <span>{practicedPercent}%</span>
+                  </div>
+                  <div className="h-2 overflow-hidden rounded-full bg-surface-container-high">
+                    <div
+                      className="h-full rounded-full bg-primary transition-all"
+                      style={{ width: `${practicedPercent}%` }}
+                    />
+                  </div>
+                </div>
+              </>
             )}
             {onClose && (
               <button
                 type="button"
                 onClick={onClose}
-                className="flex h-9 w-9 items-center justify-center rounded-full text-on-surface-variant hover:bg-surface-container-high"
+                className="absolute right-3 top-3 flex h-9 w-9 items-center justify-center rounded-full text-on-surface-variant hover:bg-surface-container-high"
                 aria-label="关闭刷题"
                 title="关闭刷题"
               >
@@ -334,8 +353,8 @@ export function PracticeSession({
         </div>
       </div>
 
-      <div className="grid gap-5 p-4 lg:grid-cols-[280px_1fr]">
-        <aside className="space-y-4">
+      <div className="grid gap-5 p-4 lg:grid-cols-[300px_1fr] lg:p-5">
+        <aside className="space-y-4 lg:sticky lg:top-24 lg:self-start">
           <div className="rounded-lg bg-surface-container-low p-4">
             <h3 className="mb-3 text-sm font-semibold text-on-surface">题集来源</h3>
             {normalizedProblemSetIds.length === 0 ? (
@@ -371,7 +390,10 @@ export function PracticeSession({
 
           {problems.length > 0 && (
             <div className="rounded-lg bg-surface-container-low p-4">
-              <h3 className="mb-3 text-sm font-semibold text-on-surface">练习队列</h3>
+              <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold text-on-surface">
+                <ListChecks className="h-4 w-4 text-primary" />
+                练习队列
+              </h3>
               <div className="grid grid-cols-2 gap-2">
                 {PRACTICE_FILTERS.map((filter) => (
                   <button
@@ -444,7 +466,7 @@ export function PracticeSession({
             </div>
           )}
 
-          {!canRecord && (
+          {!authLoading && !canRecord && (
             <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-700">
               <LockKeyhole className="mt-0.5 h-3.5 w-3.5 shrink-0" />
               <span>登录管理员后可以记录答对、答错和重置状态。</span>
@@ -452,7 +474,7 @@ export function PracticeSession({
           )}
         </aside>
 
-        <div className="min-h-[520px] rounded-lg bg-surface-container-low p-5">
+        <div className="min-h-[520px] rounded-lg bg-surface-container-low p-3 sm:p-5">
           {isLoading ? (
             <EmptyPracticeState icon={<Loader2 className="h-6 w-6 animate-spin text-primary" />} text="加载题目..." />
           ) : loadError ? (
@@ -489,7 +511,7 @@ export function PracticeSession({
 
 function SessionStat({ label, value, tone = "text-on-surface" }: { label: string; value: number; tone?: string }) {
   return (
-    <div>
+    <div className="rounded-lg bg-surface-container-lowest px-3 py-2 text-center">
       <div className={`text-lg font-bold ${tone}`}>{value}</div>
       <div className="text-xs text-on-surface-variant">{label}</div>
     </div>
@@ -559,57 +581,65 @@ function PracticeProblemView({
 }) {
   return (
     <div className="flex min-h-[480px] flex-col">
-      <div className="mb-5 flex flex-col gap-3 border-b border-outline-variant/10 pb-4 md:flex-row md:items-center md:justify-between">
-        <div className="space-y-2">
-          <div className="text-xs text-on-surface-variant">
-            来源：{problem.sourceNoteTitle} · 原题集第 {problem.sourceProblemIndex + 1} 题
+      <div className="mb-4 rounded-lg border border-outline-variant/15 bg-surface-container-lowest p-4">
+        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+          <div className="min-w-0 space-y-2">
+            <div className="line-clamp-2 text-xs text-on-surface-variant">
+              来源：{problem.sourceNoteTitle} · 原题集第 {problem.sourceProblemIndex + 1} 题
+            </div>
+            <div className="flex flex-wrap items-center gap-2 text-xs">
+              <span className="rounded-full bg-primary/10 px-2.5 py-1 font-medium text-primary">
+                {total === allTotal
+                  ? `第 ${originalIndex + 1} / ${allTotal} 题`
+                  : `队列 ${index + 1} / ${total} · 总第 ${originalIndex + 1} 题`}
+              </span>
+              <span className="rounded-full bg-surface-container-high px-2.5 py-1 text-on-surface-variant">
+                {problemTypeMap[problem.type]}
+              </span>
+              <span className="rounded-full bg-surface-container-high px-2.5 py-1 text-on-surface-variant">
+                {difficultyMap[problem.difficulty]}
+              </span>
+              <span className={`rounded-full px-2.5 py-1 font-medium ${getStatusTone(status)}`}>
+                {getRoundLabel(status?.round ?? 0)}
+              </span>
+              <span className="rounded-full bg-surface-container-high px-2.5 py-1 text-on-surface-variant">
+                {getResultLabel(status?.lastResult)}
+              </span>
+            </div>
           </div>
-          <div className="flex flex-wrap items-center gap-2 text-xs">
-            <span className="rounded-full bg-primary/10 px-2.5 py-1 font-medium text-primary">
-              {total === allTotal
-                ? `第 ${originalIndex + 1} / ${allTotal} 题`
-                : `队列 ${index + 1} / ${total} · 总第 ${originalIndex + 1} 题`}
-            </span>
-            <span className="rounded-full bg-surface-container-high px-2.5 py-1 text-on-surface-variant">
-              {problemTypeMap[problem.type]}
-            </span>
-            <span className="rounded-full bg-surface-container-high px-2.5 py-1 text-on-surface-variant">
-              {difficultyMap[problem.difficulty]}
-            </span>
-            <span className={`rounded-full px-2.5 py-1 font-medium ${getStatusTone(status)}`}>
-              {getRoundLabel(status?.round ?? 0)}
-            </span>
-            <span className="rounded-full bg-surface-container-high px-2.5 py-1 text-on-surface-variant">
-              {getResultLabel(status?.lastResult)}
-            </span>
+          <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center">
+            <button
+              type="button"
+              onClick={onPrevious}
+              disabled={index === 0 || recordingResult !== null}
+              className="inline-flex h-10 items-center justify-center gap-1 rounded-lg bg-surface-container-high px-3 text-sm text-on-surface-variant hover:bg-surface-container-highest disabled:opacity-40"
+            >
+              <ChevronLeft className="h-4 w-4" />
+              上一题
+            </button>
+            <button
+              type="button"
+              onClick={onNext}
+              disabled={index >= total - 1 || recordingResult !== null}
+              className="inline-flex h-10 items-center justify-center gap-1 rounded-lg bg-surface-container-high px-3 text-sm text-on-surface-variant hover:bg-surface-container-highest disabled:opacity-40"
+            >
+              下一题
+              <ChevronRight className="h-4 w-4" />
+            </button>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={onPrevious}
-            disabled={index === 0 || recordingResult !== null}
-            className="inline-flex items-center gap-1 rounded-lg bg-surface-container-high px-3 py-2 text-sm text-on-surface-variant hover:bg-surface-container-highest disabled:opacity-40"
-          >
-            <ChevronLeft className="h-4 w-4" />
-            上一题
-          </button>
-          <button
-            type="button"
-            onClick={onNext}
-            disabled={index >= total - 1 || recordingResult !== null}
-            className="inline-flex items-center gap-1 rounded-lg bg-surface-container-high px-3 py-2 text-sm text-on-surface-variant hover:bg-surface-container-highest disabled:opacity-40"
-          >
-            下一题
-            <ChevronRight className="h-4 w-4" />
-          </button>
+        <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-surface-container-high">
+          <div
+            className="h-full rounded-full bg-primary transition-all"
+            style={{ width: total > 0 ? `${Math.round(((index + 1) / total) * 100)}%` : "0%" }}
+          />
         </div>
       </div>
 
-      <div className="flex-1 space-y-5">
-        <div>
+      <div className="flex-1 space-y-4">
+        <div className="rounded-lg border border-outline-variant/15 bg-surface-container-lowest p-4 sm:p-5">
           <h3 className="mb-3 text-sm font-semibold text-on-surface-variant">题目</h3>
-          <div className="rounded-xl bg-surface-container-lowest p-5">
+          <div className="text-base leading-7">
             <MarkdownContent content={problem.question} className="text-on-surface" />
           </div>
         </div>
@@ -618,35 +648,42 @@ function PracticeProblemView({
           <div className="grid gap-2">
             {problem.options.map((option) => (
               <div key={`${option.label}-${option.content}`} className="rounded-lg bg-surface-container-lowest px-4 py-3 text-sm text-on-surface">
-                <span className="mr-2 font-semibold text-primary">{option.label}.</span>
-                <MarkdownContent content={option.content} className="inline text-on-surface" />
+                <span className="mr-2 inline-flex h-6 w-6 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary">
+                  {option.label}
+                </span>
+                <MarkdownContent content={option.content} className="text-on-surface" />
               </div>
             ))}
           </div>
         )}
 
         {showAnswer && (
-          <div className="rounded-xl bg-green-50 p-5">
-            <h3 className="mb-3 text-sm font-semibold text-green-700">答案</h3>
+          <div className="rounded-lg border border-green-200 bg-green-50 p-4 sm:p-5">
+            <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold text-green-700">
+              <Check className="h-4 w-4" />
+              答案
+            </h3>
             <MarkdownContent content={problem.answer || "暂无答案"} className="text-green-950" />
           </div>
         )}
       </div>
 
-      <div className="mt-6 flex flex-col gap-3 border-t border-outline-variant/10 pt-4 md:flex-row md:items-center md:justify-between">
-        <div className="flex flex-wrap gap-2">
+      <div className="mt-5 rounded-lg border border-outline-variant/15 bg-surface-container-lowest p-3">
+        <div className="grid gap-3 xl:grid-cols-[auto_1fr] xl:items-center xl:justify-between">
+          <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
           <button
             type="button"
             onClick={onToggleAnswer}
-            className="rounded-lg bg-surface-container-high px-4 py-2 text-sm font-medium text-on-surface-variant hover:bg-surface-container-highest"
+            className="inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-surface-container-high px-4 text-sm font-medium text-on-surface-variant hover:bg-surface-container-highest"
           >
+            {showAnswer ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
             {showAnswer ? "收起答案" : "查看答案"}
           </button>
           <button
             type="button"
             onClick={onReset}
             disabled={recordingResult !== null || !status || !canRecord}
-            className="inline-flex items-center gap-2 rounded-lg bg-surface-container-high px-4 py-2 text-sm font-medium text-on-surface-variant hover:bg-surface-container-highest disabled:opacity-40"
+            className="inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-surface-container-high px-4 text-sm font-medium text-on-surface-variant hover:bg-surface-container-highest disabled:opacity-40"
           >
             <RotateCcw className="h-4 w-4" />
             重置状态
@@ -669,6 +706,7 @@ function PracticeProblemView({
             disabled={recordingResult !== null || !canRecord}
             onClick={onRecordResult}
             className="bg-amber-50 text-amber-700 hover:bg-amber-100"
+            icon={<SkipForward className="h-4 w-4" />}
           >
             跳过
           </ResultButton>
@@ -682,6 +720,7 @@ function PracticeProblemView({
           >
             答对
           </ResultButton>
+          </div>
         </div>
       </div>
     </div>
@@ -710,7 +749,7 @@ function ResultButton({
       type="button"
       onClick={() => onClick(result)}
       disabled={disabled}
-      className={`inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-colors disabled:opacity-50 ${className}`}
+      className={`inline-flex h-11 items-center justify-center gap-2 rounded-lg px-3 text-sm font-semibold transition-colors disabled:opacity-50 sm:px-4 ${className}`}
     >
       {active ? <Loader2 className="h-4 w-4 animate-spin" /> : icon}
       {children}

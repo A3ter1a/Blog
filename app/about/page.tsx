@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import Image from "next/image";
 import { motion } from "framer-motion";
+import { ChevronRight } from "lucide-react";
 import type { Profile } from "@/lib/types";
 import { DEFAULT_PROFILE } from "@/lib/profile";
 import { profileApi } from "@/lib/supabase";
@@ -62,7 +63,7 @@ export default function About() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2, duration: 0.5 }}
-          className="text-4xl md:text-5xl font-bold text-primary mb-4 tracking-tight font-headline"
+          className="text-4xl md:text-5xl font-bold text-primary mb-4 font-headline"
         >
           {profile.name}
         </motion.h1>
@@ -102,7 +103,7 @@ export default function About() {
         transition={{ delay: 0.5, duration: 0.6 }}
         className="w-full max-w-md"
       >
-        <div className="bg-surface-container-lowest rounded-2xl shadow-ambient overflow-hidden divide-y divide-outline-variant/10">
+        <div className="bg-surface-container-lowest rounded-lg shadow-ambient overflow-hidden divide-y divide-outline-variant/10">
           {profile.links.map((link, index) => {
             const iconSrc = iconMap[link.icon] || "/icons/email.svg";
             const isLink = link.linkType !== "number";
@@ -121,14 +122,7 @@ export default function About() {
                   </div>
                 </div>
                 {isLink && (
-                  <svg
-                    className="w-5 h-5 text-outline-variant transition-transform duration-200 group-hover:translate-x-0.5"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                  </svg>
+                  <ChevronRight className="w-5 h-5 text-outline-variant transition-transform duration-200 group-hover:translate-x-0.5" />
                 )}
               </>
             );
@@ -173,7 +167,7 @@ export default function About() {
         transition={{ delay: 1.2, duration: 0.5 }}
         className="mt-24 text-center"
       >
-        <p className="text-on-surface-variant/60 text-sm tracking-widest font-headline italic">
+        <p className="text-on-surface-variant/60 text-sm font-headline italic">
           {profile.footer}
         </p>
       </motion.footer>
