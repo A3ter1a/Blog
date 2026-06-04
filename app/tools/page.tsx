@@ -1,23 +1,33 @@
 "use client";
 
 import Link from "next/link";
-import { BookOpen, ChevronRight, Clock } from "lucide-react";
+import { BookOpen, ChevronRight, ClipboardCheck, Clock } from "lucide-react";
 
 export default function ToolsPage() {
   const tools = [
     {
       id: "reading-time",
       title: "预计阅读时间",
-      description: "根据笔记内容智能估算阅读所需时间",
+      description: "根据笔记内容估算阅读所需时间",
       icon: Clock,
       color: "bg-blue-500/10 text-blue-600",
       href: "#",
       comingSoon: false,
-      note: "已在笔记页面自动显示",
+      note: "已在笔记页自动显示",
+    },
+    {
+      id: "math3-self-test",
+      title: "数学三自测",
+      description: "生成安心卷、模拟卷或拔高卷，进入计时考试并保存复盘记录",
+      icon: ClipboardCheck,
+      color: "bg-emerald-500/10 text-emerald-600",
+      href: "/tools/math3-self-test",
+      comingSoon: false,
+      note: "AI 组卷 / 分步评分",
     },
     {
       id: "math3-catalog",
-      title: "数三知识目录",
+      title: "数学三知识目录",
       description: "按考纲章节整理数学三知识点，并按小题知识点归属生成刷题队列",
       icon: BookOpen,
       color: "bg-violet-500/10 text-violet-600",
@@ -29,7 +39,6 @@ export default function ToolsPage() {
 
   return (
     <div className="min-h-screen bg-surface pt-24">
-      {/* Header */}
       <div className="bg-surface-container-low border-b border-outline-variant/20">
         <div className="max-w-4xl mx-auto px-4 py-8">
           <h1 className="text-3xl font-bold font-headline text-on-surface">
@@ -41,7 +50,6 @@ export default function ToolsPage() {
         </div>
       </div>
 
-      {/* Tools Grid */}
       <div className="max-w-4xl mx-auto px-4 py-8">
         <div className="grid gap-4">
           {tools.map((tool) => {
@@ -49,12 +57,10 @@ export default function ToolsPage() {
             const isLink = tool.href !== "#";
             const cardContent = (
               <div className="flex items-start gap-4">
-                {/* Icon */}
                 <div className={`flex-shrink-0 w-12 h-12 rounded-lg ${tool.color} flex items-center justify-center`}>
                   <Icon className="w-6 h-6" />
                 </div>
 
-                {/* Content */}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <h3 className="text-lg font-semibold text-on-surface">
@@ -76,7 +82,6 @@ export default function ToolsPage() {
                   )}
                 </div>
 
-                {/* Arrow */}
                 {isLink && (
                   <ChevronRight className="w-5 h-5 text-on-surface-variant/40 group-hover:text-primary transition-colors" />
                 )}
@@ -96,19 +101,15 @@ export default function ToolsPage() {
             }
 
             return (
-              <div
-                key={tool.id}
-                className={cardClassName}
-              >
+              <div key={tool.id} className={cardClassName}>
                 {cardContent}
               </div>
             );
           })}
         </div>
 
-        {/* Footer Note */}
         <div className="mt-12 text-center text-sm text-on-surface-variant/60">
-          更多实用工具正在开发中，敬请期待...
+          更多实用工具正在开发中。
         </div>
       </div>
     </div>

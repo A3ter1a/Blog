@@ -1,6 +1,16 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { Note, NoteType, Subject, Flashcard, type PracticeResult, type Problem, type ProblemPracticeStatus, type Profile, type Video } from "./types";
 import { DEFAULT_PROFILE, normalizeProfile } from "./profile";
+import {
+  createEmptyMath3SelfTestAttempt,
+  type Math3SelfTestAttempt,
+  type Math3SelfTestCreateInput,
+  type Math3SelfTestDifficulty,
+  type Math3SelfTestMode,
+  type Math3SelfTestPaper,
+  type Math3SelfTestRecord,
+  type Math3SelfTestStatus,
+} from "./math3-self-test";
 
 export type NoteRow = {
   id?: string;
@@ -96,6 +106,26 @@ export type SiteProfileRow = {
 export type SiteProfileInsert = Partial<SiteProfileRow>;
 export type SiteProfileUpdate = Partial<SiteProfileRow>;
 
+export type Math3SelfTestRow = {
+  id?: string;
+  user_id?: string | null;
+  title?: string | null;
+  mode?: Math3SelfTestMode | null;
+  difficulty?: Math3SelfTestDifficulty | null;
+  status?: Math3SelfTestStatus | null;
+  paper?: Math3SelfTestPaper | null;
+  attempt?: Math3SelfTestAttempt | null;
+  score?: number | null;
+  max_score?: number | null;
+  started_at?: string | null;
+  submitted_at?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+};
+
+export type Math3SelfTestInsert = Partial<Math3SelfTestRow>;
+export type Math3SelfTestUpdate = Partial<Math3SelfTestRow>;
+
 type Database = {
   public: {
     Tables: {
@@ -127,6 +157,12 @@ type Database = {
         Row: SiteProfileRow;
         Insert: SiteProfileInsert;
         Update: SiteProfileUpdate;
+        Relationships: [];
+      };
+      math3_self_tests: {
+        Row: Math3SelfTestRow;
+        Insert: Math3SelfTestInsert;
+        Update: Math3SelfTestUpdate;
         Relationships: [];
       };
     };
@@ -538,6 +574,120 @@ export const profileApi = {
 
     if (error) throw error;
     return normalizeProfile(data.profile);
+  },
+};
+
+function mapMath3SelfTestSnakeToCamel(row: Math3SelfTestRow): Math3SelfTestRecord {
+  const createdAt = row.created_at ? new Date(row.created_at) : new Date();
+  const updatedAt = row.updated_at ? new Date(row.updated_at) : createdAt;
+  const paper = row.paper as Math3SelfTestPaper;
+  const attempt = row.attempt ?? createEmptyMath3SelfTestAttempt(row.started_at ?? undefined);
+
+  return {
+    id: row.id ?? "",
+    userId: row.user_id || undefined,
+    title: row.title ?? paper?.title ?? "数学三自测试卷",
+    mode: row.mode ?? paper?.mode ?? "quick",
+    difficulty: row.difficulty ?? paper?.difficulty ?? "simulation",
+    status: row.status ?? "draft",
+    paper,
+    attempt,
+    score: row.score ?? attempt.totalScore ?? 0,
+    maxScore: row.max_score ?? paper?.totalScore ?? 0,
+    startedAt: row.started_at ? new Date(row.started_at) : undefined,
+    submittedAt: row.submitted_at ? new Date(row.submitted_at) : undefined,
+    createdAt,
+    updatedAt,
+  };
+}
+
+function mapMath3SelfTestCamelToSnake(test: Partial<Math3SelfTestRecord>): Math3SelfTestUpdate {
+  const db: Math3SelfTestUpdate = {};
+  if (test.userId !== undefined) db.user_id = test.userId;
+  if (test.title !== undefined) db.title = test.title;
+  if (test.mode !== undefined) db.mode = test.mode;
+  if (test.difficulty !== undefined) db.difficulty = test.difficulty;
+  if (test.status !== undefined) db.status = test.status;
+  if (test.paper !== undefined) db.paper = test.paper;
+  if (test.attempt !== undefined) db.attempt = test.attempt;
+  if (test.score !== undefined) db.score = test.score;
+  if (test.maxScore !== undefined) db.max_score = test.maxScore;
+  if (test.startedAt !== undefined) db.started_at = test.startedAt?.toISOString();
+  if (test.submittedAt !== undefined) db.submitted_at = test.submittedAt?.toISOString();
+  return db;
+}
+
+export const math3SelfTestsApi = {
+  async getAll(): Promise<Math3SelfTestRecord[]> {
+    await assertAdminWrite();
+    const supabase = getSupabase();
+    const { data, error } = await supabase
+      .from("math3_self_tests")
+      .select("*")
+      .order("updated_at", { ascending: false });
+
+    if (error) throw error;
+    return (data || []).map(mapMath3SelfTestSnakeToCamel);
+  },
+
+  async getById(id: string): Promise<Math3SelfTestRecord | null> {
+    await assertAdminWrite();
+    const supabase = getSupabase();
+    const { data, error } = await supabase
+      .from("math3_self_tests")
+      .select("*")
+      .eq("id", id)
+      .maybeSingle();
+
+    if (error || !data) return null;
+    return mapMath3SelfTestSnakeToCamel(data);
+  },
+
+  async create(test: Math3SelfTestCreateInput): Promise<Math3SelfTestRecord> {
+    const userId = await assertAdminWrite();
+    const supabase = getSupabase();
+    const now = new Date().toISOString();
+    const payload: Math3SelfTestInsert = {
+      ...mapMath3SelfTestCamelToSnake(test),
+      user_id: userId,
+      created_at: now,
+      updated_at: now,
+    };
+
+    const { data, error } = await supabase
+      .from("math3_self_tests")
+      .insert([payload])
+      .select("*")
+      .single();
+
+    if (error) throw error;
+    return mapMath3SelfTestSnakeToCamel(data);
+  },
+
+  async update(id: string, updates: Partial<Math3SelfTestRecord>): Promise<Math3SelfTestRecord> {
+    await assertAdminWrite();
+    const supabase = getSupabase();
+    const payload = {
+      ...mapMath3SelfTestCamelToSnake(updates),
+      updated_at: new Date().toISOString(),
+    };
+
+    const { data, error } = await supabase
+      .from("math3_self_tests")
+      .update(payload)
+      .eq("id", id)
+      .select("*")
+      .single();
+
+    if (error) throw error;
+    return mapMath3SelfTestSnakeToCamel(data);
+  },
+
+  async delete(id: string): Promise<void> {
+    await assertAdminWrite();
+    const supabase = getSupabase();
+    const { error } = await supabase.from("math3_self_tests").delete().eq("id", id);
+    if (error) throw error;
   },
 };
 
