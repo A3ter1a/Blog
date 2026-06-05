@@ -38,12 +38,12 @@ export function NoteCard({ note, index, isSelected = false, onToggleSelect, sele
       transition={{ delay: animationDelay, duration: 0.25 }}
       whileHover={{ y: -2, transition: { duration: 0.16 } }}
       onClick={handleClick}
-      className={`group h-full cursor-pointer overflow-hidden rounded-lg border transition-all duration-200 ${
+      className={`surface-card group h-full cursor-pointer overflow-hidden ${
         selectMode
           ? isSelected
-            ? "border-primary/50 bg-primary/5 ring-2 ring-primary/20"
-            : "border-outline-variant/20 bg-surface-container-lowest hover:border-primary/30"
-          : "border-outline-variant/20 bg-surface-container-lowest hover:border-primary/30 hover:bg-surface-container-low"
+            ? "border-primary/50 bg-primary/5 ring-2 ring-primary/15"
+            : ""
+          : ""
       }`}
     >
       <Link href={`/notes/${note.id}`} className="flex h-full flex-col" onClick={selectMode ? (e) => e.preventDefault() : undefined}>
@@ -101,12 +101,12 @@ export function NoteCard({ note, index, isSelected = false, onToggleSelect, sele
           {!selectMode && (
             <div className="absolute left-3 top-3">
               <span
-                className={`rounded-md px-2.5 py-1 text-xs font-medium ${
+                className={`rounded-md border px-2.5 py-1 text-xs font-medium ${
                   isProblem
-                    ? "bg-primary-container text-on-primary"
+                    ? "border-primary/20 bg-primary text-on-primary"
                     : isEssay
-                    ? "bg-amber-100 text-amber-800"
-                    : "bg-surface-container-highest text-on-surface"
+                    ? "border-amber-200 bg-amber-50 text-amber-800"
+                    : "text-on-surface"
                 }`}
               >
                 {typeMap[note.type]}
@@ -116,7 +116,7 @@ export function NoteCard({ note, index, isSelected = false, onToggleSelect, sele
           {/* Subject Badge */}
           {!isEssay && note.subject && (
             <div className="absolute right-3 top-3">
-              <span className="rounded-md bg-surface-container-lowest/85 px-2.5 py-1 text-xs font-medium text-on-surface-variant backdrop-blur-sm">
+              <span className="tag-chip bg-surface-container-lowest/85 px-2.5 py-1 text-xs font-medium backdrop-blur-sm">
                 {subjectMap[note.subject]}
               </span>
             </div>
@@ -134,13 +134,13 @@ export function NoteCard({ note, index, isSelected = false, onToggleSelect, sele
             {visibleTags.slice(0, 3).map((tag) => (
               <span
                 key={tag}
-                className="rounded-md bg-surface-container-high px-2 py-0.5 text-xs text-on-surface-variant"
+                className="tag-chip px-2 py-0.5 text-xs"
               >
                 {tag}
               </span>
             ))}
             {visibleTags.length > 3 && (
-              <span className="rounded-md bg-surface-container-high px-2 py-0.5 text-xs text-on-surface-variant">
+              <span className="tag-chip px-2 py-0.5 text-xs">
                 +{visibleTags.length - 3}
               </span>
             )}

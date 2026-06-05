@@ -29,7 +29,7 @@ export function ChapterStatsView({ problems, chapterName }: ChapterStatsViewProp
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
       {/* Total */}
-      <div className="bg-surface-container-lowest rounded-xl p-4 shadow-ambient">
+      <div className="surface-card p-4">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
             <BookOpen className="w-5 h-5 text-primary" />
@@ -42,14 +42,14 @@ export function ChapterStatsView({ problems, chapterName }: ChapterStatsViewProp
       </div>
 
       {/* Type distribution */}
-      <div className="bg-surface-container-lowest rounded-xl p-4 shadow-ambient">
+      <div className="surface-card p-4">
         <div className="flex items-center gap-3 mb-2">
           <Layers className="w-5 h-5 text-primary-container" />
           <p className="text-xs text-on-surface-variant/60">题型</p>
         </div>
         <div className="flex flex-wrap gap-1.5">
           {Object.entries(stats.typeCount).map(([type, count]) => (
-            <span key={type} className="px-2 py-0.5 rounded-md bg-surface-container-high text-xs text-on-surface-variant">
+            <span key={type} className="tag-chip px-2 py-0.5 text-xs">
               {problemTypeMap[type as keyof typeof problemTypeMap]} {count}
             </span>
           ))}
@@ -57,7 +57,7 @@ export function ChapterStatsView({ problems, chapterName }: ChapterStatsViewProp
       </div>
 
       {/* Difficulty distribution */}
-      <div className="bg-surface-container-lowest rounded-xl p-4 shadow-ambient">
+      <div className="surface-card p-4">
         <div className="flex items-center gap-3 mb-2">
           <TrendingUp className="w-5 h-5 text-amber-500" />
           <p className="text-xs text-on-surface-variant/60">难度</p>

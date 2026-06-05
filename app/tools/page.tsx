@@ -52,11 +52,11 @@ const workflowSteps = [
 export default function ToolsPage() {
   return (
     <main className="min-h-screen bg-surface pt-24">
-      <section className="border-b border-outline-variant/20 bg-surface-container-low">
+      <section className="border-b border-outline-variant/20 bg-surface-container-low/70">
         <div className="mx-auto max-w-7xl px-4 py-8">
           <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px] lg:items-end">
             <div>
-              <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-primary/15 bg-primary/5 px-3 py-1 text-xs font-medium text-primary">
+              <div className="eyebrow-chip mb-3 px-3 py-1 text-xs">
                 <Target className="h-4 w-4" />
                 学习工具台
               </div>
@@ -68,11 +68,11 @@ export default function ToolsPage() {
               </p>
             </div>
 
-            <div className="grid grid-cols-3 gap-2 rounded-lg border border-outline-variant/20 bg-surface-container-lowest p-3 shadow-ambient">
+            <div className="surface-panel grid grid-cols-3 gap-2 p-3">
               {workflowSteps.map((step) => {
                 const Icon = step.icon;
                 return (
-                  <div key={step.title} className="rounded-md bg-surface-container-low px-3 py-3">
+                  <div key={step.title} className="surface-muted px-3 py-3">
                     <Icon className="mb-2 h-4 w-4 text-primary" />
                     <div className="text-sm font-semibold text-on-surface">{step.title}</div>
                     <div className="mt-1 text-xs leading-5 text-on-surface-variant">{step.description}</div>
@@ -132,7 +132,7 @@ function ToolCard({
   return (
     <Link
       href={tool.href}
-      className={`group block rounded-lg border border-outline-variant/20 bg-surface-container-lowest p-5 shadow-ambient transition-all hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-float ${
+      className={`surface-card group block p-5 hover:-translate-y-0.5 ${
         priority ? "min-h-52" : ""
       }`}
     >
@@ -142,7 +142,7 @@ function ToolCard({
             <div className={`flex h-11 w-11 items-center justify-center rounded-lg border ${tool.tone}`}>
               <Icon className="h-5 w-5" />
             </div>
-            <span className="rounded-full bg-surface-container-low px-2.5 py-1 text-xs font-medium text-on-surface-variant">
+            <span className="tag-chip px-2.5 py-1 text-xs font-medium">
               {tool.metric}
             </span>
           </div>

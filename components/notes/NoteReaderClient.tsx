@@ -234,11 +234,11 @@ export function NoteReaderClient({
       {preferences.showProgressBar && <ReadingProgress />}
 
       {/* Top Bar with Breadcrumb and Immersive Mode Button */}
-      <div className="sticky top-16 z-30 border-b border-outline-variant/20 bg-surface/90 backdrop-blur-xl">
+      <div className="sticky top-16 z-30 border-b border-outline-variant/20 bg-surface/80 backdrop-blur-xl">
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-3 sm:px-6">
           <Link
             href="/notes"
-            className="inline-flex h-9 items-center gap-2 rounded-lg px-2 text-sm text-on-surface-variant transition-colors hover:bg-surface-container-high hover:text-primary"
+            className="control-button h-9 px-3 text-sm"
           >
             <ArrowLeft className="h-4 w-4" />
             返回
@@ -249,7 +249,7 @@ export function NoteReaderClient({
             {!isProblem && (
               <button
                 onClick={() => setIsImmersiveMode(true)}
-                className="inline-flex h-9 items-center gap-2 rounded-lg border border-outline-variant/25 bg-surface-container-lowest px-3 text-sm font-medium text-on-surface-variant transition-colors hover:border-primary/35 hover:text-primary"
+                className="control-button h-9 px-3 text-sm"
                 title="沉浸阅读模式"
               >
                 <BookMarked className="h-4 w-4" />
@@ -260,7 +260,7 @@ export function NoteReaderClient({
               <>
                 <Link
                   href={`/create?edit=${note.id}`}
-                  className="inline-flex h-9 items-center gap-2 rounded-lg border border-outline-variant/25 bg-surface-container-lowest px-3 text-sm font-medium text-on-surface-variant transition-colors hover:border-primary/35 hover:text-primary"
+                  className="control-button h-9 px-3 text-sm"
                 >
                   <Edit2 className="h-4 w-4" />
                   编辑
@@ -268,7 +268,7 @@ export function NoteReaderClient({
                 <button
                   onClick={() => setShowDeleteConfirm(true)}
                   disabled={isDeletingNote}
-                  className="inline-flex h-9 items-center justify-center rounded-lg border border-red-200 px-3 text-sm font-medium text-red-600 transition-colors hover:bg-red-50 disabled:opacity-40"
+                  className="control-button control-button-danger h-9 px-3 text-sm"
                   title="删除笔记"
                   aria-label="删除笔记"
                 >
@@ -325,22 +325,22 @@ export function NoteReaderClient({
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5 }}
-            className="border-b border-outline-variant/15 pb-6"
+            className="surface-panel p-5 sm:p-6"
           >
             <div className="mb-4 flex flex-wrap items-center gap-2">
               <span
-                className={`rounded-md px-2.5 py-1 text-xs font-medium ${
+                className={`rounded-md border px-2.5 py-1 text-xs font-medium ${
                   isProblem
-                    ? "bg-primary-container text-on-primary"
+                    ? "border-primary/20 bg-primary text-on-primary"
                     : isEssay
-                    ? "bg-amber-100 text-amber-800"
-                    : "bg-surface-container-highest text-on-surface"
+                    ? "border-amber-200 bg-amber-50 text-amber-800"
+                    : "border-outline-variant/30 bg-surface-container-low text-on-surface"
                 }`}
               >
                 {typeMap[note.type]}
               </span>
               {note.subject && (
-                <span className="rounded-md bg-surface-container-low px-2.5 py-1 text-xs font-medium text-on-surface-variant">
+                <span className="tag-chip px-2.5 py-1 text-xs font-medium">
                   {subjectMap[note.subject]}
                 </span>
               )}
@@ -368,7 +368,7 @@ export function NoteReaderClient({
                   {visibleTags.map((tag) => (
                     <span
                       key={tag}
-                      className="rounded-md bg-surface-container-high px-2 py-1 text-xs text-on-surface-variant"
+                      className="tag-chip px-2 py-1 text-xs"
                     >
                       {tag}
                     </span>
@@ -489,7 +489,7 @@ export function NoteReaderClient({
                           <h3 className="font-headline text-lg font-bold text-on-surface">
                             {group.chapter?.name ?? "未归章节"}
                           </h3>
-                          <span className="rounded-md bg-surface-container-low px-2 py-0.5 text-xs text-on-surface-variant">
+                          <span className="tag-chip px-2 py-0.5 text-xs">
                             {group.problems.length} 题
                           </span>
                         </div>
@@ -521,7 +521,7 @@ export function NoteReaderClient({
                       ))}
                     </div>
                   ) : (
-                    <div className="rounded-lg border border-dashed border-outline-variant/30 bg-surface-container-lowest px-4 py-12 text-center text-sm text-on-surface-variant">
+                    <div className="surface-panel border-dashed px-4 py-12 text-center text-sm text-on-surface-variant">
                       当前章节暂时没有题目。
                     </div>
                   )
@@ -549,7 +549,7 @@ export function NoteReaderClient({
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -20 }}
                   transition={{ delay: 0.3, duration: 0.5 }}
-                  className="rounded-lg border border-outline-variant/20 bg-surface-container-lowest p-4 overscroll-contain lg:sticky lg:top-28"
+                  className="surface-panel p-4 overscroll-contain lg:sticky lg:top-28"
                 >
                   <Playlist 
                     videos={note.videos} 
@@ -567,7 +567,7 @@ export function NoteReaderClient({
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -20 }}
                 transition={{ delay: 0.35, duration: 0.5 }}
-                className="rounded-lg border border-outline-variant/20 bg-surface-container-lowest p-4 lg:sticky lg:top-28 lg:flex lg:max-h-[calc(100vh-8rem)] lg:flex-col"
+                className="surface-panel p-4 lg:sticky lg:top-28 lg:flex lg:max-h-[calc(100vh-8rem)] lg:flex-col"
               >
                 {isProblem && allProblems.length > 0 ? (
                   <div className="overflow-y-scroll flex-1 min-h-0 -mr-2 pr-2 space-y-4">
@@ -721,7 +721,7 @@ export function NoteReaderClient({
 
 function ReaderStat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-lg bg-surface-container-low px-3 py-2">
+    <div className="surface-muted px-3 py-2">
       <div className="line-clamp-1 text-sm font-semibold text-on-surface">{value}</div>
       <div className="text-xs text-on-surface-variant">{label}</div>
     </div>

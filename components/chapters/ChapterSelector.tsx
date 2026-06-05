@@ -53,8 +53,9 @@ export function ChapterSelector({ noteId, value, onChange, className = '', place
   return (
     <div className={`relative ${className}`}>
       <button
+        type="button"
         onClick={() => setIsOpen(!isOpen)}
-        className="w-full flex items-center justify-between px-3 py-2 bg-surface-container rounded-lg text-sm text-on-surface-variant hover:bg-surface-container-high transition-colors border border-outline-variant/10"
+        className="field-control flex h-10 w-full items-center justify-between px-3 text-sm text-on-surface-variant hover:bg-surface-container-lowest"
       >
         <span className="flex items-center gap-2 truncate">
           <Layers className="w-3.5 h-3.5 flex-shrink-0" />
@@ -68,10 +69,11 @@ export function ChapterSelector({ noteId, value, onChange, className = '', place
       {isOpen && (
         <>
           <div className="fixed inset-0 z-10" onClick={() => setIsOpen(false)} />
-          <div className={`absolute ${dropdownPlacementClass} left-0 right-0 z-20 bg-surface-container-lowest rounded-xl shadow-elevated border border-outline-variant/10 py-1 max-h-60 overflow-y-auto`}>
+          <div className={`surface-panel absolute ${dropdownPlacementClass} left-0 right-0 z-20 max-h-60 overflow-y-auto py-1`}>
             <button
+              type="button"
               onClick={handleClear}
-              className={`w-full px-3 py-2 text-left text-sm hover:bg-surface-container-low transition-colors ${!value ? 'text-primary font-medium' : 'text-on-surface-variant/50'}`}
+              className={`w-full px-3 py-2 text-left text-sm transition-colors hover:bg-surface-container-low ${!value ? 'font-medium text-primary' : 'text-on-surface-variant/60'}`}
             >
               无章节
             </button>
@@ -106,9 +108,10 @@ function ChapterOption({ chapter, depth, isSelected, onSelect, getChildren, sele
   return (
     <>
       <button
+        type="button"
         onClick={() => onSelect(chapter.id)}
-        className={`w-full px-3 py-2 text-left text-sm hover:bg-surface-container-low transition-colors flex items-center gap-2 ${
-          isSelected ? 'text-primary font-medium bg-primary/5' : 'text-on-surface-variant'
+        className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-surface-container-low ${
+          isSelected ? 'bg-primary/5 font-medium text-primary' : 'text-on-surface-variant'
         }`}
         style={{ paddingLeft: `${12 + depth * 16}px` }}
       >

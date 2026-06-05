@@ -16,7 +16,7 @@ export function SearchBar({ value, onChange }: SearchBarProps) {
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder="搜索笔记标题或标签..."
-        className="w-full pl-12 pr-6 py-4 bg-surface-container-low rounded-xl input-soft text-on-surface placeholder:text-on-surface-variant/40 focus:bg-surface-container-lowest transition-all duration-300"
+        className="field-control w-full py-4 pl-12 pr-6 text-on-surface placeholder:text-on-surface-variant/40"
       />
     </div>
   );

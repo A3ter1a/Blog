@@ -30,10 +30,10 @@ function ChapterNode({
     <div>
       <button
         onClick={() => onSelect(chapter.id)}
-        className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all w-full text-left ${
+        className={`control-button min-h-0 w-full justify-start px-3 py-1.5 text-left text-xs ${
           selectedId === chapter.id
-            ? 'editorial-gradient text-on-primary shadow-ambient'
-            : 'bg-surface-container-low text-on-surface-variant hover:bg-surface-container-high'
+            ? 'control-button-primary'
+            : ''
         }`}
         style={{ marginLeft: `${depth * 16}px`, width: `calc(100% - ${depth * 16}px)` }}
       >
@@ -71,10 +71,10 @@ export function ChapterFilter({ chapters, selectedId, onSelect, className = '' }
       <div className="space-y-1">
         <button
           onClick={() => onSelect(undefined)}
-          className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all w-full text-left ${
+          className={`control-button min-h-0 w-full justify-start px-3 py-1.5 text-left text-xs ${
             !selectedId
-              ? 'editorial-gradient text-on-primary shadow-ambient'
-              : 'bg-surface-container-low text-on-surface-variant hover:bg-surface-container-high'
+              ? 'control-button-primary'
+              : ''
           }`}
         >
           全部

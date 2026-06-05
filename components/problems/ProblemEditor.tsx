@@ -83,6 +83,7 @@ export function ProblemEditor({ problems, onChange, noteId, subject, hasUnsavedC
   const [newProblem, setNewProblem] = useState<Partial<Problem>>(createEmptyProblemDraft());
   const [newProblemError, setNewProblemError] = useState<string | null>(null);
   const [selectedProblemIds, setSelectedProblemIds] = useState<string[]>([]);
+  const [bulkSelectEditorChapterId, setBulkSelectEditorChapterId] = useState<string | undefined>();
   const [selectedEditorChapterId, setSelectedEditorChapterId] = useState<string | undefined>();
   const [selectedMath3ChapterId, setSelectedMath3ChapterId] = useState<string>(() => getDefaultMath3ChapterId());
   const [onlyShowUnassignedMath3Problems, setOnlyShowUnassignedMath3Problems] = useState(false);
@@ -228,6 +229,20 @@ export function ProblemEditor({ problems, onChange, noteId, subject, hasUnsavedC
     () => visibleProblems.map((problem) => problem.id),
     [visibleProblems],
   );
+  const bulkSelectEditorChapterProblemIds = useMemo(
+    () => bulkSelectEditorChapterId
+      ? problems
+          .filter((problem) => problem.chapterId === bulkSelectEditorChapterId)
+          .map((problem) => problem.id)
+      : [],
+    [bulkSelectEditorChapterId, problems],
+  );
+  const unassignedEditorChapterProblemIds = useMemo(
+    () => problems
+      .filter((problem) => !problem.chapterId)
+      .map((problem) => problem.id),
+    [problems],
+  );
   const allVisibleProblemsSelected = visibleProblemIds.length > 0
     && visibleProblemIds.every((id) => selectedProblemIdSet.has(id));
 
@@ -253,6 +268,28 @@ export function ProblemEditor({ problems, onChange, noteId, subject, hasUnsavedC
 
   const selectUnassignedMath3Problems = () => {
     setSelectedProblemIds((current) => Array.from(new Set([...current, ...unassignedMath3ProblemIds])));
+  };
+
+  const selectProblemsByEditorChapter = () => {
+    if (!bulkSelectEditorChapterId) return;
+
+    if (bulkSelectEditorChapterProblemIds.length === 0) {
+      toast.info("这个题集章节下暂时没有题目");
+      return;
+    }
+
+    setSelectedProblemIds((current) => Array.from(new Set([...current, ...bulkSelectEditorChapterProblemIds])));
+    toast.success(`已选择该题集章节下 ${bulkSelectEditorChapterProblemIds.length} 道题`);
+  };
+
+  const selectProblemsWithoutEditorChapter = () => {
+    if (unassignedEditorChapterProblemIds.length === 0) {
+      toast.info("当前没有未分配题集章节的题目");
+      return;
+    }
+
+    setSelectedProblemIds((current) => Array.from(new Set([...current, ...unassignedEditorChapterProblemIds])));
+    toast.success(`已选择未分配题集章节的 ${unassignedEditorChapterProblemIds.length} 道题`);
   };
 
   const handleProblemReorder = (nextVisibleProblems: Problem[]) => {
@@ -398,22 +435,26 @@ export function ProblemEditor({ problems, onChange, noteId, subject, hasUnsavedC
   const newProblemOptions = newProblem.type === "choice" ? ensureChoiceOptions(newProblem.options) : [];
 
   return (
-    <div className={`space-y-4 ${selectedProblemIdsInList.length > 0 ? "pb-28" : ""}`}>
+    <div className={`space-y-4 ${selectedProblemIdsInList.length > 0 ? "pb-40" : ""}`}>
       {/* Toolbar */}
-      <div className="rounded-lg border border-outline-variant/20 bg-surface-container-lowest p-3">
+      <div className="surface-toolbar p-3">
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div>
-            <h3 className="text-sm font-semibold text-on-surface">题集编辑</h3>
-            <p className="mt-0.5 text-xs text-on-surface-variant">
-              共 {problems.length} 道题
-              {selectedProblemIdsInList.length > 0 ? `，已选 ${selectedProblemIdsInList.length} 道` : ""}
-              {showMath3Assignment ? `，未归数三章节 ${unassignedMath3ProblemIds.length} 道` : ""}
-            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <h3 className="text-sm font-semibold text-on-surface">题集编辑</h3>
+              <span className="tag-chip px-2 py-0.5 text-xs">{problems.length} 题</span>
+              {selectedProblemIdsInList.length > 0 && (
+                <span className="tag-chip tag-chip-primary px-2 py-0.5 text-xs">{selectedProblemIdsInList.length} 已选</span>
+              )}
+              {showMath3Assignment && (
+                <span className="tag-chip px-2 py-0.5 text-xs">{unassignedMath3ProblemIds.length} 未归数三</span>
+              )}
+            </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={() => setShowAIScan(true)}
-            className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-primary/20 bg-primary/5 px-3 text-xs font-medium text-primary transition-colors hover:border-primary/40 hover:bg-primary/10"
+            className="control-button px-3 text-xs"
           >
             <Scan className="h-3.5 w-3.5" />
             AI 扫描
@@ -424,7 +465,7 @@ export function ProblemEditor({ problems, onChange, noteId, subject, hasUnsavedC
               setShowAddForm((value) => !value);
               setNewProblemError(null);
             }}
-            className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-primary px-3 text-xs font-semibold text-on-primary transition-colors hover:bg-primary/90"
+            className="control-button control-button-primary px-3 text-xs"
           >
             {showAddForm ? <ChevronUp className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
             {showAddForm ? "收起新增" : "新增题目"}
@@ -442,16 +483,28 @@ export function ProblemEditor({ problems, onChange, noteId, subject, hasUnsavedC
       {/* Existing Problems (drag-and-drop) */}
       {problems.length > 0 && (
         <>
+          <ProblemBulkSelectionPanel
+            totalCount={problems.length}
+            visibleCount={visibleProblems.length}
+            selectedCount={selectedProblemIdsInList.length}
+            allVisibleSelected={allVisibleProblemsSelected}
+            noteId={noteId}
+            selectedChapterId={bulkSelectEditorChapterId}
+            selectedChapterProblemCount={bulkSelectEditorChapterProblemIds.length}
+            unassignedChapterCount={unassignedEditorChapterProblemIds.length}
+            onToggleVisible={toggleAllProblemSelection}
+            onChangeChapter={setBulkSelectEditorChapterId}
+            onSelectChapter={selectProblemsByEditorChapter}
+            onSelectUnassignedChapter={selectProblemsWithoutEditorChapter}
+          />
           {showMath3Assignment && (
             <Math3AssignmentPanel
               totalCount={problems.length}
               visibleCount={visibleProblems.length}
               unassignedCount={unassignedMath3ProblemIds.length}
               selectedCount={selectedProblemIdsInList.length}
-              allSelected={allVisibleProblemsSelected}
               onlyUnassigned={onlyShowUnassignedMath3Problems}
               selectedChapterId={selectedMath3ChapterId}
-              onToggleAll={toggleAllProblemSelection}
               onToggleOnlyUnassigned={() => setOnlyShowUnassignedMath3Problems((value) => !value)}
               onSelectUnassigned={selectUnassignedMath3Problems}
               onChangeChapter={handleChangeMath3Chapter}
@@ -461,7 +514,7 @@ export function ProblemEditor({ problems, onChange, noteId, subject, hasUnsavedC
             axis="y"
             values={visibleProblems}
             onReorder={handleProblemReorder}
-            className="space-y-3"
+            className="space-y-2"
           >
             {visibleProblems.map((problem, index) => (
               <EditableProblemItem key={problem.id} problem={problem}>
@@ -486,7 +539,7 @@ export function ProblemEditor({ problems, onChange, noteId, subject, hasUnsavedC
             ))}
           </Reorder.Group>
           {visibleProblems.length === 0 && (
-            <div className="rounded-xl border border-dashed border-outline-variant/30 bg-surface-container-low px-4 py-8 text-center text-sm text-on-surface-variant">
+            <div className="surface-panel border-dashed px-4 py-8 text-center text-sm text-on-surface-variant">
               当前没有未分配数三章节的题目。
             </div>
           )}
@@ -500,7 +553,7 @@ export function ProblemEditor({ problems, onChange, noteId, subject, hasUnsavedC
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: "auto" }}
             exit={{ opacity: 0, height: 0 }}
-            className="bg-surface-container-low rounded-xl p-4 space-y-3 overflow-hidden"
+            className="surface-panel space-y-3 overflow-hidden p-4"
           >
             {/* Chapter Selector */}
             <div>
@@ -519,7 +572,7 @@ export function ProblemEditor({ problems, onChange, noteId, subject, hasUnsavedC
                 <select
                   value={newProblem.type}
                   onChange={(e) => updateNewProblemType(e.target.value as ProblemType)}
-                  className="w-full px-3 py-2 bg-surface-container rounded-lg text-sm text-on-surface outline-none focus:ring-2 focus:ring-primary/20"
+                  className="field-control w-full px-3 py-2 text-sm"
                 >
                   {(Object.entries(problemTypeMap) as [ProblemType, string][]).map(([key, label]) => (
                     <option key={key} value={key}>{label}</option>
@@ -531,7 +584,7 @@ export function ProblemEditor({ problems, onChange, noteId, subject, hasUnsavedC
                 <select
                   value={newProblem.difficulty}
                   onChange={(e) => setNewProblem({ ...newProblem, difficulty: e.target.value as Difficulty })}
-                  className="w-full px-3 py-2 bg-surface-container rounded-lg text-sm text-on-surface outline-none focus:ring-2 focus:ring-primary/20"
+                  className="field-control w-full px-3 py-2 text-sm"
                 >
                   {(Object.entries(difficultyMap) as [Difficulty, string][]).map(([key, label]) => (
                     <option key={key} value={key}>{label}</option>
@@ -551,7 +604,7 @@ export function ProblemEditor({ problems, onChange, noteId, subject, hasUnsavedC
                 }}
                 placeholder="输入题目内容，支持 LaTeX 公式..."
                 rows={3}
-                className="w-full px-3 py-2 bg-surface-container rounded-lg text-sm text-on-surface outline-none focus:ring-2 focus:ring-primary/20 resize-none placeholder:text-on-surface-variant/40"
+                className="field-control w-full resize-none px-3 py-2 text-sm placeholder:text-on-surface-variant/40"
               />
             </div>
 
@@ -581,14 +634,14 @@ export function ProblemEditor({ problems, onChange, noteId, subject, hasUnsavedC
                     <input
                       value={option.label}
                       onChange={(e) => updateNewProblemOption(optionIndex, "label", e.target.value)}
-                      className="w-full px-2 py-2 bg-surface-container rounded-lg text-sm text-on-surface outline-none focus:ring-2 focus:ring-primary/20"
+                      className="field-control w-full px-2 py-2 text-sm"
                       placeholder="A"
                     />
                     <textarea
                       value={option.content}
                       onChange={(e) => updateNewProblemOption(optionIndex, "content", e.target.value)}
                       rows={1}
-                      className="w-full px-3 py-2 bg-surface-container rounded-lg text-sm text-on-surface outline-none focus:ring-2 focus:ring-primary/20 resize-y min-h-9 placeholder:text-on-surface-variant/40"
+                      className="field-control min-h-9 w-full resize-y px-3 py-2 text-sm placeholder:text-on-surface-variant/40"
                       placeholder="选项内容"
                     />
                     <button
@@ -621,7 +674,7 @@ export function ProblemEditor({ problems, onChange, noteId, subject, hasUnsavedC
                 }}
                 placeholder="输入答案..."
                 rows={2}
-                className="w-full px-3 py-2 bg-surface-container rounded-lg text-sm text-on-surface outline-none focus:ring-2 focus:ring-primary/20 resize-none placeholder:text-on-surface-variant/40"
+                className="field-control w-full resize-none px-3 py-2 text-sm placeholder:text-on-surface-variant/40"
               />
             </div>
 
@@ -636,7 +689,7 @@ export function ProblemEditor({ problems, onChange, noteId, subject, hasUnsavedC
                 }}
                 placeholder="输入解析..."
                 rows={2}
-                className="w-full px-3 py-2 bg-surface-container rounded-lg text-sm text-on-surface outline-none focus:ring-2 focus:ring-primary/20 resize-none placeholder:text-on-surface-variant/40"
+                className="field-control w-full resize-none px-3 py-2 text-sm placeholder:text-on-surface-variant/40"
               />
             </div>
 
@@ -655,7 +708,7 @@ export function ProblemEditor({ problems, onChange, noteId, subject, hasUnsavedC
               <button
                 onClick={handleRepairNewProblem}
                 disabled={!newProblem.question && !newProblem.answer && !newProblem.explanation && !newProblem.tips}
-                className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-primary/10 text-primary text-sm font-medium hover:bg-primary/15 disabled:opacity-40 transition-colors"
+                className="control-button px-3 py-2 text-sm disabled:opacity-40"
               >
                 <Wrench className="w-4 h-4" />
                 一键修正
@@ -666,14 +719,14 @@ export function ProblemEditor({ problems, onChange, noteId, subject, hasUnsavedC
                   setNewProblem(createEmptyProblemDraft());
                   setNewProblemError(null);
                 }}
-                className="flex-1 px-3 py-2 rounded-lg bg-surface-container text-on-surface-variant text-sm hover:bg-surface-container-high transition-colors"
+                className="control-button flex-1 px-3 py-2 text-sm"
               >
                 取消
               </button>
               <button
                 onClick={handleAdd}
                 disabled={!newProblem.question?.trim()}
-                className="flex-1 px-3 py-2 rounded-lg editorial-gradient text-on-primary text-sm font-medium disabled:opacity-40 transition-all"
+                className="control-button control-button-primary flex-1 px-3 py-2 text-sm disabled:opacity-40"
               >
                 添加题目
               </button>
@@ -689,7 +742,7 @@ export function ProblemEditor({ problems, onChange, noteId, subject, hasUnsavedC
             setShowAddForm(true);
             setNewProblemError(null);
           }}
-          className="w-full px-4 py-3 rounded-xl border-2 border-dashed border-outline-variant/30 text-on-surface-variant hover:border-primary/50 hover:text-primary transition-all duration-200 flex items-center justify-center gap-2 text-sm font-medium"
+          className="control-button w-full border-dashed px-4 py-3 text-sm"
         >
           <Plus className="w-4 h-4" />
           添加题目
@@ -750,6 +803,93 @@ function EditableProblemItem({
   );
 }
 
+function ProblemBulkSelectionPanel({
+  totalCount,
+  visibleCount,
+  selectedCount,
+  allVisibleSelected,
+  noteId,
+  selectedChapterId,
+  selectedChapterProblemCount,
+  unassignedChapterCount,
+  onToggleVisible,
+  onChangeChapter,
+  onSelectChapter,
+  onSelectUnassignedChapter,
+}: {
+  totalCount: number;
+  visibleCount: number;
+  selectedCount: number;
+  allVisibleSelected: boolean;
+  noteId?: string;
+  selectedChapterId?: string;
+  selectedChapterProblemCount: number;
+  unassignedChapterCount: number;
+  onToggleVisible: () => void;
+  onChangeChapter: (chapterId: string | undefined) => void;
+  onSelectChapter: () => void;
+  onSelectUnassignedChapter: () => void;
+}) {
+  return (
+    <section className="surface-panel p-3">
+      <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-center">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <div className="inline-flex items-center gap-2 text-sm font-semibold text-on-surface">
+            <CheckSquare className="h-4 w-4 text-primary" />
+            批量选择
+          </div>
+          <span className="tag-chip px-2 py-0.5 text-xs">
+            已选 <span className="font-semibold text-on-surface">{selectedCount}</span>
+          </span>
+          <span className="tag-chip px-2 py-0.5 text-xs">
+            显示 {visibleCount}/{totalCount}
+          </span>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2 xl:justify-end">
+          <button
+            type="button"
+            onClick={onToggleVisible}
+            disabled={visibleCount === 0}
+            className="control-button px-3 text-xs"
+          >
+            {allVisibleSelected ? "取消当前显示" : "选择当前显示"} · {visibleCount}/{totalCount}
+          </button>
+          <button
+            type="button"
+            onClick={onSelectUnassignedChapter}
+            disabled={unassignedChapterCount === 0}
+            className="control-button px-3 text-xs"
+          >
+            选择未分题集章节 · {unassignedChapterCount}
+          </button>
+        </div>
+      </div>
+
+      <div className="mt-3 grid gap-2 lg:grid-cols-[minmax(0,320px)_auto_minmax(0,1fr)] lg:items-center">
+        <ChapterSelector
+          noteId={noteId}
+          value={selectedChapterId}
+          onChange={onChangeChapter}
+          className="w-full"
+        />
+        <button
+          type="button"
+          onClick={onSelectChapter}
+          disabled={!selectedChapterId || selectedChapterProblemCount === 0}
+          className="control-button px-3 text-xs"
+        >
+          <FolderTree className="h-3.5 w-3.5" />
+          选择该章节 · {selectedChapterProblemCount}
+        </button>
+        <div className="surface-muted px-3 py-2 text-xs text-on-surface-variant">
+          题集章节 <span className="font-semibold text-on-surface">{selectedChapterProblemCount}</span> 题，未分 <span className="font-semibold text-on-surface">{unassignedChapterCount}</span> 题
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function BulkProblemActionBar({
   isOpen,
   selectedCount,
@@ -803,22 +943,31 @@ function BulkProblemActionBar({
           transition={{ duration: 0.18 }}
           className="fixed inset-x-0 bottom-4 z-50 px-3 sm:px-6 pointer-events-none"
         >
-          <div className="pointer-events-auto mx-auto max-w-6xl rounded-lg border border-outline-variant/20 bg-surface-container-lowest/95 p-3 shadow-elevated backdrop-blur">
-            <div className="grid gap-3 lg:grid-cols-[170px_minmax(0,1fr)_auto] lg:items-stretch">
-              <div className="rounded-md bg-surface-container-low px-3 py-2">
-                <div className="flex items-center gap-2 text-sm font-semibold text-on-surface">
+          <div className="command-bar pointer-events-auto mx-auto max-w-7xl p-2.5">
+            <div className="flex flex-col gap-2 xl:flex-row xl:items-center">
+              <div className="surface-muted flex shrink-0 items-center justify-between gap-3 px-3 py-2 xl:min-w-44">
+                <div>
+                  <div className="flex items-center gap-2 text-sm font-semibold text-on-surface">
                   <CheckSquare className="h-4 w-4 text-primary" />
                   已选 {selectedCount} 道
+                  </div>
+                  <div className="text-xs text-on-surface-variant">
+                    显示 {visibleCount}/{totalCount}
+                  </div>
                 </div>
-                <div className="mt-1 text-xs text-on-surface-variant">
-                  当前显示 {visibleCount}/{totalCount}
-                </div>
+                <button
+                  type="button"
+                  onClick={onToggleAll}
+                  disabled={visibleCount === 0 || isClassifying}
+                  className="control-button h-8 min-h-0 px-2 text-xs"
+                >
+                  {allSelected ? "取消当前" : "全选当前"}
+                </button>
               </div>
 
-              <div className="grid min-w-0 gap-2 xl:grid-cols-2">
-                <div className="rounded-md border border-outline-variant/15 p-2">
-                  <div className="mb-2 text-xs font-medium text-on-surface-variant">题集章节</div>
-                  <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_auto]">
+              <div className={`grid min-w-0 flex-1 gap-2 ${showMath3Tools ? "lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]" : ""}`}>
+                <div className="surface-muted grid gap-2 p-2 md:grid-cols-[auto_minmax(0,1fr)_auto] md:items-center">
+                  <div className="text-xs font-semibold text-on-surface-variant">题集章节</div>
                     <ChapterSelector
                       noteId={noteId}
                       value={selectedEditorChapterId}
@@ -830,23 +979,21 @@ function BulkProblemActionBar({
                       type="button"
                       onClick={onApplyEditorChapter}
                       disabled={!selectedEditorChapterId || isClassifying}
-                      className="inline-flex h-10 items-center justify-center gap-1.5 rounded-lg border border-outline-variant/30 px-3 text-xs font-medium text-on-surface-variant transition-colors hover:border-primary/40 hover:text-primary disabled:opacity-40"
+                      className="control-button h-10 px-3 text-xs"
                     >
                       <FolderTree className="h-3.5 w-3.5" />
                       应用
                     </button>
-                  </div>
                 </div>
 
                 {showMath3Tools && (
-                  <div className="rounded-md border border-outline-variant/15 p-2">
-                    <div className="mb-2 text-xs font-medium text-on-surface-variant">数三归类</div>
-                    <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_auto]">
+                  <div className="surface-muted grid gap-2 p-2 md:grid-cols-[auto_minmax(0,1fr)_auto] md:items-center">
+                    <div className="text-xs font-semibold text-on-surface-variant">数三归类</div>
                       <select
                         value={selectedMath3ChapterId}
                         onChange={(event) => onChangeMath3Chapter(event.target.value)}
                         disabled={isClassifying}
-                        className="h-10 min-w-0 rounded-lg border border-outline-variant/30 bg-surface-container-lowest px-3 text-sm text-on-surface outline-none transition-colors focus:border-primary/50 disabled:opacity-40"
+                        className="field-control h-10 min-w-0 px-3 text-sm disabled:opacity-40"
                       >
                         {math3KnowledgeAreas.map((area) => (
                           <optgroup key={area.id} label={area.title}>
@@ -863,7 +1010,7 @@ function BulkProblemActionBar({
                           type="button"
                           onClick={onApplyMath3Chapter}
                           disabled={!selectedMath3Chapter || isClassifying}
-                          className="inline-flex h-10 items-center justify-center rounded-lg border border-primary/30 px-3 text-xs font-medium text-primary transition-colors hover:bg-primary/10 disabled:opacity-40"
+                          className="control-button h-10 px-3 text-xs"
                         >
                           归章
                         </button>
@@ -871,7 +1018,7 @@ function BulkProblemActionBar({
                           type="button"
                           onClick={onClassifyKnowledge}
                           disabled={!selectedMath3Chapter || isClassifying}
-                          className="inline-flex h-10 items-center justify-center rounded-lg bg-primary px-3 text-xs font-medium text-on-primary transition-colors hover:bg-primary/90 disabled:opacity-40"
+                          className="control-button control-button-primary h-10 px-3 text-xs"
                         >
                           {isClassifying ? (
                             <span className="inline-flex items-center gap-1.5">
@@ -886,30 +1033,21 @@ function BulkProblemActionBar({
                           type="button"
                           onClick={onClearMath3Knowledge}
                           disabled={isClassifying}
-                          className="inline-flex h-10 items-center justify-center rounded-lg border border-outline-variant/30 px-3 text-xs font-medium text-on-surface-variant transition-colors hover:border-red-300 hover:text-red-600 disabled:opacity-40"
+                          className="control-button h-10 px-3 text-xs"
                         >
                           清除
                         </button>
                       </div>
-                    </div>
                   </div>
                 )}
               </div>
 
-              <div className="flex flex-wrap items-center justify-end gap-2 lg:flex-col">
-                <button
-                  type="button"
-                  onClick={onToggleAll}
-                  disabled={visibleCount === 0 || isClassifying}
-                  className="inline-flex h-10 items-center justify-center rounded-lg border border-outline-variant/30 px-3 text-xs font-medium text-on-surface-variant transition-colors hover:border-primary/40 hover:text-primary disabled:opacity-40"
-                >
-                  {allSelected ? "取消当前" : "全选当前"}
-                </button>
+              <div className="flex shrink-0 items-center justify-end gap-2">
                 <button
                   type="button"
                   onClick={onRemoveSelected}
                   disabled={isClassifying}
-                  className="inline-flex h-10 items-center justify-center gap-1.5 rounded-lg border border-red-200 px-3 text-xs font-medium text-red-600 transition-colors hover:bg-red-50 disabled:opacity-40"
+                  className="control-button control-button-danger h-10 px-3 text-xs"
                 >
                   <Trash2 className="h-3.5 w-3.5" />
                   删除
@@ -918,7 +1056,7 @@ function BulkProblemActionBar({
                   type="button"
                   onClick={onClearSelection}
                   disabled={isClassifying}
-                  className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-outline-variant/30 text-on-surface-variant transition-colors hover:border-primary/40 hover:text-primary disabled:opacity-40"
+                  className="control-button h-10 w-10 p-0"
                   title="取消选择"
                   aria-label="取消选择"
                 >
@@ -938,10 +1076,8 @@ function Math3AssignmentPanel({
   visibleCount,
   unassignedCount,
   selectedCount,
-  allSelected,
   onlyUnassigned,
   selectedChapterId,
-  onToggleAll,
   onToggleOnlyUnassigned,
   onSelectUnassigned,
   onChangeChapter,
@@ -950,10 +1086,8 @@ function Math3AssignmentPanel({
   visibleCount: number;
   unassignedCount: number;
   selectedCount: number;
-  allSelected: boolean;
   onlyUnassigned: boolean;
   selectedChapterId: string;
-  onToggleAll: () => void;
   onToggleOnlyUnassigned: () => void;
   onSelectUnassigned: () => void;
   onChangeChapter: (chapterId: string) => void;
@@ -961,16 +1095,18 @@ function Math3AssignmentPanel({
   const selectedChapter = getMath3ChapterById(selectedChapterId);
 
   return (
-    <section className="rounded-lg border border-outline-variant/20 bg-surface-container-lowest p-4">
+    <section className="surface-panel p-3">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
         <div>
           <div className="inline-flex items-center gap-2 text-sm font-semibold text-on-surface">
             <Tags className="h-4 w-4" />
             数三章节归类
           </div>
-          <p className="mt-1 text-xs leading-5 text-on-surface-variant">
-            先分到大纲章节，再用 AI 标知识点；知识点只用于复盘标签，不作为刷题分类。
-          </p>
+          <div className="mt-1 flex flex-wrap gap-1.5">
+            <span className="tag-chip px-2 py-0.5 text-xs">已选 {selectedCount}</span>
+            <span className="tag-chip px-2 py-0.5 text-xs">未归 {unassignedCount}</span>
+            <span className="tag-chip px-2 py-0.5 text-xs">显示 {visibleCount}/{totalCount}</span>
+          </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
@@ -978,10 +1114,10 @@ function Math3AssignmentPanel({
             type="button"
             onClick={onToggleOnlyUnassigned}
             aria-pressed={onlyUnassigned}
-            className={`inline-flex h-9 items-center justify-center rounded-lg border px-3 text-xs font-medium transition-colors ${
+            className={`control-button px-3 text-xs ${
               onlyUnassigned
-                ? "border-primary/30 bg-surface-container-lowest text-primary"
-                : "border-outline-variant/30 bg-surface-container-lowest text-on-surface-variant hover:border-primary/40 hover:text-primary"
+                ? "control-button-selected"
+                : ""
             }`}
           >
             {onlyUnassigned ? "显示全部题目" : "只看未归章节"}
@@ -990,28 +1126,20 @@ function Math3AssignmentPanel({
             type="button"
             onClick={onSelectUnassigned}
             disabled={unassignedCount === 0}
-            className="inline-flex h-9 items-center justify-center rounded-lg border border-outline-variant/30 bg-surface-container-lowest px-3 text-xs font-medium text-on-surface-variant transition-colors hover:border-primary/40 hover:text-primary disabled:opacity-40"
+            className="control-button px-3 text-xs"
           >
-            选择未归章节 · {unassignedCount}
-          </button>
-          <button
-            type="button"
-            onClick={onToggleAll}
-            disabled={visibleCount === 0}
-            className="inline-flex h-9 items-center justify-center rounded-lg border border-outline-variant/30 bg-surface-container-lowest px-3 text-xs font-medium text-on-surface-variant transition-colors hover:border-primary/40 hover:text-primary disabled:opacity-40"
-          >
-            {allSelected ? "取消当前选择" : "选择当前显示"} · {visibleCount}/{totalCount}
+            选择未归数三 · {unassignedCount}
           </button>
         </div>
       </div>
 
-      <div className="mt-4 grid gap-3 lg:grid-cols-[260px_minmax(0,1fr)]">
+      <div className="mt-3 grid gap-3 lg:grid-cols-[280px_minmax(0,1fr)]">
         <div>
           <label className="mb-1 block text-xs font-medium text-on-surface-variant">大纲章节</label>
           <select
             value={selectedChapterId}
             onChange={(event) => onChangeChapter(event.target.value)}
-            className="h-10 w-full rounded-lg border border-outline-variant/30 bg-surface-container-lowest px-3 text-sm text-on-surface outline-none focus:border-primary/50"
+            className="field-control h-10 w-full px-3 text-sm"
           >
             {math3KnowledgeAreas.map((area) => (
               <optgroup key={area.id} label={area.title}>
@@ -1031,13 +1159,13 @@ function Math3AssignmentPanel({
             <span className="text-xs text-on-surface-variant">人工只审核结果</span>
           </div>
 
-          <div className="max-h-28 overflow-y-auto rounded-lg bg-surface-container-low p-2">
+          <div className="surface-muted max-h-24 overflow-y-auto p-2">
             {selectedChapter ? (
               <div className="flex flex-wrap gap-2">
                 {selectedChapter.chapter.points.map((pointItem) => (
                   <span
                     key={pointItem.id}
-                    className="rounded-md border border-outline-variant/25 bg-surface-container-lowest px-2.5 py-1 text-xs text-on-surface-variant"
+                    className="tag-chip px-2.5 py-1 text-xs"
                   >
                     {pointItem.title}
                   </span>
@@ -1050,17 +1178,6 @@ function Math3AssignmentPanel({
         </div>
       </div>
 
-      <div className="mt-4 grid gap-2 text-xs text-on-surface-variant sm:grid-cols-3">
-        <div className="rounded-md bg-surface-container-low px-3 py-2">
-          <span className="font-semibold text-on-surface">{selectedCount}</span> 道已选
-        </div>
-        <div className="rounded-md bg-surface-container-low px-3 py-2">
-          <span className="font-semibold text-on-surface">{unassignedCount}</span> 道未归章节
-        </div>
-        <div className="rounded-md bg-surface-container-low px-3 py-2">
-          当前显示 {visibleCount}/{totalCount}
-        </div>
-      </div>
     </section>
   );
 }
@@ -1112,35 +1229,38 @@ function ProblemCard({
   };
 
   return (
-    <div className={`overflow-hidden rounded-lg border transition-colors group ${
-      selected
-        ? "border-primary/40 bg-primary/5"
-        : "border-outline-variant/15 bg-surface-container-low"
+    <div className={`surface-card group overflow-hidden ${
+      selected ? "border-primary/45 bg-primary/[0.045] ring-1 ring-primary/15" : ""
     }`}>
-      <div className="flex items-center">
-        {showSelectionTools && (
-          <label
-            className="flex px-3 py-3"
-            onClick={(event) => event.stopPropagation()}
-            title={selected ? "取消选择题目" : "选择题目"}
-          >
-            <input
-              type="checkbox"
-              checked={selected}
-              onChange={onToggleSelect}
-              className="h-4 w-4 rounded border-outline-variant text-primary focus:ring-primary/30"
-              aria-label={`选择第 ${index + 1} 题`}
-            />
-          </label>
-        )}
+      <div className="grid grid-cols-[auto_minmax(0,1fr)] gap-3 p-3 sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:p-4">
+        <div className="flex items-start gap-2 sm:block">
+          {showSelectionTools && (
+            <label
+              className="flex h-8 w-8 items-center justify-center rounded-lg text-on-surface-variant transition-colors hover:bg-surface-container-low"
+              onClick={(event) => event.stopPropagation()}
+              title={selected ? "取消选择题目" : "选择题目"}
+            >
+              <input
+                type="checkbox"
+                checked={selected}
+                onChange={onToggleSelect}
+                className="h-4 w-4 rounded border-outline-variant text-primary focus:ring-primary/30"
+                aria-label={`选择第 ${index + 1} 题`}
+              />
+            </label>
+          )}
 
-        {/* Drag Handle */}
-        <div
-          onPointerDown={(event) => dragControls.start(event)}
-          className="py-3 cursor-grab active:cursor-grabbing text-on-surface-variant/20 hover:text-on-surface-variant/50 transition-colors"
-          title="拖拽排序"
-        >
-          <GripVertical className="w-4 h-4" />
+          <div
+            onPointerDown={(event) => dragControls.start(event)}
+            className="mt-0.5 hidden h-8 w-8 cursor-grab items-center justify-center rounded-lg text-on-surface-variant/25 transition-colors hover:bg-surface-container-low hover:text-on-surface-variant/60 active:cursor-grabbing sm:flex"
+            title="拖拽排序"
+          >
+            <GripVertical className="h-4 w-4" />
+          </div>
+
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-xs font-bold text-on-primary sm:mt-2">
+            {index + 1}
+          </div>
         </div>
 
         <div
@@ -1153,78 +1273,90 @@ function ProblemCard({
               setExpanded(!expanded);
             }
           }}
-          className="flex min-w-0 flex-1 items-center justify-between gap-3 py-3 pr-4 transition-colors hover:bg-surface-container-high"
+          className="min-w-0 rounded-lg px-1 py-0.5 transition-colors hover:bg-surface-container-low/70"
         >
-          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
-            <span className="w-7 h-7 rounded-full editorial-gradient text-on-primary text-xs font-bold flex items-center justify-center flex-shrink-0">
-              {index + 1}
-            </span>
-            <span className="min-w-0 flex-[1_1_220px] text-sm font-medium text-on-surface line-clamp-1">
-              {problem.question || '(无题目内容)'}
-            </span>
-            <span className="px-2 py-0.5 rounded bg-primary-container/20 text-primary-container text-xs font-medium whitespace-nowrap">
+          <div className="mb-2 flex min-w-0 flex-wrap items-center gap-1.5">
+            <span className="tag-chip tag-chip-primary px-2 py-0.5 text-xs font-medium">
               {problemTypeMap[problem.type]}
             </span>
-            <span className={`px-2 py-0.5 rounded text-xs font-medium whitespace-nowrap ${difficultyColorMap[problem.difficulty]}`}>
+            <span className={`rounded-md px-2 py-0.5 text-xs font-medium ${difficultyColorMap[problem.difficulty]}`}>
               {difficultyMap[problem.difficulty]}
             </span>
             {problem.aiStatus === 'complete' && (
-              <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 flex items-center gap-1">
-                <Sparkles className="w-3 h-3" /> AI
+              <span className="tag-chip tag-chip-warning px-2 py-0.5 text-xs">
+                <Sparkles className="h-3 w-3" /> AI
               </span>
             )}
             {validationIssues.length > 0 && (
-              <span className="text-xs px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200 flex items-center gap-1">
-                <AlertCircle className="w-3 h-3" /> 需检查
+              <span className="inline-flex items-center gap-1 rounded-md border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs text-amber-700">
+                <AlertCircle className="h-3 w-3" /> 需检查
               </span>
             )}
-            {showMath3Tools && (
-              math3ChapterTitle ? (
+          </div>
+
+          <p className="line-clamp-3 break-words text-sm font-semibold leading-6 text-on-surface sm:text-[15px]">
+            {problem.question || "(无题目内容)"}
+          </p>
+
+          {showMath3Tools && (
+            <div className="mt-3 flex min-w-0 flex-wrap items-center gap-1.5">
+              {math3ChapterTitle ? (
                 <>
                   <span
-                    className="max-w-full rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary line-clamp-1"
+                    className="tag-chip tag-chip-primary max-w-full px-2 py-0.5 text-xs font-medium"
                     title={math3ChapterTitle}
                   >
                     {math3ChapterTitle}
                   </span>
                   {math3PointTitles.length > 0 ? (
                     <span
-                      className="max-w-full rounded-full bg-cyan-500/10 px-2 py-0.5 text-xs font-medium text-cyan-700 line-clamp-1"
+                      className="tag-chip tag-chip-info max-w-full px-2 py-0.5 text-xs"
                       title={math3PointTitles.join("、")}
                     >
                       {math3PointTitles.slice(0, 2).join("、")}
                       {math3PointTitles.length > 2 ? ` +${math3PointTitles.length - 2}` : ""}
                     </span>
                   ) : (
-                    <span className="rounded-full bg-surface-container-high px-2 py-0.5 text-xs text-on-surface-variant/70">
-                      待 AI 标记知识点
+                    <span className="tag-chip px-2 py-0.5 text-xs">
+                      待 AI 标知识点
                     </span>
                   )}
                 </>
               ) : (
-                <span className="rounded-full bg-surface-container-high px-2 py-0.5 text-xs text-on-surface-variant/70">
+                <span className="tag-chip px-2 py-0.5 text-xs">
                   未分配数三章节
                 </span>
-              )
-            )}
-          </div>
-          <div className="flex shrink-0 items-center gap-1">
-            <button
-              onClick={(e) => { e.stopPropagation(); onRemove(); }}
-              className="rounded p-1 transition-colors hover:bg-surface-container-highest"
-              title="删除题目"
-            >
-              <Trash2 className="w-4 h-4 text-on-surface-variant/40 hover:text-red-500" />
-            </button>
-            <button
-              onClick={(e) => { e.stopPropagation(); onDuplicate(); }}
-              className="p-1 rounded hover:bg-surface-container-highest transition-colors"
-              title="复制题目"
-            >
-              <Copy className="w-4 h-4 text-on-surface-variant/40 hover:text-primary" />
-            </button>
-            {expanded ? <ChevronUp className="w-4 h-4 text-on-surface-variant" /> : <ChevronDown className="w-4 h-4 text-on-surface-variant" />}
-          </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div className="col-span-2 flex items-center justify-end gap-1 border-t border-outline-variant/10 pt-2 sm:col-span-1 sm:block sm:border-t-0 sm:pt-0">
+          <button
+            onClick={(e) => { e.stopPropagation(); onDuplicate(); }}
+            className="control-button h-8 min-h-0 w-8 p-0 opacity-70 sm:flex"
+            title="复制题目"
+            aria-label="复制题目"
+          >
+            <Copy className="h-3.5 w-3.5" />
+          </button>
+          <button
+            onClick={(e) => { e.stopPropagation(); onRemove(); }}
+            className="control-button control-button-danger h-8 min-h-0 w-8 p-0 opacity-70 sm:mt-2 sm:flex"
+            title="删除题目"
+            aria-label="删除题目"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </button>
+          <button
+            type="button"
+            onClick={() => setExpanded(!expanded)}
+            className="control-button h-8 min-h-0 w-8 p-0 sm:mt-2"
+            title={expanded ? "收起编辑" : "展开编辑"}
+            aria-label={expanded ? "收起编辑" : "展开编辑"}
+          >
+            {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+          </button>
         </div>
       </div>
 
@@ -1257,7 +1389,7 @@ function ProblemCard({
                         options: nextType === "choice" ? ensureChoiceOptions(problem.options) : undefined,
                       });
                     }}
-                    className="w-full px-3 py-2 bg-surface-container rounded-lg text-sm text-on-surface outline-none focus:ring-2 focus:ring-primary/20"
+                    className="field-control w-full px-3 py-2 text-sm"
                   >
                     {(Object.entries(problemTypeMap) as [ProblemType, string][]).map(([key, label]) => (
                       <option key={key} value={key}>{label}</option>
@@ -1269,7 +1401,7 @@ function ProblemCard({
                   <select
                     value={problem.difficulty}
                     onChange={(e) => onUpdate({ difficulty: e.target.value as Difficulty })}
-                    className="w-full px-3 py-2 bg-surface-container rounded-lg text-sm text-on-surface outline-none focus:ring-2 focus:ring-primary/20"
+                    className="field-control w-full px-3 py-2 text-sm"
                   >
                     {(Object.entries(difficultyMap) as [Difficulty, string][]).map(([key, label]) => (
                       <option key={key} value={key}>{label}</option>
@@ -1292,7 +1424,7 @@ function ProblemCard({
                 value={problem.question}
                 onChange={(e) => onUpdate({ question: e.target.value })}
                 rows={4}
-                className="w-full px-3 py-2 bg-surface-container rounded-lg text-sm text-on-surface outline-none focus:ring-2 focus:ring-primary/20 resize-y min-h-24 placeholder:text-on-surface-variant/40"
+                className="field-control min-h-24 w-full resize-y px-3 py-2 text-sm placeholder:text-on-surface-variant/40"
                 placeholder="输入题目内容，支持 LaTeX 公式..."
               />
             </div>
@@ -1318,14 +1450,14 @@ function ProblemCard({
                     <input
                       value={option.label}
                       onChange={(e) => updateOption(optionIndex, "label", e.target.value)}
-                      className="w-full px-2 py-2 bg-surface-container rounded-lg text-sm text-on-surface outline-none focus:ring-2 focus:ring-primary/20"
+                      className="field-control w-full px-2 py-2 text-sm"
                       placeholder="A"
                     />
                     <textarea
                       value={option.content}
                       onChange={(e) => updateOption(optionIndex, "content", e.target.value)}
                       rows={1}
-                      className="w-full px-3 py-2 bg-surface-container rounded-lg text-sm text-on-surface outline-none focus:ring-2 focus:ring-primary/20 resize-y min-h-9 placeholder:text-on-surface-variant/40"
+                      className="field-control min-h-9 w-full resize-y px-3 py-2 text-sm placeholder:text-on-surface-variant/40"
                       placeholder="选项内容"
                     />
                     <button
@@ -1347,7 +1479,7 @@ function ProblemCard({
                   value={problem.answer}
                   onChange={(e) => onUpdate({ answer: e.target.value })}
                   rows={3}
-                  className="w-full px-3 py-2 bg-surface-container rounded-lg text-sm text-on-surface outline-none focus:ring-2 focus:ring-primary/20 resize-y min-h-20 placeholder:text-on-surface-variant/40"
+                  className="field-control min-h-20 w-full resize-y px-3 py-2 text-sm placeholder:text-on-surface-variant/40"
                   placeholder="输入答案..."
                 />
               </div>
@@ -1357,7 +1489,7 @@ function ProblemCard({
                   value={problem.tips || ""}
                   onChange={(e) => onUpdate({ tips: e.target.value || undefined })}
                   rows={3}
-                  className="w-full px-3 py-2 bg-surface-container rounded-lg text-sm text-on-surface outline-none focus:ring-2 focus:ring-primary/20 resize-y min-h-20 placeholder:text-on-surface-variant/40"
+                  className="field-control min-h-20 w-full resize-y px-3 py-2 text-sm placeholder:text-on-surface-variant/40"
                   placeholder="可选提示..."
                 />
               </div>
@@ -1369,7 +1501,7 @@ function ProblemCard({
                 value={problem.explanation}
                 onChange={(e) => onUpdate({ explanation: e.target.value })}
                 rows={5}
-                className="w-full px-3 py-2 bg-surface-container rounded-lg text-sm text-on-surface outline-none focus:ring-2 focus:ring-primary/20 resize-y min-h-28 placeholder:text-on-surface-variant/40"
+                className="field-control min-h-28 w-full resize-y px-3 py-2 text-sm placeholder:text-on-surface-variant/40"
                 placeholder="输入解析，支持 Markdown 和 LaTeX..."
               />
             </div>
@@ -1377,7 +1509,7 @@ function ProblemCard({
             <div className="flex justify-end">
               <button
                 onClick={handleRepairProblem}
-                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-primary/10 text-primary text-sm font-medium hover:bg-primary/15 transition-colors"
+                className="control-button px-3 py-2 text-sm"
               >
                 <Wrench className="w-4 h-4" />
                 一键修正题目 Markdown

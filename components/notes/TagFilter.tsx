@@ -49,10 +49,10 @@ export function TagFilter({
             key={type.value}
             whileTap={{ scale: 0.95 }}
             onClick={() => onTypeChange(type.value)}
-            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-300 ${
+            className={`control-button min-h-0 px-3 py-1.5 text-sm ${
               selectedType === type.value
-                ? "editorial-gradient text-on-primary shadow-ambient"
-                : "bg-surface-container-low text-on-surface-variant hover:bg-surface-container-high"
+                ? "control-button-primary"
+                : ""
             }`}
           >
             {type.label}
@@ -62,7 +62,7 @@ export function TagFilter({
         {/* Advanced Filters Toggle */}
         <button
           onClick={() => setIsAdvancedOpen(!isAdvancedOpen)}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-surface-container-low text-on-surface-variant text-sm hover:bg-surface-container-high transition-colors ml-2"
+          className="control-button ml-2 min-h-0 px-3 py-1.5 text-sm"
         >
           {isAdvancedOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
           高级筛选
@@ -88,20 +88,20 @@ export function TagFilter({
                 </span>
                 <button
                   onClick={() => onSortOrderChange("desc")}
-                  className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-300 ${
+                  className={`control-button min-h-0 px-3 py-1.5 text-sm ${
                     sortOrder === "desc"
-                      ? "bg-primary-container/30 text-primary-container shadow-ambient"
-                      : "bg-surface-container-low text-on-surface-variant hover:bg-surface-container-high"
+                      ? "control-button-selected"
+                      : ""
                   }`}
                 >
                   最新优先
                 </button>
                 <button
                   onClick={() => onSortOrderChange("asc")}
-                  className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-300 ${
+                  className={`control-button min-h-0 px-3 py-1.5 text-sm ${
                     sortOrder === "asc"
-                      ? "bg-primary-container/30 text-primary-container shadow-ambient"
-                      : "bg-surface-container-low text-on-surface-variant hover:bg-surface-container-high"
+                      ? "control-button-selected"
+                      : ""
                   }`}
                 >
                   最早优先
@@ -116,10 +116,10 @@ export function TagFilter({
                     key={subject.value}
                     whileTap={{ scale: 0.95 }}
                     onClick={() => onSubjectChange(subject.value)}
-                    className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-300 ${
+                    className={`control-button min-h-0 px-3 py-1.5 text-sm ${
                       selectedSubject === subject.value
-                        ? "bg-surface-container-highest text-primary shadow-ambient"
-                        : "bg-surface-container-low text-on-surface-variant hover:bg-surface-container-high"
+                        ? "control-button-selected"
+                        : ""
                     }`}
                   >
                     {subject.label}

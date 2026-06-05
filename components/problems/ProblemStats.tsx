@@ -26,7 +26,7 @@ export function ProblemStats({ problems }: ProblemStatsProps) {
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
       {/* Total */}
-      <div className="bg-surface-container-lowest rounded-xl p-5 shadow-ambient">
+      <div className="surface-card p-5">
         <div className="flex items-center gap-4">
           <div className="w-12 h-12 rounded-xl editorial-gradient flex items-center justify-center flex-shrink-0">
             <BookOpen className="w-6 h-6 text-on-primary" />
@@ -39,7 +39,7 @@ export function ProblemStats({ problems }: ProblemStatsProps) {
       </div>
 
       {/* By Type */}
-      <div className="bg-surface-container-lowest rounded-xl p-5 shadow-ambient">
+      <div className="surface-card p-5">
         <div className="flex items-center gap-4">
           <div className="w-12 h-12 rounded-xl bg-primary-container/20 flex items-center justify-center flex-shrink-0">
             <BarChart3 className="w-6 h-6 text-primary-container" />
@@ -58,7 +58,7 @@ export function ProblemStats({ problems }: ProblemStatsProps) {
       </div>
 
       {/* By Difficulty */}
-      <div className="bg-surface-container-lowest rounded-xl p-5 shadow-ambient">
+      <div className="surface-card p-5">
         <div className="flex items-center gap-4">
           <div className="w-12 h-12 rounded-xl bg-amber-100 flex items-center justify-center flex-shrink-0">
             <TrendingUp className="w-6 h-6 text-amber-600" />

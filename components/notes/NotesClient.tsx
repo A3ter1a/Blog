@@ -320,11 +320,11 @@ export function NotesClient({
 
   return (
     <main className="min-h-screen pb-20 pt-24">
-      <section className="border-b border-outline-variant/20 bg-surface-container-low">
+      <section className="border-b border-outline-variant/20 bg-surface-container-low/70">
         <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div>
-              <div className="mb-2 inline-flex items-center gap-2 rounded-md border border-outline-variant/20 bg-surface-container-lowest px-2.5 py-1 text-xs font-medium text-on-surface-variant">
+              <div className="eyebrow-chip mb-2 px-2.5 py-1 text-xs">
                 <LibraryBig className="h-3.5 w-3.5 text-primary" />
                 Asteroid 资料库
               </div>
@@ -338,7 +338,7 @@ export function NotesClient({
               <div className="flex flex-wrap items-center gap-2">
                 <Link
                   href="/create"
-                  className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-on-primary transition-colors hover:bg-primary/90"
+                  className="control-button control-button-primary px-4 text-sm"
                 >
                   <Plus className="h-4 w-4" />
                   新建
@@ -348,10 +348,10 @@ export function NotesClient({
                     setSelectMode(!selectMode);
                     setSelectedNoteIds(new Set());
                   }}
-                  className={`inline-flex h-10 items-center justify-center gap-2 rounded-lg border px-4 text-sm font-medium transition-colors ${
+                  className={`control-button px-4 text-sm ${
                     selectMode
-                      ? "border-primary/30 bg-primary/10 text-primary"
-                      : "border-outline-variant/30 bg-surface-container-lowest text-on-surface-variant hover:border-primary/40 hover:text-primary"
+                      ? "control-button-selected"
+                      : ""
                   }`}
                 >
                   <CheckSquare className="h-4 w-4" />
@@ -377,7 +377,7 @@ export function NotesClient({
           <motion.div
             initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
-            className="mb-4 flex flex-col gap-3 rounded-lg border border-outline-variant/20 bg-surface-container-lowest p-3 sm:flex-row sm:items-center sm:justify-between"
+            className="command-bar mb-4 flex flex-col gap-3 p-3 sm:flex-row sm:items-center sm:justify-between"
           >
             <div className="flex items-center gap-4">
               <button
@@ -404,7 +404,7 @@ export function NotesClient({
               <button
                 onClick={handleExportSelected}
                 disabled={selectedNoteIds.size === 0 || isPreparingExport}
-                className="flex items-center gap-2 px-4 py-2 rounded-lg editorial-gradient text-on-primary text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-90 transition-opacity"
+                className="control-button control-button-primary px-4 text-sm disabled:cursor-not-allowed"
               >
                 {isPreparingExport ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
                 {isPreparingExport ? "准备中" : "导出选中"}
@@ -416,7 +416,7 @@ export function NotesClient({
                   }
                 }}
                 disabled={selectedNoteIds.size === 0 || isDeletingNotes}
-                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-red-500 text-white text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-red-600 transition-colors"
+                className="control-button control-button-danger px-4 text-sm disabled:cursor-not-allowed"
               >
                 {isDeletingNotes ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
                 {isDeletingNotes ? "删除中" : "删除选中"}
@@ -427,7 +427,7 @@ export function NotesClient({
                   setSelectedNoteIds(new Set());
                 }}
                 disabled={isDeletingNotes}
-                className="p-2 rounded-lg bg-surface-container-high text-on-surface-variant hover:bg-surface-container-highest transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                className="control-button h-10 w-10 p-0 disabled:cursor-not-allowed"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -440,7 +440,7 @@ export function NotesClient({
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2, duration: 0.5 }}
-          className="mb-6 rounded-lg border border-outline-variant/20 bg-surface-container-lowest p-4"
+          className="surface-panel mb-6 p-4"
         >
           <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start">
             <SearchBar value={searchQuery} onChange={setSearchQuery} />
@@ -503,7 +503,7 @@ export function NotesClient({
                   <button
                     onClick={handleLoadMore}
                     disabled={isLoadingMore}
-                    className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-surface-container-high text-on-surface-variant text-sm font-medium hover:bg-surface-container-highest transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="control-button px-5 py-2.5 text-sm disabled:cursor-not-allowed"
                   >
                     {isLoadingMore && <Loader2 className="w-4 h-4 animate-spin" />}
                     {isLoadingMore ? "加载中..." : "加载更多"}
@@ -515,7 +515,7 @@ export function NotesClient({
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
-              className="rounded-lg border border-dashed border-outline-variant/30 bg-surface-container-lowest py-16 text-center"
+              className="surface-panel border-dashed py-16 text-center"
             >
               <p className="text-lg text-on-surface-variant">
                 没有找到匹配的笔记
@@ -599,7 +599,7 @@ export function NotesClient({
 
 function LibraryStat({ label, value }: { label: string; value: number }) {
   return (
-    <div className="rounded-lg border border-outline-variant/20 bg-surface-container-lowest px-4 py-3">
+    <div className="surface-muted px-4 py-3">
       <div className="text-lg font-bold text-primary">{value}</div>
       <div className="text-xs text-on-surface-variant">{label}</div>
     </div>
