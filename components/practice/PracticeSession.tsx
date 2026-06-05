@@ -8,6 +8,7 @@ import {
   ChevronRight,
   Eye,
   EyeOff,
+  Layers,
   ListChecks,
   Loader2,
   LockKeyhole,
@@ -271,7 +272,18 @@ export function PracticeSession({
         ...current,
         [getPracticeProblemKey(saved.noteId, saved.problemId)]: saved,
       }));
-      toast.success(`已记录为${getRoundLabel(saved.round)}`);
+
+      const currentStillInQueue = matchesPracticeFilter(saved, practiceFilter);
+      const nextIndex = currentStillInQueue
+        ? Math.min(activeIndex + 1, Math.max(filteredProblems.length - 1, 0))
+        : Math.min(activeIndex, Math.max(filteredProblems.length - 2, 0));
+      const hasNextProblem = currentStillInQueue
+        ? activeIndex < filteredProblems.length - 1
+        : filteredProblems.length > 1;
+
+      setCurrentIndex(nextIndex);
+      setShowAnswer(false);
+      toast.success(hasNextProblem ? `已记录为${getRoundLabel(saved.round)}，进入下一题` : `已记录为${getRoundLabel(saved.round)}`);
     } catch (error) {
       const message = error instanceof Error ? error.message : "未知错误";
       toast.error(`刷题状态保存失败：${message}`);
@@ -356,10 +368,20 @@ export function PracticeSession({
       <div className="grid gap-5 p-4 lg:grid-cols-[300px_1fr] lg:p-5">
         <aside className="space-y-4 lg:sticky lg:top-24 lg:self-start">
           <div className="rounded-lg bg-surface-container-low p-4">
-            <h3 className="mb-3 text-sm font-semibold text-on-surface">题集来源</h3>
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <h3 className="flex items-center gap-2 text-sm font-semibold text-on-surface">
+                <Layers className="h-4 w-4 text-primary" />
+                本次范围
+              </h3>
+              {problemSets.length > 0 && (
+                <span className="rounded-full bg-surface-container-lowest px-2.5 py-1 text-xs font-medium text-on-surface-variant">
+                  {problemSets.length} 题集
+                </span>
+              )}
+            </div>
             {normalizedProblemSetIds.length === 0 ? (
               <p className="text-sm leading-6 text-on-surface-variant">
-                这个目录范围还没有匹配到题集。请到数学题集编辑页，给小题分配数三知识点。
+                这个目录范围还没有匹配到题集。请到数学题集编辑页，先给小题分配数三章节。
               </p>
             ) : isLoading ? (
               <div className="flex items-center gap-2 py-3 text-sm text-on-surface-variant">
@@ -367,23 +389,33 @@ export function PracticeSession({
                 加载题集...
               </div>
             ) : (
-              <div className="space-y-2">
-                {problemSets.map((set) => {
-                  const sourceStat = problemSetStatsById.get(set.id);
-                  const totalProblems = sourceStat?.totalProblems ?? set.problems?.length ?? 0;
-                  const matchedProblems = scope ? sourceStat?.matchedProblems ?? 0 : totalProblems;
+              <div>
+                <p className="text-sm leading-6 text-on-surface-variant">
+                  当前队列共 {stats.total} 题。先做题，查看答案后记录结果，记录后会自动进入下一题。
+                </p>
+                <details className="mt-3 group">
+                  <summary className="cursor-pointer list-none rounded-lg bg-surface-container-lowest px-3 py-2 text-xs font-medium text-on-surface-variant transition-colors hover:text-primary">
+                    查看来源题集
+                  </summary>
+                  <div className="mt-2 space-y-2">
+                    {problemSets.map((set) => {
+                      const sourceStat = problemSetStatsById.get(set.id);
+                      const totalProblems = sourceStat?.totalProblems ?? set.problems?.length ?? 0;
+                      const matchedProblems = scope ? sourceStat?.matchedProblems ?? 0 : totalProblems;
 
-                  return (
-                    <div key={set.id} className="rounded-md bg-surface-container-lowest px-3 py-2">
-                      <div className="line-clamp-2 text-sm font-medium text-on-surface">{set.title}</div>
-                      <div className="mt-1 text-xs text-on-surface-variant">
-                        {scope
-                          ? `本范围 ${matchedProblems} 题 / 原题集 ${totalProblems} 题`
-                          : `${totalProblems} 题`}
-                      </div>
-                    </div>
-                  );
-                })}
+                      return (
+                        <div key={set.id} className="rounded-md bg-surface-container-lowest px-3 py-2">
+                          <div className="line-clamp-2 text-sm font-medium text-on-surface">{set.title}</div>
+                          <div className="mt-1 text-xs text-on-surface-variant">
+                            {scope
+                              ? `本范围 ${matchedProblems} 题 / 原题集 ${totalProblems} 题`
+                              : `${totalProblems} 题`}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </details>
               </div>
             )}
           </div>
@@ -480,9 +512,9 @@ export function PracticeSession({
           ) : loadError ? (
             <EmptyPracticeState text={loadError} tone="text-red-600" />
           ) : normalizedProblemSetIds.length === 0 ? (
-            <EmptyPracticeState text="这个目录范围还没有匹配到题集。请到数学题集编辑页给小题分配数三知识点。" />
+            <EmptyPracticeState text="这个目录范围还没有匹配到题集。请到数学题集编辑页先给小题分配数三章节。" />
           ) : problems.length === 0 ? (
-            <EmptyPracticeState text="相关题集里暂时没有符合当前知识点范围的小题。" />
+            <EmptyPracticeState text="相关题集里暂时没有符合当前章节范围的小题。" />
           ) : !currentProblem ? (
             <EmptyPracticeState text="当前队列没有符合条件的题目。" />
           ) : (
@@ -669,59 +701,83 @@ function PracticeProblemView({
       </div>
 
       <div className="mt-5 rounded-lg border border-outline-variant/15 bg-surface-container-lowest p-3">
-        <div className="grid gap-3 xl:grid-cols-[auto_1fr] xl:items-center xl:justify-between">
-          <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
-          <button
-            type="button"
-            onClick={onToggleAnswer}
-            className="inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-surface-container-high px-4 text-sm font-medium text-on-surface-variant hover:bg-surface-container-highest"
-          >
-            {showAnswer ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-            {showAnswer ? "收起答案" : "查看答案"}
-          </button>
-          <button
-            type="button"
-            onClick={onReset}
-            disabled={recordingResult !== null || !status || !canRecord}
-            className="inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-surface-container-high px-4 text-sm font-medium text-on-surface-variant hover:bg-surface-container-highest disabled:opacity-40"
-          >
-            <RotateCcw className="h-4 w-4" />
-            重置状态
-          </button>
-        </div>
-        <div className="grid grid-cols-3 gap-2">
-          <ResultButton
-            result="wrong"
-            active={recordingResult === "wrong"}
-            disabled={recordingResult !== null || !canRecord}
-            onClick={onRecordResult}
-            className="bg-red-50 text-red-700 hover:bg-red-100"
-            icon={<X className="h-4 w-4" />}
-          >
-            答错
-          </ResultButton>
-          <ResultButton
-            result="skipped"
-            active={recordingResult === "skipped"}
-            disabled={recordingResult !== null || !canRecord}
-            onClick={onRecordResult}
-            className="bg-amber-50 text-amber-700 hover:bg-amber-100"
-            icon={<SkipForward className="h-4 w-4" />}
-          >
-            跳过
-          </ResultButton>
-          <ResultButton
-            result="correct"
-            active={recordingResult === "correct"}
-            disabled={recordingResult !== null || !canRecord}
-            onClick={onRecordResult}
-            className="bg-green-50 text-green-700 hover:bg-green-100"
-            icon={<Check className="h-4 w-4" />}
-          >
-            答对
-          </ResultButton>
+        {!showAnswer ? (
+          <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
+            <button
+              type="button"
+              onClick={onToggleAnswer}
+              className="inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-on-primary hover:bg-primary/90"
+            >
+              <Eye className="h-4 w-4" />
+              查看答案
+            </button>
+            <ResultButton
+              result="skipped"
+              active={recordingResult === "skipped"}
+              disabled={recordingResult !== null || !canRecord}
+              onClick={onRecordResult}
+              className="bg-amber-50 text-amber-700 hover:bg-amber-100"
+              icon={<SkipForward className="h-4 w-4" />}
+            >
+              跳过
+            </ResultButton>
           </div>
-        </div>
+        ) : (
+          <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-center">
+            <div className="flex flex-wrap items-center gap-2 text-xs text-on-surface-variant">
+              <button
+                type="button"
+                onClick={onToggleAnswer}
+                className="inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-surface-container-high px-3 text-xs font-medium text-on-surface-variant hover:bg-surface-container-highest"
+              >
+                <EyeOff className="h-4 w-4" />
+                收起答案
+              </button>
+              <span>记录结果后自动进入下一题。</span>
+            </div>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              <ResultButton
+                result="correct"
+                active={recordingResult === "correct"}
+                disabled={recordingResult !== null || !canRecord}
+                onClick={onRecordResult}
+                className="bg-green-50 text-green-700 hover:bg-green-100"
+                icon={<Check className="h-4 w-4" />}
+              >
+                答对
+              </ResultButton>
+              <ResultButton
+                result="wrong"
+                active={recordingResult === "wrong"}
+                disabled={recordingResult !== null || !canRecord}
+                onClick={onRecordResult}
+                className="bg-red-50 text-red-700 hover:bg-red-100"
+                icon={<X className="h-4 w-4" />}
+              >
+                答错
+              </ResultButton>
+              <ResultButton
+                result="skipped"
+                active={recordingResult === "skipped"}
+                disabled={recordingResult !== null || !canRecord}
+                onClick={onRecordResult}
+                className="bg-amber-50 text-amber-700 hover:bg-amber-100"
+                icon={<SkipForward className="h-4 w-4" />}
+              >
+                跳过
+              </ResultButton>
+              <button
+                type="button"
+                onClick={onReset}
+                disabled={recordingResult !== null || !status || !canRecord}
+                className="inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-surface-container-high px-3 text-sm font-medium text-on-surface-variant hover:bg-surface-container-highest disabled:opacity-40 sm:px-4"
+              >
+                <RotateCcw className="h-4 w-4" />
+                重置
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

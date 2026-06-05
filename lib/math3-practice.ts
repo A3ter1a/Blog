@@ -33,6 +33,7 @@ export interface Math3ScopeProblemSetStat {
   title: string;
   totalProblems: number;
   matchedProblems: number;
+  matchedChapterIds: string[];
   matchedPointIds: string[];
 }
 
@@ -96,12 +97,40 @@ export function getMath3PointIdsFromTags(tags: string[] = []): string[] {
   );
 }
 
-export function setMath3ProblemPointTags(tags: string[] = [], pointIds: string[] = []): string[] {
-  const validPointTags = uniqueStrings(pointIds)
-    .filter((pointId) => Boolean(getMath3PointById(pointId)))
-    .map(getMath3PointTag);
-  const nonPointTags = tags.filter((tag) => !tag.startsWith(MATH3_POINT_TAG_PREFIX));
-  return uniqueStrings([...nonPointTags, ...validPointTags]);
+export function getMath3ChapterIdsFromTags(tags: string[] = []): string[] {
+  const explicitChapterIds = uniqueStrings(
+    tags
+      .filter((tag) => tag.startsWith(MATH3_CHAPTER_TAG_PREFIX))
+      .map((tag) => tag.slice(MATH3_CHAPTER_TAG_PREFIX.length))
+      .filter((chapterId) => Boolean(getMath3ChapterById(chapterId)))
+  );
+
+  return uniqueStrings([
+    ...explicitChapterIds,
+    ...getMath3ChapterIdsFromPointIds(getMath3PointIdsFromTags(tags)),
+  ]);
+}
+
+export function setMath3ProblemKnowledgeTags(
+  tags: string[] = [],
+  chapterId?: string,
+  pointIds: string[] = [],
+): string[] {
+  const chapterResult = chapterId ? getMath3ChapterById(chapterId) : null;
+  const validChapterId = chapterResult?.chapter.id;
+  const validPointIdSet = new Set(chapterResult?.chapter.points.map((pointItem) => pointItem.id) ?? []);
+  const validPointTags = validChapterId
+    ? uniqueStrings(pointIds)
+        .filter((pointId) => validPointIdSet.has(pointId))
+        .map(getMath3PointTag)
+    : [];
+  const visibleTags = splitMath3PracticeTags(tags).visibleTags;
+
+  return uniqueStrings([
+    ...visibleTags,
+    ...(validChapterId ? [getMath3ChapterTag(validChapterId)] : []),
+    ...validPointTags,
+  ]);
 }
 
 export function getMath3AreaById(areaId: Math3KnowledgeAreaId): Math3KnowledgeArea | undefined {
@@ -139,6 +168,13 @@ export function getMath3AreaChapterIds(area: Math3KnowledgeArea): string[] {
   return area.chapters.map((chapter) => chapter.id);
 }
 
+export function getMath3ScopeChapterIds(scope: Math3PracticeScope): string[] {
+  if (scope.type === "chapter") return [scope.id];
+
+  const area = getMath3AreaById(scope.id);
+  return area ? getMath3AreaChapterIds(area) : [];
+}
+
 export function getMath3ChapterPointIds(chapterId: string): string[] {
   const result = getMath3ChapterById(chapterId);
   return result ? result.chapter.points.map((pointItem) => pointItem.id) : [];
@@ -152,19 +188,47 @@ export function getMath3ScopePointIds(scope: Math3PracticeScope): string[] {
 }
 
 export function getMath3PracticeTagsFromProblems(problems: Problem[] = []): string[] {
-  return uniqueStrings(
-    problems.flatMap((problem) =>
-      getMath3PointIdsFromTags(problem.tags).map(getMath3PointTag)
-    )
-  );
+  const chapterIds = uniqueStrings(problems.flatMap(getMath3ProblemChapterIds));
+  const areaIds = Array.from(new Set(
+    chapterIds
+      .map((chapterId) => getMath3ChapterById(chapterId)?.area.id)
+      .filter((areaId): areaId is Math3KnowledgeAreaId => Boolean(areaId))
+  ));
+  const pointIds = uniqueStrings(problems.flatMap((problem) => getMath3PointIdsFromTags(problem.tags)));
+
+  return uniqueStrings([
+    ...areaIds.map(getMath3AreaTag),
+    ...chapterIds.map(getMath3ChapterTag),
+    ...pointIds.map(getMath3PointTag),
+  ]);
 }
 
 function getMath3ScopePointTagSet(scope: Math3PracticeScope): Set<string> {
   return new Set(getMath3ScopePointIds(scope).map(getMath3PointTag));
 }
 
+function getMath3ScopeChapterIdSet(scope: Math3PracticeScope): Set<string> {
+  return new Set(getMath3ScopeChapterIds(scope));
+}
+
+function getMath3ChapterIdsFromPointIds(pointIds: string[]): string[] {
+  return uniqueStrings(
+    pointIds
+      .map((pointId) => getMath3PointById(pointId)?.chapter.id)
+      .filter((chapterId): chapterId is string => Boolean(chapterId))
+  );
+}
+
+export function getMath3ProblemChapterIds(problem: Problem): string[] {
+  return getMath3ChapterIdsFromTags(problem.tags);
+}
+
 function problemMatchesMath3PointTagSet(problem: Problem, pointTagSet: Set<string>): boolean {
   return (problem.tags ?? []).some((tag) => pointTagSet.has(tag));
+}
+
+function problemMatchesMath3ChapterSet(problem: Problem, chapterIdSet: Set<string>): boolean {
+  return getMath3ProblemChapterIds(problem).some((chapterId) => chapterIdSet.has(chapterId));
 }
 
 function legacyNoteScopeTagsMatchMath3Scope(tags: string[] = [], scope: Math3PracticeScope): boolean {
@@ -182,21 +246,29 @@ function legacyNoteScopeTagsMatchMath3Scope(tags: string[] = [], scope: Math3Pra
 function noteTagsMatchMath3Scope(
   tags: string[] = [],
   scope: Math3PracticeScope,
+  chapterIdSet = getMath3ScopeChapterIdSet(scope),
   pointTagSet = getMath3ScopePointTagSet(scope),
 ): boolean {
-  return legacyNoteScopeTagsMatchMath3Scope(tags, scope) || tags.some((tag) => pointTagSet.has(tag));
+  const chapterTags = new Set(Array.from(chapterIdSet).map(getMath3ChapterTag));
+  return legacyNoteScopeTagsMatchMath3Scope(tags, scope)
+    || tags.some((tag) => chapterTags.has(tag))
+    || tags.some((tag) => pointTagSet.has(tag));
 }
 
 export function getLinkedProblemSetIds(
   problemSets: Note[],
   scope: Math3PracticeScope,
 ): string[] {
+  const chapterIdSet = getMath3ScopeChapterIdSet(scope);
   const pointTagSet = getMath3ScopePointTagSet(scope);
 
   return problemSets
     .filter((set) =>
-      noteTagsMatchMath3Scope(set.tags, scope, pointTagSet) ||
-      (set.problems ?? []).some((problem) => problemMatchesMath3PointTagSet(problem, pointTagSet))
+      noteTagsMatchMath3Scope(set.tags, scope, chapterIdSet, pointTagSet) ||
+      (set.problems ?? []).some((problem) =>
+        problemMatchesMath3ChapterSet(problem, chapterIdSet) ||
+        problemMatchesMath3PointTagSet(problem, pointTagSet)
+      )
     )
     .map((set) => set.id);
 }
@@ -206,6 +278,7 @@ export function getPracticeProblemKey(noteId: string, problemId: string): string
 }
 
 export function flattenPracticeProblems(problemSets: Note[], scope?: Math3PracticeScope): PracticeProblemItem[] {
+  const chapterIdSet = scope ? getMath3ScopeChapterIdSet(scope) : null;
   const pointTagSet = scope ? getMath3ScopePointTagSet(scope) : null;
 
   return problemSets.flatMap((set) =>
@@ -213,12 +286,13 @@ export function flattenPracticeProblems(problemSets: Note[], scope?: Math3Practi
       .map((problem, index) => ({ problem, index }))
       .filter(({ problem }) => {
         if (!scope) return true;
-        const problemPointIds = getMath3PointIdsFromTags(problem.tags);
-        if (problemPointIds.length > 0) {
-          return pointTagSet ? problemMatchesMath3PointTagSet(problem, pointTagSet) : true;
+        const problemChapterIds = getMath3ProblemChapterIds(problem);
+        if (problemChapterIds.length > 0) {
+          return chapterIdSet ? problemMatchesMath3ChapterSet(problem, chapterIdSet) : true;
         }
 
-        return legacyNoteScopeTagsMatchMath3Scope(set.tags, scope);
+        return legacyNoteScopeTagsMatchMath3Scope(set.tags, scope)
+          || (pointTagSet ? problemMatchesMath3PointTagSet(problem, pointTagSet) : false);
       })
       .map(({ problem, index }) => ({
         ...problem,
@@ -234,11 +308,18 @@ export function getMath3ScopeProblemSetStats(
   problemSets: Note[],
   scope: Math3PracticeScope,
 ): Math3ScopeProblemSetStat[] {
+  const scopeChapterIdSet = new Set(getMath3ScopeChapterIds(scope));
   const scopePointIdSet = new Set(getMath3ScopePointIds(scope));
 
   return problemSets
     .map((set) => {
       const matchedProblems = flattenPracticeProblems([set], scope);
+      const matchedChapterIds = uniqueStrings([
+        ...getMath3ChapterIdsFromTags(set.tags).filter((chapterId) => scopeChapterIdSet.has(chapterId)),
+        ...(set.problems ?? []).flatMap((problem) =>
+          getMath3ProblemChapterIds(problem).filter((chapterId) => scopeChapterIdSet.has(chapterId))
+        ),
+      ]);
       const matchedPointIds = uniqueStrings([
         ...getMath3PointIdsFromTags(set.tags).filter((pointId) => scopePointIdSet.has(pointId)),
         ...(set.problems ?? []).flatMap((problem) =>
@@ -251,8 +332,11 @@ export function getMath3ScopeProblemSetStats(
         title: set.title,
         totalProblems: set.problems?.length ?? 0,
         matchedProblems: matchedProblems.length,
+        matchedChapterIds,
         matchedPointIds,
       };
     })
-    .filter((stat) => stat.matchedProblems > 0 || stat.matchedPointIds.length > 0);
+    .filter((stat) =>
+      stat.matchedProblems > 0 || stat.matchedChapterIds.length > 0 || stat.matchedPointIds.length > 0
+    );
 }

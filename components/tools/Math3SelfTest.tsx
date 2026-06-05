@@ -98,6 +98,39 @@ function hasAllSolutionStepsGraded(test: Math3SelfTestRecord, attempt: Math3Self
     .every((question) => isQuestionFullyGraded(attempt, question));
 }
 
+function findNextUngradedSolutionIndex(test: Math3SelfTestRecord, startIndex = 0): number {
+  const questions = test.paper.questions;
+  if (questions.length === 0) return -1;
+
+  for (let offset = 0; offset < questions.length; offset += 1) {
+    const index = (startIndex + offset) % questions.length;
+    const question = questions[index];
+    if (question.type === "solution" && getNextUngradedStep(test.attempt, question)) {
+      return index;
+    }
+  }
+
+  return -1;
+}
+
+function getPendingSolutionStepCount(test: Math3SelfTestRecord): number {
+  return test.paper.questions.reduce((count, question) => {
+    if (question.type !== "solution") return count;
+    const gradedStepIds = new Set(getStepGrades(test.attempt, question.id).map((grade) => grade.stepId));
+    return count + question.rubricSteps.filter((step) => !gradedStepIds.has(step.id)).length;
+  }, 0);
+}
+
+function getPreferredActiveTest(tests: Math3SelfTestRecord[]): Math3SelfTestRecord | null {
+  return (
+    tests.find((test) => test.status === "in_progress") ??
+    tests.find((test) => test.status === "submitted") ??
+    tests.find((test) => test.status === "draft") ??
+    tests[0] ??
+    null
+  );
+}
+
 function computeSubmittedAttempt(test: Math3SelfTestRecord): Math3SelfTestAttempt {
   const nextAttempt: Math3SelfTestAttempt = {
     ...test.attempt,
@@ -178,7 +211,7 @@ export function Math3SelfTest() {
         const data = await math3SelfTestsApi.getAll();
         if (cancelled) return;
         setTests(data);
-        setActiveTest((current) => current ?? data[0] ?? null);
+        setActiveTest((current) => current ?? getPreferredActiveTest(data));
       } catch (error) {
         if (cancelled) return;
         const message = error instanceof Error ? error.message : "未知错误";
@@ -317,6 +350,8 @@ export function Math3SelfTest() {
         submittedAt,
       });
       replaceTest(saved);
+      const firstPendingStepIndex = findNextUngradedSolutionIndex(saved);
+      if (firstPendingStepIndex >= 0) setActiveIndex(firstPendingStepIndex);
       toast.success("已交卷，解答题可以开始分步评分");
     } catch (error) {
       const message = error instanceof Error ? error.message : "未知错误";
@@ -376,7 +411,9 @@ export function Math3SelfTest() {
         score: nextAttempt.totalScore,
       });
       replaceTest(saved);
-      toast.success("已完成一个步骤评分");
+      const nextPendingStepIndex = findNextUngradedSolutionIndex(saved, activeIndex);
+      if (nextPendingStepIndex >= 0) setActiveIndex(nextPendingStepIndex);
+      toast.success(nextPendingStepIndex >= 0 ? "已完成一个步骤评分，已定位到下一步" : "分步评分已完成");
     } catch (error) {
       const message = error instanceof Error ? error.message : "未知错误";
       toast.error(message);
@@ -389,6 +426,9 @@ export function Math3SelfTest() {
     if (!activeTest) return 0;
     return activeTest.paper.questions.filter((question) => Boolean(activeTest.attempt.answers[question.id]?.trim())).length;
   }, [activeTest]);
+  const pendingStepLabel = activeTest && (activeTest.status === "submitted" || activeTest.status === "reviewed")
+    ? `${getPendingSolutionStepCount(activeTest)} 步`
+    : "-";
 
   if (authLoading) {
     return <ShellMessage icon={<Loader2 className="h-5 w-5 animate-spin" />} title="正在读取登录状态" />;
@@ -416,10 +456,11 @@ export function Math3SelfTest() {
               </div>
               <h1 className="font-headline text-3xl font-bold text-on-surface">自测</h1>
             </div>
-            <div className="grid gap-2 sm:grid-cols-3">
+            <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
               <HeaderStat label="已保存" value={tests.length.toString()} />
               <HeaderStat label="当前得分" value={activeTest ? `${activeTest.score}/${activeTest.maxScore}` : "-"} />
               <HeaderStat label="剩余时间" value={activeTest ? formatDuration(remainingSeconds) : "-"} />
+              <HeaderStat label="待评分" value={pendingStepLabel} />
             </div>
           </div>
         </div>
@@ -445,6 +486,11 @@ export function Math3SelfTest() {
                 </OptionButton>
               ))}
             </OptionGroup>
+
+            <div className="rounded-lg bg-surface-container-low px-3 py-3 text-xs leading-5 text-on-surface-variant">
+              <div>{math3SelfTestModeMeta[mode].description}</div>
+              <div className="mt-1">{math3SelfTestDifficultyMeta[difficulty].prompt}</div>
+            </div>
 
             <button
               type="button"
@@ -768,8 +814,11 @@ function ReviewView({
 
   const answer = test.attempt.answers[activeQuestion.id] ?? "未作答";
   const nextStep = getNextUngradedStep(test.attempt, activeQuestion);
+  const nextPendingIndex = findNextUngradedSolutionIndex(test, activeIndex);
+  const pendingStepCount = getPendingSolutionStepCount(test);
   const stepGrades = getStepGrades(test.attempt, activeQuestion.id);
   const fullyGraded = isQuestionFullyGraded(test.attempt, activeQuestion);
+  const canGradeActiveQuestion = activeQuestion.type === "solution" && Boolean(nextStep);
 
   return (
     <div className="grid min-h-[680px] lg:grid-cols-[220px_minmax(0,1fr)]">
@@ -777,8 +826,29 @@ function ReviewView({
         <div className="mb-4 rounded-lg bg-surface-container-lowest p-3">
           <div className="text-sm font-semibold text-on-surface">{test.score} / {test.maxScore} 分</div>
           <div className="mt-1 text-xs text-on-surface-variant">{math3SelfTestStatusMeta[test.status]}</div>
+          <div className="mt-2 text-xs text-on-surface-variant">待评分 {pendingStepCount} 步</div>
         </div>
         <QuestionGrid test={test} activeIndex={activeIndex} onMove={onMove} showScore />
+
+        <button
+          type="button"
+          onClick={() => {
+            if (canGradeActiveQuestion) {
+              onGradeNextStep(activeQuestion);
+              return;
+            }
+            if (nextPendingIndex >= 0) onMove(nextPendingIndex);
+          }}
+          disabled={Boolean(scoringStepId) || pendingStepCount === 0}
+          className="mt-4 inline-flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-primary px-3 text-sm font-semibold text-on-primary transition-colors hover:bg-primary/90 disabled:opacity-50"
+        >
+          {scoringStepId ? <Loader2 className="h-4 w-4 animate-spin" /> : <Target className="h-4 w-4" />}
+          {canGradeActiveQuestion
+            ? `评分：${nextStep?.label}`
+            : pendingStepCount > 0
+              ? "定位下一步评分"
+              : "复盘完成"}
+        </button>
       </aside>
 
       <article className="space-y-5 p-5">
@@ -841,15 +911,9 @@ function ReviewView({
                 );
               })}
 
-              <button
-                type="button"
-                onClick={() => onGradeNextStep(activeQuestion)}
-                disabled={!nextStep || Boolean(scoringStepId)}
-                className="inline-flex h-10 items-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-on-primary transition-colors hover:bg-primary/90 disabled:opacity-50"
-              >
-                {scoringStepId ? <Loader2 className="h-4 w-4 animate-spin" /> : <Target className="h-4 w-4" />}
-                {fullyGraded ? "本题已完成评分" : nextStep ? `评分：${nextStep.label}` : "本题已完成评分"}
-              </button>
+              <p className="text-sm text-on-surface-variant">
+                {fullyGraded ? "本题分步评分已完成。" : "使用左侧“评分”按钮，每次只评一个步骤。"}
+              </p>
             </div>
           </ReviewBlock>
         ) : (

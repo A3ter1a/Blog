@@ -36,8 +36,10 @@ import {
 } from "@/lib/math3-knowledge";
 import { readJsonStorage, writeJsonStorage } from "@/lib/browser-storage";
 import {
+  getMath3ChapterIdsFromTags,
   getLinkedProblemSetIds,
   getMath3PointIdsFromTags,
+  getMath3ScopeChapterIds,
   getMath3ScopePointIds,
   getVisibleNoteTags,
   type Math3PracticeScope,
@@ -450,8 +452,8 @@ export function Math3KnowledgeCatalog() {
               scopeTitle={activePracticeScope.title}
               scopeDescription={
                 activePracticeScope.type === "area"
-                  ? "本队列按小题知识点归属，汇总这个模块下的相关题目。"
-                  : "本队列只抽取归到本章知识点的小题。"
+                  ? "本队列按数三章节归属汇总这个模块下的相关题目，知识点只作为复盘标签。"
+                  : "本队列按数三章节归属抽取题目，知识点只作为复盘标签。"
               }
               problemSetIds={activePracticeSetIds}
               scope={activePracticeScope}
@@ -645,14 +647,18 @@ function ProblemSetLinkPanel({
   problemSets,
   linkedSetIds,
   isLoadingProblemSets,
+  defaultOpen = false,
 }: {
   scope: Math3PracticeScope;
   title: string;
   problemSets: Note[];
   linkedSetIds: string[];
   isLoadingProblemSets: boolean;
+  defaultOpen?: boolean;
 }) {
+  const [isOpen, setIsOpen] = useState(defaultOpen);
   const linkedIdSet = useMemo(() => new Set(linkedSetIds), [linkedSetIds]);
+  const scopeChapterIdSet = useMemo(() => new Set(getMath3ScopeChapterIds(scope)), [scope]);
   const scopePointIdSet = useMemo(() => new Set(getMath3ScopePointIds(scope)), [scope]);
   const linkedSets = useMemo(
     () => problemSets.filter((set) => linkedIdSet.has(set.id)),
@@ -660,54 +666,65 @@ function ProblemSetLinkPanel({
   );
 
   return (
-    <div className="rounded-lg border border-outline-variant/20 bg-surface-container-low p-3">
-      <div className="mb-3 flex items-center justify-between gap-3">
+    <details
+      open={isOpen}
+      onToggle={(event) => setIsOpen(event.currentTarget.open)}
+      className="group rounded-lg border border-outline-variant/20 bg-surface-container-low"
+    >
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-2.5">
         <div className="inline-flex items-center gap-2 text-xs font-semibold text-on-surface-variant">
           <Layers className="h-3.5 w-3.5" />
           {title}
         </div>
-        <span className="text-xs text-on-surface-variant">{linkedSets.length} 个</span>
-      </div>
+        <div className="inline-flex items-center gap-2 text-xs text-on-surface-variant">
+          <span>{isLoadingProblemSets ? "加载中" : `${linkedSets.length} 个`}</span>
+          <ChevronDown className="h-3.5 w-3.5 transition-transform group-open:rotate-180" />
+        </div>
+      </summary>
 
-      {isLoadingProblemSets ? (
-        <div className="flex items-center gap-2 py-2 text-xs text-on-surface-variant">
-          <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
-          加载题集...
-        </div>
-      ) : linkedSets.length === 0 ? (
-        <p className="text-xs leading-5 text-on-surface-variant">
-          这个范围还没有匹配到题集。请到数学题集编辑页给小题分配数三知识点。
-        </p>
-      ) : (
-        <div className="space-y-2">
-          {linkedSets.map((set) => {
-            const visibleTags = getVisibleNoteTags(set.tags);
-            const coveredPointCount = getMath3PointIdsFromTags(set.tags)
-              .filter((pointId) => scopePointIdSet.has(pointId)).length;
-            return (
-              <div
-                key={set.id}
-                className="flex items-start justify-between gap-2 rounded-md bg-surface-container-lowest px-3 py-2"
-              >
-                <div className="min-w-0">
-                  <div className="line-clamp-2 text-xs font-medium text-on-surface">{set.title}</div>
-                  {visibleTags.length > 0 && (
-                    <div className="mt-1 line-clamp-1 text-[11px] text-on-surface-variant/70">
-                      {visibleTags.slice(0, 3).join(" · ")}
-                    </div>
-                  )}
-                  {coveredPointCount > 0 && (
-                    <div className="mt-1 text-[11px] text-on-surface-variant/70">
-                      覆盖 {coveredPointCount} 个知识点
-                    </div>
-                  )}
+      <div className="border-t border-outline-variant/15 px-3 py-3">
+        {isLoadingProblemSets ? (
+          <div className="flex items-center gap-2 py-2 text-xs text-on-surface-variant">
+            <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
+            加载题集...
+          </div>
+        ) : linkedSets.length === 0 ? (
+          <p className="text-xs leading-5 text-on-surface-variant">
+            这个范围还没有匹配到题集。请到数学题集编辑页先给小题分配数三章节。
+          </p>
+        ) : (
+          <div className="space-y-2">
+            {linkedSets.map((set) => {
+              const visibleTags = getVisibleNoteTags(set.tags);
+              const coveredChapterCount = getMath3ChapterIdsFromTags(set.tags)
+                .filter((chapterId) => scopeChapterIdSet.has(chapterId)).length;
+              const coveredPointCount = getMath3PointIdsFromTags(set.tags)
+                .filter((pointId) => scopePointIdSet.has(pointId)).length;
+              return (
+                <div
+                  key={set.id}
+                  className="flex items-start justify-between gap-2 rounded-md bg-surface-container-lowest px-3 py-2"
+                >
+                  <div className="min-w-0">
+                    <div className="line-clamp-2 text-xs font-medium text-on-surface">{set.title}</div>
+                    {visibleTags.length > 0 && (
+                      <div className="mt-1 line-clamp-1 text-[11px] text-on-surface-variant/70">
+                        {visibleTags.slice(0, 3).join(" · ")}
+                      </div>
+                    )}
+                    {(coveredChapterCount > 0 || coveredPointCount > 0) && (
+                      <div className="mt-1 text-[11px] text-on-surface-variant/70">
+                        覆盖 {coveredChapterCount} 章{coveredPointCount > 0 ? ` / ${coveredPointCount} 个知识点标签` : ""}
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </details>
   );
 }
 
