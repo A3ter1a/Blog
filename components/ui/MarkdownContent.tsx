@@ -13,6 +13,8 @@ interface MarkdownContentProps {
   compact?: boolean;
 }
 
+const DISPLAY_MATH_ENV_PATTERN = /\\begin\{(?:align|equation|gather|aligned|split|cases|multline|array|matrix|pmatrix|bmatrix|vmatrix|Vmatrix)\*?\}/;
+
 export function processContent(container: HTMLElement) {
   const slugger = new GithubSlugger();
   const headings = container.querySelectorAll("h1, h2, h3, h4, h5, h6");
@@ -38,12 +40,13 @@ export function processContent(container: HTMLElement) {
         return;
       }
 
+      const displayMode = DISPLAY_MATH_ENV_PATTERN.test(part);
       const span = document.createElement("span");
-      span.className = "katex-inline";
+      span.className = displayMode ? "katex-display" : "katex-inline";
       try {
         span.innerHTML = katex.renderToString(part.trim(), {
           throwOnError: false,
-          displayMode: false,
+          displayMode,
         });
         fragment.appendChild(span);
       } catch {

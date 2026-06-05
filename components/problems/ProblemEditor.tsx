@@ -2,16 +2,14 @@
 
 import { useState, useEffect, useMemo, type ReactNode } from "react";
 import { motion, AnimatePresence, Reorder, useDragControls } from "framer-motion";
-import { AlertCircle, Plus, X, ChevronDown, ChevronUp, GripVertical, Sparkles, Scan, Copy, Trash2, Wrench, FolderTree, CheckSquare, SlidersHorizontal } from "lucide-react";
+import { AlertCircle, Plus, X, ChevronDown, ChevronUp, GripVertical, Sparkles, Scan, Copy, Trash2, FolderTree, CheckSquare, SlidersHorizontal } from "lucide-react";
 import { Problem, ProblemType, Difficulty, problemTypeMap, difficultyMap, difficultyColorMap } from "@/lib/types";
 import { chaptersApi } from "@/lib/chapters-api";
 import { ChapterSelector } from "@/components/chapters/ChapterSelector";
-import { ProblemCompare } from "./ProblemCompare";
 import { ProblemPreview } from "./ProblemPreview";
 import { MarkdownContent } from "@/components/ui/MarkdownContent";
 import { OCRUploader } from "@/components/ai-assistant/OCRUploader";
 import type { ChapterContextItem } from "@/hooks/useAIScan";
-import { repairProblemMarkdownFields } from "@/lib/markdown";
 import {
   ensureChoiceOptions,
   getProblemValidationIssues,
@@ -227,13 +225,8 @@ export function ProblemEditor({ problems, onChange, noteId, hasUnsavedChanges = 
     onChange([...problems, ...newProblems.map(normalizeProblem)]);
   };
 
-  const handleRepairNewProblem = () => {
-    setNewProblem(repairProblemMarkdownFields(newProblem));
-    setNewProblemError(null);
-  };
-
   const newProblemOptions = newProblem.type === "choice" ? ensureChoiceOptions(newProblem.options) : [];
-  const editorModeLabel = showOrganizeTools ? "整理模式" : showAddForm ? "新增题目" : "浏览题目";
+  const editorModeLabel = showOrganizeTools ? "批量编辑" : showAddForm ? "新增题目" : "浏览题目";
 
   return (
     <div className={`space-y-4 ${selectedProblemIdsInList.length > 0 ? "pb-28" : ""}`}>
@@ -262,7 +255,7 @@ export function ProblemEditor({ problems, onChange, noteId, hasUnsavedChanges = 
                 className={`control-button px-3 text-xs ${showOrganizeTools ? "control-button-selected" : ""}`}
               >
                 <SlidersHorizontal className="h-3.5 w-3.5" />
-                整理工具
+                批量编辑
                 {showOrganizeTools ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
               </button>
             )}
@@ -502,14 +495,6 @@ export function ProblemEditor({ problems, onChange, noteId, hasUnsavedChanges = 
             {/* Action Buttons */}
             <div className="flex flex-wrap gap-2 pt-1">
               <button
-                onClick={handleRepairNewProblem}
-                disabled={!newProblem.question && !newProblem.answer}
-                className="control-button px-3 py-2 text-sm disabled:opacity-40"
-              >
-                <Wrench className="w-4 h-4" />
-                一键修正
-              </button>
-              <button
                 onClick={() => {
                   setShowAddForm(false);
                   setNewProblem(createEmptyProblemDraft());
@@ -621,7 +606,7 @@ function ProblemOrganizerPanel({
         <div className="min-w-0">
           <div className="inline-flex items-center gap-2 text-sm font-semibold text-on-surface">
             <SlidersHorizontal className="h-4 w-4 text-primary" />
-            整理模式
+            批量编辑
           </div>
           <p className="mt-1 text-xs leading-5 text-on-surface-variant">
             先勾选题目；选中后，页面底部会出现批量修改栏。
@@ -743,7 +728,7 @@ function BulkProblemActionBar({
                   className={`control-button h-9 min-h-0 px-3 text-xs ${showBulkDetails ? "control-button-selected" : ""}`}
                 >
                   <SlidersHorizontal className="h-3.5 w-3.5" />
-                  批量修改
+                  批量归类
                   {showBulkDetails ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
                 </button>
               </div>
@@ -835,10 +820,6 @@ function ProblemCard({
     const current = options[optionIndex] || { label: "", content: "" };
     options[optionIndex] = { ...current, [field]: value };
     onUpdate({ options });
-  };
-
-  const handleRepairProblem = () => {
-    onUpdate(normalizeProblemDraft(repairProblemMarkdownFields(problem)));
   };
 
   return (
@@ -1073,26 +1054,6 @@ function ProblemCard({
               />
             </div>
 
-            <div className="flex justify-end">
-              <button
-                onClick={handleRepairProblem}
-                className="control-button px-3 py-2 text-sm"
-              >
-                <Wrench className="w-4 h-4" />
-                一键修正题目 Markdown
-              </button>
-            </div>
-
-            {/* AI comparison */}
-            {problem.aiResult && (
-              <ProblemCompare original={{
-                id: '', type: problem.type, difficulty: problem.difficulty,
-                question: problem.aiResult.rawQuestion,
-                answer: problem.aiResult.rawAnswer,
-                explanation: "",
-                tags: [],
-              }} current={problem} />
-            )}
           </motion.div>
         )}
       </AnimatePresence>

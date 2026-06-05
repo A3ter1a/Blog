@@ -4,7 +4,7 @@ import { useState, useRef, useCallback } from "react";
 import { motion } from "framer-motion";
 import { useRouter } from "next/navigation";
 import type { Editor } from "@tiptap/react";
-import { Save, RotateCcw, X, Image as ImageIcon, Sparkles, FolderTree, Columns, Maximize2, Eye, Loader2, ChevronDown, ChevronUp, SlidersHorizontal } from "lucide-react";
+import { Save, RotateCcw, X, Image as ImageIcon, FolderTree, Columns, Maximize2, Eye, Loader2, ChevronDown, ChevronUp, SlidersHorizontal } from "lucide-react";
 import { Subject, subjectMap, NoteType, typeMap, Video, Problem } from "@/lib/types";
 import { Playlist } from "@/components/video/Playlist";
 import { ProblemEditor } from "@/components/problems/ProblemEditor";
@@ -13,9 +13,7 @@ import { useToast } from "@/components/ui/Toast";
 import { RichTextEditor, RichTextEditorRef } from "@/components/editor/RichTextEditor";
 import { EditorToolbar } from "@/components/editor/EditorToolbar";
 import { ContentPreview } from "@/components/ui/ContentPreview";
-import { FormulaFixer } from "@/components/editor/FormulaFixer";
 import { uploadImage, generateFileName } from "@/lib/supabase-storage";
-import { repairMarkdown } from "@/lib/markdown";
 import { splitMath3PracticeTags } from "@/lib/math3-practice";
 import { AdminGate } from "@/components/auth/AdminGate";
 import { useCoverUpload } from "@/hooks/useCoverUpload";
@@ -81,9 +79,7 @@ export default function CreatePage() {
   const { isSaving, saveNote } = useNoteSave();
   const [showVideoSection, setShowVideoSection] = useState(false);
   const [showMetaSection, setShowMetaSection] = useState(false);
-  const [showEditorTools, setShowEditorTools] = useState(false);
   const [editorReady, setEditorReady] = useState(false);
-  const [showFormulaFixer, setShowFormulaFixer] = useState(false);
   const [showChapterManager, setShowChapterManager] = useState(false);
   const [viewMode, setViewMode] = useState<"split" | "editor" | "preview">("split");
   const editorRef = useRef<RichTextEditorRef>(null);
@@ -168,18 +164,6 @@ export default function CreatePage() {
     setHasProblemChanges(true);
     toast.info(`已将 ${affectedCount} 道题移到无章节，保存笔记后生效`);
   }, [problems, toast]);
-
-  const handleAutoRepairMarkdown = useCallback(() => {
-    const repaired = repairMarkdown(content);
-    if (repaired === content.trim()) {
-      toast.info("Markdown 已经很干净");
-      return;
-    }
-
-    setContent(repaired);
-    editorRef.current?.editor?.commands.setContent(repaired);
-    toast.success("已自动修正 Markdown 语法");
-  }, [content, toast]);
 
   const handleSave = async () => {
     const result = await saveNote({
@@ -557,38 +541,8 @@ export default function CreatePage() {
                       仅预览
                     </button>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => setShowEditorTools((value) => !value)}
-                    className={`control-button h-8 min-h-0 px-2.5 text-xs ${showEditorTools ? "control-button-selected" : ""}`}
-                  >
-                    <SlidersHorizontal className="w-3.5 h-3.5" />
-                    编辑工具
-                    {showEditorTools ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-                  </button>
                 </div>
               </div>
-
-              {showEditorTools && (
-                <div className="foldout-panel mb-3 flex flex-wrap items-center justify-end gap-2 p-2">
-                  <button
-                    onClick={() => setShowFormulaFixer(true)}
-                    disabled={!editorReady || content.length === 0}
-                    className="control-button h-9 min-h-0 px-3 text-xs disabled:cursor-not-allowed"
-                  >
-                    <Sparkles className="w-3.5 h-3.5" />
-                    修正公式
-                  </button>
-                  <button
-                    onClick={handleAutoRepairMarkdown}
-                    disabled={content.length === 0}
-                    className="control-button h-9 min-h-0 px-3 text-xs disabled:cursor-not-allowed"
-                  >
-                    <Sparkles className="w-3.5 h-3.5" />
-                    修正 Markdown
-                  </button>
-                </div>
-              )}
 
               {viewMode === "split" && (
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -750,16 +704,6 @@ export default function CreatePage() {
 
         <div className="h-6" />
       </div>
-      {/* Formula Fixer Dialog */}
-      <FormulaFixer
-        isOpen={showFormulaFixer}
-        onClose={() => setShowFormulaFixer(false)}
-        content={content}
-        onApplyFixes={(fixedContent) => {
-          setContent(fixedContent);
-        }}
-      />
-
       {/* Chapter Manager Modal */}
       <ChapterManager
         isOpen={showChapterManager}

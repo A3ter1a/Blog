@@ -76,13 +76,6 @@ async function runStatusChecks(baseUrl) {
       expected: [401],
       risk: "如果这里不是 401，未登录访客可能消耗 Qwen OCR 配额或上传图片内容。",
     },
-    {
-      name: "未登录不能调用 AI 复习检查",
-      method: "POST",
-      path: "/api/ai/review",
-      expected: [401],
-      risk: "如果这里不是 401，未登录访客可能消耗 DeepSeek 配额或绕过管理员功能边界。",
-    },
   ];
 
   let failed = 0;

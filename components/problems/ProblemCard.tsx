@@ -2,20 +2,10 @@
 
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Check, Eye, EyeOff, Loader2, Pencil, Plus, Sparkles, Trash2, Wrench, X } from "lucide-react";
+import { Check, Eye, EyeOff, Loader2, Pencil, Plus, Trash2, X } from "lucide-react";
 import type { Difficulty, Problem, ProblemOption, ProblemType } from "@/lib/types";
 import { difficultyColorMap, difficultyMap, problemTypeMap } from "@/lib/types";
 import { MarkdownContent } from "@/components/ui/MarkdownContent";
-import { repairMarkdown } from "@/lib/markdown";
-import { buildAuthHeaders } from "@/lib/fetch-with-auth";
-import {
-  AI_CONFIG_STORAGE_KEY,
-  ALLOW_CLIENT_AI_KEYS,
-  DEFAULT_AI_CONFIG,
-  DEFAULT_DEEPSEEK_MODEL,
-  normalizeAIConfig,
-} from "@/lib/ai-config";
-import { readJsonStorage } from "@/lib/browser-storage";
 import { ensureChoiceOptions, normalizeProblemOptions } from "@/lib/problem-utils";
 
 interface ProblemCardProps {
@@ -24,18 +14,6 @@ interface ProblemCardProps {
   noteId?: string;
   onUpdate?: (updated: Problem) => void | Promise<void>;
 }
-
-type ReviewSuggestion = {
-  field: string;
-  issue: string;
-  suggestion: string;
-};
-
-type ReviewResult = {
-  summary: string;
-  hasIssues: boolean;
-  suggestions: ReviewSuggestion[];
-};
 
 type ProblemEditData = {
   type: ProblemType;
@@ -69,9 +47,6 @@ export function ProblemCard({ problem, index, onUpdate }: ProblemCardProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
-  const [isReviewing, setIsReviewing] = useState(false);
-  const [reviewResult, setReviewResult] = useState<ReviewResult | null>(null);
-  const [reviewError, setReviewError] = useState<string | null>(null);
   const [editData, setEditData] = useState<ProblemEditData>(() => createEditData(problem));
 
   const hasOptions = problem.type === "choice" && Array.isArray(problem.options) && problem.options.length > 0;
@@ -83,8 +58,6 @@ export function ProblemCard({ problem, index, onUpdate }: ProblemCardProps) {
 
   const handleStartEdit = () => {
     setSaveError(null);
-    setReviewResult(null);
-    setReviewError(null);
     setEditData(createEditData(problem));
     setIsEditing(true);
   };
@@ -92,8 +65,6 @@ export function ProblemCard({ problem, index, onUpdate }: ProblemCardProps) {
   const handleCancel = () => {
     if (isSaving) return;
     setIsEditing(false);
-    setReviewResult(null);
-    setReviewError(null);
     setSaveError(null);
   };
 
@@ -117,98 +88,10 @@ export function ProblemCard({ problem, index, onUpdate }: ProblemCardProps) {
     try {
       await onUpdate(updated);
       setIsEditing(false);
-      setReviewResult(null);
-      setReviewError(null);
     } catch (error: unknown) {
       setSaveError(error instanceof Error ? error.message : "保存失败，请稍后重试");
     } finally {
       setIsSaving(false);
-    }
-  };
-
-  const handleAIReview = async () => {
-    setReviewResult(null);
-    setReviewError(null);
-    setIsReviewing(true);
-
-    try {
-      const config = readJsonStorage(AI_CONFIG_STORAGE_KEY, DEFAULT_AI_CONFIG, normalizeAIConfig);
-      if (ALLOW_CLIENT_AI_KEYS && !config.deepseekApiKey) {
-        setReviewError("请先在设置中配置 DeepSeek API Key");
-        return;
-      }
-
-      const res = await fetch("/api/ai/review", {
-        method: "POST",
-        headers: await buildAuthHeaders({ "Content-Type": "application/json" }),
-        body: JSON.stringify({
-          problem: {
-            question: editData.question,
-            answer: editData.answer,
-            options: problemOptionsForSave(editData),
-            type: editData.type,
-            difficulty: editData.difficulty,
-          },
-          apiKey: ALLOW_CLIENT_AI_KEYS ? config.deepseekApiKey : undefined,
-          model: config.deepseekModel || DEFAULT_DEEPSEEK_MODEL,
-        }),
-        signal: AbortSignal.timeout(180000),
-      });
-
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(typeof err.error === "string" ? err.error : "AI 检查失败");
-      }
-
-      const data = await res.json();
-      setReviewResult(data.review);
-    } catch (error: unknown) {
-      const errorName = error instanceof Error ? error.name : "";
-      const errorMessage = error instanceof Error ? error.message : "";
-      setReviewError(
-        errorName === "AbortError" || errorName === "TimeoutError"
-          ? "AI 检查超时，请重试"
-          : errorMessage || "未知错误",
-      );
-    } finally {
-      setIsReviewing(false);
-    }
-  };
-
-  const handleRepairEditData = () => {
-    setEditData((current) => ({
-      ...current,
-      question: repairMarkdown(current.question),
-      answer: repairMarkdown(current.answer),
-      options: current.options.map((option) => ({
-        ...option,
-        content: repairMarkdown(option.content),
-      })),
-    }));
-    setReviewResult(null);
-    setReviewError(null);
-  };
-
-  const handleApplySuggestion = (suggestion: ReviewSuggestion) => {
-    switch (suggestion.field) {
-      case "question":
-      case "answer":
-        setEditData((current) => ({ ...current, [suggestion.field]: suggestion.suggestion }));
-        break;
-      case "type":
-        if (["choice", "fill", "calculation", "proof", "proofEssay"].includes(suggestion.suggestion)) {
-          setEditData((current) => ({
-            ...current,
-            type: suggestion.suggestion as ProblemType,
-            options: suggestion.suggestion === "choice" ? ensureChoiceOptions(current.options) : current.options,
-          }));
-        }
-        break;
-      case "difficulty":
-        if (["easy", "medium", "hard"].includes(suggestion.suggestion)) {
-          setEditData((current) => ({ ...current, difficulty: suggestion.suggestion as Difficulty }));
-        }
-        break;
     }
   };
 
@@ -219,14 +102,6 @@ export function ProblemCard({ problem, index, onUpdate }: ProblemCardProps) {
       options[optionIndex] = { ...option, [field]: value };
       return { ...current, options };
     });
-  };
-
-  const fieldLabelMap: Record<string, string> = {
-    question: "题干",
-    answer: "答案",
-    type: "题型",
-    difficulty: "难度",
-    general: "综合",
   };
 
   return (
@@ -402,57 +277,9 @@ export function ProblemCard({ problem, index, onUpdate }: ProblemCardProps) {
                     />
                   </div>
 
-                  {(saveError || reviewError) && (
-                    <div className="space-y-2">
-                      {saveError && (
-                        <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-600">
-                          {saveError}
-                        </div>
-                      )}
-                      {reviewError && (
-                        <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-600">
-                          {reviewError}
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {reviewResult && (
-                    <div className="space-y-3 rounded-lg border border-amber-200 bg-amber-50 p-4">
-                      <div className="flex items-start gap-2">
-                        <Sparkles className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-500" />
-                        <div>
-                          <span className="text-sm font-medium text-amber-800">AI 检查结果</span>
-                          <p className="mt-0.5 text-xs text-amber-600">{reviewResult.summary}</p>
-                        </div>
-                      </div>
-                      {reviewResult.hasIssues && reviewResult.suggestions.length > 0 && (
-                        <div className="grid gap-2">
-                          {reviewResult.suggestions.map((suggestion, suggestionIndex) => (
-                            <div key={suggestionIndex} className="rounded-lg border border-amber-100 bg-white/60 p-3">
-                              <div className="mb-1 flex items-center justify-between gap-3">
-                                <span className="text-xs font-medium text-amber-700">
-                                  [{fieldLabelMap[suggestion.field] || suggestion.field}]
-                                </span>
-                                {["question", "answer", "type", "difficulty"].includes(suggestion.field) && (
-                                  <button
-                                    onClick={() => handleApplySuggestion(suggestion)}
-                                    className="text-xs font-medium text-primary transition-colors hover:text-primary/80"
-                                  >
-                                    应用建议
-                                  </button>
-                                )}
-                              </div>
-                              <p className="text-xs text-amber-600">{suggestion.issue}</p>
-                              {suggestion.suggestion && (
-                                <p className="mt-1 rounded bg-green-50/50 px-2 py-1 text-xs text-green-700">
-                                  建议值：{suggestion.suggestion.length > 80 ? `${suggestion.suggestion.slice(0, 80)}...` : suggestion.suggestion}
-                                </p>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      )}
+                  {saveError && (
+                    <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-600">
+                      {saveError}
                     </div>
                   )}
                 </section>
@@ -460,24 +287,6 @@ export function ProblemCard({ problem, index, onUpdate }: ProblemCardProps) {
             </div>
 
             <div className="flex flex-col gap-2 border-t border-outline-variant/15 bg-surface-container-low px-4 py-3 sm:flex-row sm:items-center sm:justify-end sm:px-5">
-              <button
-                onClick={handleAIReview}
-                disabled={isReviewing || isSaving || !editData.question.trim()}
-                className="inline-flex h-10 items-center justify-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-3 text-sm text-amber-700 transition-colors hover:bg-amber-100 disabled:opacity-40"
-                title="检查题干和答案"
-              >
-                {isReviewing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-                AI 检查
-              </button>
-              <button
-                onClick={handleRepairEditData}
-                disabled={isSaving || (!editData.question.trim() && !editData.answer.trim())}
-                className="inline-flex h-10 items-center justify-center gap-1.5 rounded-lg border border-primary/15 bg-primary/10 px-3 text-sm text-primary transition-colors hover:bg-primary/15 disabled:opacity-40"
-                title="修正题干和答案里的 Markdown / LaTeX 格式"
-              >
-                <Wrench className="h-4 w-4" />
-                一键修正
-              </button>
               <button
                 onClick={handleCancel}
                 disabled={isSaving}

@@ -21,6 +21,67 @@ type Segment = {
   protected: boolean;
 };
 
+const LATEX_ENV_NAMES = [
+  "align",
+  "equation",
+  "gather",
+  "aligned",
+  "split",
+  "cases",
+  "multline",
+  "array",
+  "matrix",
+  "pmatrix",
+  "bmatrix",
+  "vmatrix",
+  "Vmatrix",
+].join("|");
+
+const LATEX_ENV_PATTERN = new RegExp(
+  `\\\\begin\\{(${LATEX_ENV_NAMES})\\*?\\}[\\s\\S]*?\\\\end\\{\\1\\*?\\}`,
+);
+
+function restoreLatexControlChars(content: string): string {
+  return content
+    .replace(/\u0008/g, "\\b")
+    .replace(/\u000c(?=[A-Za-z])/g, "\\f")
+    .replace(/\u0009(?=[A-Za-z])/g, "\\t")
+    .replace(/\u000d(?=[A-Za-z])/g, "\\r");
+}
+
+function hasProseText(content: string): boolean {
+  return /[\u3400-\u9fff，。；：、（）《》“”]/.test(content)
+    || /\b(where|when|if|then|for|with|and|or)\b/i.test(content);
+}
+
+function splitInlineEnvironmentWithText(content: string): string {
+  return content.replace(/(?<!\$)\$(?!\$)([\s\S]*?)(?<!\$)\$(?!\$)/g, (full, body: string) => {
+    const trimmed = body.trim();
+    if (!trimmed) return full;
+
+    const envMatch = trimmed.match(LATEX_ENV_PATTERN);
+    if (!envMatch || envMatch.index === undefined) return full;
+
+    const envStart = envMatch.index;
+    const envEnd = envStart + envMatch[0].length;
+    const before = trimmed.slice(0, envStart).trim();
+    const after = trimmed.slice(envEnd).trim();
+
+    if (!before && !after) return `$${trimmed}$`;
+    if (![before, after].some((part) => part && hasProseText(part))) return full;
+
+    return [
+      before,
+      `$${envMatch[0].trim()}$`,
+      after,
+    ].filter(Boolean).join(" ");
+  });
+}
+
+function normalizeLatexInput(content: string): string {
+  return splitInlineEnvironmentWithText(restoreLatexControlChars(content));
+}
+
 function splitProtectedBlocks(content: string): Segment[] {
   const segments: Segment[] = [];
   const pattern = /(```[\s\S]*?```|~~~[\s\S]*?~~~|\$\$[\s\S]*?\$\$|`[^`\n]*`|\$[^$\n]*?\$)/g;
@@ -64,7 +125,7 @@ function repairUnprotectedMarkdown(text: string): string {
 }
 
 export function repairMarkdown(content: string): string {
-  const repaired = splitProtectedBlocks(content)
+  const repaired = splitProtectedBlocks(normalizeLatexInput(content))
     .map((segment) => segment.protected ? segment.text : repairUnprotectedMarkdown(segment.text))
     .join("");
 

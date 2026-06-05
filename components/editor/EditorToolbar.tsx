@@ -4,11 +4,10 @@ import type { Editor } from "@tiptap/react";
 import {
   Bold, Italic, Strikethrough, List, ListOrdered, Quote,
   Heading1, Heading2, Heading3, Code, Code2, Link as LinkIcon,
-  Minus, Image as ImageIcon, Undo, Redo, Highlighter, FileText, ListChecks, Wrench, Divide,
+  Minus, Image as ImageIcon, Undo, Redo, Highlighter, FileText, ListChecks, Divide,
 } from "lucide-react";
 import { useState } from "react";
 import { useClickOutside } from "@/hooks/useClickOutside";
-import { repairMarkdown } from "@/lib/markdown";
 
 interface EditorToolbarProps {
   editor: Editor | null;
@@ -182,12 +181,6 @@ export function EditorToolbar({
         <Quote className="w-4 h-4" />
       </ToolbarBtn>
       <StepLabelPicker editor={editor} />
-      <ToolbarBtn
-        onClick={() => fixFormulaFormat(editor)}
-        tooltip="修复公式格式"
-      >
-        <Wrench className="w-4 h-4" />
-      </ToolbarBtn>
 
       <div className="w-px h-6 bg-outline-variant/20 mx-1" />
 
@@ -344,13 +337,3 @@ function StepLabelPicker({ editor }: StepLabelPickerProps) {
   );
 }
 
-// Fix formula format helper function
-function fixFormulaFormat(editor: Editor) {
-  const { state } = editor;
-  const text = state.doc.textBetween(0, state.doc.content.size);
-  const fixedText = repairMarkdown(text);
-  
-  if (fixedText !== text) {
-    editor.chain().focus().setContent(fixedText).run();
-  }
-}
