@@ -68,7 +68,7 @@ export function NoteReaderClient({
   const loadNote = useCallback(async () => {
     try {
       setLoading(true);
-      const data = await notesApi.getById(noteId);
+      const data = await notesApi.getPublishedById(noteId);
       setNote(data);
       setIsCoverExpanded(Boolean(data?.coverImage));
     } catch (error) {
@@ -182,7 +182,7 @@ export function NoteReaderClient({
     // Optimistic update
     setNote({ ...previousNote, problems: updatedProblems });
     try {
-      const savedNote = await notesApi.update(previousNote.id, { problems: updatedProblems });
+      const savedNote = await notesApi.updateLight(previousNote.id, { problems: updatedProblems });
       setNote(current => current?.id === previousNote.id
         ? { ...current, updatedAt: savedNote.updatedAt }
         : current

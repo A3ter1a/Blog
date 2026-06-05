@@ -181,22 +181,6 @@ function ProblemCard({
                 </div>
               )}
 
-              {/* Explanation */}
-              {problem.explanation && (
-                <div>
-                  <span className="text-[10px] font-medium text-on-surface-variant/60">解析</span>
-                  <MarkdownContent content={problem.explanation} compact className="text-sm text-on-surface" />
-                </div>
-              )}
-
-              {/* Tips */}
-              {problem.tips && (
-                <div>
-                  <span className="text-[10px] font-medium text-on-surface-variant/60">提示</span>
-                  <MarkdownContent content={problem.tips} compact className="text-sm text-on-surface" />
-                </div>
-              )}
-
               {/* Options (choice type) */}
               {Array.isArray(problem.options) && problem.options.length > 0 && (
                 <div>

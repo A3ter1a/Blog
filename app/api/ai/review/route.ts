@@ -28,19 +28,17 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: '缺少必要参数 (problem, apiKey)' }, { status: 400 });
     }
 
-    const systemPrompt = `You are a math problem quality reviewer. Review the given problem and provide a structured assessment. Focus on:
+    const systemPrompt = `You are a math problem quality reviewer. Review the given problem and provide a structured assessment. Focus only on the problem stem and short answer:
 
-1. **Explanation quality**: Is the explanation clear, well-structured, and logically broken into steps? Does it use proper Markdown formatting? Is it easy for a student to follow?
+1. **Question quality**: Is the question complete, readable, and mathematically unambiguous?
 
-2. **Answer correctness**: Does the answer match the question? Is it mathematically correct?
+2. **Answer correctness**: Does the short answer match the question? Is it mathematically correct?
 
-3. **Tag accuracy**: Are the tags appropriate for the problem content? Are any important tags missing?
+3. **Choice options**: For choice problems, are the options complete and consistent with the answer?
 
 4. **Difficulty assessment**: Is the difficulty level (easy/medium/hard) appropriate for this problem?
 
 5. **Type correctness**: Is the problem type (choice/fill/calculation/proof/proofEssay) correctly assigned?
-
-6. **Tips**: If tips are provided, are they helpful? If not provided, could useful tips be added?
 
 Output a JSON object with this structure:
 {
@@ -48,7 +46,7 @@ Output a JSON object with this structure:
   "hasIssues": true or false,
   "suggestions": [
     {
-      "field": "explanation" | "answer" | "type" | "difficulty" | "tags" | "tips" | "general",
+      "field": "question" | "answer" | "type" | "difficulty" | "general",
       "issue": "description of the issue",
       "suggestion": "specific fix or improvement (for text fields, provide the exact replacement text)"
     }
@@ -57,7 +55,8 @@ Output a JSON object with this structure:
 
 Rules:
 - Be honest but constructive — flag real problems, don't nitpick formatting minutiae
-- For "explanation" field suggestions: if the explanation is a wall of text without steps, provide a properly formatted replacement with numbered steps (步骤1：..., 步骤2：..., etc.)
+- Do not generate explanations, hints, or detailed solution steps
+- Keep answer suggestions short. For choice problems, answer should usually be a letter such as "A"
 - For "type" field suggestions: value must be one of "choice", "fill", "calculation", "proof", "proofEssay"
 - For "difficulty" field suggestions: value must be one of "easy", "medium", "hard"
 - If everything looks good, set hasIssues to false and suggestions to an empty array
@@ -69,15 +68,11 @@ Question: ${problem.question || '(empty)'}
 
 Answer: ${problem.answer || '(empty)'}
 
-Explanation: ${problem.explanation || '(empty)'}
+Options: ${Array.isArray(problem.options) ? JSON.stringify(problem.options) : '(none)'}
 
 Type: ${problem.type || 'calculation'}
 
-Difficulty: ${problem.difficulty || 'medium'}
-
-Tags: ${Array.isArray(problem.tags) ? problem.tags.join(', ') : (problem.tags || '(none)')}
-
-Tips: ${problem.tips || '(none)'}`;
+Difficulty: ${problem.difficulty || 'medium'}`;
 
     const { content, tokensUsed } = await callDeepSeek(
       apiKey,

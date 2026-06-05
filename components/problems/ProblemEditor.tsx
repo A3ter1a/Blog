@@ -1,10 +1,9 @@
 "use client";
 
-import { useState, useEffect, useLayoutEffect, useMemo, useRef, useCallback, type CSSProperties, type ReactNode } from "react";
-import { createPortal } from "react-dom";
+import { useState, useEffect, useMemo, type ReactNode } from "react";
 import { motion, AnimatePresence, Reorder, useDragControls } from "framer-motion";
-import { AlertCircle, Plus, X, ChevronDown, ChevronUp, GripVertical, Sparkles, Scan, Copy, Trash2, Wrench, Tags, Loader2, FolderTree, CheckSquare, SlidersHorizontal, Layers } from "lucide-react";
-import { Problem, ProblemType, Difficulty, Subject, problemTypeMap, difficultyMap, difficultyColorMap } from "@/lib/types";
+import { AlertCircle, Plus, X, ChevronDown, ChevronUp, GripVertical, Sparkles, Scan, Copy, Trash2, Wrench, FolderTree, CheckSquare, SlidersHorizontal } from "lucide-react";
+import { Problem, ProblemType, Difficulty, problemTypeMap, difficultyMap, difficultyColorMap } from "@/lib/types";
 import { chaptersApi } from "@/lib/chapters-api";
 import { ChapterSelector } from "@/components/chapters/ChapterSelector";
 import { ProblemCompare } from "./ProblemCompare";
@@ -19,30 +18,12 @@ import {
   normalizeProblem,
   normalizeProblemDraft,
 } from "@/lib/problem-utils";
-import { math3KnowledgeAreas } from "@/lib/math3-knowledge";
-import {
-  getMath3ChapterById,
-  getMath3ProblemChapterIds,
-  getMath3PointById,
-  getMath3PointIdsFromTags,
-  setMath3ProblemKnowledgeTags,
-} from "@/lib/math3-practice";
 import { useToast } from "@/components/ui/Toast";
-import { buildAuthHeaders } from "@/lib/fetch-with-auth";
-import {
-  AI_CONFIG_STORAGE_KEY,
-  ALLOW_CLIENT_AI_KEYS,
-  DEFAULT_AI_CONFIG,
-  DEFAULT_DEEPSEEK_MODEL,
-  normalizeAIConfig,
-} from "@/lib/ai-config";
-import { readJsonStorage } from "@/lib/browser-storage";
 
 interface ProblemEditorProps {
   problems: Problem[];
   onChange: (problems: Problem[]) => void;
   noteId?: string;
-  subject?: Subject;
   hasUnsavedChanges?: boolean;
 }
 
@@ -51,38 +32,10 @@ const createEmptyProblemDraft = (): Partial<Problem> => ({
   difficulty: "medium",
   question: "",
   answer: "",
-  explanation: "",
   tags: [],
 });
 
-function getDefaultMath3ChapterId(): string {
-  return math3KnowledgeAreas[0]?.chapters[0]?.id ?? "";
-}
-
-function getProblemMath3PointTitles(problem: Problem): string[] {
-  return getMath3PointIdsFromTags(problem.tags)
-    .map((pointId) => getMath3PointById(pointId)?.point.title)
-    .filter((title): title is string => Boolean(title));
-}
-
-function getProblemMath3ChapterTitle(problem: Problem): string | null {
-  const chapterId = getMath3ProblemChapterIds(problem)[0];
-  return chapterId ? getMath3ChapterById(chapterId)?.chapter.title ?? null : null;
-}
-
-function chunkArray<T>(items: T[], size: number): T[][] {
-  const chunks: T[][] = [];
-  for (let index = 0; index < items.length; index += size) {
-    chunks.push(items.slice(index, index + size));
-  }
-  return chunks;
-}
-
-const FLOATING_DROPDOWN_MAX_HEIGHT = 360;
-const FLOATING_DROPDOWN_MIN_HEIGHT = 150;
-const FLOATING_DROPDOWN_MARGIN = 10;
-
-export function ProblemEditor({ problems, onChange, noteId, subject, hasUnsavedChanges = false }: ProblemEditorProps) {
+export function ProblemEditor({ problems, onChange, noteId, hasUnsavedChanges = false }: ProblemEditorProps) {
   const toast = useToast();
   const [showAddForm, setShowAddForm] = useState(false);
   const [showAIScan, setShowAIScan] = useState(false);
@@ -92,11 +45,8 @@ export function ProblemEditor({ problems, onChange, noteId, subject, hasUnsavedC
   const [selectedProblemIds, setSelectedProblemIds] = useState<string[]>([]);
   const [bulkSelectEditorChapterId, setBulkSelectEditorChapterId] = useState<string | undefined>();
   const [selectedEditorChapterId, setSelectedEditorChapterId] = useState<string | undefined>();
-  const [selectedMath3ChapterId, setSelectedMath3ChapterId] = useState<string>(() => getDefaultMath3ChapterId());
-  const [onlyShowUnassignedMath3Problems, setOnlyShowUnassignedMath3Problems] = useState(false);
-  const [isClassifyingMath3Points, setIsClassifyingMath3Points] = useState(false);
 
-  // Load chapter context for AI auto-classification
+  // Load local chapter context so OCR can suggest chapter placement.
   const [chapterContext, setChapterContext] = useState<ChapterContextItem[]>([]);
   useEffect(() => {
     if (noteId) {
@@ -105,16 +55,6 @@ export function ProblemEditor({ problems, onChange, noteId, subject, hasUnsavedC
       }).catch(() => {});
     }
   }, [noteId]);
-
-  const showMath3Assignment = subject === "math";
-
-  useEffect(() => {
-    if (!showMath3Assignment) {
-      setSelectedProblemIds([]);
-      setOnlyShowUnassignedMath3Problems(false);
-      setIsClassifyingMath3Points(false);
-    }
-  }, [showMath3Assignment]);
 
   const updateNewProblemType = (type: ProblemType) => {
     setNewProblem((current) => ({
@@ -149,10 +89,9 @@ export function ProblemEditor({ problems, onChange, noteId, subject, hasUnsavedC
       difficulty: (normalizedDraft.difficulty as Difficulty) || "medium",
       question: normalizedDraft.question || "",
       answer: normalizedDraft.answer || "",
-      explanation: normalizedDraft.explanation || "",
-      tips: normalizedDraft.tips || undefined,
+      explanation: "",
       options: normalizedDraft.type === "choice" ? normalizedDraft.options : undefined,
-      tags: normalizedDraft.tags || [],
+      tags: [],
       chapterId: normalizedDraft.chapterId,
       aiStatus: normalizedDraft.aiStatus,
       aiResult: normalizedDraft.aiResult,
@@ -196,42 +135,11 @@ export function ProblemEditor({ problems, onChange, noteId, subject, hasUnsavedC
     () => new Set(selectedProblemIdsInList),
     [selectedProblemIdsInList],
   );
-  const selectedMath3Chapter = useMemo(
-    () => getMath3ChapterById(selectedMath3ChapterId),
-    [selectedMath3ChapterId],
-  );
   const problemIndexById = useMemo(
     () => new Map(problems.map((problem, index) => [problem.id, index])),
     [problems],
   );
-  const math3ChapterTitleByProblemId = useMemo(
-    () => Object.fromEntries(
-      problems.map((problem) => [problem.id, getProblemMath3ChapterTitle(problem)])
-    ),
-    [problems],
-  );
-  const math3PointTitlesByProblemId = useMemo(
-    () => Object.fromEntries(
-      problems.map((problem) => [problem.id, getProblemMath3PointTitles(problem)])
-    ),
-    [problems],
-  );
-  const unassignedMath3ProblemIds = useMemo(
-    () => problems
-      .filter((problem) => getMath3ProblemChapterIds(problem).length === 0)
-      .map((problem) => problem.id),
-    [problems],
-  );
-  const unassignedMath3ProblemIdSet = useMemo(
-    () => new Set(unassignedMath3ProblemIds),
-    [unassignedMath3ProblemIds],
-  );
-  const visibleProblems = useMemo(
-    () => showMath3Assignment && onlyShowUnassignedMath3Problems
-      ? problems.filter((problem) => unassignedMath3ProblemIdSet.has(problem.id))
-      : problems,
-    [onlyShowUnassignedMath3Problems, problems, showMath3Assignment, unassignedMath3ProblemIdSet],
-  );
+  const visibleProblems = problems;
   const visibleProblemIds = useMemo(
     () => visibleProblems.map((problem) => problem.id),
     [visibleProblems],
@@ -273,10 +181,6 @@ export function ProblemEditor({ problems, onChange, noteId, subject, hasUnsavedC
     });
   };
 
-  const selectUnassignedMath3Problems = () => {
-    setSelectedProblemIds((current) => Array.from(new Set([...current, ...unassignedMath3ProblemIds])));
-  };
-
   const selectProblemsByEditorChapter = () => {
     if (!bulkSelectEditorChapterId) return;
 
@@ -300,37 +204,7 @@ export function ProblemEditor({ problems, onChange, noteId, subject, hasUnsavedC
   };
 
   const handleProblemReorder = (nextVisibleProblems: Problem[]) => {
-    if (!showMath3Assignment || !onlyShowUnassignedMath3Problems) {
-      onChange(nextVisibleProblems);
-      return;
-    }
-
-    const visibleIdSet = new Set(nextVisibleProblems.map((problem) => problem.id));
-    const reorderedQueue = [...nextVisibleProblems];
-    onChange(problems.map((problem) => (
-      visibleIdSet.has(problem.id) ? reorderedQueue.shift() ?? problem : problem
-    )));
-  };
-
-  const handleChangeMath3Chapter = (chapterId: string) => {
-    setSelectedMath3ChapterId(chapterId);
-  };
-
-  const applyMath3ChapterToSelected = () => {
-    if (selectedProblemIdsInList.length === 0 || !selectedMath3Chapter) return;
-
-    onChange(problems.map((problem) => (
-      selectedProblemIdSet.has(problem.id)
-        ? {
-            ...problem,
-            tags: setMath3ProblemKnowledgeTags(
-              problem.tags,
-              selectedMath3Chapter.chapter.id,
-              getMath3PointIdsFromTags(problem.tags),
-            ),
-          }
-        : problem
-    )));
+    onChange(nextVisibleProblems);
   };
 
   const applyEditorChapterToSelected = () => {
@@ -343,87 +217,6 @@ export function ProblemEditor({ problems, onChange, noteId, subject, hasUnsavedC
     )));
 
     toast.success(`已给 ${selectedProblemIdsInList.length} 道题设置题集章节，请保存题集后生效`);
-  };
-
-  const classifyMath3PointsForSelected = async () => {
-    if (selectedProblemIdsInList.length === 0 || !selectedMath3Chapter || isClassifyingMath3Points) return;
-
-    const selectedProblems = problems
-      .filter((problem) => selectedProblemIdSet.has(problem.id))
-      .map((problem) => ({
-        id: problem.id,
-        type: problem.type,
-        difficulty: problem.difficulty,
-        question: problem.question,
-        answer: problem.answer,
-        explanation: problem.explanation,
-      }));
-
-    setIsClassifyingMath3Points(true);
-    try {
-      const config = readJsonStorage(AI_CONFIG_STORAGE_KEY, DEFAULT_AI_CONFIG, normalizeAIConfig);
-      const classifications: Array<{ id?: unknown; pointIds?: unknown }> = [];
-
-      for (const chunk of chunkArray(selectedProblems, 20)) {
-        const response = await fetch("/api/ai/math3-classify", {
-          method: "POST",
-          headers: await buildAuthHeaders({ "Content-Type": "application/json" }),
-          body: JSON.stringify({
-            chapterId: selectedMath3Chapter.chapter.id,
-            problems: chunk,
-            apiKey: ALLOW_CLIENT_AI_KEYS ? config.deepseekApiKey : undefined,
-            model: config.deepseekModel || DEFAULT_DEEPSEEK_MODEL,
-          }),
-          signal: AbortSignal.timeout(120000),
-        });
-        const data = await response.json();
-
-        if (!response.ok) {
-          throw new Error(typeof data.error === "string" ? data.error : "AI 知识点标记失败");
-        }
-
-        if (Array.isArray(data.classifications)) {
-          classifications.push(...data.classifications);
-        }
-      }
-
-      const pointIdsByProblemId = new Map<string, string[]>(
-        classifications.map((item: { id?: unknown; pointIds?: unknown }) => [
-          typeof item.id === "string" ? item.id : "",
-          Array.isArray(item.pointIds) ? item.pointIds.filter((pointId): pointId is string => typeof pointId === "string") : [],
-        ])
-      );
-
-      onChange(problems.map((problem) => (
-        selectedProblemIdSet.has(problem.id)
-          ? {
-              ...problem,
-              tags: setMath3ProblemKnowledgeTags(
-                problem.tags,
-                selectedMath3Chapter.chapter.id,
-                pointIdsByProblemId.get(problem.id) ?? [],
-              ),
-            }
-          : problem
-      )));
-
-      toast.success(`已用 AI 标记 ${selectedProblems.length} 道题的知识点，请保存题集后生效`);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "未知错误";
-      toast.error(`AI 知识点标记失败：${message}`);
-    } finally {
-      setIsClassifyingMath3Points(false);
-    }
-  };
-
-  const clearMath3KnowledgeFromSelected = () => {
-    if (selectedProblemIdsInList.length === 0) return;
-
-    onChange(problems.map((problem) => (
-      selectedProblemIdSet.has(problem.id)
-        ? { ...problem, tags: setMath3ProblemKnowledgeTags(problem.tags) }
-        : problem
-    )));
   };
 
   const clearSelectedProblemSelection = () => {
@@ -454,9 +247,6 @@ export function ProblemEditor({ problems, onChange, noteId, subject, hasUnsavedC
               <span className="tag-chip px-2 py-0.5 text-xs">{problems.length} 题</span>
               {selectedProblemIdsInList.length > 0 && (
                 <span className="tag-chip tag-chip-primary px-2 py-0.5 text-xs">{selectedProblemIdsInList.length} 已选</span>
-              )}
-              {showMath3Assignment && showOrganizeTools && (
-                <span className="tag-chip px-2 py-0.5 text-xs">{unassignedMath3ProblemIds.length} 未归数三</span>
               )}
             </div>
           </div>
@@ -530,14 +320,6 @@ export function ProblemEditor({ problems, onChange, noteId, subject, hasUnsavedC
               onChangeChapter={setBulkSelectEditorChapterId}
               onSelectChapter={selectProblemsByEditorChapter}
               onSelectUnassignedChapter={selectProblemsWithoutEditorChapter}
-              showMath3Tools={showMath3Assignment}
-              unassignedMath3Count={unassignedMath3ProblemIds.length}
-              onlyUnassignedMath3={onlyShowUnassignedMath3Problems}
-              selectedMath3ChapterId={selectedMath3ChapterId}
-              selectedMath3Chapter={selectedMath3Chapter}
-              onToggleOnlyUnassignedMath3={() => setOnlyShowUnassignedMath3Problems((value) => !value)}
-              onSelectUnassignedMath3={selectUnassignedMath3Problems}
-              onChangeMath3Chapter={handleChangeMath3Chapter}
             />
           </motion.div>
         )}
@@ -562,9 +344,6 @@ export function ProblemEditor({ problems, onChange, noteId, subject, hasUnsavedC
                     selected={selectedProblemIdSet.has(problem.id)}
                     showSelectionTools={showOrganizeTools || selectedProblemIdSet.size > 0}
                     organizeMode={showOrganizeTools}
-                    showMath3Tools={showMath3Assignment && showOrganizeTools}
-                    math3ChapterTitle={math3ChapterTitleByProblemId[problem.id] ?? null}
-                    math3PointTitles={math3PointTitlesByProblemId[problem.id] ?? []}
                     onToggleSelect={() => toggleProblemSelection(problem.id)}
                     onRemove={() => handleRemove(problem.id)}
                     onDuplicate={() => handleDuplicate(problem)}
@@ -575,11 +354,6 @@ export function ProblemEditor({ problems, onChange, noteId, subject, hasUnsavedC
               </EditableProblemItem>
             ))}
           </Reorder.Group>
-          {visibleProblems.length === 0 && (
-            <div className="surface-panel border-dashed px-4 py-8 text-center text-sm text-on-surface-variant">
-              当前没有未分配数三章节的题目。
-            </div>
-          )}
         </>
       )}
 
@@ -709,22 +483,7 @@ export function ProblemEditor({ problems, onChange, noteId, subject, hasUnsavedC
                   setNewProblem({ ...newProblem, answer: e.target.value });
                   setNewProblemError(null);
                 }}
-                placeholder="输入答案..."
-                rows={2}
-                className="field-control w-full resize-none px-3 py-2 text-sm placeholder:text-on-surface-variant/40"
-              />
-            </div>
-
-            {/* Explanation */}
-            <div>
-              <label className="text-xs text-on-surface-variant/60 mb-1 block">解析</label>
-              <textarea
-                value={newProblem.explanation}
-                onChange={(e) => {
-                  setNewProblem({ ...newProblem, explanation: e.target.value });
-                  setNewProblemError(null);
-                }}
-                placeholder="输入解析..."
+                placeholder="输入简短答案..."
                 rows={2}
                 className="field-control w-full resize-none px-3 py-2 text-sm placeholder:text-on-surface-variant/40"
               />
@@ -744,7 +503,7 @@ export function ProblemEditor({ problems, onChange, noteId, subject, hasUnsavedC
             <div className="flex flex-wrap gap-2 pt-1">
               <button
                 onClick={handleRepairNewProblem}
-                disabled={!newProblem.question && !newProblem.answer && !newProblem.explanation && !newProblem.tips}
+                disabled={!newProblem.question && !newProblem.answer}
                 className="control-button px-3 py-2 text-sm disabled:opacity-40"
               >
                 <Wrench className="w-4 h-4" />
@@ -800,17 +559,9 @@ export function ProblemEditor({ problems, onChange, noteId, subject, hasUnsavedC
         totalCount={problems.length}
         noteId={noteId}
         selectedEditorChapterId={selectedEditorChapterId}
-        showMath3Tools={showMath3Assignment}
-        selectedMath3ChapterId={selectedMath3ChapterId}
-        selectedMath3Chapter={selectedMath3Chapter}
-        isClassifying={isClassifyingMath3Points}
         onClearSelection={clearSelectedProblemSelection}
         onChangeEditorChapter={setSelectedEditorChapterId}
         onApplyEditorChapter={applyEditorChapterToSelected}
-        onChangeMath3Chapter={handleChangeMath3Chapter}
-        onApplyMath3Chapter={applyMath3ChapterToSelected}
-        onClassifyKnowledge={classifyMath3PointsForSelected}
-        onClearMath3Knowledge={clearMath3KnowledgeFromSelected}
         onRemoveSelected={handleRemoveSelected}
       />
     </div>
@@ -850,14 +601,6 @@ function ProblemOrganizerPanel({
   onChangeChapter,
   onSelectChapter,
   onSelectUnassignedChapter,
-  showMath3Tools,
-  unassignedMath3Count,
-  onlyUnassignedMath3,
-  selectedMath3ChapterId,
-  selectedMath3Chapter,
-  onToggleOnlyUnassignedMath3,
-  onSelectUnassignedMath3,
-  onChangeMath3Chapter,
 }: {
   totalCount: number;
   visibleCount: number;
@@ -871,14 +614,6 @@ function ProblemOrganizerPanel({
   onChangeChapter: (chapterId: string | undefined) => void;
   onSelectChapter: () => void;
   onSelectUnassignedChapter: () => void;
-  showMath3Tools: boolean;
-  unassignedMath3Count: number;
-  onlyUnassignedMath3: boolean;
-  selectedMath3ChapterId: string;
-  selectedMath3Chapter: ReturnType<typeof getMath3ChapterById>;
-  onToggleOnlyUnassignedMath3: () => void;
-  onSelectUnassignedMath3: () => void;
-  onChangeMath3Chapter: (chapterId: string) => void;
 }) {
   return (
     <section className="surface-panel p-3">
@@ -917,7 +652,7 @@ function ProblemOrganizerPanel({
         </div>
       </div>
 
-      <div className={`grid gap-3 ${showMath3Tools ? "xl:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]" : ""}`}>
+      <div className="grid gap-3">
         <div className="surface-muted p-2">
           <div className="mb-2 flex items-center gap-2 text-xs font-semibold text-on-surface-variant">
             <CheckSquare className="h-3.5 w-3.5" />
@@ -945,188 +680,8 @@ function ProblemOrganizerPanel({
           </div>
         </div>
 
-        {showMath3Tools && (
-          <div className="surface-muted p-2">
-            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-              <div className="flex items-center gap-2 text-xs font-semibold text-on-surface-variant">
-                <Tags className="h-3.5 w-3.5" />
-                数三归类辅助
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  onClick={onToggleOnlyUnassignedMath3}
-                  className={`control-button min-h-0 px-2 py-1 text-xs ${onlyUnassignedMath3 ? "control-button-selected" : ""}`}
-                >
-                  {onlyUnassignedMath3 ? "显示全部" : "只看未归"}
-                </button>
-                <button
-                  type="button"
-                  onClick={onSelectUnassignedMath3}
-                  disabled={unassignedMath3Count === 0}
-                  className="control-button min-h-0 px-2 py-1 text-xs"
-                >
-                  选择未归 · {unassignedMath3Count}
-                </button>
-              </div>
-            </div>
-
-            <div className="grid gap-2 md:grid-cols-[260px_minmax(0,1fr)]">
-              <Math3ChapterDropdown
-                value={selectedMath3ChapterId}
-                onChange={onChangeMath3Chapter}
-              />
-              <div className="flex min-w-0 flex-wrap gap-1.5 overflow-hidden">
-                {selectedMath3Chapter?.chapter.points.slice(0, 5).map((pointItem) => (
-                  <span key={pointItem.id} className="tag-chip px-2 py-0.5 text-xs">
-                    {pointItem.title}
-                  </span>
-                ))}
-                {(selectedMath3Chapter?.chapter.points.length ?? 0) > 5 && (
-                  <span className="tag-chip px-2 py-0.5 text-xs">
-                    +{(selectedMath3Chapter?.chapter.points.length ?? 0) - 5}
-                  </span>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
       </div>
     </section>
-  );
-}
-
-function Math3ChapterDropdown({
-  value,
-  onChange,
-  disabled = false,
-  className = "",
-  placement = "bottom",
-}: {
-  value: string;
-  onChange: (chapterId: string) => void;
-  disabled?: boolean;
-  className?: string;
-  placement?: "top" | "bottom";
-}) {
-  const [isOpen, setIsOpen] = useState(false);
-  const [dropdownStyle, setDropdownStyle] = useState<CSSProperties>({});
-  const buttonRef = useRef<HTMLButtonElement>(null);
-  const selected = getMath3ChapterById(value);
-
-  const updateDropdownPosition = useCallback(() => {
-    if (!buttonRef.current || typeof window === "undefined") return;
-
-    const rect = buttonRef.current.getBoundingClientRect();
-    const availableAbove = rect.top - FLOATING_DROPDOWN_MARGIN;
-    const availableBelow = window.innerHeight - rect.bottom - FLOATING_DROPDOWN_MARGIN;
-    const shouldOpenTop = placement === "top"
-      ? availableAbove > FLOATING_DROPDOWN_MIN_HEIGHT || availableAbove > availableBelow
-      : availableBelow < FLOATING_DROPDOWN_MIN_HEIGHT && availableAbove > availableBelow;
-    const availableSpace = shouldOpenTop ? availableAbove : availableBelow;
-    const maxHeight = Math.max(
-      FLOATING_DROPDOWN_MIN_HEIGHT,
-      Math.min(FLOATING_DROPDOWN_MAX_HEIGHT, availableSpace - 6),
-    );
-    const top = shouldOpenTop
-      ? Math.max(FLOATING_DROPDOWN_MARGIN, rect.top - maxHeight - 6)
-      : Math.min(window.innerHeight - FLOATING_DROPDOWN_MARGIN - FLOATING_DROPDOWN_MIN_HEIGHT, rect.bottom + 6);
-    const left = Math.min(
-      Math.max(FLOATING_DROPDOWN_MARGIN, rect.left),
-      Math.max(FLOATING_DROPDOWN_MARGIN, window.innerWidth - rect.width - FLOATING_DROPDOWN_MARGIN),
-    );
-
-    setDropdownStyle({
-      left,
-      maxHeight,
-      position: "fixed",
-      top,
-      width: rect.width,
-    });
-  }, [placement]);
-
-  useLayoutEffect(() => {
-    if (isOpen) updateDropdownPosition();
-  }, [isOpen, updateDropdownPosition]);
-
-  useEffect(() => {
-    if (!isOpen) return;
-
-    window.addEventListener("resize", updateDropdownPosition);
-    window.addEventListener("scroll", updateDropdownPosition, true);
-
-    return () => {
-      window.removeEventListener("resize", updateDropdownPosition);
-      window.removeEventListener("scroll", updateDropdownPosition, true);
-    };
-  }, [isOpen, updateDropdownPosition]);
-
-  useEffect(() => {
-    if (disabled) setIsOpen(false);
-  }, [disabled]);
-
-  const handleSelect = (chapterId: string) => {
-    onChange(chapterId);
-    setIsOpen(false);
-  };
-
-  return (
-    <div className={`relative min-w-0 ${className}`}>
-      <button
-        ref={buttonRef}
-        type="button"
-        onClick={() => {
-          if (!disabled) setIsOpen((current) => !current);
-        }}
-        disabled={disabled}
-        aria-expanded={isOpen}
-        className="field-control flex h-10 w-full min-w-0 items-center justify-between px-3 text-sm text-on-surface-variant hover:bg-surface-container-lowest disabled:opacity-40"
-      >
-        <span className="flex min-w-0 items-center gap-2">
-          <Layers className="h-3.5 w-3.5 flex-shrink-0" />
-          <span className="truncate font-medium text-on-surface">
-            {selected?.chapter.title ?? "选择数三章节"}
-          </span>
-        </span>
-        <ChevronDown className={`h-4 w-4 flex-shrink-0 transition-transform ${isOpen ? "rotate-180" : ""}`} />
-      </button>
-
-      {isOpen && typeof document !== "undefined" && createPortal(
-        <>
-          <div className="fixed inset-0 z-[130]" onClick={() => setIsOpen(false)} />
-          <div
-            className="surface-panel fixed z-[140] overflow-y-auto py-1 shadow-elevated"
-            style={dropdownStyle}
-          >
-            {math3KnowledgeAreas.map((area) => (
-              <div key={area.id}>
-                <div className="sticky top-0 border-y border-outline-variant/10 bg-surface-container-lowest px-3 py-1.5 text-xs font-bold text-on-surface">
-                  {area.title}
-                </div>
-                {area.chapters.map((chapter) => {
-                  const isSelected = chapter.id === value;
-
-                  return (
-                    <button
-                      key={chapter.id}
-                      type="button"
-                      onClick={() => handleSelect(chapter.id)}
-                      className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-surface-container-low ${
-                        isSelected ? "bg-primary/5 font-semibold text-primary" : "text-on-surface-variant"
-                      }`}
-                    >
-                      <Layers className="h-3.5 w-3.5 flex-shrink-0" />
-                      <span className="min-w-0 truncate">{chapter.title}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            ))}
-          </div>
-        </>,
-        document.body,
-      )}
-    </div>
   );
 }
 
@@ -1136,17 +691,9 @@ function BulkProblemActionBar({
   totalCount,
   noteId,
   selectedEditorChapterId,
-  showMath3Tools,
-  selectedMath3ChapterId,
-  selectedMath3Chapter,
-  isClassifying,
   onClearSelection,
   onChangeEditorChapter,
   onApplyEditorChapter,
-  onChangeMath3Chapter,
-  onApplyMath3Chapter,
-  onClassifyKnowledge,
-  onClearMath3Knowledge,
   onRemoveSelected,
 }: {
   isOpen: boolean;
@@ -1154,17 +701,9 @@ function BulkProblemActionBar({
   totalCount: number;
   noteId?: string;
   selectedEditorChapterId?: string;
-  showMath3Tools: boolean;
-  selectedMath3ChapterId: string;
-  selectedMath3Chapter: ReturnType<typeof getMath3ChapterById>;
-  isClassifying: boolean;
   onClearSelection: () => void;
   onChangeEditorChapter: (chapterId: string | undefined) => void;
   onApplyEditorChapter: () => void;
-  onChangeMath3Chapter: (chapterId: string) => void;
-  onApplyMath3Chapter: () => void;
-  onClassifyKnowledge: () => void;
-  onClearMath3Knowledge: () => void;
   onRemoveSelected: () => void;
 }) {
   const [showBulkDetails, setShowBulkDetails] = useState(false);
@@ -1193,7 +732,6 @@ function BulkProblemActionBar({
                 <button
                   type="button"
                   onClick={onClearSelection}
-                  disabled={isClassifying}
                   className="control-button h-9 min-h-0 px-3 text-xs"
                 >
                   <X className="h-3.5 w-3.5" />
@@ -1202,7 +740,6 @@ function BulkProblemActionBar({
                 <button
                   type="button"
                   onClick={() => setShowBulkDetails((value) => !value)}
-                  disabled={isClassifying}
                   className={`control-button h-9 min-h-0 px-3 text-xs ${showBulkDetails ? "control-button-selected" : ""}`}
                 >
                   <SlidersHorizontal className="h-3.5 w-3.5" />
@@ -1215,7 +752,6 @@ function BulkProblemActionBar({
                 <button
                   type="button"
                   onClick={onRemoveSelected}
-                  disabled={isClassifying}
                   className="control-button control-button-danger h-9 min-h-0 px-3 text-xs"
                 >
                   <Trash2 className="h-3.5 w-3.5" />
@@ -1233,7 +769,7 @@ function BulkProblemActionBar({
                   transition={{ duration: 0.16 }}
                   className="overflow-hidden"
                 >
-                  <div className={`mt-2 grid gap-2 ${showMath3Tools ? "lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]" : ""}`}>
+                  <div className="mt-2 grid gap-2">
                     <div className="surface-muted grid gap-2 p-2 md:grid-cols-[auto_minmax(0,1fr)_auto] md:items-center">
                       <div className="text-xs font-semibold text-on-surface-variant">题集章节</div>
                       <ChapterSelector
@@ -1245,58 +781,13 @@ function BulkProblemActionBar({
                       <button
                         type="button"
                         onClick={onApplyEditorChapter}
-                        disabled={!selectedEditorChapterId || isClassifying}
+                        disabled={!selectedEditorChapterId}
                         className="control-button h-10 px-3 text-xs"
                       >
                         <FolderTree className="h-3.5 w-3.5" />
                         应用
                       </button>
                     </div>
-
-                    {showMath3Tools && (
-                      <div className="surface-muted grid gap-2 p-2 md:grid-cols-[auto_minmax(0,1fr)_auto] md:items-center">
-                        <div className="text-xs font-semibold text-on-surface-variant">数三归类</div>
-                        <Math3ChapterDropdown
-                          value={selectedMath3ChapterId}
-                          onChange={onChangeMath3Chapter}
-                          disabled={isClassifying}
-                          placement="top"
-                        />
-                        <div className="flex flex-wrap items-center gap-2">
-                          <button
-                            type="button"
-                            onClick={onApplyMath3Chapter}
-                            disabled={!selectedMath3Chapter || isClassifying}
-                            className="control-button h-10 px-3 text-xs"
-                          >
-                            归章
-                          </button>
-                          <button
-                            type="button"
-                            onClick={onClassifyKnowledge}
-                            disabled={!selectedMath3Chapter || isClassifying}
-                            className="control-button control-button-primary h-10 px-3 text-xs"
-                          >
-                            {isClassifying ? (
-                              <span className="inline-flex items-center gap-1.5">
-                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                标记中
-                              </span>
-                            ) : (
-                              "AI 标记"
-                            )}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={onClearMath3Knowledge}
-                            disabled={isClassifying}
-                            className="control-button h-10 px-3 text-xs"
-                          >
-                            清除
-                          </button>
-                        </div>
-                      </div>
-                    )}
                   </div>
                 </motion.div>
               )}
@@ -1316,9 +807,6 @@ function ProblemCard({
   selected,
   showSelectionTools,
   organizeMode,
-  showMath3Tools,
-  math3ChapterTitle,
-  math3PointTitles,
   onToggleSelect,
   onRemove,
   onDuplicate,
@@ -1331,9 +819,6 @@ function ProblemCard({
   selected: boolean;
   showSelectionTools: boolean;
   organizeMode: boolean;
-  showMath3Tools: boolean;
-  math3ChapterTitle: string | null;
-  math3PointTitles: string[];
   onToggleSelect: () => void;
   onRemove: () => void;
   onDuplicate: () => void;
@@ -1430,37 +915,6 @@ function ProblemCard({
             className="problem-card-preview text-sm font-semibold leading-6 text-on-surface sm:text-[15px]"
           />
 
-          {showMath3Tools && (
-            <div className="mt-3 flex min-w-0 flex-wrap items-center gap-1.5">
-              {math3ChapterTitle ? (
-                <>
-                  <span
-                    className="tag-chip tag-chip-primary max-w-full px-2 py-0.5 text-xs font-medium"
-                    title={math3ChapterTitle}
-                  >
-                    {math3ChapterTitle}
-                  </span>
-                  {math3PointTitles.length > 0 ? (
-                    <span
-                      className="tag-chip tag-chip-info max-w-full px-2 py-0.5 text-xs"
-                      title={math3PointTitles.join("、")}
-                    >
-                      {math3PointTitles.slice(0, 2).join("、")}
-                      {math3PointTitles.length > 2 ? ` +${math3PointTitles.length - 2}` : ""}
-                    </span>
-                  ) : (
-                    <span className="tag-chip px-2 py-0.5 text-xs">
-                      待 AI 标知识点
-                    </span>
-                  )}
-                </>
-              ) : (
-                <span className="tag-chip px-2 py-0.5 text-xs">
-                  未分配数三章节
-                </span>
-              )}
-            </div>
-          )}
         </div>
 
         <div className="col-span-2 flex items-center justify-end gap-1 border-t border-outline-variant/10 pt-2 sm:col-span-1 sm:block sm:border-t-0 sm:pt-0">
@@ -1559,8 +1013,8 @@ function ProblemCard({
               <textarea
                 value={problem.question}
                 onChange={(e) => onUpdate({ question: e.target.value })}
-                rows={4}
-                className="field-control min-h-24 w-full resize-y px-3 py-2 text-sm placeholder:text-on-surface-variant/40"
+                rows={6}
+                className="field-control min-h-36 w-full resize-y px-3 py-2 text-sm placeholder:text-on-surface-variant/40"
                 placeholder="输入题目内容，支持 LaTeX 公式..."
               />
             </div>
@@ -1608,37 +1062,14 @@ function ProblemCard({
               </div>
             )}
 
-            <div className="grid gap-3 md:grid-cols-2">
-              <div>
-                <label className="text-xs text-on-surface-variant/60 mb-1 block">答案</label>
-                <textarea
-                  value={problem.answer}
-                  onChange={(e) => onUpdate({ answer: e.target.value })}
-                  rows={3}
-                  className="field-control min-h-20 w-full resize-y px-3 py-2 text-sm placeholder:text-on-surface-variant/40"
-                  placeholder="输入答案..."
-                />
-              </div>
-              <div>
-                <label className="text-xs text-on-surface-variant/60 mb-1 block">提示</label>
-                <textarea
-                  value={problem.tips || ""}
-                  onChange={(e) => onUpdate({ tips: e.target.value || undefined })}
-                  rows={3}
-                  className="field-control min-h-20 w-full resize-y px-3 py-2 text-sm placeholder:text-on-surface-variant/40"
-                  placeholder="可选提示..."
-                />
-              </div>
-            </div>
-
             <div>
-              <label className="text-xs text-on-surface-variant/60 mb-1 block">解析</label>
+              <label className="text-xs text-on-surface-variant/60 mb-1 block">答案</label>
               <textarea
-                value={problem.explanation}
-                onChange={(e) => onUpdate({ explanation: e.target.value })}
-                rows={5}
+                value={problem.answer}
+                onChange={(e) => onUpdate({ answer: e.target.value })}
+                rows={4}
                 className="field-control min-h-28 w-full resize-y px-3 py-2 text-sm placeholder:text-on-surface-variant/40"
-                placeholder="输入解析，支持 Markdown 和 LaTeX..."
+                placeholder="输入简短答案..."
               />
             </div>
 
@@ -1658,7 +1089,7 @@ function ProblemCard({
                 id: '', type: problem.type, difficulty: problem.difficulty,
                 question: problem.aiResult.rawQuestion,
                 answer: problem.aiResult.rawAnswer,
-                explanation: problem.aiResult.rawExplanation,
+                explanation: "",
                 tags: [],
               }} current={problem} />
             )}

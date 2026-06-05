@@ -42,14 +42,9 @@ ${note.problems && note.problems.length > 0 ? `problems: ${encodeFrontMatterJson
       }
 
       content += `**答案**: ${problem.answer}\n\n`;
-      content += `**解析**: ${problem.explanation}\n\n`;
 
       if (problem.source) {
         content += `**来源**: ${problem.source}\n\n`;
-      }
-
-      if (problem.tips) {
-        content += `**提示**: ${problem.tips}\n\n`;
       }
 
       content += '---\n\n';

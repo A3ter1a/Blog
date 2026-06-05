@@ -26,7 +26,6 @@ export type NoteEditorDraft = {
   videos: Video[];
   problems: Problem[];
   coverImage: string;
-  preservedMath3PracticeTags: string[];
 };
 
 type UseNoteEditorRouteOptions = {
@@ -44,7 +43,7 @@ type UseNoteEditorRouteResult = {
 };
 
 function draftFromImport(importDraft: ImportDraft): NoteEditorDraft {
-  const { visibleTags, math3PracticeTags } = splitMath3PracticeTags(importDraft.tags);
+  const visibleTags = splitMath3PracticeTags(importDraft.tags).visibleTags;
 
   return {
     noteType: importDraft.noteType ?? "note",
@@ -55,7 +54,6 @@ function draftFromImport(importDraft: ImportDraft): NoteEditorDraft {
     videos: importDraft.videos ?? [],
     problems: importDraft.problems ?? [],
     coverImage: importDraft.coverImage ?? "",
-    preservedMath3PracticeTags: math3PracticeTags,
   };
 }
 
@@ -86,7 +84,7 @@ export function useNoteEditorRoute({
       notesApi.getById(editId).then((existingNote) => {
         if (cancelled) return;
         if (existingNote) {
-          const { visibleTags, math3PracticeTags } = splitMath3PracticeTags(existingNote.tags);
+          const visibleTags = splitMath3PracticeTags(existingNote.tags).visibleTags;
 
           applyDraft({
             noteType: existingNote.type,
@@ -97,7 +95,6 @@ export function useNoteEditorRoute({
             videos: existingNote.videos || [],
             problems: existingNote.problems || [],
             coverImage: existingNote.coverImage || "",
-            preservedMath3PracticeTags: math3PracticeTags,
           });
         } else {
           const message = "没有找到要编辑的笔记，可能已被删除或没有权限访问";

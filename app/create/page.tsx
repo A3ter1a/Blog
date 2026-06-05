@@ -59,15 +59,12 @@ export default function CreatePage() {
   const router = useRouter();
   const toast = useToast();
   const [initialImportDraft] = useState<ImportDraft | null>(getPendingImportDraft);
-  const [initialImportTagParts] = useState(() => splitMath3PracticeTags(initialImportDraft?.tags));
+  const [initialImportVisibleTags] = useState(() => splitMath3PracticeTags(initialImportDraft?.tags).visibleTags);
 
   const [noteType, setNoteType] = useState<NoteType>(initialImportDraft?.noteType ?? "note");
   const [title, setTitle] = useState(initialImportDraft?.title ?? "");
   const [subject, setSubject] = useState<Subject>(initialImportDraft?.subject ?? "math");
-  const [tagInput, setTagInput] = useState(initialImportTagParts.visibleTags.join(", "));
-  const [preservedMath3PracticeTags, setPreservedMath3PracticeTags] = useState<string[]>(
-    initialImportTagParts.math3PracticeTags
-  );
+  const [tagInput, setTagInput] = useState(initialImportVisibleTags.join(", "));
   const [content, setContent] = useState(initialImportDraft?.content ?? "");
   const [videos, setVideos] = useState<Video[]>(initialImportDraft?.videos ?? []);
   const [problems, setProblems] = useState<Problem[]>(initialImportDraft?.problems ?? []);
@@ -105,7 +102,6 @@ export default function CreatePage() {
     setProblems(draft.problems);
     setHasProblemChanges(false);
     setCoverImageUrl(draft.coverImage);
-    setPreservedMath3PracticeTags(draft.preservedMath3PracticeTags);
   }, [setCoverImageUrl]);
 
   const resetDraft = useCallback(() => {
@@ -118,7 +114,6 @@ export default function CreatePage() {
     setProblems([]);
     setHasProblemChanges(false);
     setCoverImageUrl("");
-    setPreservedMath3PracticeTags([]);
   }, [setCoverImageUrl]);
 
   const {
@@ -199,7 +194,6 @@ export default function CreatePage() {
       problems,
       coverImage,
       isUploadingCover,
-      preservedMath3PracticeTags,
     });
 
     if (!result) return;
@@ -517,7 +511,6 @@ export default function CreatePage() {
                 problems={problems}
                 onChange={handleProblemsChange}
                 noteId={isEditMode ? editingId : undefined}
-                subject={subject}
                 hasUnsavedChanges={isEditMode && hasProblemChanges}
               />
             </>

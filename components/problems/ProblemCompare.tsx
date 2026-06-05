@@ -26,9 +26,6 @@ export function ProblemCompare({ original, current }: ProblemCompareProps) {
         {original?.answer && (
           <CompareField label="答案" original={original.answer} current={current?.answer} />
         )}
-        {original?.explanation && (
-          <CompareField label="解析" original={original.explanation} current={current?.explanation} />
-        )}
       </div>
     </div>
   );

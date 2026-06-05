@@ -27,7 +27,9 @@ export function normalizeProblemOptions(options?: ProblemOption[]): ProblemOptio
 export function normalizeProblem(problem: Problem): Problem {
   return {
     ...problem,
-    tips: problem.tips?.trim() ? problem.tips : undefined,
+    explanation: "",
+    tips: undefined,
+    tags: [],
     options: problem.type === "choice" ? normalizeProblemOptions(problem.options) : undefined,
   };
 }
@@ -35,7 +37,9 @@ export function normalizeProblem(problem: Problem): Problem {
 export function normalizeProblemDraft(problem: Partial<Problem>): Partial<Problem> {
   return {
     ...problem,
-    tips: problem.tips?.trim() ? problem.tips : undefined,
+    explanation: "",
+    tips: undefined,
+    tags: [],
     options: problem.type === "choice" ? normalizeProblemOptions(problem.options) : undefined,
   };
 }

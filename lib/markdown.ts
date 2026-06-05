@@ -78,8 +78,6 @@ export function repairProblemMarkdownFields<T extends Partial<Problem>>(problem:
     ...problem,
     question: problem.question !== undefined ? repairMarkdown(problem.question) : problem.question,
     answer: problem.answer !== undefined ? repairMarkdown(problem.answer) : problem.answer,
-    explanation: problem.explanation !== undefined ? repairMarkdown(problem.explanation) : problem.explanation,
-    tips: problem.tips !== undefined ? repairMarkdown(problem.tips) : problem.tips,
     options: problem.options?.map((option) => ({
       ...option,
       content: repairMarkdown(option.content),

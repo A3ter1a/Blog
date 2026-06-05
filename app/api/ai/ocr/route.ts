@@ -37,7 +37,7 @@ export async function POST(req: NextRequest) {
     const prompt = `Extract all text from this image. This is likely an exam problem or math question.
 Please follow these rules:
 1. Preserve ALL mathematical formulas in LaTeX format: inline formulas use $...$, display formulas use $$...$$
-2. Maintain the original structure: title/number, question, options, answer hints, and solution text if visible
+2. Maintain the original structure: title/number, question, options, and short answer if visible
 3. Keep line breaks between different parts of the problem; do not merge everything into one paragraph
 4. Correct only obvious OCR noise, and keep uncertain characters as close to the image as possible
 5. Output ONLY the extracted text, no additional commentary

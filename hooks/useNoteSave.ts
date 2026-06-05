@@ -2,7 +2,7 @@
 
 import { useCallback, useState } from "react";
 import { useToast } from "@/components/ui/Toast";
-import { getMath3PracticeTagsFromProblems, mergeVisibleTagsWithMath3Tags } from "@/lib/math3-practice";
+import { splitMath3PracticeTags } from "@/lib/math3-practice";
 import { getProblemsValidationIssues, normalizeProblem } from "@/lib/problem-utils";
 import { notesApi } from "@/lib/supabase";
 import type { NoteType, Problem, Subject, Video } from "@/lib/types";
@@ -19,7 +19,6 @@ type NoteSaveDraft = {
   problems: Problem[];
   coverImage: string;
   isUploadingCover: boolean;
-  preservedMath3PracticeTags?: string[];
 };
 
 type NoteSaveResult = {
@@ -59,7 +58,13 @@ export function useNoteSave(): UseNoteSaveResult {
     }
 
     const normalizedProblems = draft.noteType === "problem"
-      ? draft.problems.map(normalizeProblem)
+      ? draft.problems.map((problem) => {
+        const normalized = normalizeProblem(problem);
+        return {
+          ...normalized,
+          tags: splitMath3PracticeTags(normalized.tags).visibleTags,
+        };
+      })
       : undefined;
     if (normalizedProblems) {
       const firstInvalidProblem = getProblemsValidationIssues(normalizedProblems)[0];
@@ -70,10 +75,7 @@ export function useNoteSave(): UseNoteSaveResult {
     }
 
     const visibleTags = draft.tagInput.split(/[,，]/).map((tag) => tag.trim()).filter(Boolean);
-    const generatedMath3Tags = draft.noteType === "problem" && draft.subject === "math" && normalizedProblems
-      ? getMath3PracticeTagsFromProblems(normalizedProblems)
-      : [];
-    const tags = mergeVisibleTagsWithMath3Tags(visibleTags, draft.preservedMath3PracticeTags, generatedMath3Tags);
+    const tags = splitMath3PracticeTags(visibleTags).visibleTags;
     const noteData = {
       type: draft.noteType,
       title: draft.title,
@@ -88,12 +90,12 @@ export function useNoteSave(): UseNoteSaveResult {
     setIsSaving(true);
     try {
       if (draft.isEditMode) {
-        await notesApi.update(draft.editingId, noteData);
+        await notesApi.updateLight(draft.editingId, noteData);
         toast.success("笔记已更新！");
         return { id: draft.editingId };
       }
 
-      const newNote = await notesApi.create({
+      const newNote = await notesApi.createLight({
         ...noteData,
         isPublished: true,
       });

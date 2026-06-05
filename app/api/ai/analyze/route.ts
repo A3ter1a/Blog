@@ -44,12 +44,10 @@ export async function POST(req: NextRequest) {
   "problems": [
     {
       "question": "problem text (preserve LaTeX $...$ or $$...$$)",
-      "answer": "answer/solution",
-      "explanation": "detailed solution steps",
+      "answer": "short answer only",
       "type": "choice" | "fill" | "calculation" | "proof" | "proofEssay",
       "difficulty": "easy" | "medium" | "hard",
       "suggestedChapter": "chapter name or null",
-      "tips": "optional solving tips or null",
       "options": [{"label": "A", "content": "option text"}],
       "confidence": 0.0 to 1.0
     }
@@ -59,18 +57,19 @@ Rules:
 - Separate distinct problems into individual array items
 - If only one problem found, still wrap it in the problems array
 - If the image contains no usable problem, return {"problems":[]}
-- Output Chinese text for answer, explanation, and tips unless the source is clearly English
-- Preserve ALL LaTeX formulas ($...$ or $$...$$) in question/answer/explanation
+- Output Chinese text for answer unless the source is clearly English
+- Preserve ALL LaTeX formulas ($...$ or $$...$$) in question and answer
 - Correct obvious OCR mistakes only when the intended math/text is clear; do not silently change uncertain content
-- If answer or explanation is not visible in the OCR text, solve the problem yourself and set confidence lower when the solution is inferred
+- If answer is not visible in the OCR text, solve the problem yourself and set confidence lower when the answer is inferred
+- The answer must be short. For choice problems, answer should usually be only the option letter, for example "C"
+- Do not output explanations, hints, or detailed solution steps
 - type: "choice" for multiple-choice, "fill" for fill-in-blank, "calculation" for computation/solving, "proof" for theorem proving, "proofEssay" for proof-based essays
 - difficulty: "easy" for basic exercises, "medium" for standard problems, "hard" for challenging/advanced
 - For choice problems, move A/B/C/D options into the options array. Use labels without punctuation, for example "A", "B"
 - options array ONLY for "choice" type, otherwise omit or empty
 - If unsure about any field, use your best guess and set lower confidence
 - Return valid JSON only. Do not include markdown fences, comments, or explanatory text outside the JSON object.
-- Escape LaTeX backslashes for JSON strings. For example, write "\\\\frac{x}{2}" instead of "\\frac{x}{2}".
-- CRITICAL for "explanation": Format ALL explanations with numbered steps (步骤 1：..., 步骤 2：..., ...). Each step should be a self-contained logical step. Use proper Markdown formatting and blank lines to make the explanation readable. Never output a single wall of text.${chapterHint}`;
+- Escape LaTeX backslashes for JSON strings. For example, write "\\\\frac{x}{2}" instead of "\\frac{x}{2}".${chapterHint}`;
 
     const { content, tokensUsed } = await callDeepSeek(
       apiKey,
@@ -79,7 +78,7 @@ Rules:
         { role: 'system', content: systemPrompt },
         { role: 'user', content: ocrText },
       ],
-      { temperature: 0.3, maxTokens: 4096, responseFormat: 'json_object' }
+      { temperature: 0.2, maxTokens: 3072, responseFormat: 'json_object' }
     );
 
     let parsed: unknown;
@@ -89,7 +88,7 @@ Rules:
     } catch (firstParseError: unknown) {
       try {
         const repairPrompt = `Repair the following AI output into one valid JSON object only.
-It must match this shape: {"problems":[{"question":"","answer":"","explanation":"","type":"calculation","difficulty":"medium","suggestedChapter":null,"tips":null,"options":[],"confidence":0.5}]}.
+It must match this shape: {"problems":[{"question":"","answer":"","type":"calculation","difficulty":"medium","suggestedChapter":null,"options":[],"confidence":0.5}]}.
 Keep the original math content. Escape all LaTeX backslashes correctly for JSON strings. Return JSON only.
 
 Broken output:
@@ -102,7 +101,7 @@ ${content}`;
             { role: 'system', content: 'You repair malformed JSON. Return valid JSON only.' },
             { role: 'user', content: repairPrompt },
           ],
-          { temperature: 0, maxTokens: 4096, responseFormat: 'json_object' }
+          { temperature: 0, maxTokens: 3072, responseFormat: 'json_object' }
         );
 
         totalTokensUsed += repaired.tokensUsed;
@@ -166,11 +165,10 @@ ${content}`;
       return [repairProblemMarkdownFields({
         question,
         answer: toString(p.answer),
-        explanation: toString(p.explanation),
+        explanation: '',
         type: normalizedType,
         difficulty: normalizedDifficulty,
         suggestedChapter: p.suggestedChapter ? toString(p.suggestedChapter) : null,
-        tips: p.tips ? toString(p.tips) : undefined,
         options: normalizedType === 'choice' ? (options?.length ? options : extractOptions(question)) : undefined,
         confidence: clampConfidence(p.confidence),
       })];

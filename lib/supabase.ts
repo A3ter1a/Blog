@@ -30,6 +30,10 @@ export type NoteRow = {
 export type NoteInsert = Partial<NoteRow>;
 export type NoteUpdate = Partial<NoteRow>;
 export type NoteCreateInput = Omit<Note, "id" | "createdAt" | "updatedAt"> & Partial<Pick<Note, "createdAt" | "updatedAt">>;
+export type NoteMutationMeta = {
+  id: string;
+  updatedAt: Date;
+};
 export type NoteSummaryQueryOptions = {
   type?: NoteType;
   subject?: Subject;
@@ -197,12 +201,34 @@ const NOTE_SUMMARY_FIELDS_WITHOUT_COVER = `
         is_published
       `;
 
+const NOTE_DETAIL_FIELDS = `
+        id,
+        type,
+        title,
+        content,
+        subject,
+        tags,
+        cover_image,
+        videos,
+        problems,
+        created_at,
+        updated_at,
+        is_published
+      `;
+
 function getNoteSummaryFields(includeCoverImage = true): string {
   return includeCoverImage ? NOTE_SUMMARY_FIELDS_WITH_COVER : NOTE_SUMMARY_FIELDS_WITHOUT_COVER;
 }
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
+const ADMIN_WRITE_ASSERTION_TTL_MS = 60 * 1000;
+
+let cachedAdminWriteAssertion: {
+  token: string;
+  userId: string;
+  expiresAt: number;
+} | null = null;
 
 function normalizeSearchTerm(query: string): string {
   return query
@@ -231,7 +257,17 @@ export async function assertAdminWrite(): Promise<string> {
   const userId = session?.user.id;
 
   if (!token || !userId) {
+    cachedAdminWriteAssertion = null;
     throw new Error("需要管理员登录后才能修改数据");
+  }
+
+  if (
+    cachedAdminWriteAssertion
+    && cachedAdminWriteAssertion.token === token
+    && cachedAdminWriteAssertion.userId === userId
+    && cachedAdminWriteAssertion.expiresAt > Date.now()
+  ) {
+    return userId;
   }
 
   const res = await fetch("/api/auth/admin", {
@@ -248,6 +284,13 @@ export async function assertAdminWrite(): Promise<string> {
       : "需要管理员登录后才能修改数据";
     throw new Error(message);
   }
+
+  cachedAdminWriteAssertion = {
+    token,
+    userId,
+    expiresAt: Date.now() + ADMIN_WRITE_ASSERTION_TTL_MS,
+  };
+
   return userId;
 }
 
@@ -363,20 +406,7 @@ export const notesApi = {
     const supabase = getSupabase();
     let query = supabase
       .from("notes")
-      .select(`
-        id,
-        type,
-        title,
-        content,
-        subject,
-        tags,
-        cover_image,
-        videos,
-        problems,
-        created_at,
-        updated_at,
-        is_published
-      `)
+      .select(NOTE_DETAIL_FIELDS)
       .eq("id", id);
 
     if (!(await hasAdminSession())) {
@@ -384,6 +414,20 @@ export const notesApi = {
     }
 
     const { data, error } = await query.single();
+
+    if (error) return null;
+    return mapSnakeToCamel(data);
+  },
+
+  // Public detail read for the article/problem reading page. Avoids the admin-session round trip.
+  async getPublishedById(id: string): Promise<Note | null> {
+    const supabase = getSupabase();
+    const { data, error } = await supabase
+      .from("notes")
+      .select(NOTE_DETAIL_FIELDS)
+      .eq("id", id)
+      .eq("is_published", true)
+      .single();
 
     if (error) return null;
     return mapSnakeToCamel(data);
@@ -440,6 +484,31 @@ export const notesApi = {
     return mapSnakeToCamel(data);
   },
 
+  // Create note and return only lightweight mutation metadata.
+  async createLight(note: NoteCreateInput): Promise<NoteMutationMeta> {
+    await assertAdminWrite();
+    const supabase = getSupabase();
+    const dbNote = mapCamelToSnake(note);
+    const createdAt = note.createdAt instanceof Date ? note.createdAt : new Date();
+    const updatedAt = note.updatedAt instanceof Date ? note.updatedAt : createdAt;
+
+    const { data, error } = await supabase
+      .from("notes")
+      .insert([{
+        ...dbNote,
+        created_at: createdAt.toISOString(),
+        updated_at: updatedAt.toISOString(),
+      }])
+      .select("id, updated_at")
+      .single();
+
+    if (error) throw error;
+    return {
+      id: data.id ?? "",
+      updatedAt: data.updated_at ? new Date(data.updated_at) : updatedAt,
+    };
+  },
+
   // Update note
   async update(id: string, updates: Partial<Note>): Promise<Note> {
     await assertAdminWrite();
@@ -456,6 +525,28 @@ export const notesApi = {
 
     if (error) throw error;
     return mapSnakeToCamel(data);
+  },
+
+  // Update note and return only lightweight mutation metadata.
+  async updateLight(id: string, updates: Partial<Note>): Promise<NoteMutationMeta> {
+    await assertAdminWrite();
+    const supabase = getSupabase();
+    const dbUpdates = mapCamelToSnake(updates);
+    const updatedAt = new Date();
+    dbUpdates.updated_at = updatedAt.toISOString();
+
+    const { data, error } = await supabase
+      .from("notes")
+      .update(dbUpdates)
+      .eq("id", id)
+      .select("id, updated_at")
+      .single();
+
+    if (error) throw error;
+    return {
+      id: data.id ?? id,
+      updatedAt: data.updated_at ? new Date(data.updated_at) : updatedAt,
+    };
   },
 
   // Delete note
