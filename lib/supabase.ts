@@ -419,6 +419,20 @@ export const notesApi = {
     return mapSnakeToCamel(data);
   },
 
+  // Admin edit page read. The page is already guarded by AdminGate, so avoid
+  // an extra /api/auth/admin round trip before loading the editable payload.
+  async getEditableById(id: string): Promise<Note | null> {
+    const supabase = getSupabase();
+    const { data, error } = await supabase
+      .from("notes")
+      .select(NOTE_DETAIL_FIELDS)
+      .eq("id", id)
+      .single();
+
+    if (error) return null;
+    return mapSnakeToCamel(data);
+  },
+
   // Public detail read for the article/problem reading page. Avoids the admin-session round trip.
   async getPublishedById(id: string): Promise<Note | null> {
     const supabase = getSupabase();

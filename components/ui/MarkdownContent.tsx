@@ -4,6 +4,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import katex from "katex";
 import GithubSlugger from "github-slugger";
 import { renderMarkdownToHtml } from "@/lib/markdown";
+import { restoreLatexLineBreaks } from "@/lib/utils";
 import "katex/dist/katex.min.css";
 
 interface MarkdownContentProps {
@@ -25,12 +26,12 @@ export function processContent(container: HTMLElement) {
 
   const processInlineMath = (textNode: Text) => {
     const text = textNode.textContent || "";
-    if (!/\$(?!\$).+?\$(?!\$)/.test(text)) return;
+    if (!/\$(?!\$)[\s\S]+?\$(?!\$)/.test(text)) return;
 
     const parent = textNode.parentNode;
     if (!parent) return;
 
-    const parts = text.split(/(?<!\$)\$(?!\$)(.+?)(?<!\$)\$(?!\$)/g);
+    const parts = text.split(/(?<!\$)\$(?!\$)([\s\S]+?)(?<!\$)\$(?!\$)/g);
     if (parts.length === 1) return;
 
     const fragment = document.createDocumentFragment();
@@ -40,17 +41,18 @@ export function processContent(container: HTMLElement) {
         return;
       }
 
-      const displayMode = DISPLAY_MATH_ENV_PATTERN.test(part);
+      const latex = restoreLatexLineBreaks(part).trim();
+      const displayMode = DISPLAY_MATH_ENV_PATTERN.test(latex);
       const span = document.createElement("span");
       span.className = displayMode ? "katex-display" : "katex-inline";
       try {
-        span.innerHTML = katex.renderToString(part.trim(), {
+        span.innerHTML = katex.renderToString(latex, {
           throwOnError: false,
           displayMode,
         });
         fragment.appendChild(span);
       } catch {
-        fragment.appendChild(document.createTextNode(`$${part}$`));
+        fragment.appendChild(document.createTextNode(`$${latex}$`));
       }
     });
 
@@ -86,14 +88,15 @@ export function processContent(container: HTMLElement) {
 
           const span = document.createElement("span");
           span.className = "katex-display";
+          const latex = restoreLatexLineBreaks(part).replace(/[\n\r]+/g, " ").trim();
           try {
             span.innerHTML = katex.renderToString(
-              part.replace(/[\n\r]+/g, " ").trim(),
+              latex,
               { throwOnError: false, displayMode: true }
             );
             fragment.appendChild(span);
           } catch {
-            fragment.appendChild(document.createTextNode(`$$${part}$$`));
+            fragment.appendChild(document.createTextNode(`$$${latex}$$`));
           }
         });
 

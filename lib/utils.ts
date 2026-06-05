@@ -1,5 +1,94 @@
 import type { Chapter } from "@/lib/types";
 
+const LATEX_LINE_BREAK_MARKER = "AsteroidLatexLineBreakToken";
+const MATH_SPAN_SPLIT_PATTERN = /(\$\$[\s\S]*?\$\$|\$[^$]*?\$)/;
+const LATEX_ENV_NAMES = "align|equation|gather|aligned|split|cases|multline|array|matrix|pmatrix|bmatrix|vmatrix|Vmatrix";
+const LATEX_ENV_START_PATTERN = new RegExp(`\\\\begin\\{(?:${LATEX_ENV_NAMES})\\*?\\}`);
+const BARE_LATEX_ENV_PATTERN = new RegExp(
+  `\\\\begin\\{(${LATEX_ENV_NAMES})\\*?\\}[\\s\\S]*?\\\\end\\{\\1\\*?\\}`,
+  "g"
+);
+const BARE_LATEX_COMMAND_PATTERN = /(?<!\$)(\\(?!begin\b|end\b)[a-zA-Z]+(?:\{[^}]*\})?)(?!\$)/g;
+
+function protectLatexLineBreaks(content: string): string {
+  return content.replace(/\\{2,3}(?![A-Za-z])/g, LATEX_LINE_BREAK_MARKER);
+}
+
+export function restoreLatexLineBreaks(content: string): string {
+  return content
+    .replaceAll(LATEX_LINE_BREAK_MARKER, "\\\\")
+    .replace(/\\{3,}(?![A-Za-z])/g, "\\\\");
+}
+
+function isInsideDollarMath(content: string, offset: number): boolean {
+  let inSingleDollar = false;
+  let inDoubleDollar = false;
+
+  for (let index = 0; index < offset; index += 1) {
+    if (content[index] !== "$" || content[index - 1] === "\\") continue;
+
+    if (content[index + 1] === "$") {
+      if (!inSingleDollar) {
+        inDoubleDollar = !inDoubleDollar;
+      }
+      index += 1;
+      continue;
+    }
+
+    if (!inDoubleDollar) {
+      inSingleDollar = !inSingleDollar;
+    }
+  }
+
+  return inSingleDollar || inDoubleDollar;
+}
+
+function normalizeMathSpanForMarkdown(segment: string): string {
+  let next = protectLatexLineBreaks(segment);
+
+  if (next.startsWith("$$") || LATEX_ENV_START_PATTERN.test(next)) {
+    next = next.replace(/\n/g, " ");
+  }
+
+  return next
+    .replace(/(?<!\\)\[/g, "\\[")
+    .replace(/(?<!\\)\]/g, "\\]")
+    .replace(/\\\{/g, "\\lbrace{}")
+    .replace(/\\\}/g, "\\rbrace{}");
+}
+
+function wrapBareLatexEnvironments(segment: string): string {
+  return segment.replace(BARE_LATEX_ENV_PATTERN, (match) => {
+    const collapsed = protectLatexLineBreaks(match).replace(/\n/g, " ");
+    return `$$ ${collapsed} $$`;
+  });
+}
+
+function normalizeTextOutsideMath(segment: string): string {
+  const withConvertedDelimiters = segment
+    .replace(/\\\[/g, "$$")
+    .replace(/\\\]/g, "$$")
+    .replace(/\\\(/g, "$")
+    .replace(/\\\)/g, "$");
+
+  return withConvertedDelimiters
+    .split(MATH_SPAN_SPLIT_PATTERN)
+    .map((part, index) => {
+      if (index % 2 === 1) return normalizeMathSpanForMarkdown(part);
+
+      const withBareEnvironments = wrapBareLatexEnvironments(part);
+      return withBareEnvironments
+        .split(MATH_SPAN_SPLIT_PATTERN)
+        .map((nestedPart, nestedIndex) => (
+          nestedIndex % 2 === 1
+            ? normalizeMathSpanForMarkdown(nestedPart)
+            : nestedPart.replace(BARE_LATEX_COMMAND_PATTERN, "$$$1$$")
+        ))
+        .join("");
+    })
+    .join("");
+}
+
 /**
  * Get all descendant chapter IDs for a given chapter (including itself).
  * Traverses the parentId tree recursively with cycle protection.
@@ -48,7 +137,7 @@ export function preprocessLatex(content: string): string {
 
   // Step 2: Split into math spans and non-math segments, process each separately
   // Math spans ($...$ or $$...$$) are at odd indices, non-math at even indices
-  const segments = content.split(/(\$\$[\s\S]*?\$\$|\$[^$]*?\$)/);
+  const segments = content.split(MATH_SPAN_SPLIT_PATTERN);
 
   for (let i = 0; i < segments.length; i++) {
     if (i % 2 === 1) {
@@ -56,7 +145,8 @@ export function preprocessLatex(content: string): string {
       // For display math ($$...$$), collapse newlines to prevent
       // markdown-it's breaks:true from splitting them into <br> nodes,
       // which would separate $$ from content across text nodes.
-      if (segments[i].startsWith('$$')) {
+      segments[i] = protectLatexLineBreaks(segments[i]);
+      if (segments[i].startsWith('$$') || LATEX_ENV_START_PATTERN.test(segments[i])) {
         segments[i] = segments[i].replace(/\n/g, ' ');
       }
 
@@ -76,28 +166,21 @@ export function preprocessLatex(content: string): string {
     } else {
       // Non-math content: convert \[ \] and \( \) to $$ $$ and $ $
       // These are guaranteed to be outside math spans
-      segments[i] = segments[i]
-        .replace(/\\\[/g, '$$')
-        .replace(/\\\]/g, '$$')
-        .replace(/\\\(/g, '$')
-        .replace(/\\\)/g, '$');
+      segments[i] = normalizeTextOutsideMath(segments[i]);
 
       // Wrap bare LaTeX commands (e.g. \xi, \theta, \operatorname{rank})
       // that appear outside $...$ / $$...$$ delimiters so they get
       // rendered by KaTeX instead of showing as raw "xi" / "theta" text.
       // Exclude \begin and \end which are handled by Step 3.
-      segments[i] = segments[i].replace(
-        /(?<!\$)(\\[a-zA-Z]+(?:\{[^}]*\})?)(?!\$)/g,
-        '$$$1$$'
-      );
     }
   }
 
   content = segments.join('');
 
   // Step 3: Wrap bare LaTeX environments that are not already inside $$...$$
-  const envPattern = /\\begin\{(align|equation|gather|aligned|split|cases|multline|array|matrix|pmatrix|bmatrix|vmatrix)\*?\}[\s\S]*?\\end\{\1\*?\}/g;
-  content = content.replace(envPattern, (match, _envName, offset: number) => {
+  content = content.replace(BARE_LATEX_ENV_PATTERN, (match, _envName, offset: number) => {
+    if (isInsideDollarMath(content, offset)) return match;
+
     // Check if preceded by $$ on the same line
     const beforeText = content.substring(0, offset);
     const lastNewline = beforeText.lastIndexOf('\n');
@@ -115,7 +198,7 @@ export function preprocessLatex(content: string): string {
     // Collapse newlines inside the block to prevent markdown-it
     // (configured with breaks:true) from inserting <br> tags that
     // would break KaTeX rendering of matrices and other environments.
-    const collapsed = match.replace(/\n/g, ' ');
+    const collapsed = protectLatexLineBreaks(match).replace(/\n/g, ' ');
     return `$$ ${collapsed} $$`;
   });
 

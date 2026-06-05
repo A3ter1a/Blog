@@ -20,7 +20,7 @@ type MarkdownStorage = {
   };
 };
 
-interface RichTextEditorProps {
+export interface RichTextEditorProps {
   content: string;
   onChange: (content: string) => void;
   placeholder?: string;

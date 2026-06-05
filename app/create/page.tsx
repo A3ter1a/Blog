@@ -3,22 +3,49 @@
 import { useState, useRef, useCallback } from "react";
 import { motion } from "framer-motion";
 import { useRouter } from "next/navigation";
+import dynamic from "next/dynamic";
 import type { Editor } from "@tiptap/react";
 import { Save, RotateCcw, X, Image as ImageIcon, FolderTree, Columns, Maximize2, Eye, Loader2, ChevronDown, ChevronUp, SlidersHorizontal } from "lucide-react";
 import { Subject, subjectMap, NoteType, typeMap, Video, Problem } from "@/lib/types";
-import { Playlist } from "@/components/video/Playlist";
-import { ProblemEditor } from "@/components/problems/ProblemEditor";
-import { ChapterManager } from "@/components/chapters/ChapterManager";
 import { useToast } from "@/components/ui/Toast";
-import { RichTextEditor, RichTextEditorRef } from "@/components/editor/RichTextEditor";
+import type { RichTextEditorRef } from "@/components/editor/RichTextEditor";
+import { LazyRichTextEditor } from "@/components/editor/LazyRichTextEditor";
 import { EditorToolbar } from "@/components/editor/EditorToolbar";
-import { ContentPreview } from "@/components/ui/ContentPreview";
 import { uploadImage, generateFileName } from "@/lib/supabase-storage";
 import { splitMath3PracticeTags } from "@/lib/math3-practice";
 import { AdminGate } from "@/components/auth/AdminGate";
 import { useCoverUpload } from "@/hooks/useCoverUpload";
 import { useNoteSave } from "@/hooks/useNoteSave";
 import { type ImportDraft, type NoteEditorDraft, useNoteEditorRoute } from "@/hooks/useNoteEditorRoute";
+
+const ProblemEditor = dynamic(
+  () => import("@/components/problems/ProblemEditor").then((module) => module.ProblemEditor),
+  { loading: () => <EditorModuleFallback label="正在加载题集编辑器..." /> },
+);
+
+const ChapterManager = dynamic(
+  () => import("@/components/chapters/ChapterManager").then((module) => module.ChapterManager),
+  { loading: () => null },
+);
+
+const Playlist = dynamic(
+  () => import("@/components/video/Playlist").then((module) => module.Playlist),
+  { loading: () => <EditorModuleFallback label="正在加载视频列表..." /> },
+);
+
+const ContentPreview = dynamic(
+  () => import("@/components/ui/ContentPreview").then((module) => module.ContentPreview),
+  { loading: () => <EditorModuleFallback label="正在生成预览..." /> },
+);
+
+function EditorModuleFallback({ label }: { label: string }) {
+  return (
+    <div className="flex min-h-40 items-center justify-center gap-2 rounded-xl border border-outline-variant/20 bg-surface-container-low p-6 text-sm text-on-surface-variant">
+      <Loader2 className="h-4 w-4 animate-spin text-primary" />
+      <span>{label}</span>
+    </div>
+  );
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -53,7 +80,7 @@ function getPendingImportDraft(): ImportDraft | null {
   }
 }
 
-export default function CreatePage() {
+function CreateEditorPage() {
   const router = useRouter();
   const toast = useToast();
   const [initialImportDraft] = useState<ImportDraft | null>(getPendingImportDraft);
@@ -81,7 +108,7 @@ export default function CreatePage() {
   const [showMetaSection, setShowMetaSection] = useState(false);
   const [editorReady, setEditorReady] = useState(false);
   const [showChapterManager, setShowChapterManager] = useState(false);
-  const [viewMode, setViewMode] = useState<"split" | "editor" | "preview">("split");
+  const [viewMode, setViewMode] = useState<"split" | "editor" | "preview">("editor");
   const editorRef = useRef<RichTextEditorRef>(null);
   const [toolbarEditor, setToolbarEditor] = useState<Editor | null>(null);
   const editorScrollRef = useRef<HTMLDivElement>(null);
@@ -230,20 +257,17 @@ export default function CreatePage() {
 
   if (!routeReady || isLoadingExistingNote) {
     return (
-      <AdminGate>
         <main className="pt-32 pb-20 min-h-screen flex items-center justify-center">
           <div className="flex items-center gap-3 text-on-surface-variant">
             <Loader2 className="w-6 h-6 animate-spin text-primary" />
             <span>正在准备编辑器...</span>
           </div>
         </main>
-      </AdminGate>
     );
   }
 
   if (loadError) {
     return (
-      <AdminGate>
         <main className="pt-32 pb-20 min-h-screen flex items-center justify-center px-6">
           <div className="max-w-md text-center space-y-4">
             <h1 className="text-2xl font-bold text-on-surface">无法编辑这篇笔记</h1>
@@ -257,12 +281,10 @@ export default function CreatePage() {
             </button>
           </div>
         </main>
-      </AdminGate>
     );
   }
 
   return (
-    <AdminGate>
     <main className="pt-24 pb-20 min-h-screen">
       <div className="max-w-7xl mx-auto px-6">
         {/* Header */}
@@ -569,7 +591,7 @@ export default function CreatePage() {
                         [&::-webkit-scrollbar-thumb]:bg-outline-variant/30
                         [&::-webkit-scrollbar-thumb]:rounded-full"
                     >
-                      <RichTextEditor
+                      <LazyRichTextEditor
                         ref={editorRef}
                         content={content}
                         onChange={setContent}
@@ -636,7 +658,7 @@ export default function CreatePage() {
                       [&::-webkit-scrollbar-thumb]:bg-outline-variant/30
                       [&::-webkit-scrollbar-thumb]:rounded-full"
                   >
-                    <RichTextEditor
+                    <LazyRichTextEditor
                       ref={editorRef}
                       content={content}
                       onChange={setContent}
@@ -705,13 +727,22 @@ export default function CreatePage() {
         <div className="h-6" />
       </div>
       {/* Chapter Manager Modal */}
-      <ChapterManager
-        isOpen={showChapterManager}
-        onClose={() => setShowChapterManager(false)}
-        noteId={isEditMode ? editingId : undefined}
-        onChapterDeleted={handleChapterDeleted}
-      />
+      {showChapterManager && (
+        <ChapterManager
+          isOpen={showChapterManager}
+          onClose={() => setShowChapterManager(false)}
+          noteId={isEditMode ? editingId : undefined}
+          onChapterDeleted={handleChapterDeleted}
+        />
+      )}
     </main>
+  );
+}
+
+export default function CreatePage() {
+  return (
+    <AdminGate>
+      <CreateEditorPage />
     </AdminGate>
   );
 }

@@ -42,6 +42,27 @@ type UseNoteEditorRouteResult = {
   loadError: string | null;
 };
 
+const EDIT_NOTE_LOAD_TIMEOUT_MS = 15000;
+
+function withLoadTimeout<T>(promise: Promise<T>): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = window.setTimeout(() => {
+      reject(new Error("编辑数据加载超时，请检查网络后重试"));
+    }, EDIT_NOTE_LOAD_TIMEOUT_MS);
+
+    promise.then(
+      (value) => {
+        window.clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        window.clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
+}
+
 function draftFromImport(importDraft: ImportDraft): NoteEditorDraft {
   const visibleTags = splitMath3PracticeTags(importDraft.tags).visibleTags;
 
@@ -81,7 +102,7 @@ export function useNoteEditorRoute({
       setIsLoadingExistingNote(true);
       setLoadError(null);
 
-      notesApi.getById(editId).then((existingNote) => {
+      withLoadTimeout(notesApi.getEditableById(editId)).then((existingNote) => {
         if (cancelled) return;
         if (existingNote) {
           const visibleTags = splitMath3PracticeTags(existingNote.tags).visibleTags;
