@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useLayoutEffect, useRef, type CSSProperties } from 'react';
+import { createPortal } from 'react-dom';
 import { ChevronDown, Layers } from 'lucide-react';
 import type { Chapter } from '@/lib/types';
 import { chaptersApi } from '@/lib/chapters-api';
@@ -14,9 +15,15 @@ interface ChapterSelectorProps {
   placement?: 'top' | 'bottom';
 }
 
+const DROPDOWN_MAX_HEIGHT = 300;
+const DROPDOWN_MIN_HEIGHT = 140;
+const DROPDOWN_MARGIN = 10;
+
 export function ChapterSelector({ noteId, value, onChange, className = '', placement = 'bottom' }: ChapterSelectorProps) {
   const [chapters, setChapters] = useState<Chapter[]>([]);
   const [isOpen, setIsOpen] = useState(false);
+  const [dropdownStyle, setDropdownStyle] = useState<CSSProperties>({});
+  const buttonRef = useRef<HTMLButtonElement>(null);
 
   const loadChapters = useCallback(async () => {
     try {
@@ -34,11 +41,57 @@ export function ChapterSelector({ noteId, value, onChange, className = '', place
 
   const selected = chapters.find(c => c.id === value);
   const topLevel = getRootChapters(chapters);
-  const dropdownPlacementClass = placement === 'top' ? 'bottom-full mb-1' : 'top-full mt-1';
   const getChildren = useCallback(
     (parentId: string) => getChildChapters(chapters, parentId),
     [chapters],
   );
+
+  const updateDropdownPosition = useCallback(() => {
+    if (!buttonRef.current || typeof window === 'undefined') return;
+
+    const rect = buttonRef.current.getBoundingClientRect();
+    const availableAbove = rect.top - DROPDOWN_MARGIN;
+    const availableBelow = window.innerHeight - rect.bottom - DROPDOWN_MARGIN;
+    const shouldOpenTop = placement === 'top'
+      ? availableAbove > DROPDOWN_MIN_HEIGHT || availableAbove > availableBelow
+      : availableBelow < DROPDOWN_MIN_HEIGHT && availableAbove > availableBelow;
+    const availableSpace = shouldOpenTop ? availableAbove : availableBelow;
+    const maxHeight = Math.max(
+      DROPDOWN_MIN_HEIGHT,
+      Math.min(DROPDOWN_MAX_HEIGHT, availableSpace - 6),
+    );
+    const top = shouldOpenTop
+      ? Math.max(DROPDOWN_MARGIN, rect.top - maxHeight - 6)
+      : Math.min(window.innerHeight - DROPDOWN_MARGIN - DROPDOWN_MIN_HEIGHT, rect.bottom + 6);
+    const left = Math.min(
+      Math.max(DROPDOWN_MARGIN, rect.left),
+      Math.max(DROPDOWN_MARGIN, window.innerWidth - rect.width - DROPDOWN_MARGIN),
+    );
+
+    setDropdownStyle({
+      left,
+      maxHeight,
+      position: 'fixed',
+      top,
+      width: rect.width,
+    });
+  }, [placement]);
+
+  useLayoutEffect(() => {
+    if (isOpen) updateDropdownPosition();
+  }, [isOpen, updateDropdownPosition]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    window.addEventListener('resize', updateDropdownPosition);
+    window.addEventListener('scroll', updateDropdownPosition, true);
+
+    return () => {
+      window.removeEventListener('resize', updateDropdownPosition);
+      window.removeEventListener('scroll', updateDropdownPosition, true);
+    };
+  }, [isOpen, updateDropdownPosition]);
 
   const handleSelect = (chapterId: string) => {
     onChange(chapterId === value ? undefined : chapterId);
@@ -53,8 +106,10 @@ export function ChapterSelector({ noteId, value, onChange, className = '', place
   return (
     <div className={`relative ${className}`}>
       <button
+        ref={buttonRef}
         type="button"
         onClick={() => setIsOpen(!isOpen)}
+        aria-expanded={isOpen}
         className="field-control flex h-10 w-full items-center justify-between px-3 text-sm text-on-surface-variant hover:bg-surface-container-lowest"
       >
         <span className="flex items-center gap-2 truncate">
@@ -66,10 +121,10 @@ export function ChapterSelector({ noteId, value, onChange, className = '', place
         <ChevronDown className={`w-4 h-4 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
       </button>
 
-      {isOpen && (
+      {isOpen && typeof document !== 'undefined' && createPortal(
         <>
-          <div className="fixed inset-0 z-10" onClick={() => setIsOpen(false)} />
-          <div className={`surface-panel absolute ${dropdownPlacementClass} left-0 right-0 z-20 max-h-60 overflow-y-auto py-1`}>
+          <div className="fixed inset-0 z-[110]" onClick={() => setIsOpen(false)} />
+          <div className="surface-panel fixed z-[120] overflow-y-auto py-1 shadow-elevated" style={dropdownStyle}>
             <button
               type="button"
               onClick={handleClear}
@@ -89,7 +144,8 @@ export function ChapterSelector({ noteId, value, onChange, className = '', place
               />
             ))}
           </div>
-        </>
+        </>,
+        document.body,
       )}
     </div>
   );

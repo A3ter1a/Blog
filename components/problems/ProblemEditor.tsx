@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useEffect, useMemo, type ReactNode } from "react";
+import { useState, useEffect, useLayoutEffect, useMemo, useRef, useCallback, type CSSProperties, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { motion, AnimatePresence, Reorder, useDragControls } from "framer-motion";
-import { AlertCircle, Plus, X, ChevronDown, ChevronUp, GripVertical, Sparkles, Scan, Copy, Trash2, Wrench, Tags, Loader2, FolderTree, CheckSquare, SlidersHorizontal } from "lucide-react";
+import { AlertCircle, Plus, X, ChevronDown, ChevronUp, GripVertical, Sparkles, Scan, Copy, Trash2, Wrench, Tags, Loader2, FolderTree, CheckSquare, SlidersHorizontal, Layers } from "lucide-react";
 import { Problem, ProblemType, Difficulty, Subject, problemTypeMap, difficultyMap, difficultyColorMap } from "@/lib/types";
 import { chaptersApi } from "@/lib/chapters-api";
 import { ChapterSelector } from "@/components/chapters/ChapterSelector";
@@ -76,6 +77,10 @@ function chunkArray<T>(items: T[], size: number): T[][] {
   }
   return chunks;
 }
+
+const FLOATING_DROPDOWN_MAX_HEIGHT = 360;
+const FLOATING_DROPDOWN_MIN_HEIGHT = 150;
+const FLOATING_DROPDOWN_MARGIN = 10;
 
 export function ProblemEditor({ problems, onChange, noteId, subject, hasUnsavedChanges = false }: ProblemEditorProps) {
   const toast = useToast();
@@ -793,15 +798,12 @@ export function ProblemEditor({ problems, onChange, noteId, subject, hasUnsavedC
         isOpen={selectedProblemIdsInList.length > 0}
         selectedCount={selectedProblemIdsInList.length}
         totalCount={problems.length}
-        allSelected={allVisibleProblemsSelected}
-        visibleCount={visibleProblems.length}
         noteId={noteId}
         selectedEditorChapterId={selectedEditorChapterId}
         showMath3Tools={showMath3Assignment}
         selectedMath3ChapterId={selectedMath3ChapterId}
         selectedMath3Chapter={selectedMath3Chapter}
         isClassifying={isClassifyingMath3Points}
-        onToggleAll={toggleAllProblemSelection}
         onClearSelection={clearSelectedProblemSelection}
         onChangeEditorChapter={setSelectedEditorChapterId}
         onApplyEditorChapter={applyEditorChapterToSelected}
@@ -970,21 +972,10 @@ function ProblemOrganizerPanel({
             </div>
 
             <div className="grid gap-2 md:grid-cols-[260px_minmax(0,1fr)]">
-              <select
+              <Math3ChapterDropdown
                 value={selectedMath3ChapterId}
-                onChange={(event) => onChangeMath3Chapter(event.target.value)}
-                className="field-control h-10 w-full px-3 text-sm"
-              >
-                {math3KnowledgeAreas.map((area) => (
-                  <optgroup key={area.id} label={area.title}>
-                    {area.chapters.map((chapter) => (
-                      <option key={chapter.id} value={chapter.id}>
-                        {chapter.title}
-                      </option>
-                    ))}
-                  </optgroup>
-                ))}
-              </select>
+                onChange={onChangeMath3Chapter}
+              />
               <div className="flex min-w-0 flex-wrap gap-1.5 overflow-hidden">
                 {selectedMath3Chapter?.chapter.points.slice(0, 5).map((pointItem) => (
                   <span key={pointItem.id} className="tag-chip px-2 py-0.5 text-xs">
@@ -1005,19 +996,150 @@ function ProblemOrganizerPanel({
   );
 }
 
+function Math3ChapterDropdown({
+  value,
+  onChange,
+  disabled = false,
+  className = "",
+  placement = "bottom",
+}: {
+  value: string;
+  onChange: (chapterId: string) => void;
+  disabled?: boolean;
+  className?: string;
+  placement?: "top" | "bottom";
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [dropdownStyle, setDropdownStyle] = useState<CSSProperties>({});
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const selected = getMath3ChapterById(value);
+
+  const updateDropdownPosition = useCallback(() => {
+    if (!buttonRef.current || typeof window === "undefined") return;
+
+    const rect = buttonRef.current.getBoundingClientRect();
+    const availableAbove = rect.top - FLOATING_DROPDOWN_MARGIN;
+    const availableBelow = window.innerHeight - rect.bottom - FLOATING_DROPDOWN_MARGIN;
+    const shouldOpenTop = placement === "top"
+      ? availableAbove > FLOATING_DROPDOWN_MIN_HEIGHT || availableAbove > availableBelow
+      : availableBelow < FLOATING_DROPDOWN_MIN_HEIGHT && availableAbove > availableBelow;
+    const availableSpace = shouldOpenTop ? availableAbove : availableBelow;
+    const maxHeight = Math.max(
+      FLOATING_DROPDOWN_MIN_HEIGHT,
+      Math.min(FLOATING_DROPDOWN_MAX_HEIGHT, availableSpace - 6),
+    );
+    const top = shouldOpenTop
+      ? Math.max(FLOATING_DROPDOWN_MARGIN, rect.top - maxHeight - 6)
+      : Math.min(window.innerHeight - FLOATING_DROPDOWN_MARGIN - FLOATING_DROPDOWN_MIN_HEIGHT, rect.bottom + 6);
+    const left = Math.min(
+      Math.max(FLOATING_DROPDOWN_MARGIN, rect.left),
+      Math.max(FLOATING_DROPDOWN_MARGIN, window.innerWidth - rect.width - FLOATING_DROPDOWN_MARGIN),
+    );
+
+    setDropdownStyle({
+      left,
+      maxHeight,
+      position: "fixed",
+      top,
+      width: rect.width,
+    });
+  }, [placement]);
+
+  useLayoutEffect(() => {
+    if (isOpen) updateDropdownPosition();
+  }, [isOpen, updateDropdownPosition]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    window.addEventListener("resize", updateDropdownPosition);
+    window.addEventListener("scroll", updateDropdownPosition, true);
+
+    return () => {
+      window.removeEventListener("resize", updateDropdownPosition);
+      window.removeEventListener("scroll", updateDropdownPosition, true);
+    };
+  }, [isOpen, updateDropdownPosition]);
+
+  useEffect(() => {
+    if (disabled) setIsOpen(false);
+  }, [disabled]);
+
+  const handleSelect = (chapterId: string) => {
+    onChange(chapterId);
+    setIsOpen(false);
+  };
+
+  return (
+    <div className={`relative min-w-0 ${className}`}>
+      <button
+        ref={buttonRef}
+        type="button"
+        onClick={() => {
+          if (!disabled) setIsOpen((current) => !current);
+        }}
+        disabled={disabled}
+        aria-expanded={isOpen}
+        className="field-control flex h-10 w-full min-w-0 items-center justify-between px-3 text-sm text-on-surface-variant hover:bg-surface-container-lowest disabled:opacity-40"
+      >
+        <span className="flex min-w-0 items-center gap-2">
+          <Layers className="h-3.5 w-3.5 flex-shrink-0" />
+          <span className="truncate font-medium text-on-surface">
+            {selected?.chapter.title ?? "选择数三章节"}
+          </span>
+        </span>
+        <ChevronDown className={`h-4 w-4 flex-shrink-0 transition-transform ${isOpen ? "rotate-180" : ""}`} />
+      </button>
+
+      {isOpen && typeof document !== "undefined" && createPortal(
+        <>
+          <div className="fixed inset-0 z-[130]" onClick={() => setIsOpen(false)} />
+          <div
+            className="surface-panel fixed z-[140] overflow-y-auto py-1 shadow-elevated"
+            style={dropdownStyle}
+          >
+            {math3KnowledgeAreas.map((area) => (
+              <div key={area.id}>
+                <div className="sticky top-0 border-y border-outline-variant/10 bg-surface-container-lowest px-3 py-1.5 text-xs font-bold text-on-surface">
+                  {area.title}
+                </div>
+                {area.chapters.map((chapter) => {
+                  const isSelected = chapter.id === value;
+
+                  return (
+                    <button
+                      key={chapter.id}
+                      type="button"
+                      onClick={() => handleSelect(chapter.id)}
+                      className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-surface-container-low ${
+                        isSelected ? "bg-primary/5 font-semibold text-primary" : "text-on-surface-variant"
+                      }`}
+                    >
+                      <Layers className="h-3.5 w-3.5 flex-shrink-0" />
+                      <span className="min-w-0 truncate">{chapter.title}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            ))}
+          </div>
+        </>,
+        document.body,
+      )}
+    </div>
+  );
+}
+
 function BulkProblemActionBar({
   isOpen,
   selectedCount,
   totalCount,
-  allSelected,
-  visibleCount,
   noteId,
   selectedEditorChapterId,
   showMath3Tools,
   selectedMath3ChapterId,
   selectedMath3Chapter,
   isClassifying,
-  onToggleAll,
   onClearSelection,
   onChangeEditorChapter,
   onApplyEditorChapter,
@@ -1030,15 +1152,12 @@ function BulkProblemActionBar({
   isOpen: boolean;
   selectedCount: number;
   totalCount: number;
-  allSelected: boolean;
-  visibleCount: number;
   noteId?: string;
   selectedEditorChapterId?: string;
   showMath3Tools: boolean;
   selectedMath3ChapterId: string;
   selectedMath3Chapter: ReturnType<typeof getMath3ChapterById>;
   isClassifying: boolean;
-  onToggleAll: () => void;
   onClearSelection: () => void;
   onChangeEditorChapter: (chapterId: string | undefined) => void;
   onApplyEditorChapter: () => void;
@@ -1073,11 +1192,12 @@ function BulkProblemActionBar({
                 </div>
                 <button
                   type="button"
-                  onClick={onToggleAll}
-                  disabled={visibleCount === 0 || isClassifying}
+                  onClick={onClearSelection}
+                  disabled={isClassifying}
                   className="control-button h-9 min-h-0 px-3 text-xs"
                 >
-                  {allSelected ? "取消当前显示" : "全选当前显示"}
+                  <X className="h-3.5 w-3.5" />
+                  取消勾选
                 </button>
                 <button
                   type="button"
@@ -1101,16 +1221,6 @@ function BulkProblemActionBar({
                   <Trash2 className="h-3.5 w-3.5" />
                   删除
                 </button>
-                <button
-                  type="button"
-                  onClick={onClearSelection}
-                  disabled={isClassifying}
-                  className="control-button h-9 min-h-0 w-9 p-0"
-                  title="取消选择"
-                  aria-label="取消选择"
-                >
-                  <X className="h-4 w-4" />
-                </button>
               </div>
             </div>
 
@@ -1131,7 +1241,6 @@ function BulkProblemActionBar({
                         value={selectedEditorChapterId}
                         onChange={onChangeEditorChapter}
                         className="w-full"
-                        placement="top"
                       />
                       <button
                         type="button"
@@ -1147,22 +1256,12 @@ function BulkProblemActionBar({
                     {showMath3Tools && (
                       <div className="surface-muted grid gap-2 p-2 md:grid-cols-[auto_minmax(0,1fr)_auto] md:items-center">
                         <div className="text-xs font-semibold text-on-surface-variant">数三归类</div>
-                        <select
+                        <Math3ChapterDropdown
                           value={selectedMath3ChapterId}
-                          onChange={(event) => onChangeMath3Chapter(event.target.value)}
+                          onChange={onChangeMath3Chapter}
                           disabled={isClassifying}
-                          className="field-control h-10 min-w-0 px-3 text-sm disabled:opacity-40"
-                        >
-                          {math3KnowledgeAreas.map((area) => (
-                            <optgroup key={area.id} label={area.title}>
-                              {area.chapters.map((chapter) => (
-                                <option key={chapter.id} value={chapter.id}>
-                                  {chapter.title}
-                                </option>
-                              ))}
-                            </optgroup>
-                          ))}
-                        </select>
+                          placement="top"
+                        />
                         <div className="flex flex-wrap items-center gap-2">
                           <button
                             type="button"
