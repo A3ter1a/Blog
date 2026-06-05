@@ -289,11 +289,36 @@ export default function CreatePage() {
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="mb-8"
+          className="sticky top-20 z-30 mb-6 rounded-lg border border-outline-variant/20 bg-surface/90 p-3 backdrop-blur-xl"
         >
-          <h1 className="text-3xl font-bold text-primary font-headline">
-            {isEditMode ? "编辑" : "创建新"}{typeMap[noteType]}
-          </h1>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
+              <p className="text-xs font-medium text-on-surface-variant">
+                {isEditMode ? "正在编辑" : "新建内容"} · {typeMap[noteType]}
+              </p>
+              <h1 className="truncate font-headline text-2xl font-bold text-on-surface">
+                {title.trim() || `${isEditMode ? "未命名" : "创建新"}${typeMap[noteType]}`}
+              </h1>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleClear}
+                disabled={isSaving}
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-outline-variant/30 px-3 text-sm font-medium text-on-surface-variant transition-colors hover:border-primary/40 hover:text-primary disabled:opacity-40"
+              >
+                <RotateCcw className="h-4 w-4" />
+                清空
+              </button>
+              <button
+                onClick={handleSave}
+                disabled={isSaving}
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-on-primary transition-colors hover:bg-primary/90 disabled:opacity-50"
+              >
+                {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                {isSaving ? "保存中" : isEditMode ? "更新" : "发布"}
+              </button>
+            </div>
+          </div>
         </motion.div>
 
         {/* Type Selector */}
@@ -301,19 +326,19 @@ export default function CreatePage() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
-          className="mb-8"
+          className="mb-4 rounded-lg border border-outline-variant/20 bg-surface-container-lowest p-4"
         >
-          <label className="block text-sm font-medium text-on-surface-variant mb-3">
+          <label className="mb-3 block text-sm font-medium text-on-surface-variant">
             类型
           </label>
-          <div className="flex gap-3">
+          <div className="grid gap-2 sm:grid-cols-3">
             {(["note", "problem", "essay"] as NoteType[]).map((type) => (
               <button
                 key={type}
                 onClick={() => setNoteType(type)}
-                className={`px-6 py-3 rounded-xl font-medium transition-all duration-300 ${
+                className={`h-10 rounded-lg px-4 text-sm font-medium transition-colors ${
                   noteType === type
-                    ? "editorial-gradient text-on-primary shadow-ambient"
+                    ? "bg-primary text-on-primary"
                     : "bg-surface-container-low text-on-surface-variant hover:bg-surface-container-high"
                 }`}
               >
@@ -328,7 +353,7 @@ export default function CreatePage() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.15 }}
-          className="mb-8"
+          className="mb-4"
         >
           <label className="block text-sm font-medium text-on-surface-variant mb-3">
             标题
@@ -347,7 +372,7 @@ export default function CreatePage() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.16 }}
-          className="mb-8"
+          className="mb-4 rounded-lg border border-outline-variant/20 bg-surface-container-lowest p-4"
         >
           <label className="block text-sm font-medium text-on-surface-variant mb-3">
             封面图片（可选）
@@ -410,7 +435,7 @@ export default function CreatePage() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2 }}
-          className="grid md:grid-cols-2 gap-6 mb-6"
+          className="mb-6 grid gap-4 rounded-lg border border-outline-variant/20 bg-surface-container-lowest p-4 md:grid-cols-2"
         >
           {/* Subject - Card Grid (hidden for essay) */}
           {!isEssay && (
@@ -418,15 +443,15 @@ export default function CreatePage() {
               <label className="block text-sm font-medium text-on-surface-variant mb-3">
                 科目
               </label>
-              <div className="grid grid-cols-4 gap-3">
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                 {(Object.keys(subjectMap) as Subject[]).map((key) => (
                   <button
                     key={key}
                     type="button"
                     onClick={() => setSubject(key)}
-                    className={`px-4 py-3 rounded-xl text-sm font-medium transition-all duration-300 ${
+                    className={`h-10 rounded-lg px-3 text-sm font-medium transition-colors ${
                       subject === key
-                        ? "editorial-gradient text-on-primary shadow-ambient"
+                        ? "bg-primary text-on-primary"
                         : "bg-surface-container-low text-on-surface-variant hover:bg-surface-container-high"
                     }`}
                   >
@@ -707,30 +732,7 @@ export default function CreatePage() {
           </motion.div>
         )}
 
-        {/* Action Buttons */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3 }}
-          className="flex gap-4 justify-end"
-        >
-          <button
-            onClick={handleClear}
-            disabled={isSaving}
-            className="px-6 py-3 rounded-xl bg-surface-container-low text-on-surface-variant hover:bg-surface-container-high transition-all duration-300 flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            <RotateCcw className="w-4 h-4" />
-            清空
-          </button>
-          <button
-            onClick={handleSave}
-            disabled={isSaving}
-            className="px-8 py-3 rounded-xl editorial-gradient text-on-primary font-medium hover:opacity-90 active:scale-[0.98] transition-all duration-300 shadow-elevated shadow-primary/10 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-            {isSaving ? "保存中" : isEditMode ? "更新" : "发布"}
-          </button>
-        </motion.div>
+        <div className="h-6" />
       </div>
       {/* Formula Fixer Dialog */}
       <FormulaFixer

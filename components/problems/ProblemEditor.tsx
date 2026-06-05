@@ -400,21 +400,40 @@ export function ProblemEditor({ problems, onChange, noteId, subject, hasUnsavedC
   return (
     <div className={`space-y-4 ${selectedProblemIdsInList.length > 0 ? "pb-28" : ""}`}>
       {/* Toolbar */}
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
+      <div className="rounded-lg border border-outline-variant/20 bg-surface-container-lowest p-3">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div>
+            <h3 className="text-sm font-semibold text-on-surface">题集编辑</h3>
+            <p className="mt-0.5 text-xs text-on-surface-variant">
+              共 {problems.length} 道题
+              {selectedProblemIdsInList.length > 0 ? `，已选 ${selectedProblemIdsInList.length} 道` : ""}
+              {showMath3Assignment ? `，未归数三章节 ${unassignedMath3ProblemIds.length} 道` : ""}
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={() => setShowAIScan(true)}
-            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium
-              bg-gradient-to-r from-violet-500/10 to-primary/10 border border-violet-200/20
-              text-primary hover:border-violet-300/40 transition-all"
+            className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-primary/20 bg-primary/5 px-3 text-xs font-medium text-primary transition-colors hover:border-primary/40 hover:bg-primary/10"
           >
-            <Scan className="w-3.5 h-3.5" />
+            <Scan className="h-3.5 w-3.5" />
             AI 扫描
           </button>
+          <button
+            type="button"
+            onClick={() => {
+              setShowAddForm((value) => !value);
+              setNewProblemError(null);
+            }}
+            className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-primary px-3 text-xs font-semibold text-on-primary transition-colors hover:bg-primary/90"
+          >
+            {showAddForm ? <ChevronUp className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
+            {showAddForm ? "收起新增" : "新增题目"}
+          </button>
+          </div>
         </div>
         {hasUnsavedChanges && (
-          <div className="inline-flex items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs text-amber-700">
-            <AlertCircle className="w-3.5 h-3.5" />
+          <div className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs text-amber-700">
+            <AlertCircle className="h-3.5 w-3.5" />
             题目修改未更新
           </div>
         )}
@@ -664,7 +683,7 @@ export function ProblemEditor({ problems, onChange, noteId, subject, hasUnsavedC
       </AnimatePresence>
 
       {/* Add Button */}
-      {!showAddForm && (
+      {!showAddForm && problems.length === 0 && (
         <button
           onClick={() => {
             setShowAddForm(true);
@@ -784,100 +803,106 @@ function BulkProblemActionBar({
           transition={{ duration: 0.18 }}
           className="fixed inset-x-0 bottom-4 z-50 px-3 sm:px-6 pointer-events-none"
         >
-          <div className="pointer-events-auto mx-auto max-w-6xl rounded-xl border border-outline-variant/20 bg-surface-container-lowest/95 p-3 shadow-elevated backdrop-blur">
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
-              <div className="flex items-center gap-2 text-sm font-medium text-on-surface">
-                <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                  <CheckSquare className="h-4 w-4" />
-                </span>
-                <span>已选 {selectedCount} 道题</span>
-                <span className="hidden text-xs text-on-surface-variant sm:inline">
+          <div className="pointer-events-auto mx-auto max-w-6xl rounded-lg border border-outline-variant/20 bg-surface-container-lowest/95 p-3 shadow-elevated backdrop-blur">
+            <div className="grid gap-3 lg:grid-cols-[170px_minmax(0,1fr)_auto] lg:items-stretch">
+              <div className="rounded-md bg-surface-container-low px-3 py-2">
+                <div className="flex items-center gap-2 text-sm font-semibold text-on-surface">
+                  <CheckSquare className="h-4 w-4 text-primary" />
+                  已选 {selectedCount} 道
+                </div>
+                <div className="mt-1 text-xs text-on-surface-variant">
                   当前显示 {visibleCount}/{totalCount}
-                </span>
+                </div>
               </div>
 
-              <div className="grid min-w-0 flex-1 gap-2 md:grid-cols-[minmax(180px,1fr)_auto] lg:grid-cols-[minmax(190px,1fr)_auto_minmax(220px,1fr)_auto]">
-                <div className="min-w-0">
-                  <ChapterSelector
-                    noteId={noteId}
-                    value={selectedEditorChapterId}
-                    onChange={onChangeEditorChapter}
-                    className="w-full"
-                  />
+              <div className="grid min-w-0 gap-2 xl:grid-cols-2">
+                <div className="rounded-md border border-outline-variant/15 p-2">
+                  <div className="mb-2 text-xs font-medium text-on-surface-variant">题集章节</div>
+                  <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_auto]">
+                    <ChapterSelector
+                      noteId={noteId}
+                      value={selectedEditorChapterId}
+                      onChange={onChangeEditorChapter}
+                      className="w-full"
+                    />
+                    <button
+                      type="button"
+                      onClick={onApplyEditorChapter}
+                      disabled={!selectedEditorChapterId || isClassifying}
+                      className="inline-flex h-10 items-center justify-center gap-1.5 rounded-lg border border-outline-variant/30 px-3 text-xs font-medium text-on-surface-variant transition-colors hover:border-primary/40 hover:text-primary disabled:opacity-40"
+                    >
+                      <FolderTree className="h-3.5 w-3.5" />
+                      应用
+                    </button>
+                  </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={onApplyEditorChapter}
-                  disabled={!selectedEditorChapterId || isClassifying}
-                  className="inline-flex h-10 items-center justify-center gap-1.5 rounded-lg border border-outline-variant/30 px-3 text-xs font-medium text-on-surface-variant transition-colors hover:border-primary/40 hover:text-primary disabled:opacity-40"
-                >
-                  <FolderTree className="h-3.5 w-3.5" />
-                  应用题集章节
-                </button>
 
                 {showMath3Tools && (
-                  <>
-                    <select
-                      value={selectedMath3ChapterId}
-                      onChange={(event) => onChangeMath3Chapter(event.target.value)}
-                      disabled={isClassifying}
-                      className="h-10 min-w-0 rounded-lg border border-outline-variant/30 bg-surface-container-lowest px-3 text-sm text-on-surface outline-none transition-colors focus:border-primary/50 disabled:opacity-40"
-                    >
-                      {math3KnowledgeAreas.map((area) => (
-                        <optgroup key={area.id} label={area.title}>
-                          {area.chapters.map((chapter) => (
-                            <option key={chapter.id} value={chapter.id}>
-                              {chapter.title}
-                            </option>
-                          ))}
-                        </optgroup>
-                      ))}
-                    </select>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={onApplyMath3Chapter}
-                        disabled={!selectedMath3Chapter || isClassifying}
-                        className="inline-flex h-10 items-center justify-center rounded-lg border border-primary/30 px-3 text-xs font-medium text-primary transition-colors hover:bg-primary/10 disabled:opacity-40"
-                      >
-                        归入数三章节
-                      </button>
-                      <button
-                        type="button"
-                        onClick={onClassifyKnowledge}
-                        disabled={!selectedMath3Chapter || isClassifying}
-                        className="inline-flex h-10 items-center justify-center rounded-lg bg-primary px-3 text-xs font-medium text-on-primary transition-colors hover:bg-primary/90 disabled:opacity-40"
-                      >
-                        {isClassifying ? (
-                          <span className="inline-flex items-center gap-1.5">
-                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                            AI 标记中
-                          </span>
-                        ) : (
-                          "AI 标记"
-                        )}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={onClearMath3Knowledge}
+                  <div className="rounded-md border border-outline-variant/15 p-2">
+                    <div className="mb-2 text-xs font-medium text-on-surface-variant">数三归类</div>
+                    <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_auto]">
+                      <select
+                        value={selectedMath3ChapterId}
+                        onChange={(event) => onChangeMath3Chapter(event.target.value)}
                         disabled={isClassifying}
-                        className="inline-flex h-10 items-center justify-center rounded-lg border border-outline-variant/30 px-3 text-xs font-medium text-on-surface-variant transition-colors hover:border-red-300 hover:text-red-600 disabled:opacity-40"
+                        className="h-10 min-w-0 rounded-lg border border-outline-variant/30 bg-surface-container-lowest px-3 text-sm text-on-surface outline-none transition-colors focus:border-primary/50 disabled:opacity-40"
                       >
-                        清除归属
-                      </button>
+                        {math3KnowledgeAreas.map((area) => (
+                          <optgroup key={area.id} label={area.title}>
+                            {area.chapters.map((chapter) => (
+                              <option key={chapter.id} value={chapter.id}>
+                                {chapter.title}
+                              </option>
+                            ))}
+                          </optgroup>
+                        ))}
+                      </select>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={onApplyMath3Chapter}
+                          disabled={!selectedMath3Chapter || isClassifying}
+                          className="inline-flex h-10 items-center justify-center rounded-lg border border-primary/30 px-3 text-xs font-medium text-primary transition-colors hover:bg-primary/10 disabled:opacity-40"
+                        >
+                          归章
+                        </button>
+                        <button
+                          type="button"
+                          onClick={onClassifyKnowledge}
+                          disabled={!selectedMath3Chapter || isClassifying}
+                          className="inline-flex h-10 items-center justify-center rounded-lg bg-primary px-3 text-xs font-medium text-on-primary transition-colors hover:bg-primary/90 disabled:opacity-40"
+                        >
+                          {isClassifying ? (
+                            <span className="inline-flex items-center gap-1.5">
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              标记中
+                            </span>
+                          ) : (
+                            "AI 标记"
+                          )}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={onClearMath3Knowledge}
+                          disabled={isClassifying}
+                          className="inline-flex h-10 items-center justify-center rounded-lg border border-outline-variant/30 px-3 text-xs font-medium text-on-surface-variant transition-colors hover:border-red-300 hover:text-red-600 disabled:opacity-40"
+                        >
+                          清除
+                        </button>
+                      </div>
                     </div>
-                  </>
+                  </div>
                 )}
               </div>
 
-              <div className="flex flex-wrap items-center justify-end gap-2">
+              <div className="flex flex-wrap items-center justify-end gap-2 lg:flex-col">
                 <button
                   type="button"
                   onClick={onToggleAll}
                   disabled={visibleCount === 0 || isClassifying}
                   className="inline-flex h-10 items-center justify-center rounded-lg border border-outline-variant/30 px-3 text-xs font-medium text-on-surface-variant transition-colors hover:border-primary/40 hover:text-primary disabled:opacity-40"
                 >
-                  {allSelected ? "取消当前显示" : "全选当前显示"}
+                  {allSelected ? "取消当前" : "全选当前"}
                 </button>
                 <button
                   type="button"
@@ -935,15 +960,15 @@ function Math3AssignmentPanel({
   const selectedChapter = getMath3ChapterById(selectedChapterId);
 
   return (
-    <section className="rounded-xl border border-primary/15 bg-primary/5 p-4">
+    <section className="rounded-lg border border-outline-variant/20 bg-surface-container-lowest p-4">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
         <div>
-          <div className="inline-flex items-center gap-2 text-sm font-semibold text-primary">
+          <div className="inline-flex items-center gap-2 text-sm font-semibold text-on-surface">
             <Tags className="h-4 w-4" />
             数三章节归类
           </div>
           <p className="mt-1 text-xs leading-5 text-on-surface-variant">
-            先把题目放入大纲章节；细知识点由 AI 在本章范围内标记，只作为复盘参考，不再拆分刷题队列。
+            先分到大纲章节，再用 AI 标知识点；知识点只用于复盘标签，不作为刷题分类。
           </p>
         </div>
 
@@ -979,7 +1004,7 @@ function Math3AssignmentPanel({
         </div>
       </div>
 
-      <div className="mt-4 grid gap-3 lg:grid-cols-[260px_1fr]">
+      <div className="mt-4 grid gap-3 lg:grid-cols-[260px_minmax(0,1fr)]">
         <div>
           <label className="mb-1 block text-xs font-medium text-on-surface-variant">大纲章节</label>
           <select
@@ -1005,13 +1030,13 @@ function Math3AssignmentPanel({
             <span className="text-xs text-on-surface-variant">人工只审核结果</span>
           </div>
 
-          <div className="max-h-36 overflow-y-auto rounded-lg bg-surface-container-lowest p-2">
+          <div className="max-h-28 overflow-y-auto rounded-lg bg-surface-container-low p-2">
             {selectedChapter ? (
               <div className="flex flex-wrap gap-2">
                 {selectedChapter.chapter.points.map((pointItem) => (
                   <span
                     key={pointItem.id}
-                    className="rounded-full border border-outline-variant/30 px-2.5 py-1 text-xs text-on-surface-variant"
+                    className="rounded-md border border-outline-variant/25 bg-surface-container-lowest px-2.5 py-1 text-xs text-on-surface-variant"
                   >
                     {pointItem.title}
                   </span>
@@ -1024,14 +1049,16 @@ function Math3AssignmentPanel({
         </div>
       </div>
 
-      <div className="mt-4 flex flex-wrap items-center justify-end gap-2">
-        <span className="mr-auto text-xs text-on-surface-variant">
-          已选 {selectedCount} 道题
-          {onlyUnassigned ? `，当前只显示未归章节 ${visibleCount} 道` : ""}
-        </span>
-        <span className="text-xs text-on-surface-variant">
-          勾选题目后在底部批量操作栏处理分类、AI 标记和删除。
-        </span>
+      <div className="mt-4 grid gap-2 text-xs text-on-surface-variant sm:grid-cols-3">
+        <div className="rounded-md bg-surface-container-low px-3 py-2">
+          <span className="font-semibold text-on-surface">{selectedCount}</span> 道已选
+        </div>
+        <div className="rounded-md bg-surface-container-low px-3 py-2">
+          <span className="font-semibold text-on-surface">{unassignedCount}</span> 道未归章节
+        </div>
+        <div className="rounded-md bg-surface-container-low px-3 py-2">
+          当前显示 {visibleCount}/{totalCount}
+        </div>
       </div>
     </section>
   );
@@ -1084,7 +1111,11 @@ function ProblemCard({
   };
 
   return (
-    <div className="bg-surface-container-low rounded-xl overflow-hidden group">
+    <div className={`overflow-hidden rounded-lg border transition-colors group ${
+      selected
+        ? "border-primary/40 bg-primary/5"
+        : "border-outline-variant/15 bg-surface-container-low"
+    }`}>
       <div className="flex items-center">
         {showSelectionTools && (
           <label
@@ -1121,13 +1152,13 @@ function ProblemCard({
               setExpanded(!expanded);
             }
           }}
-          className="flex-1 flex items-center justify-between pr-4 py-3 hover:bg-surface-container-high transition-colors"
+          className="flex min-w-0 flex-1 items-center justify-between gap-3 py-3 pr-4 transition-colors hover:bg-surface-container-high"
         >
-          <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
             <span className="w-7 h-7 rounded-full editorial-gradient text-on-primary text-xs font-bold flex items-center justify-center flex-shrink-0">
               {index + 1}
             </span>
-            <span className="min-w-[160px] flex-1 text-sm font-medium text-on-surface line-clamp-1">
+            <span className="min-w-0 flex-[1_1_220px] text-sm font-medium text-on-surface line-clamp-1">
               {problem.question || '(无题目内容)'}
             </span>
             <span className="px-2 py-0.5 rounded bg-primary-container/20 text-primary-container text-xs font-medium whitespace-nowrap">
@@ -1176,10 +1207,10 @@ function ProblemCard({
               )
             )}
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex shrink-0 items-center gap-1">
             <button
               onClick={(e) => { e.stopPropagation(); onRemove(); }}
-              className="p-1 rounded hover:bg-surface-container-highest transition-colors"
+              className="rounded p-1 transition-colors hover:bg-surface-container-highest"
               title="删除题目"
             >
               <Trash2 className="w-4 h-4 text-on-surface-variant/40 hover:text-red-500" />

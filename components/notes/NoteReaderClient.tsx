@@ -141,6 +141,10 @@ export function NoteReaderClient({
     return groups.length > 1 ? groups : null;
   }, [allProblems, chapters, selectedChapterId]);
   const visibleTags = useMemo(() => getVisibleNoteTags(note?.tags ?? []), [note?.tags]);
+  const unassignedProblemCount = useMemo(
+    () => allProblems.filter((problem) => !problem.chapterId).length,
+    [allProblems],
+  );
 
   const handleDelete = async () => {
     if (!isAdmin || isDeletingNote) return;
@@ -225,33 +229,55 @@ export function NoteReaderClient({
   const isEssay = note.type === "essay";
 
   return (
-    <main className="pt-24 pb-20 min-h-screen">
+    <main className="min-h-screen pb-20 pt-20">
       {/* Reading Progress Bar */}
       {preferences.showProgressBar && <ReadingProgress />}
 
       {/* Top Bar with Breadcrumb and Immersive Mode Button */}
-      <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
-        <Link
-          href="/notes"
-          className="inline-flex items-center gap-2 text-on-surface-variant hover:text-primary transition-colors duration-300"
-        >
-          <ArrowLeft className="w-4 h-4" />
-          返回笔记列表
-        </Link>
-        
-        {/* Immersive Reading Button - Only for notes and essays */}
-        {!isProblem && (
-          <motion.button
-            initial={{ opacity: 0, scale: 0.8 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ delay: 0.2 }}
-            onClick={() => setIsImmersiveMode(true)}
-            className="p-2.5 rounded-xl bg-surface-container-low text-on-surface-variant hover:bg-primary/10 hover:text-primary transition-all duration-300 shadow-ambient"
-            title="沉浸阅读模式"
+      <div className="sticky top-16 z-30 border-b border-outline-variant/20 bg-surface/90 backdrop-blur-xl">
+        <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-3 sm:px-6">
+          <Link
+            href="/notes"
+            className="inline-flex h-9 items-center gap-2 rounded-lg px-2 text-sm text-on-surface-variant transition-colors hover:bg-surface-container-high hover:text-primary"
           >
-            <BookMarked className="w-5 h-5" />
-          </motion.button>
-        )}
+            <ArrowLeft className="h-4 w-4" />
+            返回
+          </Link>
+
+          <div className="flex items-center gap-2">
+            {/* Immersive Reading Button - Only for notes and essays */}
+            {!isProblem && (
+              <button
+                onClick={() => setIsImmersiveMode(true)}
+                className="inline-flex h-9 items-center gap-2 rounded-lg border border-outline-variant/25 bg-surface-container-lowest px-3 text-sm font-medium text-on-surface-variant transition-colors hover:border-primary/35 hover:text-primary"
+                title="沉浸阅读模式"
+              >
+                <BookMarked className="h-4 w-4" />
+                <span className="hidden sm:inline">沉浸</span>
+              </button>
+            )}
+            {isAdmin && (
+              <>
+                <Link
+                  href={`/create?edit=${note.id}`}
+                  className="inline-flex h-9 items-center gap-2 rounded-lg border border-outline-variant/25 bg-surface-container-lowest px-3 text-sm font-medium text-on-surface-variant transition-colors hover:border-primary/35 hover:text-primary"
+                >
+                  <Edit2 className="h-4 w-4" />
+                  编辑
+                </Link>
+                <button
+                  onClick={() => setShowDeleteConfirm(true)}
+                  disabled={isDeletingNote}
+                  className="inline-flex h-9 items-center justify-center rounded-lg border border-red-200 px-3 text-sm font-medium text-red-600 transition-colors hover:bg-red-50 disabled:opacity-40"
+                  title="删除笔记"
+                  aria-label="删除笔记"
+                >
+                  {isDeletingNote ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                </button>
+              </>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* Cover Image (Collapsible) */}
@@ -291,7 +317,7 @@ export function NoteReaderClient({
       )}
 
       {/* Main Layout: Content + Sidebar */}
-      <div className="max-w-7xl mx-auto px-6 grid grid-cols-1 lg:grid-cols-12 gap-8">
+      <div className="mx-auto grid max-w-7xl grid-cols-1 gap-8 px-4 sm:px-6 lg:grid-cols-12">
         {/* Article Content */}
         <div className={preferences.tocPosition === "hidden" ? "lg:col-span-12" : "lg:col-span-9"}>
           {/* Article Header */}
@@ -299,11 +325,11 @@ export function NoteReaderClient({
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5 }}
-            className="pb-6 border-l-2 border-primary-container pl-6"
+            className="border-b border-outline-variant/15 pb-6"
           >
-            <div className="flex items-center gap-3 mb-4">
+            <div className="mb-4 flex flex-wrap items-center gap-2">
               <span
-                className={`px-3 py-1 rounded-full text-xs font-medium ${
+                className={`rounded-md px-2.5 py-1 text-xs font-medium ${
                   isProblem
                     ? "bg-primary-container text-on-primary"
                     : isEssay
@@ -314,61 +340,50 @@ export function NoteReaderClient({
                 {typeMap[note.type]}
               </span>
               {note.subject && (
-                <span className="px-3 py-1 rounded-full text-xs font-medium bg-surface-container-low text-on-surface-variant">
+                <span className="rounded-md bg-surface-container-low px-2.5 py-1 text-xs font-medium text-on-surface-variant">
                   {subjectMap[note.subject]}
                 </span>
               )}
             </div>
 
-            <h1 className="text-3xl md:text-4xl font-bold text-on-surface mb-4 font-headline">
+            <h1 className="mb-4 font-headline text-3xl font-bold leading-tight text-on-surface md:text-4xl">
               {note.title}
             </h1>
 
-            <div className="flex items-center gap-6 text-sm text-on-surface-variant">
+            <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-on-surface-variant">
               <span className="flex items-center gap-2">
-                <Calendar className="w-4 h-4" />
+                <Calendar className="h-4 w-4" />
                 {note.createdAt.toLocaleDateString("zh-CN")}
               </span>
               {!isProblem && (
                 <span className="flex items-center gap-2">
-                  <Clock className="w-4 h-4" />
+                  <Clock className="h-4 w-4" />
                   预计阅读 {estimateReadingTime(note.content)} 分钟
                 </span>
               )}
-              <span className="flex items-center gap-2">
-                <Tag className="w-4 h-4" />
-                <div className="flex items-center gap-2 flex-wrap">
+              {visibleTags.length > 0 && (
+                <span className="flex items-center gap-2">
+                  <Tag className="h-4 w-4" />
+                  <div className="flex flex-wrap items-center gap-2">
                   {visibleTags.map((tag) => (
                     <span
                       key={tag}
-                      className="px-2 py-1 rounded-md bg-surface-container-high text-on-surface-variant text-xs"
+                      className="rounded-md bg-surface-container-high px-2 py-1 text-xs text-on-surface-variant"
                     >
                       {tag}
                     </span>
                   ))}
-                </div>
-              </span>
+                  </div>
+                </span>
+              )}
             </div>
 
-            {/* Action Buttons */}
-            {isAdmin && (
-            <div className="flex gap-3 mt-6 pt-6 border-t border-outline-variant/10">
-              <Link
-                href={`/create?edit=${note.id}`}
-                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-surface-container-high text-on-surface-variant hover:bg-surface-container-highest transition-colors duration-200 text-sm font-medium"
-              >
-                <Edit2 className="w-4 h-4" />
-                编辑
-              </Link>
-              <button
-                onClick={() => setShowDeleteConfirm(true)}
-                disabled={isDeletingNote}
-                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 transition-colors duration-200 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                {isDeletingNote ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
-                {isDeletingNote ? "删除中" : "删除"}
-              </button>
-            </div>
+            {isProblem && allProblems.length > 0 && (
+              <div className="mt-6 grid gap-2 border-t border-outline-variant/10 pt-4 sm:grid-cols-3">
+                <ReaderStat label="当前范围" value={`${filteredProblems.length} 题`} />
+                <ReaderStat label="章节" value={selectedChapter?.name ?? "全部章节"} />
+                <ReaderStat label="未归章节" value={`${unassignedProblemCount} 题`} />
+              </div>
             )}
           </motion.header>
 
@@ -447,7 +462,7 @@ export function NoteReaderClient({
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.2, duration: 0.5 }}
-            className="py-8"
+            className={`py-8 ${isProblem ? "" : "max-w-[78ch]"}`}
           >
             {isProblem && allProblems.length > 0 ? (
               <>
@@ -469,17 +484,15 @@ export function NoteReaderClient({
                   <div className="space-y-10">
                     {chapterGroups.map(group => (
                       <section key={group.chapter?.id || 'ungrouped'}>
-                        {group.chapter && (
-                          <div className="flex items-center gap-3 mb-4">
-                            <Layers className="w-5 h-5 text-primary" />
-                            <h3 className="text-lg font-bold text-on-surface font-headline">
-                              {group.chapter.name}
-                            </h3>
-                            <span className="text-xs text-on-surface-variant">
-                              {group.problems.length} 题
-                            </span>
-                          </div>
-                        )}
+                        <div className="mb-4 flex items-center gap-3 border-b border-outline-variant/10 pb-2">
+                          <Layers className="h-5 w-5 text-primary" />
+                          <h3 className="font-headline text-lg font-bold text-on-surface">
+                            {group.chapter?.name ?? "未归章节"}
+                          </h3>
+                          <span className="rounded-md bg-surface-container-low px-2 py-0.5 text-xs text-on-surface-variant">
+                            {group.problems.length} 题
+                          </span>
+                        </div>
                         <div className="space-y-6">
                           {group.problems.map((problem) => (
                             <ProblemCard
@@ -495,17 +508,23 @@ export function NoteReaderClient({
                     ))}
                   </div>
                 ) : (
-                  <div className="space-y-6">
-                    {filteredProblems.map((problem) => (
-                      <ProblemCard
-                        key={problem.id}
-                        problem={problem}
-                        index={allProblems.indexOf(problem)}
-                        noteId={note?.id}
-                        onUpdate={isAdmin ? handleUpdateProblem : undefined}
-                      />
-                    ))}
-                  </div>
+                  filteredProblems.length > 0 ? (
+                    <div className="space-y-6">
+                      {filteredProblems.map((problem) => (
+                        <ProblemCard
+                          key={problem.id}
+                          problem={problem}
+                          index={allProblems.indexOf(problem)}
+                          noteId={note?.id}
+                          onUpdate={isAdmin ? handleUpdateProblem : undefined}
+                        />
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="rounded-lg border border-dashed border-outline-variant/30 bg-surface-container-lowest px-4 py-12 text-center text-sm text-on-surface-variant">
+                      当前章节暂时没有题目。
+                    </div>
+                  )
                 )}
               </>
             ) : (
@@ -522,7 +541,7 @@ export function NoteReaderClient({
 
         {/* Sidebar: Video Player + TOC (hidden when TOC is hidden) */}
         {preferences.tocPosition !== "hidden" && (
-          <aside className="lg:col-span-3 space-y-6 min-w-[280px]">
+          <aside className="min-w-[280px] space-y-4 lg:col-span-3">
             <AnimatePresence>
               {note.videos && note.videos.length > 0 && (
                 <motion.section
@@ -530,7 +549,7 @@ export function NoteReaderClient({
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -20 }}
                   transition={{ delay: 0.3, duration: 0.5 }}
-                  className="lg:sticky lg:top-24 bg-surface-container-lowest rounded-xl p-4 shadow-ambient overscroll-contain"
+                  className="rounded-lg border border-outline-variant/20 bg-surface-container-lowest p-4 overscroll-contain lg:sticky lg:top-28"
                 >
                   <Playlist 
                     videos={note.videos} 
@@ -548,7 +567,7 @@ export function NoteReaderClient({
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -20 }}
                 transition={{ delay: 0.35, duration: 0.5 }}
-                className="lg:sticky lg:top-24 lg:max-h-[calc(100vh-7rem)] lg:flex lg:flex-col bg-surface-container-lowest rounded-xl p-4 shadow-ambient"
+                className="rounded-lg border border-outline-variant/20 bg-surface-container-lowest p-4 lg:sticky lg:top-28 lg:flex lg:max-h-[calc(100vh-8rem)] lg:flex-col"
               >
                 {isProblem && allProblems.length > 0 ? (
                   <div className="overflow-y-scroll flex-1 min-h-0 -mr-2 pr-2 space-y-4">
@@ -697,5 +716,14 @@ export function NoteReaderClient({
         )}
       </AnimatePresence>
     </main>
+  );
+}
+
+function ReaderStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg bg-surface-container-low px-3 py-2">
+      <div className="line-clamp-1 text-sm font-semibold text-on-surface">{value}</div>
+      <div className="text-xs text-on-surface-variant">{label}</div>
+    </div>
   );
 }

@@ -2,13 +2,14 @@
 
 import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import Link from "next/link";
 import { SearchBar } from "@/components/notes/SearchBar";
 import { TagFilter } from "@/components/notes/TagFilter";
 import { NoteCard } from "@/components/notes/NoteCard";
 import { ExportDialog } from "@/components/export/ExportDialog";
 import { notesApi } from "@/lib/supabase";
 import { NoteType, Subject, Note } from "@/lib/types";
-import { CheckSquare, Square, Download, X, Trash2, AlertTriangle, Loader2 } from "lucide-react";
+import { CheckSquare, Square, Download, X, Trash2, AlertTriangle, Loader2, Plus, LibraryBig } from "lucide-react";
 import { useAdminAuth } from "@/hooks/useAdminAuth";
 import { useToast } from "@/components/ui/Toast";
 import { getNotesCacheKey, readNotesCache, writeNotesCache } from "@/lib/notes-list-cache";
@@ -212,6 +213,29 @@ export function NotesClient({
     return result;
   }, [selectedType, selectedSubject, sortOrder, notes]);
 
+  const noteCounts = useMemo(() => {
+    return notes.reduce(
+      (counts, note) => {
+        counts.total += 1;
+        counts[note.type] += 1;
+        return counts;
+      },
+      { total: 0, note: 0, problem: 0, essay: 0 },
+    );
+  }, [notes]);
+
+  const hasActiveFilters = Boolean(searchQuery.trim())
+    || selectedType !== "all"
+    || selectedSubject !== "all"
+    || sortOrder !== "desc";
+
+  const handleResetFilters = () => {
+    setSearchQuery("");
+    setSelectedType("all");
+    setSelectedSubject("all");
+    setSortOrder("desc");
+  };
+
   const handleToggleSelect = (noteId: string) => {
     setSelectedNoteIds((prev) => {
       const next = new Set(prev);
@@ -295,33 +319,65 @@ export function NotesClient({
   };
 
   return (
-    <main className="pt-32 pb-20 px-6 min-h-screen">
-      <div className="max-w-7xl mx-auto">
-        {/* Header with Select Mode Toggle */}
-        <div className="flex items-center justify-between mb-6">
-          <h1 className="text-2xl font-bold text-on-surface font-headline">笔记列表</h1>
-          <button
-            hidden={!isAdmin}
-            onClick={() => {
-              setSelectMode(!selectMode);
-              setSelectedNoteIds(new Set());
-            }}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-              selectMode
-                ? "bg-primary text-on-primary"
-                : "bg-surface-container-high text-on-surface-variant hover:bg-surface-container-highest"
-            }`}
-          >
-            {selectMode ? "退出多选" : "批量选择"}
-          </button>
+    <main className="min-h-screen pb-20 pt-24">
+      <section className="border-b border-outline-variant/20 bg-surface-container-low">
+        <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              <div className="mb-2 inline-flex items-center gap-2 rounded-md border border-outline-variant/20 bg-surface-container-lowest px-2.5 py-1 text-xs font-medium text-on-surface-variant">
+                <LibraryBig className="h-3.5 w-3.5 text-primary" />
+                Asteroid 资料库
+              </div>
+              <h1 className="font-headline text-3xl font-bold text-on-surface">文章与题集</h1>
+              <p className="mt-1 text-sm text-on-surface-variant">
+                搜索、阅读、整理你的学习材料；题集作为刷题和复盘的入口。
+              </p>
+            </div>
+
+            {isAdmin && (
+              <div className="flex flex-wrap items-center gap-2">
+                <Link
+                  href="/create"
+                  className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-on-primary transition-colors hover:bg-primary/90"
+                >
+                  <Plus className="h-4 w-4" />
+                  新建
+                </Link>
+                <button
+                  onClick={() => {
+                    setSelectMode(!selectMode);
+                    setSelectedNoteIds(new Set());
+                  }}
+                  className={`inline-flex h-10 items-center justify-center gap-2 rounded-lg border px-4 text-sm font-medium transition-colors ${
+                    selectMode
+                      ? "border-primary/30 bg-primary/10 text-primary"
+                      : "border-outline-variant/30 bg-surface-container-lowest text-on-surface-variant hover:border-primary/40 hover:text-primary"
+                  }`}
+                >
+                  <CheckSquare className="h-4 w-4" />
+                  {selectMode ? "退出多选" : "批量"}
+                </button>
+              </div>
+            )}
+          </div>
+
+          <div className="mt-5 grid gap-2 sm:grid-cols-4">
+            <LibraryStat label="当前显示" value={filteredNotes.length} />
+            <LibraryStat label="笔记" value={noteCounts.note} />
+            <LibraryStat label="题集" value={noteCounts.problem} />
+            <LibraryStat label="随笔" value={noteCounts.essay} />
+          </div>
         </div>
+      </section>
+
+      <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6">
 
         {/* Batch Actions Bar (visible in select mode) */}
         {isAdmin && selectMode && (
           <motion.div
             initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
-            className="mb-6 p-4 bg-surface-container-low rounded-xl flex items-center justify-between"
+            className="mb-4 flex flex-col gap-3 rounded-lg border border-outline-variant/20 bg-surface-container-lowest p-3 sm:flex-row sm:items-center sm:justify-between"
           >
             <div className="flex items-center gap-4">
               <button
@@ -384,17 +440,35 @@ export function NotesClient({
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2, duration: 0.5 }}
-          className="mb-12 space-y-6"
+          className="mb-6 rounded-lg border border-outline-variant/20 bg-surface-container-lowest p-4"
         >
-          <SearchBar value={searchQuery} onChange={setSearchQuery} />
-          <TagFilter
-            selectedType={selectedType}
-            selectedSubject={selectedSubject}
-            sortOrder={sortOrder}
-            onTypeChange={setSelectedType}
-            onSubjectChange={setSelectedSubject}
-            onSortOrderChange={setSortOrder}
-          />
+          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start">
+            <SearchBar value={searchQuery} onChange={setSearchQuery} />
+            <div className="flex items-center justify-between gap-3 text-xs text-on-surface-variant lg:justify-end">
+              <span>
+                {isRefreshingNotes ? "正在同步最新数据" : `共 ${filteredNotes.length} 条结果`}
+              </span>
+              {hasActiveFilters && (
+                <button
+                  type="button"
+                  onClick={handleResetFilters}
+                  className="rounded-md px-2 py-1 text-primary transition-colors hover:bg-primary/10"
+                >
+                  清除筛选
+                </button>
+              )}
+            </div>
+          </div>
+          <div className="mt-4 border-t border-outline-variant/10 pt-4">
+            <TagFilter
+              selectedType={selectedType}
+              selectedSubject={selectedSubject}
+              sortOrder={sortOrder}
+              onTypeChange={setSelectedType}
+              onSubjectChange={setSelectedSubject}
+              onSortOrderChange={setSortOrder}
+            />
+          </div>
         </motion.section>
 
         {/* Notes Grid */}
@@ -412,7 +486,7 @@ export function NotesClient({
             </div>
           ) : filteredNotes.length > 0 ? (
             <>
-              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
+              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
                 {filteredNotes.map((note, index) => (
                   <NoteCard
                     key={note.id}
@@ -441,11 +515,20 @@ export function NotesClient({
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
-              className="text-center py-20"
+              className="rounded-lg border border-dashed border-outline-variant/30 bg-surface-container-lowest py-16 text-center"
             >
-              <p className="text-on-surface-variant text-lg">
+              <p className="text-lg text-on-surface-variant">
                 没有找到匹配的笔记
               </p>
+              {hasActiveFilters && (
+                <button
+                  type="button"
+                  onClick={handleResetFilters}
+                  className="mt-4 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-on-primary hover:bg-primary/90"
+                >
+                  清除筛选
+                </button>
+              )}
             </motion.div>
           )}
         </section>
@@ -511,5 +594,14 @@ export function NotesClient({
         )}
       </AnimatePresence>
     </main>
+  );
+}
+
+function LibraryStat({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-lg border border-outline-variant/20 bg-surface-container-lowest px-4 py-3">
+      <div className="text-lg font-bold text-primary">{value}</div>
+      <div className="text-xs text-on-surface-variant">{label}</div>
+    </div>
   );
 }
