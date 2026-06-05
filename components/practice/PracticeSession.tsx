@@ -8,11 +8,13 @@ import {
   ChevronRight,
   Eye,
   EyeOff,
+  Info,
   Layers,
   ListChecks,
   Loader2,
   LockKeyhole,
   RotateCcw,
+  SlidersHorizontal,
   SkipForward,
   X,
 } from "lucide-react";
@@ -121,6 +123,7 @@ export function PracticeSession({
   const [currentIndex, setCurrentIndex] = useState(0);
   const [practiceFilter, setPracticeFilter] = useState<PracticeFilter>("all");
   const [showAnswer, setShowAnswer] = useState(false);
+  const [showPracticeTools, setShowPracticeTools] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [recordingResult, setRecordingResult] = useState<PracticeResult | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -140,6 +143,7 @@ export function PracticeSession({
     setCurrentIndex(0);
     setPracticeFilter("all");
     setShowAnswer(false);
+    setShowPracticeTools(false);
     setLoadError(null);
 
     if (normalizedProblemSetIds.length === 0) {
@@ -327,28 +331,22 @@ export function PracticeSession({
             )}
           </div>
 
-          <div className="flex flex-col gap-3 xl:min-w-[460px]">
+          <div className="flex flex-wrap items-center gap-2 xl:justify-end">
             {stats.total > 0 && (
-              <>
-                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                  <SessionStat label="总题数" value={stats.total} />
-                  <SessionStat label="已刷" value={stats.practiced} tone="text-primary" />
-                  <SessionStat label="待回看" value={stats.review} tone="text-red-600" />
-                  <SessionStat label="已掌握" value={stats.mastered} tone="text-green-600" />
-                </div>
-                <div>
-                  <div className="mb-1 flex items-center justify-between text-xs text-on-surface-variant">
-                    <span>刷题进度</span>
-                    <span>{practicedPercent}%</span>
-                  </div>
-                  <div className="h-2 overflow-hidden rounded-full bg-surface-container-high">
-                    <div
-                      className="h-full rounded-full bg-primary transition-all"
-                      style={{ width: `${practicedPercent}%` }}
-                    />
-                  </div>
-                </div>
-              </>
+              <span className="tag-chip px-2.5 py-1 text-xs">
+                已刷 {stats.practiced}/{stats.total} · {practicedPercent}%
+              </span>
+            )}
+            {problems.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setShowPracticeTools((value) => !value)}
+                className={`control-button h-9 px-3 text-xs ${showPracticeTools ? "control-button-selected" : ""}`}
+              >
+                <SlidersHorizontal className="h-3.5 w-3.5" />
+                练习设置
+                {showPracticeTools ? <ChevronLeft className="h-3.5 w-3.5 rotate-90" /> : <ChevronRight className="h-3.5 w-3.5 rotate-90" />}
+              </button>
             )}
             {onClose && (
               <button
@@ -365,8 +363,32 @@ export function PracticeSession({
         </div>
       </div>
 
-      <div className="grid gap-5 p-4 lg:grid-cols-[300px_1fr] lg:p-5">
+      <div className={`grid gap-5 p-4 lg:p-5 ${showPracticeTools ? "lg:grid-cols-[300px_1fr]" : ""}`}>
+        {showPracticeTools && (
         <aside className="space-y-4 lg:sticky lg:top-24 lg:self-start">
+          {stats.total > 0 && (
+            <div className="rounded-lg bg-surface-container-low p-4">
+              <div className="grid grid-cols-2 gap-2">
+                <SessionStat label="总题数" value={stats.total} />
+                <SessionStat label="已刷" value={stats.practiced} tone="text-primary" />
+                <SessionStat label="待回看" value={stats.review} tone="text-red-600" />
+                <SessionStat label="已掌握" value={stats.mastered} tone="text-green-600" />
+              </div>
+              <div className="mt-3">
+                <div className="mb-1 flex items-center justify-between text-xs text-on-surface-variant">
+                  <span>刷题进度</span>
+                  <span>{practicedPercent}%</span>
+                </div>
+                <div className="h-2 overflow-hidden rounded-full bg-surface-container-high">
+                  <div
+                    className="h-full rounded-full bg-primary transition-all"
+                    style={{ width: `${practicedPercent}%` }}
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
           <div className="rounded-lg bg-surface-container-low p-4">
             <div className="mb-3 flex items-center justify-between gap-3">
               <h3 className="flex items-center gap-2 text-sm font-semibold text-on-surface">
@@ -505,6 +527,7 @@ export function PracticeSession({
             </div>
           )}
         </aside>
+        )}
 
         <div className="min-h-[520px] rounded-lg bg-surface-container-low p-3 sm:p-5">
           {isLoading ? (
@@ -613,31 +636,23 @@ function PracticeProblemView({
 }) {
   return (
     <div className="flex min-h-[480px] flex-col">
-      <div className="mb-4 rounded-lg border border-outline-variant/15 bg-surface-container-lowest p-4">
-        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-          <div className="min-w-0 space-y-2">
-            <div className="line-clamp-2 text-xs text-on-surface-variant">
-              来源：{problem.sourceNoteTitle} · 原题集第 {problem.sourceProblemIndex + 1} 题
-            </div>
-            <div className="flex flex-wrap items-center gap-2 text-xs">
-              <span className="rounded-full bg-primary/10 px-2.5 py-1 font-medium text-primary">
-                {total === allTotal
-                  ? `第 ${originalIndex + 1} / ${allTotal} 题`
-                  : `队列 ${index + 1} / ${total} · 总第 ${originalIndex + 1} 题`}
-              </span>
-              <span className="rounded-full bg-surface-container-high px-2.5 py-1 text-on-surface-variant">
-                {problemTypeMap[problem.type]}
-              </span>
-              <span className="rounded-full bg-surface-container-high px-2.5 py-1 text-on-surface-variant">
-                {difficultyMap[problem.difficulty]}
-              </span>
-              <span className={`rounded-full px-2.5 py-1 font-medium ${getStatusTone(status)}`}>
-                {getRoundLabel(status?.round ?? 0)}
-              </span>
-              <span className="rounded-full bg-surface-container-high px-2.5 py-1 text-on-surface-variant">
-                {getResultLabel(status?.lastResult)}
-              </span>
-            </div>
+      <div className="mb-4 rounded-lg border border-outline-variant/15 bg-surface-container-lowest p-3 sm:p-4">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div className="flex min-w-0 flex-wrap items-center gap-2 text-xs">
+            <span className="rounded-full bg-primary/10 px-2.5 py-1 font-semibold text-primary">
+              {total === allTotal
+                ? `第 ${originalIndex + 1} / ${allTotal} 题`
+                : `队列 ${index + 1} / ${total}`}
+            </span>
+            <span className="rounded-full bg-surface-container-high px-2.5 py-1 text-on-surface-variant">
+              {problemTypeMap[problem.type]}
+            </span>
+            <span className="rounded-full bg-surface-container-high px-2.5 py-1 text-on-surface-variant">
+              {difficultyMap[problem.difficulty]}
+            </span>
+            <span className={`rounded-full px-2.5 py-1 font-medium ${getStatusTone(status)}`}>
+              {getRoundLabel(status?.round ?? 0)}
+            </span>
           </div>
           <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center">
             <button
@@ -666,12 +681,23 @@ function PracticeProblemView({
             style={{ width: total > 0 ? `${Math.round(((index + 1) / total) * 100)}%` : "0%" }}
           />
         </div>
+        <details className="mt-3 rounded-lg bg-surface-container-low px-3 py-2 text-xs text-on-surface-variant">
+          <summary className="flex cursor-pointer list-none items-center gap-1.5 font-medium hover:text-primary">
+            <Info className="h-3.5 w-3.5" />
+            题目信息
+          </summary>
+          <div className="mt-2 grid gap-1.5 sm:grid-cols-2">
+            <span className="line-clamp-2">来源：{problem.sourceNoteTitle}</span>
+            <span>原题集第 {problem.sourceProblemIndex + 1} 题</span>
+            {total !== allTotal && <span>总题序：{originalIndex + 1} / {allTotal}</span>}
+            <span>最近状态：{getResultLabel(status?.lastResult)}</span>
+          </div>
+        </details>
       </div>
 
       <div className="flex-1 space-y-4">
-        <div className="rounded-lg border border-outline-variant/15 bg-surface-container-lowest p-4 sm:p-5">
-          <h3 className="mb-3 text-sm font-semibold text-on-surface-variant">题目</h3>
-          <div className="text-base leading-7">
+        <div className="rounded-lg border border-outline-variant/15 bg-surface-container-lowest p-5 sm:p-6">
+          <div className="text-[15px] leading-8 sm:text-base">
             <MarkdownContent content={problem.question} className="text-on-surface" />
           </div>
         </div>
@@ -679,11 +705,11 @@ function PracticeProblemView({
         {problem.type === "choice" && problem.options && problem.options.length > 0 && (
           <div className="grid gap-2">
             {problem.options.map((option) => (
-              <div key={`${option.label}-${option.content}`} className="rounded-lg bg-surface-container-lowest px-4 py-3 text-sm text-on-surface">
-                <span className="mr-2 inline-flex h-6 w-6 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary">
+              <div key={`${option.label}-${option.content}`} className="grid grid-cols-[1.75rem_minmax(0,1fr)] gap-3 rounded-lg bg-surface-container-lowest px-4 py-3 text-sm text-on-surface">
+                <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary">
                   {option.label}
                 </span>
-                <MarkdownContent content={option.content} className="text-on-surface" />
+                <MarkdownContent content={option.content} className="min-w-0 text-on-surface" />
               </div>
             ))}
           </div>

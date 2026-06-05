@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Calendar, Tag, Edit2, Trash2, AlertTriangle, ChevronDown, ChevronUp, BookOpen, BookMarked, Loader2, Clock, Layers } from "lucide-react";
+import { ArrowLeft, Calendar, Tag, Edit2, Trash2, AlertTriangle, ChevronDown, ChevronUp, BookOpen, BookMarked, Loader2, Clock, Layers, SlidersHorizontal } from "lucide-react";
 import { notesApi } from "@/lib/supabase";
 import { chaptersApi } from "@/lib/chapters-api";
 import { subjectMap, typeMap, Note, Chapter, Problem } from "@/lib/types";
@@ -15,9 +15,7 @@ import { getProblemValidationIssues, normalizeProblem } from "@/lib/problem-util
 import { Playlist } from "@/components/video/Playlist";
 import { VideoPlayer } from "@/components/video/VideoPlayer";
 import { ProblemCard } from "@/components/problems/ProblemCard";
-import { ProblemStats } from "@/components/problems/ProblemStats";
 import { ProblemList } from "@/components/problems/ProblemList";
-import { ChapterStatsView } from "@/components/chapters/ChapterStats";
 import { ChapterFilter } from "@/components/chapters/ChapterFilter";
 import { MarkdownContent } from "@/components/ui/MarkdownContent";
 import { TableOfContents } from "@/components/ui/TableOfContents";
@@ -54,6 +52,7 @@ export function NoteReaderClient({
   const [inlineVideoIndex, setInlineVideoIndex] = useState<number | null>(null);
   const [chapters, setChapters] = useState<Chapter[]>(initialChapters);
   const [selectedChapterId, setSelectedChapterId] = useState<string | undefined>(undefined);
+  const [showProblemTools, setShowProblemTools] = useState(false);
   const skipInitialChapterFetchRef = useRef(initialChaptersLoaded);
 
   useEffect(() => {
@@ -62,6 +61,7 @@ export function NoteReaderClient({
     setChapters(initialChapters);
     setSelectedChapterId(undefined);
     setIsCoverExpanded(Boolean(initialNote?.coverImage));
+    setShowProblemTools(false);
     skipInitialChapterFetchRef.current = initialChaptersLoaded;
   }, [initialChapters, initialChaptersLoaded, initialLoadError, initialNote, noteId]);
 
@@ -227,6 +227,8 @@ export function NoteReaderClient({
 
   const isProblem = note.type === "problem";
   const isEssay = note.type === "essay";
+  const showReaderSidebar = isProblem ? showProblemTools : preferences.tocPosition !== "hidden";
+  const contentColumnClass = showReaderSidebar ? "lg:col-span-9" : "lg:col-span-12";
 
   return (
     <main className="min-h-screen pb-20 pt-20">
@@ -245,6 +247,16 @@ export function NoteReaderClient({
           </Link>
 
           <div className="flex items-center gap-2">
+            {isProblem && allProblems.length > 0 && (
+              <button
+                onClick={() => setShowProblemTools((value) => !value)}
+                className={`control-button h-9 px-3 text-sm ${showProblemTools ? "control-button-selected" : ""}`}
+                title="题集导航"
+              >
+                <SlidersHorizontal className="h-4 w-4" />
+                <span className="hidden sm:inline">题集导航</span>
+              </button>
+            )}
             {/* Immersive Reading Button - Only for notes and essays */}
             {!isProblem && (
               <button
@@ -319,7 +331,7 @@ export function NoteReaderClient({
       {/* Main Layout: Content + Sidebar */}
       <div className="mx-auto grid max-w-7xl grid-cols-1 gap-8 px-4 sm:px-6 lg:grid-cols-12">
         {/* Article Content */}
-        <div className={preferences.tocPosition === "hidden" ? "lg:col-span-12" : "lg:col-span-9"}>
+        <div className={contentColumnClass}>
           {/* Article Header */}
           <motion.header
             initial={{ opacity: 0, y: 20 }}
@@ -379,10 +391,10 @@ export function NoteReaderClient({
             </div>
 
             {isProblem && allProblems.length > 0 && (
-              <div className="mt-6 grid gap-2 border-t border-outline-variant/10 pt-4 sm:grid-cols-3">
-                <ReaderStat label="当前范围" value={`${filteredProblems.length} 题`} />
-                <ReaderStat label="章节" value={selectedChapter?.name ?? "全部章节"} />
-                <ReaderStat label="未归章节" value={`${unassignedProblemCount} 题`} />
+              <div className="compact-meta-row mt-4 border-t border-outline-variant/10 pt-4">
+                <span>当前 {filteredProblems.length} 题</span>
+                <span>{selectedChapter?.name ?? "全部章节"}</span>
+                {unassignedProblemCount > 0 && <span>未归章节 {unassignedProblemCount} 题</span>}
               </div>
             )}
           </motion.header>
@@ -466,17 +478,11 @@ export function NoteReaderClient({
           >
             {isProblem && allProblems.length > 0 ? (
               <>
-                {/* Chapter Stats when a chapter is selected */}
                 {selectedChapter && (
-                  <ChapterStatsView
-                    problems={filteredProblems}
-                    chapterName={selectedChapter.name}
-                  />
-                )}
-
-                {/* Problem Stats (overall, shown when no chapter filter) */}
-                {!selectedChapter && (
-                  <ProblemStats problems={allProblems} />
+                  <div className="mb-5 inline-flex items-center gap-2 rounded-lg border border-primary/15 bg-primary/5 px-3 py-2 text-sm font-medium text-primary">
+                    <Layers className="h-4 w-4" />
+                    {selectedChapter.name} · {filteredProblems.length} 题
+                  </div>
                 )}
 
                 {/* Problem Cards - grouped by chapter or flat */}
@@ -540,7 +546,7 @@ export function NoteReaderClient({
         </div>
 
         {/* Sidebar: Video Player + TOC (hidden when TOC is hidden) */}
-        {preferences.tocPosition !== "hidden" && (
+        {showReaderSidebar && (
           <aside className="min-w-[280px] space-y-4 lg:col-span-3">
             <AnimatePresence>
               {note.videos && note.videos.length > 0 && (
@@ -716,14 +722,5 @@ export function NoteReaderClient({
         )}
       </AnimatePresence>
     </main>
-  );
-}
-
-function ReaderStat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="surface-muted px-3 py-2">
-      <div className="line-clamp-1 text-sm font-semibold text-on-surface">{value}</div>
-      <div className="text-xs text-on-surface-variant">{label}</div>
-    </div>
   );
 }

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ChevronDown, ChevronUp, Eye, EyeOff, Lightbulb, Pencil, Check, X, Sparkles, Loader2, Wrench } from "lucide-react";
+import { ChevronDown, ChevronUp, Eye, EyeOff, Info, Lightbulb, Pencil, Check, X, Sparkles, Loader2, Wrench } from "lucide-react";
 import type { Problem, ProblemType, Difficulty } from "@/lib/types";
 import { problemTypeMap, difficultyMap, difficultyColorMap } from "@/lib/types";
 import { MarkdownContent } from "@/components/ui/MarkdownContent";
@@ -204,6 +204,13 @@ export function ProblemCard({ problem, index, onUpdate }: ProblemCardProps) {
   const textareaClass = `${fieldBaseClass} resize-y leading-6`;
   const selectClass = "h-10 rounded-lg border border-outline-variant/20 bg-surface-container-low px-3 text-sm text-on-surface outline-none transition-colors focus:border-primary/35 focus:bg-surface-container-lowest";
   const labelClass = "text-xs text-on-surface-variant/50 mb-1 block";
+  const hasExtraInfo = Boolean(problem.tips) || problem.tags.length > 0;
+  const handleToggleAnswer = () => {
+    setShowAnswer((current) => {
+      if (current) setShowExplanation(false);
+      return !current;
+    });
+  };
 
   return (
     <motion.div
@@ -213,25 +220,19 @@ export function ProblemCard({ problem, index, onUpdate }: ProblemCardProps) {
       transition={{ delay: Math.min(index * 0.04, 0.24) }}
       className="scroll-mt-24 overflow-hidden rounded-lg border border-outline-variant/20 bg-surface-container-lowest"
     >
-      {/* Header: Number + Tags + Pencil */}
-      <div className="flex items-center justify-between gap-3 border-b border-outline-variant/10 p-4">
+      {/* Header: Number + core actions */}
+      <div className="flex items-center justify-between gap-3 px-4 pt-4">
         <div className="flex min-w-0 items-center gap-3">
-          <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md bg-primary text-xs font-bold text-on-primary">
+          <span className="flex h-8 min-w-8 flex-shrink-0 items-center justify-center rounded-md border border-outline-variant/20 bg-surface-container-low px-2 text-xs font-bold text-on-surface">
             {index + 1}
           </span>
           <div className="flex min-w-0 flex-wrap items-center gap-2">
-            <span className="rounded-md bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary whitespace-nowrap">
+            <span className="rounded-md bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
               {problemTypeMap[problem.type]}
             </span>
-            <span className={`px-2 py-0.5 rounded text-xs font-medium whitespace-nowrap ${difficultyColorMap[problem.difficulty]}`}>
+            <span className={`rounded px-2 py-0.5 text-xs font-medium ${difficultyColorMap[problem.difficulty]}`}>
               {difficultyMap[problem.difficulty]}
             </span>
-            {problem.tags.length > 0 && (
-              <span className="text-xs text-on-surface-variant/60 whitespace-nowrap">
-                {problem.tags.slice(0, 2).join(' · ')}
-                {problem.tags.length > 2 ? '...' : ''}
-              </span>
-            )}
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -462,8 +463,8 @@ export function ProblemCard({ problem, index, onUpdate }: ProblemCardProps) {
       ) : (
         <>
           {/* Question */}
-          <div className="p-4">
-            <div className="text-on-surface leading-relaxed">
+          <div className="px-4 pb-4 pt-3">
+            <div className="text-[15px] leading-8 text-on-surface sm:text-base">
               <MarkdownContent content={problem.question} />
             </div>
 
@@ -473,12 +474,12 @@ export function ProblemCard({ problem, index, onUpdate }: ProblemCardProps) {
                 {problem.options.map((opt) => (
                   <div
                     key={opt.label}
-                    className="flex gap-3 p-3 rounded-lg bg-surface-container-low"
+                    className="grid grid-cols-[1.5rem_minmax(0,1fr)] gap-3 rounded-lg bg-surface-container-low p-3"
                   >
-                    <span className="flex-shrink-0 w-6 h-6 rounded-full bg-primary/10 text-primary text-xs font-bold flex items-center justify-center">
+                    <span className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary">
                       {opt.label}
                     </span>
-                    <div className="text-on-surface-variant flex-1">
+                    <div className="min-w-0 text-on-surface-variant">
                       <MarkdownContent content={opt.content} compact />
                     </div>
                   </div>
@@ -490,19 +491,21 @@ export function ProblemCard({ problem, index, onUpdate }: ProblemCardProps) {
           {/* Action Buttons */}
           <div className="flex flex-wrap gap-2 px-4 pb-4">
             <button
-              onClick={() => setShowAnswer(!showAnswer)}
+              onClick={handleToggleAnswer}
               className="inline-flex h-9 items-center gap-2 rounded-lg bg-primary/10 px-3 text-sm font-medium text-primary transition-colors hover:bg-primary/20"
             >
               {showAnswer ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               {showAnswer ? "隐藏答案" : "查看答案"}
             </button>
-            <button
-              onClick={() => setShowExplanation(!showExplanation)}
-              className="inline-flex h-9 items-center gap-2 rounded-lg bg-surface-container-high px-3 text-sm font-medium text-on-surface-variant transition-colors hover:bg-surface-container-highest"
-            >
-              {showExplanation ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-              {showExplanation ? "收起解析" : "查看解析"}
-            </button>
+            {showAnswer && problem.explanation.trim() && (
+              <button
+                onClick={() => setShowExplanation(!showExplanation)}
+                className="inline-flex h-9 items-center gap-2 rounded-lg bg-surface-container-high px-3 text-sm font-medium text-on-surface-variant transition-colors hover:bg-surface-container-highest"
+              >
+                {showExplanation ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                {showExplanation ? "收起解析" : "查看解析"}
+              </button>
+            )}
           </div>
 
           {/* Answer */}
@@ -518,7 +521,7 @@ export function ProblemCard({ problem, index, onUpdate }: ProblemCardProps) {
                   <div className="p-4 rounded-lg bg-green-50 border border-green-200">
                     <span className="text-sm font-bold text-green-700">答案：</span>
                     <div className="text-green-600 mt-2">
-                      <MarkdownContent content={problem.answer} compact />
+                      <MarkdownContent content={problem.answer || "暂无答案"} compact />
                     </div>
                   </div>
                 </div>
@@ -547,30 +550,39 @@ export function ProblemCard({ problem, index, onUpdate }: ProblemCardProps) {
             )}
           </AnimatePresence>
 
-          {/* Tips */}
-          {problem.tips && (
-            <div className="px-4 pb-2">
-              <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-50 border border-amber-200">
-                <Lightbulb className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
-                <div className="text-amber-700 text-sm leading-relaxed">
-                  <MarkdownContent content={problem.tips} compact />
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Tags */}
-          {problem.tags.length > 0 && (
-            <div className="px-4 pb-4 flex flex-wrap gap-2">
-              {problem.tags.map((tag) => (
-                <span
-                  key={tag}
-                  className="px-2 py-1 rounded-md bg-surface-container text-on-surface-variant text-xs"
-                >
-                  #{tag}
+          {hasExtraInfo && (
+            <details className="mx-4 mb-4 rounded-lg border border-outline-variant/15 bg-surface-container-low">
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-2 text-xs font-medium text-on-surface-variant transition-colors hover:text-primary">
+                <span className="inline-flex items-center gap-1.5">
+                  <Info className="h-3.5 w-3.5" />
+                  题目信息
                 </span>
-              ))}
-            </div>
+                <ChevronDown className="h-3.5 w-3.5" />
+              </summary>
+              <div className="space-y-3 border-t border-outline-variant/10 px-3 py-3">
+                {problem.tips && (
+                  <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3">
+                    <Lightbulb className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-500" />
+                    <div className="text-sm leading-relaxed text-amber-700">
+                      <MarkdownContent content={problem.tips} compact />
+                    </div>
+                  </div>
+                )}
+
+                {problem.tags.length > 0 && (
+                  <div className="flex flex-wrap gap-2">
+                    {problem.tags.map((tag) => (
+                      <span
+                        key={tag}
+                        className="tag-chip px-2 py-1 text-xs"
+                      >
+                        #{tag}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </details>
           )}
         </>
       )}

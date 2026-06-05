@@ -9,7 +9,7 @@ import { NoteCard } from "@/components/notes/NoteCard";
 import { ExportDialog } from "@/components/export/ExportDialog";
 import { notesApi } from "@/lib/supabase";
 import { NoteType, Subject, Note } from "@/lib/types";
-import { CheckSquare, Square, Download, X, Trash2, AlertTriangle, Loader2, Plus, LibraryBig } from "lucide-react";
+import { CheckSquare, Square, Download, X, Trash2, AlertTriangle, Loader2, Plus, LibraryBig, SlidersHorizontal, ChevronDown, ChevronUp } from "lucide-react";
 import { useAdminAuth } from "@/hooks/useAdminAuth";
 import { useToast } from "@/components/ui/Toast";
 import { getNotesCacheKey, readNotesCache, writeNotesCache } from "@/lib/notes-list-cache";
@@ -33,6 +33,7 @@ export function NotesClient({
   const [selectedType, setSelectedType] = useState<NoteType | "all">("all");
   const [selectedSubject, setSelectedSubject] = useState<Subject | "all">("all");
   const [sortOrder, setSortOrder] = useState<"desc" | "asc">("desc");
+  const [showLibraryTools, setShowLibraryTools] = useState(false);
   
   // Data state
   const [notes, setNotes] = useState<Note[]>(initialNotes);
@@ -228,6 +229,7 @@ export function NotesClient({
     || selectedType !== "all"
     || selectedSubject !== "all"
     || sortOrder !== "desc";
+  const shouldShowLibraryTools = showLibraryTools || hasActiveFilters;
 
   const handleResetFilters = () => {
     setSearchQuery("");
@@ -332,6 +334,12 @@ export function NotesClient({
               <p className="mt-1 text-sm text-on-surface-variant">
                 搜索、阅读、整理你的学习材料；题集作为刷题和复盘的入口。
               </p>
+              <div className="compact-meta-row mt-3">
+                <span>{filteredNotes.length} 条内容</span>
+                <span>{noteCounts.note} 篇笔记</span>
+                <span>{noteCounts.problem} 个题集</span>
+                <span>{noteCounts.essay} 篇随笔</span>
+              </div>
             </div>
 
             {isAdmin && (
@@ -359,13 +367,6 @@ export function NotesClient({
                 </button>
               </div>
             )}
-          </div>
-
-          <div className="mt-5 grid gap-2 sm:grid-cols-4">
-            <LibraryStat label="当前显示" value={filteredNotes.length} />
-            <LibraryStat label="笔记" value={noteCounts.note} />
-            <LibraryStat label="题集" value={noteCounts.problem} />
-            <LibraryStat label="随笔" value={noteCounts.essay} />
           </div>
         </div>
       </section>
@@ -448,6 +449,15 @@ export function NotesClient({
               <span>
                 {isRefreshingNotes ? "正在同步最新数据" : `共 ${filteredNotes.length} 条结果`}
               </span>
+              <button
+                type="button"
+                onClick={() => setShowLibraryTools((value) => !value)}
+                className={`control-button h-10 px-3 text-xs ${shouldShowLibraryTools ? "control-button-selected" : ""}`}
+              >
+                <SlidersHorizontal className="h-3.5 w-3.5" />
+                筛选
+                {shouldShowLibraryTools ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+              </button>
               {hasActiveFilters && (
                 <button
                   type="button"
@@ -459,16 +469,34 @@ export function NotesClient({
               )}
             </div>
           </div>
-          <div className="mt-4 border-t border-outline-variant/10 pt-4">
-            <TagFilter
-              selectedType={selectedType}
-              selectedSubject={selectedSubject}
-              sortOrder={sortOrder}
-              onTypeChange={setSelectedType}
-              onSubjectChange={setSelectedSubject}
-              onSortOrderChange={setSortOrder}
-            />
-          </div>
+          <AnimatePresence initial={false}>
+            {shouldShowLibraryTools && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: "auto" }}
+                exit={{ opacity: 0, height: 0 }}
+                transition={{ duration: 0.16 }}
+                className="overflow-hidden"
+              >
+                <div className="mt-4 border-t border-outline-variant/10 pt-4">
+                  <TagFilter
+                    selectedType={selectedType}
+                    selectedSubject={selectedSubject}
+                    sortOrder={sortOrder}
+                    onTypeChange={setSelectedType}
+                    onSubjectChange={setSelectedSubject}
+                    onSortOrderChange={setSortOrder}
+                  />
+                  <div className="mt-4 grid gap-2 sm:grid-cols-4">
+                    <LibraryStat label="当前显示" value={filteredNotes.length} />
+                    <LibraryStat label="笔记" value={noteCounts.note} />
+                    <LibraryStat label="题集" value={noteCounts.problem} />
+                    <LibraryStat label="随笔" value={noteCounts.essay} />
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </motion.section>
 
         {/* Notes Grid */}

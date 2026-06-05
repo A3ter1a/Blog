@@ -13,6 +13,7 @@ import {
   ListFilter,
   Loader2,
   Search,
+  SlidersHorizontal,
   Star,
   Target,
   X,
@@ -123,6 +124,7 @@ export function Math3KnowledgeCatalog() {
   const [masteryFilter, setMasteryFilter] = useState<MasteryFilter>("all");
   const [query, setQuery] = useState("");
   const [onlyStarred, setOnlyStarred] = useState(false);
+  const [showCatalogTools, setShowCatalogTools] = useState(false);
   const [starredIds, setStarredIds] = useState<string[]>([]);
   const [masteredIds, setMasteredIds] = useState<string[]>([]);
   const [collapsedChapterIds, setCollapsedChapterIds] = useState<string[]>([]);
@@ -135,7 +137,7 @@ export function Math3KnowledgeCatalog() {
     setStarredIds(readJsonStorage(MATH3_KNOWLEDGE_STAR_STORAGE_KEY, [], normalizePointIds));
     setMasteredIds(readJsonStorage(MATH3_KNOWLEDGE_MASTERED_STORAGE_KEY, [], normalizePointIds));
     setCollapsedChapterIds(
-      readJsonStorage(MATH3_KNOWLEDGE_COLLAPSED_CHAPTERS_STORAGE_KEY, [], normalizeChapterIds)
+      readJsonStorage(MATH3_KNOWLEDGE_COLLAPSED_CHAPTERS_STORAGE_KEY, math3KnowledgeChapterIds, normalizeChapterIds)
     );
   }, []);
 
@@ -225,6 +227,12 @@ export function Math3KnowledgeCatalog() {
   const progressPercent = math3KnowledgeTotals.points > 0
     ? Math.round((masteredCount / math3KnowledgeTotals.points) * 100)
     : 0;
+  const hasCatalogFilters = Boolean(normalizedQuery)
+    || areaFilter !== "all"
+    || difficultyFilter !== "all"
+    || masteryFilter !== "all"
+    || onlyStarred;
+  const shouldShowCatalogTools = showCatalogTools || hasCatalogFilters;
   const activePracticeSetIds = useMemo(() => {
     if (!activePracticeScope) return [];
     return getLinkedProblemSetIds(problemSets, activePracticeScope);
@@ -318,7 +326,7 @@ export function Math3KnowledgeCatalog() {
 
       <main className="mx-auto max-w-6xl px-4 py-8">
         <section className="mb-6 rounded-lg border border-outline-variant/20 bg-surface-container-lowest p-4 shadow-ambient">
-          <div className="grid gap-4 lg:grid-cols-[1fr_auto] lg:items-center">
+          <div className="grid gap-3 lg:grid-cols-[1fr_auto_auto] lg:items-center">
             <div className="relative">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-on-surface-variant/50" />
               <input
@@ -342,103 +350,119 @@ export function Math3KnowledgeCatalog() {
 
             <button
               type="button"
+              onClick={() => setShowCatalogTools((value) => !value)}
+              className={`control-button h-11 px-4 text-sm ${shouldShowCatalogTools ? "control-button-selected" : ""}`}
+            >
+              <SlidersHorizontal className="h-4 w-4" />
+              目录工具
+              <ChevronDown className={`h-4 w-4 transition-transform ${shouldShowCatalogTools ? "rotate-180" : ""}`} />
+            </button>
+
+            {hasCatalogFilters && (
+            <button
+              type="button"
               onClick={resetFilters}
-              className="inline-flex h-11 items-center justify-center gap-2 rounded-lg border border-outline-variant/30 px-4 text-sm font-medium text-on-surface-variant transition-colors hover:border-primary/40 hover:text-primary"
+              className="control-button h-11 px-4 text-sm"
             >
               <X className="h-4 w-4" />
               重置
             </button>
+            )}
           </div>
 
-          <div className="mt-4 grid gap-4 xl:grid-cols-[1fr_1fr_1fr_auto] xl:items-center">
-            <FilterGroup icon={<BookOpen className="h-4 w-4" />} label="模块">
-              {areaOptions.map((option) => (
-                <FilterButton
-                  key={option.value}
-                  active={areaFilter === option.value}
-                  onClick={() => setAreaFilter(option.value)}
-                >
-                  {option.label}
-                </FilterButton>
-              ))}
-            </FilterGroup>
+          {shouldShowCatalogTools && (
+            <div className="mt-4 grid gap-4 border-t border-outline-variant/10 pt-4 xl:grid-cols-[1fr_1fr_1fr_auto] xl:items-center">
+              <FilterGroup icon={<BookOpen className="h-4 w-4" />} label="模块">
+                {areaOptions.map((option) => (
+                  <FilterButton
+                    key={option.value}
+                    active={areaFilter === option.value}
+                    onClick={() => setAreaFilter(option.value)}
+                  >
+                    {option.label}
+                  </FilterButton>
+                ))}
+              </FilterGroup>
 
-            <FilterGroup icon={<ListFilter className="h-4 w-4" />} label="难度">
-              {difficultyOptions.map((option) => (
-                <FilterButton
-                  key={option.value}
-                  active={difficultyFilter === option.value}
-                  onClick={() => setDifficultyFilter(option.value)}
-                >
-                  {option.label}
-                </FilterButton>
-              ))}
-            </FilterGroup>
+              <FilterGroup icon={<ListFilter className="h-4 w-4" />} label="难度">
+                {difficultyOptions.map((option) => (
+                  <FilterButton
+                    key={option.value}
+                    active={difficultyFilter === option.value}
+                    onClick={() => setDifficultyFilter(option.value)}
+                  >
+                    {option.label}
+                  </FilterButton>
+                ))}
+              </FilterGroup>
 
-            <FilterGroup icon={<CheckCircle2 className="h-4 w-4" />} label="进度">
-              {masteryOptions.map((option) => (
-                <FilterButton
-                  key={option.value}
-                  active={masteryFilter === option.value}
-                  onClick={() => setMasteryFilter(option.value)}
-                >
-                  {option.label}
-                </FilterButton>
-              ))}
-            </FilterGroup>
+              <FilterGroup icon={<CheckCircle2 className="h-4 w-4" />} label="进度">
+                {masteryOptions.map((option) => (
+                  <FilterButton
+                    key={option.value}
+                    active={masteryFilter === option.value}
+                    onClick={() => setMasteryFilter(option.value)}
+                  >
+                    {option.label}
+                  </FilterButton>
+                ))}
+              </FilterGroup>
 
-            <button
-              type="button"
-              onClick={() => setOnlyStarred((value) => !value)}
-              aria-pressed={onlyStarred}
-              className={`inline-flex h-10 items-center justify-center gap-2 rounded-lg border px-4 text-sm font-medium transition-colors ${
-                onlyStarred
-                  ? "border-amber-500/30 bg-amber-500/10 text-amber-700"
-                  : "border-outline-variant/30 text-on-surface-variant hover:border-amber-500/30 hover:text-amber-700"
-              }`}
-            >
-              <Star className={`h-4 w-4 ${onlyStarred ? "fill-current" : ""}`} />
-              只看加星
-            </button>
-          </div>
-        </section>
-
-        <section className="mb-6 rounded-lg border border-outline-variant/20 bg-surface-container-lowest p-4">
-          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-sm font-medium text-on-surface">掌握进度</span>
-                <span className="text-sm font-semibold text-primary">{progressPercent}%</span>
-              </div>
-              <div className="mt-2 h-2 overflow-hidden rounded-full bg-surface-container-low">
-                <div
-                  className="h-full rounded-full bg-primary transition-all"
-                  style={{ width: `${progressPercent}%` }}
-                />
-              </div>
-              <p className="mt-2 text-xs text-on-surface-variant">
-                已掌握 {masteredCount} / {math3KnowledgeTotals.points} 个知识点，加星 {starredIds.length} 个。
-              </p>
-            </div>
-
-            <div className="flex flex-wrap gap-2">
               <button
                 type="button"
-                onClick={() => setAllChaptersCollapsed(false)}
-                className="h-9 rounded-lg border border-outline-variant/30 px-3 text-sm font-medium text-on-surface-variant transition-colors hover:border-primary/30 hover:text-primary"
+                onClick={() => setOnlyStarred((value) => !value)}
+                aria-pressed={onlyStarred}
+                className={`inline-flex h-10 items-center justify-center gap-2 rounded-lg border px-4 text-sm font-medium transition-colors ${
+                  onlyStarred
+                    ? "border-amber-500/30 bg-amber-500/10 text-amber-700"
+                    : "border-outline-variant/30 text-on-surface-variant hover:border-amber-500/30 hover:text-amber-700"
+                }`}
               >
-                展开全部
-              </button>
-              <button
-                type="button"
-                onClick={() => setAllChaptersCollapsed(true)}
-                className="h-9 rounded-lg border border-outline-variant/30 px-3 text-sm font-medium text-on-surface-variant transition-colors hover:border-primary/30 hover:text-primary"
-              >
-                折叠全部
+                <Star className={`h-4 w-4 ${onlyStarred ? "fill-current" : ""}`} />
+                只看加星
               </button>
             </div>
-          </div>
+          )}
         </section>
+
+        {shouldShowCatalogTools && (
+          <section className="mb-6 rounded-lg border border-outline-variant/20 bg-surface-container-lowest p-4">
+            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-sm font-medium text-on-surface">掌握进度</span>
+                  <span className="text-sm font-semibold text-primary">{progressPercent}%</span>
+                </div>
+                <div className="mt-2 h-2 overflow-hidden rounded-full bg-surface-container-low">
+                  <div
+                    className="h-full rounded-full bg-primary transition-all"
+                    style={{ width: `${progressPercent}%` }}
+                  />
+                </div>
+                <p className="mt-2 text-xs text-on-surface-variant">
+                  已掌握 {masteredCount} / {math3KnowledgeTotals.points} 个知识点，加星 {starredIds.length} 个。
+                </p>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => setAllChaptersCollapsed(false)}
+                  className="control-button h-9 min-h-0 px-3 text-sm"
+                >
+                  展开全部
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAllChaptersCollapsed(true)}
+                  className="control-button h-9 min-h-0 px-3 text-sm"
+                >
+                  折叠全部
+                </button>
+              </div>
+            </div>
+          </section>
+        )}
 
         {problemSetLoadError && (
           <section className="mb-6 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
@@ -462,24 +486,28 @@ export function Math3KnowledgeCatalog() {
           </div>
         )}
 
-        <section className="mb-6 grid gap-3 md:grid-cols-3">
-          {math3KnowledgeAreas.map((area) => (
-            <AreaPracticeCard
-              key={area.id}
-              area={area}
-              problemSets={problemSets}
-              isLoadingProblemSets={isLoadingProblemSets}
-              onStartPractice={handleStartPractice}
-            />
-          ))}
-        </section>
+        {shouldShowCatalogTools && (
+          <>
+            <section className="mb-6 grid gap-3 md:grid-cols-3">
+              {math3KnowledgeAreas.map((area) => (
+                <AreaPracticeCard
+                  key={area.id}
+                  area={area}
+                  problemSets={problemSets}
+                  isLoadingProblemSets={isLoadingProblemSets}
+                  onStartPractice={handleStartPractice}
+                />
+              ))}
+            </section>
 
-        <section className="mb-6 grid gap-3 md:grid-cols-4">
-          <DifficultyStat label="当前显示" value={visiblePointCount} tone="border-primary/20 bg-primary/5 text-primary" />
-          <DifficultyStat label="基础" value={difficultyCounts.basic} tone={difficultyMeta.basic.tone} />
-          <DifficultyStat label="核心" value={difficultyCounts.core} tone={difficultyMeta.core.tone} />
-          <DifficultyStat label="综合" value={difficultyCounts.advanced} tone={difficultyMeta.advanced.tone} />
-        </section>
+            <section className="mb-6 grid gap-3 md:grid-cols-4">
+              <DifficultyStat label="当前显示" value={visiblePointCount} tone="border-primary/20 bg-primary/5 text-primary" />
+              <DifficultyStat label="基础" value={difficultyCounts.basic} tone={difficultyMeta.basic.tone} />
+              <DifficultyStat label="核心" value={difficultyCounts.core} tone={difficultyMeta.core.tone} />
+              <DifficultyStat label="综合" value={difficultyCounts.advanced} tone={difficultyMeta.advanced.tone} />
+            </section>
+          </>
+        )}
 
         {visibleAreas.length === 0 ? (
           <div className="rounded-lg border border-dashed border-outline-variant/40 bg-surface-container-lowest p-10 text-center">

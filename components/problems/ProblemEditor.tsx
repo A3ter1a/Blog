@@ -2,12 +2,13 @@
 
 import { useState, useEffect, useMemo, type ReactNode } from "react";
 import { motion, AnimatePresence, Reorder, useDragControls } from "framer-motion";
-import { AlertCircle, Plus, X, ChevronDown, ChevronUp, GripVertical, Sparkles, Scan, Copy, Trash2, Wrench, Tags, Loader2, FolderTree, CheckSquare } from "lucide-react";
+import { AlertCircle, Plus, X, ChevronDown, ChevronUp, GripVertical, Sparkles, Scan, Copy, Trash2, Wrench, Tags, Loader2, FolderTree, CheckSquare, SlidersHorizontal } from "lucide-react";
 import { Problem, ProblemType, Difficulty, Subject, problemTypeMap, difficultyMap, difficultyColorMap } from "@/lib/types";
 import { chaptersApi } from "@/lib/chapters-api";
 import { ChapterSelector } from "@/components/chapters/ChapterSelector";
 import { ProblemCompare } from "./ProblemCompare";
 import { ProblemPreview } from "./ProblemPreview";
+import { MarkdownContent } from "@/components/ui/MarkdownContent";
 import { OCRUploader } from "@/components/ai-assistant/OCRUploader";
 import type { ChapterContextItem } from "@/hooks/useAIScan";
 import { repairProblemMarkdownFields } from "@/lib/markdown";
@@ -80,6 +81,7 @@ export function ProblemEditor({ problems, onChange, noteId, subject, hasUnsavedC
   const toast = useToast();
   const [showAddForm, setShowAddForm] = useState(false);
   const [showAIScan, setShowAIScan] = useState(false);
+  const [showOrganizeTools, setShowOrganizeTools] = useState(false);
   const [newProblem, setNewProblem] = useState<Partial<Problem>>(createEmptyProblemDraft());
   const [newProblemError, setNewProblemError] = useState<string | null>(null);
   const [selectedProblemIds, setSelectedProblemIds] = useState<string[]>([]);
@@ -433,43 +435,64 @@ export function ProblemEditor({ problems, onChange, noteId, subject, hasUnsavedC
   };
 
   const newProblemOptions = newProblem.type === "choice" ? ensureChoiceOptions(newProblem.options) : [];
+  const editorModeLabel = showOrganizeTools ? "整理模式" : showAddForm ? "新增题目" : "浏览题目";
 
   return (
-    <div className={`space-y-4 ${selectedProblemIdsInList.length > 0 ? "pb-40" : ""}`}>
+    <div className={`space-y-4 ${selectedProblemIdsInList.length > 0 ? "pb-28" : ""}`}>
       {/* Toolbar */}
       <div className="surface-toolbar p-3">
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div>
             <div className="flex flex-wrap items-center gap-2">
               <h3 className="text-sm font-semibold text-on-surface">题集编辑</h3>
+              <span className="tag-chip tag-chip-primary px-2 py-0.5 text-xs">{editorModeLabel}</span>
               <span className="tag-chip px-2 py-0.5 text-xs">{problems.length} 题</span>
               {selectedProblemIdsInList.length > 0 && (
                 <span className="tag-chip tag-chip-primary px-2 py-0.5 text-xs">{selectedProblemIdsInList.length} 已选</span>
               )}
-              {showMath3Assignment && (
+              {showMath3Assignment && showOrganizeTools && (
                 <span className="tag-chip px-2 py-0.5 text-xs">{unassignedMath3ProblemIds.length} 未归数三</span>
               )}
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-          <button
-            onClick={() => setShowAIScan(true)}
-            className="control-button px-3 text-xs"
-          >
-            <Scan className="h-3.5 w-3.5" />
-            AI 扫描
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setShowAddForm((value) => !value);
-              setNewProblemError(null);
-            }}
-            className="control-button control-button-primary px-3 text-xs"
-          >
-            {showAddForm ? <ChevronUp className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
-            {showAddForm ? "收起新增" : "新增题目"}
-          </button>
+            {problems.length > 0 && (
+              <button
+                type="button"
+                onClick={() => {
+                  setShowOrganizeTools((value) => !value);
+                  setShowAddForm(false);
+                  setNewProblemError(null);
+                }}
+                className={`control-button px-3 text-xs ${showOrganizeTools ? "control-button-selected" : ""}`}
+              >
+                <SlidersHorizontal className="h-3.5 w-3.5" />
+                整理工具
+                {showOrganizeTools ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+              </button>
+            )}
+            <button
+              onClick={() => {
+                setShowAIScan(true);
+                setShowOrganizeTools(false);
+              }}
+              className="control-button px-3 text-xs"
+            >
+              <Scan className="h-3.5 w-3.5" />
+              AI 扫描
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setShowAddForm((value) => !value);
+                setShowOrganizeTools(false);
+                setNewProblemError(null);
+              }}
+              className="control-button control-button-primary px-3 text-xs"
+            >
+              {showAddForm ? <ChevronUp className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
+              {showAddForm ? "收起新增" : "新增题目"}
+            </button>
           </div>
         </div>
         {hasUnsavedChanges && (
@@ -480,36 +503,44 @@ export function ProblemEditor({ problems, onChange, noteId, subject, hasUnsavedC
         )}
       </div>
 
+      <AnimatePresence>
+        {showOrganizeTools && problems.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: 0.18 }}
+            className="overflow-hidden"
+          >
+            <ProblemOrganizerPanel
+              totalCount={problems.length}
+              visibleCount={visibleProblems.length}
+              selectedCount={selectedProblemIdsInList.length}
+              allVisibleSelected={allVisibleProblemsSelected}
+              noteId={noteId}
+              selectedChapterId={bulkSelectEditorChapterId}
+              selectedChapterProblemCount={bulkSelectEditorChapterProblemIds.length}
+              unassignedChapterCount={unassignedEditorChapterProblemIds.length}
+              onToggleVisible={toggleAllProblemSelection}
+              onChangeChapter={setBulkSelectEditorChapterId}
+              onSelectChapter={selectProblemsByEditorChapter}
+              onSelectUnassignedChapter={selectProblemsWithoutEditorChapter}
+              showMath3Tools={showMath3Assignment}
+              unassignedMath3Count={unassignedMath3ProblemIds.length}
+              onlyUnassignedMath3={onlyShowUnassignedMath3Problems}
+              selectedMath3ChapterId={selectedMath3ChapterId}
+              selectedMath3Chapter={selectedMath3Chapter}
+              onToggleOnlyUnassignedMath3={() => setOnlyShowUnassignedMath3Problems((value) => !value)}
+              onSelectUnassignedMath3={selectUnassignedMath3Problems}
+              onChangeMath3Chapter={handleChangeMath3Chapter}
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Existing Problems (drag-and-drop) */}
       {problems.length > 0 && (
         <>
-          <ProblemBulkSelectionPanel
-            totalCount={problems.length}
-            visibleCount={visibleProblems.length}
-            selectedCount={selectedProblemIdsInList.length}
-            allVisibleSelected={allVisibleProblemsSelected}
-            noteId={noteId}
-            selectedChapterId={bulkSelectEditorChapterId}
-            selectedChapterProblemCount={bulkSelectEditorChapterProblemIds.length}
-            unassignedChapterCount={unassignedEditorChapterProblemIds.length}
-            onToggleVisible={toggleAllProblemSelection}
-            onChangeChapter={setBulkSelectEditorChapterId}
-            onSelectChapter={selectProblemsByEditorChapter}
-            onSelectUnassignedChapter={selectProblemsWithoutEditorChapter}
-          />
-          {showMath3Assignment && (
-            <Math3AssignmentPanel
-              totalCount={problems.length}
-              visibleCount={visibleProblems.length}
-              unassignedCount={unassignedMath3ProblemIds.length}
-              selectedCount={selectedProblemIdsInList.length}
-              onlyUnassigned={onlyShowUnassignedMath3Problems}
-              selectedChapterId={selectedMath3ChapterId}
-              onToggleOnlyUnassigned={() => setOnlyShowUnassignedMath3Problems((value) => !value)}
-              onSelectUnassigned={selectUnassignedMath3Problems}
-              onChangeChapter={handleChangeMath3Chapter}
-            />
-          )}
           <Reorder.Group
             axis="y"
             values={visibleProblems}
@@ -524,8 +555,9 @@ export function ProblemEditor({ problems, onChange, noteId, subject, hasUnsavedC
                     index={problemIndexById.get(problem.id) ?? index}
                     noteId={noteId}
                     selected={selectedProblemIdSet.has(problem.id)}
-                    showSelectionTools={true}
-                    showMath3Tools={showMath3Assignment}
+                    showSelectionTools={showOrganizeTools || selectedProblemIdSet.size > 0}
+                    organizeMode={showOrganizeTools}
+                    showMath3Tools={showMath3Assignment && showOrganizeTools}
                     math3ChapterTitle={math3ChapterTitleByProblemId[problem.id] ?? null}
                     math3PointTitles={math3PointTitlesByProblemId[problem.id] ?? []}
                     onToggleSelect={() => toggleProblemSelection(problem.id)}
@@ -803,7 +835,7 @@ function EditableProblemItem({
   );
 }
 
-function ProblemBulkSelectionPanel({
+function ProblemOrganizerPanel({
   totalCount,
   visibleCount,
   selectedCount,
@@ -816,6 +848,14 @@ function ProblemBulkSelectionPanel({
   onChangeChapter,
   onSelectChapter,
   onSelectUnassignedChapter,
+  showMath3Tools,
+  unassignedMath3Count,
+  onlyUnassignedMath3,
+  selectedMath3ChapterId,
+  selectedMath3Chapter,
+  onToggleOnlyUnassignedMath3,
+  onSelectUnassignedMath3,
+  onChangeMath3Chapter,
 }: {
   totalCount: number;
   visibleCount: number;
@@ -829,24 +869,33 @@ function ProblemBulkSelectionPanel({
   onChangeChapter: (chapterId: string | undefined) => void;
   onSelectChapter: () => void;
   onSelectUnassignedChapter: () => void;
+  showMath3Tools: boolean;
+  unassignedMath3Count: number;
+  onlyUnassignedMath3: boolean;
+  selectedMath3ChapterId: string;
+  selectedMath3Chapter: ReturnType<typeof getMath3ChapterById>;
+  onToggleOnlyUnassignedMath3: () => void;
+  onSelectUnassignedMath3: () => void;
+  onChangeMath3Chapter: (chapterId: string) => void;
 }) {
   return (
     <section className="surface-panel p-3">
-      <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-center">
-        <div className="flex min-w-0 flex-wrap items-center gap-2">
+      <div className="mb-3 flex flex-col gap-3 border-b border-outline-variant/10 pb-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="min-w-0">
           <div className="inline-flex items-center gap-2 text-sm font-semibold text-on-surface">
-            <CheckSquare className="h-4 w-4 text-primary" />
-            批量选择
+            <SlidersHorizontal className="h-4 w-4 text-primary" />
+            整理模式
           </div>
-          <span className="tag-chip px-2 py-0.5 text-xs">
-            已选 <span className="font-semibold text-on-surface">{selectedCount}</span>
-          </span>
-          <span className="tag-chip px-2 py-0.5 text-xs">
-            显示 {visibleCount}/{totalCount}
-          </span>
+          <p className="mt-1 text-xs leading-5 text-on-surface-variant">
+            先勾选题目；选中后，页面底部会出现批量修改栏。
+          </p>
+          <div className="compact-meta-row mt-2">
+            <span>已选 {selectedCount}</span>
+            <span>显示 {visibleCount}/{totalCount}</span>
+          </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2 xl:justify-end">
+        <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
             onClick={onToggleVisible}
@@ -866,25 +915,91 @@ function ProblemBulkSelectionPanel({
         </div>
       </div>
 
-      <div className="mt-3 grid gap-2 lg:grid-cols-[minmax(0,320px)_auto_minmax(0,1fr)] lg:items-center">
-        <ChapterSelector
-          noteId={noteId}
-          value={selectedChapterId}
-          onChange={onChangeChapter}
-          className="w-full"
-        />
-        <button
-          type="button"
-          onClick={onSelectChapter}
-          disabled={!selectedChapterId || selectedChapterProblemCount === 0}
-          className="control-button px-3 text-xs"
-        >
-          <FolderTree className="h-3.5 w-3.5" />
-          选择该章节 · {selectedChapterProblemCount}
-        </button>
-        <div className="surface-muted px-3 py-2 text-xs text-on-surface-variant">
-          题集章节 <span className="font-semibold text-on-surface">{selectedChapterProblemCount}</span> 题，未分 <span className="font-semibold text-on-surface">{unassignedChapterCount}</span> 题
+      <div className={`grid gap-3 ${showMath3Tools ? "xl:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]" : ""}`}>
+        <div className="surface-muted p-2">
+          <div className="mb-2 flex items-center gap-2 text-xs font-semibold text-on-surface-variant">
+            <CheckSquare className="h-3.5 w-3.5" />
+            按题集章节选题
+          </div>
+          <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_auto]">
+            <ChapterSelector
+              noteId={noteId}
+              value={selectedChapterId}
+              onChange={onChangeChapter}
+              className="w-full"
+            />
+            <button
+              type="button"
+              onClick={onSelectChapter}
+              disabled={!selectedChapterId || selectedChapterProblemCount === 0}
+              className="control-button px-3 text-xs"
+            >
+              <FolderTree className="h-3.5 w-3.5" />
+              选择该章节 · {selectedChapterProblemCount}
+            </button>
+          </div>
+          <div className="mt-2 text-xs text-on-surface-variant">
+            未分题集章节 {unassignedChapterCount} 题
+          </div>
         </div>
+
+        {showMath3Tools && (
+          <div className="surface-muted p-2">
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2 text-xs font-semibold text-on-surface-variant">
+                <Tags className="h-3.5 w-3.5" />
+                数三归类辅助
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={onToggleOnlyUnassignedMath3}
+                  className={`control-button min-h-0 px-2 py-1 text-xs ${onlyUnassignedMath3 ? "control-button-selected" : ""}`}
+                >
+                  {onlyUnassignedMath3 ? "显示全部" : "只看未归"}
+                </button>
+                <button
+                  type="button"
+                  onClick={onSelectUnassignedMath3}
+                  disabled={unassignedMath3Count === 0}
+                  className="control-button min-h-0 px-2 py-1 text-xs"
+                >
+                  选择未归 · {unassignedMath3Count}
+                </button>
+              </div>
+            </div>
+
+            <div className="grid gap-2 md:grid-cols-[260px_minmax(0,1fr)]">
+              <select
+                value={selectedMath3ChapterId}
+                onChange={(event) => onChangeMath3Chapter(event.target.value)}
+                className="field-control h-10 w-full px-3 text-sm"
+              >
+                {math3KnowledgeAreas.map((area) => (
+                  <optgroup key={area.id} label={area.title}>
+                    {area.chapters.map((chapter) => (
+                      <option key={chapter.id} value={chapter.id}>
+                        {chapter.title}
+                      </option>
+                    ))}
+                  </optgroup>
+                ))}
+              </select>
+              <div className="flex min-w-0 flex-wrap gap-1.5 overflow-hidden">
+                {selectedMath3Chapter?.chapter.points.slice(0, 5).map((pointItem) => (
+                  <span key={pointItem.id} className="tag-chip px-2 py-0.5 text-xs">
+                    {pointItem.title}
+                  </span>
+                ))}
+                {(selectedMath3Chapter?.chapter.points.length ?? 0) > 5 && (
+                  <span className="tag-chip px-2 py-0.5 text-xs">
+                    +{(selectedMath3Chapter?.chapter.points.length ?? 0) - 5}
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </section>
   );
@@ -933,6 +1048,12 @@ function BulkProblemActionBar({
   onClearMath3Knowledge: () => void;
   onRemoveSelected: () => void;
 }) {
+  const [showBulkDetails, setShowBulkDetails] = useState(false);
+
+  useEffect(() => {
+    if (!isOpen) setShowBulkDetails(false);
+  }, [isOpen]);
+
   return (
     <AnimatePresence>
       {isOpen && (
@@ -943,103 +1064,31 @@ function BulkProblemActionBar({
           transition={{ duration: 0.18 }}
           className="fixed inset-x-0 bottom-4 z-50 px-3 sm:px-6 pointer-events-none"
         >
-          <div className="command-bar pointer-events-auto mx-auto max-w-7xl p-2.5">
-            <div className="flex flex-col gap-2 xl:flex-row xl:items-center">
-              <div className="surface-muted flex shrink-0 items-center justify-between gap-3 px-3 py-2 xl:min-w-44">
-                <div>
-                  <div className="flex items-center gap-2 text-sm font-semibold text-on-surface">
+          <div className="command-bar pointer-events-auto mx-auto max-w-5xl p-2.5">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex min-w-0 flex-wrap items-center gap-2">
+                <div className="flex items-center gap-2 rounded-lg bg-primary/[0.08] px-3 py-2 text-sm font-semibold text-on-surface">
                   <CheckSquare className="h-4 w-4 text-primary" />
-                  已选 {selectedCount} 道
-                  </div>
-                  <div className="text-xs text-on-surface-variant">
-                    显示 {visibleCount}/{totalCount}
-                  </div>
+                  已选 {selectedCount} / {totalCount} 道
                 </div>
                 <button
                   type="button"
                   onClick={onToggleAll}
                   disabled={visibleCount === 0 || isClassifying}
-                  className="control-button h-8 min-h-0 px-2 text-xs"
+                  className="control-button h-9 min-h-0 px-3 text-xs"
                 >
-                  {allSelected ? "取消当前" : "全选当前"}
+                  {allSelected ? "取消当前显示" : "全选当前显示"}
                 </button>
-              </div>
-
-              <div className={`grid min-w-0 flex-1 gap-2 ${showMath3Tools ? "lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]" : ""}`}>
-                <div className="surface-muted grid gap-2 p-2 md:grid-cols-[auto_minmax(0,1fr)_auto] md:items-center">
-                  <div className="text-xs font-semibold text-on-surface-variant">题集章节</div>
-                    <ChapterSelector
-                      noteId={noteId}
-                      value={selectedEditorChapterId}
-                      onChange={onChangeEditorChapter}
-                      className="w-full"
-                      placement="top"
-                    />
-                    <button
-                      type="button"
-                      onClick={onApplyEditorChapter}
-                      disabled={!selectedEditorChapterId || isClassifying}
-                      className="control-button h-10 px-3 text-xs"
-                    >
-                      <FolderTree className="h-3.5 w-3.5" />
-                      应用
-                    </button>
-                </div>
-
-                {showMath3Tools && (
-                  <div className="surface-muted grid gap-2 p-2 md:grid-cols-[auto_minmax(0,1fr)_auto] md:items-center">
-                    <div className="text-xs font-semibold text-on-surface-variant">数三归类</div>
-                      <select
-                        value={selectedMath3ChapterId}
-                        onChange={(event) => onChangeMath3Chapter(event.target.value)}
-                        disabled={isClassifying}
-                        className="field-control h-10 min-w-0 px-3 text-sm disabled:opacity-40"
-                      >
-                        {math3KnowledgeAreas.map((area) => (
-                          <optgroup key={area.id} label={area.title}>
-                            {area.chapters.map((chapter) => (
-                              <option key={chapter.id} value={chapter.id}>
-                                {chapter.title}
-                              </option>
-                            ))}
-                          </optgroup>
-                        ))}
-                      </select>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={onApplyMath3Chapter}
-                          disabled={!selectedMath3Chapter || isClassifying}
-                          className="control-button h-10 px-3 text-xs"
-                        >
-                          归章
-                        </button>
-                        <button
-                          type="button"
-                          onClick={onClassifyKnowledge}
-                          disabled={!selectedMath3Chapter || isClassifying}
-                          className="control-button control-button-primary h-10 px-3 text-xs"
-                        >
-                          {isClassifying ? (
-                            <span className="inline-flex items-center gap-1.5">
-                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                              标记中
-                            </span>
-                          ) : (
-                            "AI 标记"
-                          )}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={onClearMath3Knowledge}
-                          disabled={isClassifying}
-                          className="control-button h-10 px-3 text-xs"
-                        >
-                          清除
-                        </button>
-                      </div>
-                  </div>
-                )}
+                <button
+                  type="button"
+                  onClick={() => setShowBulkDetails((value) => !value)}
+                  disabled={isClassifying}
+                  className={`control-button h-9 min-h-0 px-3 text-xs ${showBulkDetails ? "control-button-selected" : ""}`}
+                >
+                  <SlidersHorizontal className="h-3.5 w-3.5" />
+                  批量修改
+                  {showBulkDetails ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                </button>
               </div>
 
               <div className="flex shrink-0 items-center justify-end gap-2">
@@ -1047,7 +1096,7 @@ function BulkProblemActionBar({
                   type="button"
                   onClick={onRemoveSelected}
                   disabled={isClassifying}
-                  className="control-button control-button-danger h-10 px-3 text-xs"
+                  className="control-button control-button-danger h-9 min-h-0 px-3 text-xs"
                 >
                   <Trash2 className="h-3.5 w-3.5" />
                   删除
@@ -1056,7 +1105,7 @@ function BulkProblemActionBar({
                   type="button"
                   onClick={onClearSelection}
                   disabled={isClassifying}
-                  className="control-button h-10 w-10 p-0"
+                  className="control-button h-9 min-h-0 w-9 p-0"
                   title="取消选择"
                   aria-label="取消选择"
                 >
@@ -1064,121 +1113,99 @@ function BulkProblemActionBar({
                 </button>
               </div>
             </div>
+
+            <AnimatePresence>
+              {showBulkDetails && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: "auto" }}
+                  exit={{ opacity: 0, height: 0 }}
+                  transition={{ duration: 0.16 }}
+                  className="overflow-hidden"
+                >
+                  <div className={`mt-2 grid gap-2 ${showMath3Tools ? "lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]" : ""}`}>
+                    <div className="surface-muted grid gap-2 p-2 md:grid-cols-[auto_minmax(0,1fr)_auto] md:items-center">
+                      <div className="text-xs font-semibold text-on-surface-variant">题集章节</div>
+                      <ChapterSelector
+                        noteId={noteId}
+                        value={selectedEditorChapterId}
+                        onChange={onChangeEditorChapter}
+                        className="w-full"
+                        placement="top"
+                      />
+                      <button
+                        type="button"
+                        onClick={onApplyEditorChapter}
+                        disabled={!selectedEditorChapterId || isClassifying}
+                        className="control-button h-10 px-3 text-xs"
+                      >
+                        <FolderTree className="h-3.5 w-3.5" />
+                        应用
+                      </button>
+                    </div>
+
+                    {showMath3Tools && (
+                      <div className="surface-muted grid gap-2 p-2 md:grid-cols-[auto_minmax(0,1fr)_auto] md:items-center">
+                        <div className="text-xs font-semibold text-on-surface-variant">数三归类</div>
+                        <select
+                          value={selectedMath3ChapterId}
+                          onChange={(event) => onChangeMath3Chapter(event.target.value)}
+                          disabled={isClassifying}
+                          className="field-control h-10 min-w-0 px-3 text-sm disabled:opacity-40"
+                        >
+                          {math3KnowledgeAreas.map((area) => (
+                            <optgroup key={area.id} label={area.title}>
+                              {area.chapters.map((chapter) => (
+                                <option key={chapter.id} value={chapter.id}>
+                                  {chapter.title}
+                                </option>
+                              ))}
+                            </optgroup>
+                          ))}
+                        </select>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={onApplyMath3Chapter}
+                            disabled={!selectedMath3Chapter || isClassifying}
+                            className="control-button h-10 px-3 text-xs"
+                          >
+                            归章
+                          </button>
+                          <button
+                            type="button"
+                            onClick={onClassifyKnowledge}
+                            disabled={!selectedMath3Chapter || isClassifying}
+                            className="control-button control-button-primary h-10 px-3 text-xs"
+                          >
+                            {isClassifying ? (
+                              <span className="inline-flex items-center gap-1.5">
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                标记中
+                              </span>
+                            ) : (
+                              "AI 标记"
+                            )}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={onClearMath3Knowledge}
+                            disabled={isClassifying}
+                            className="control-button h-10 px-3 text-xs"
+                          >
+                            清除
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
         </motion.div>
       )}
     </AnimatePresence>
-  );
-}
-
-function Math3AssignmentPanel({
-  totalCount,
-  visibleCount,
-  unassignedCount,
-  selectedCount,
-  onlyUnassigned,
-  selectedChapterId,
-  onToggleOnlyUnassigned,
-  onSelectUnassigned,
-  onChangeChapter,
-}: {
-  totalCount: number;
-  visibleCount: number;
-  unassignedCount: number;
-  selectedCount: number;
-  onlyUnassigned: boolean;
-  selectedChapterId: string;
-  onToggleOnlyUnassigned: () => void;
-  onSelectUnassigned: () => void;
-  onChangeChapter: (chapterId: string) => void;
-}) {
-  const selectedChapter = getMath3ChapterById(selectedChapterId);
-
-  return (
-    <section className="surface-panel p-3">
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-        <div>
-          <div className="inline-flex items-center gap-2 text-sm font-semibold text-on-surface">
-            <Tags className="h-4 w-4" />
-            数三章节归类
-          </div>
-          <div className="mt-1 flex flex-wrap gap-1.5">
-            <span className="tag-chip px-2 py-0.5 text-xs">已选 {selectedCount}</span>
-            <span className="tag-chip px-2 py-0.5 text-xs">未归 {unassignedCount}</span>
-            <span className="tag-chip px-2 py-0.5 text-xs">显示 {visibleCount}/{totalCount}</span>
-          </div>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={onToggleOnlyUnassigned}
-            aria-pressed={onlyUnassigned}
-            className={`control-button px-3 text-xs ${
-              onlyUnassigned
-                ? "control-button-selected"
-                : ""
-            }`}
-          >
-            {onlyUnassigned ? "显示全部题目" : "只看未归章节"}
-          </button>
-          <button
-            type="button"
-            onClick={onSelectUnassigned}
-            disabled={unassignedCount === 0}
-            className="control-button px-3 text-xs"
-          >
-            选择未归数三 · {unassignedCount}
-          </button>
-        </div>
-      </div>
-
-      <div className="mt-3 grid gap-3 lg:grid-cols-[280px_minmax(0,1fr)]">
-        <div>
-          <label className="mb-1 block text-xs font-medium text-on-surface-variant">大纲章节</label>
-          <select
-            value={selectedChapterId}
-            onChange={(event) => onChangeChapter(event.target.value)}
-            className="field-control h-10 w-full px-3 text-sm"
-          >
-            {math3KnowledgeAreas.map((area) => (
-              <optgroup key={area.id} label={area.title}>
-                {area.chapters.map((chapter) => (
-                  <option key={chapter.id} value={chapter.id}>
-                    {chapter.title}
-                  </option>
-                ))}
-              </optgroup>
-            ))}
-          </select>
-        </div>
-
-        <div>
-          <div className="mb-1 flex items-center justify-between gap-3">
-            <label className="block text-xs font-medium text-on-surface-variant">AI 可标记的本章知识点</label>
-            <span className="text-xs text-on-surface-variant">人工只审核结果</span>
-          </div>
-
-          <div className="surface-muted max-h-24 overflow-y-auto p-2">
-            {selectedChapter ? (
-              <div className="flex flex-wrap gap-2">
-                {selectedChapter.chapter.points.map((pointItem) => (
-                  <span
-                    key={pointItem.id}
-                    className="tag-chip px-2.5 py-1 text-xs"
-                  >
-                    {pointItem.title}
-                  </span>
-                ))}
-              </div>
-            ) : (
-              <p className="py-3 text-xs text-on-surface-variant">没有可用知识点。</p>
-            )}
-          </div>
-        </div>
-      </div>
-
-    </section>
   );
 }
 
@@ -1189,6 +1216,7 @@ function ProblemCard({
   noteId,
   selected,
   showSelectionTools,
+  organizeMode,
   showMath3Tools,
   math3ChapterTitle,
   math3PointTitles,
@@ -1203,6 +1231,7 @@ function ProblemCard({
   noteId?: string;
   selected: boolean;
   showSelectionTools: boolean;
+  organizeMode: boolean;
   showMath3Tools: boolean;
   math3ChapterTitle: string | null;
   math3PointTitles: string[];
@@ -1250,13 +1279,15 @@ function ProblemCard({
             </label>
           )}
 
-          <div
-            onPointerDown={(event) => dragControls.start(event)}
-            className="mt-0.5 hidden h-8 w-8 cursor-grab items-center justify-center rounded-lg text-on-surface-variant/25 transition-colors hover:bg-surface-container-low hover:text-on-surface-variant/60 active:cursor-grabbing sm:flex"
-            title="拖拽排序"
-          >
-            <GripVertical className="h-4 w-4" />
-          </div>
+          {organizeMode && (
+            <div
+              onPointerDown={(event) => dragControls.start(event)}
+              className="mt-0.5 hidden h-8 w-8 cursor-grab items-center justify-center rounded-lg text-on-surface-variant/25 transition-colors hover:bg-surface-container-low hover:text-on-surface-variant/60 active:cursor-grabbing sm:flex"
+              title="拖拽排序"
+            >
+              <GripVertical className="h-4 w-4" />
+            </div>
+          )}
 
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-xs font-bold text-on-primary sm:mt-2">
             {index + 1}
@@ -1294,9 +1325,11 @@ function ProblemCard({
             )}
           </div>
 
-          <p className="line-clamp-3 break-words text-sm font-semibold leading-6 text-on-surface sm:text-[15px]">
-            {problem.question || "(无题目内容)"}
-          </p>
+          <MarkdownContent
+            content={problem.question || "(无题目内容)"}
+            compact
+            className="problem-card-preview text-sm font-semibold leading-6 text-on-surface sm:text-[15px]"
+          />
 
           {showMath3Tools && (
             <div className="mt-3 flex min-w-0 flex-wrap items-center gap-1.5">
@@ -1332,22 +1365,26 @@ function ProblemCard({
         </div>
 
         <div className="col-span-2 flex items-center justify-end gap-1 border-t border-outline-variant/10 pt-2 sm:col-span-1 sm:block sm:border-t-0 sm:pt-0">
-          <button
-            onClick={(e) => { e.stopPropagation(); onDuplicate(); }}
-            className="control-button h-8 min-h-0 w-8 p-0 opacity-70 sm:flex"
-            title="复制题目"
-            aria-label="复制题目"
-          >
-            <Copy className="h-3.5 w-3.5" />
-          </button>
-          <button
-            onClick={(e) => { e.stopPropagation(); onRemove(); }}
-            className="control-button control-button-danger h-8 min-h-0 w-8 p-0 opacity-70 sm:mt-2 sm:flex"
-            title="删除题目"
-            aria-label="删除题目"
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-          </button>
+          {(organizeMode || expanded) && (
+            <>
+              <button
+                onClick={(e) => { e.stopPropagation(); onDuplicate(); }}
+                className="control-button h-8 min-h-0 w-8 p-0 opacity-70 sm:flex"
+                title="复制题目"
+                aria-label="复制题目"
+              >
+                <Copy className="h-3.5 w-3.5" />
+              </button>
+              <button
+                onClick={(e) => { e.stopPropagation(); onRemove(); }}
+                className="control-button control-button-danger h-8 min-h-0 w-8 p-0 opacity-70 sm:mt-2 sm:flex"
+                title="删除题目"
+                aria-label="删除题目"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
+            </>
+          )}
           <button
             type="button"
             onClick={() => setExpanded(!expanded)}

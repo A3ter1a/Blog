@@ -4,7 +4,7 @@ import { useState, useRef, useCallback } from "react";
 import { motion } from "framer-motion";
 import { useRouter } from "next/navigation";
 import type { Editor } from "@tiptap/react";
-import { Save, RotateCcw, X, Image as ImageIcon, Sparkles, FolderTree, Columns, Maximize2, Eye, Loader2 } from "lucide-react";
+import { Save, RotateCcw, X, Image as ImageIcon, Sparkles, FolderTree, Columns, Maximize2, Eye, Loader2, ChevronDown, ChevronUp, SlidersHorizontal } from "lucide-react";
 import { Subject, subjectMap, NoteType, typeMap, Video, Problem } from "@/lib/types";
 import { Playlist } from "@/components/video/Playlist";
 import { ProblemEditor } from "@/components/problems/ProblemEditor";
@@ -83,6 +83,8 @@ export default function CreatePage() {
   } = useCoverUpload(initialImportDraft?.coverImage ?? "");
   const { isSaving, saveNote } = useNoteSave();
   const [showVideoSection, setShowVideoSection] = useState(false);
+  const [showMetaSection, setShowMetaSection] = useState(false);
+  const [showEditorTools, setShowEditorTools] = useState(false);
   const [editorReady, setEditorReady] = useState(false);
   const [showFormulaFixer, setShowFormulaFixer] = useState(false);
   const [showChapterManager, setShowChapterManager] = useState(false);
@@ -326,25 +328,23 @@ export default function CreatePage() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
-          className="mb-4 rounded-lg border border-outline-variant/20 bg-surface-container-lowest p-4"
+          className="surface-toolbar mb-4 p-2"
         >
-          <label className="mb-3 block text-sm font-medium text-on-surface-variant">
-            类型
-          </label>
-          <div className="grid gap-2 sm:grid-cols-3">
-            {(["note", "problem", "essay"] as NoteType[]).map((type) => (
-              <button
-                key={type}
-                onClick={() => setNoteType(type)}
-                className={`h-10 rounded-lg px-4 text-sm font-medium transition-colors ${
-                  noteType === type
-                    ? "bg-primary text-on-primary"
-                    : "bg-surface-container-low text-on-surface-variant hover:bg-surface-container-high"
-                }`}
-              >
-                {typeMap[type]}
-              </button>
-            ))}
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div className="px-2 text-sm font-medium text-on-surface-variant">内容类型</div>
+            <div className="grid gap-2 sm:grid-cols-3">
+              {(["note", "problem", "essay"] as NoteType[]).map((type) => (
+                <button
+                  key={type}
+                  onClick={() => setNoteType(type)}
+                  className={`control-button h-9 min-h-0 px-4 text-sm ${
+                    noteType === type ? "control-button-primary" : ""
+                  }`}
+                >
+                  {typeMap[type]}
+                </button>
+              ))}
+            </div>
           </div>
         </motion.div>
 
@@ -367,115 +367,130 @@ export default function CreatePage() {
           />
         </motion.div>
 
-        {/* Cover Image Input */}
-        <motion.div
+        {/* Metadata & Cover */}
+        <motion.section
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.16 }}
-          className="mb-4 rounded-lg border border-outline-variant/20 bg-surface-container-lowest p-4"
+          className="foldout-panel mb-6 p-2"
         >
-          <label className="block text-sm font-medium text-on-surface-variant mb-3">
-            封面图片（可选）
-          </label>
-          <div className="flex gap-3 items-start">
-            <input
-              type="text"
-              value={coverImage}
-              onChange={(e) => setCoverImageUrl(e.target.value)}
-              placeholder="输入图片 URL..."
-              className="flex-1 px-4 py-3 bg-surface-container-low rounded-xl input-soft text-on-surface placeholder:text-on-surface-variant/40"
-            />
-            <label
-              className={`p-3 rounded-xl bg-surface-container-low text-on-surface-variant hover:bg-surface-container-high transition-colors flex-shrink-0 ${
-                isUploadingCover ? "opacity-60 cursor-not-allowed" : "cursor-pointer"
-              }`}
-              title={isUploadingCover ? "上传中" : "上传图片"}
-              aria-disabled={isUploadingCover}
-            >
-              {isUploadingCover ? <Loader2 className="w-5 h-5 animate-spin" /> : <ImageIcon className="w-5 h-5" />}
-              <input
-                type="file"
-                accept="image/*"
-                className="hidden"
-                disabled={isUploadingCover}
-                onChange={handleCoverImageUpload}
-              />
-            </label>
-            {coverImage && (
-              <button
-                type="button"
-                onClick={clearCoverImage}
-                className="p-3 rounded-xl bg-surface-container-low text-on-surface-variant hover:bg-surface-container-high transition-colors flex-shrink-0"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            )}
-          </div>
-          {coverUploadError && (
-            <div className="mt-3 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-600">
-              {coverUploadError}
-            </div>
-          )}
-          {isUploadingCover && (
-            <div className="mt-3 flex items-center gap-2 text-sm text-on-surface-variant/60">
-              <Loader2 className="w-4 h-4 animate-spin text-primary" />
-              正在上传封面图片...
-            </div>
-          )}
-          {coverPreviewSrc && (
-            <div className="mt-3 rounded-xl overflow-hidden max-h-48">
-              {/* eslint-disable-next-line @next/next/no-img-element -- Cover previews can be external URLs or legacy data URLs. */}
-              <img src={coverPreviewSrc} alt="封面预览" className="w-full h-48 object-cover" />
-            </div>
-          )}
-        </motion.div>
+          <button
+            type="button"
+            onClick={() => setShowMetaSection((value) => !value)}
+            className="foldout-trigger px-3"
+          >
+            <span className="inline-flex items-center gap-2">
+              <SlidersHorizontal className="h-4 w-4" />
+              属性与封面
+            </span>
+            <span className="compact-meta-row justify-end">
+              {!isEssay && <span>{subjectMap[subject]}</span>}
+              {tagInput.trim() && <span>{tagInput.split(/[,，]/).filter((tag) => tag.trim()).length} 个标签</span>}
+              {coverImage && <span>有封面</span>}
+              {showMetaSection ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+            </span>
+          </button>
 
-        {/* Subject & Tags Row */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
-          className="mb-6 grid gap-4 rounded-lg border border-outline-variant/20 bg-surface-container-lowest p-4 md:grid-cols-2"
-        >
-          {/* Subject - Card Grid (hidden for essay) */}
-          {!isEssay && (
-            <div>
-              <label className="block text-sm font-medium text-on-surface-variant mb-3">
-                科目
-              </label>
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                {(Object.keys(subjectMap) as Subject[]).map((key) => (
-                  <button
-                    key={key}
-                    type="button"
-                    onClick={() => setSubject(key)}
-                    className={`h-10 rounded-lg px-3 text-sm font-medium transition-colors ${
-                      subject === key
-                        ? "bg-primary text-on-primary"
-                        : "bg-surface-container-low text-on-surface-variant hover:bg-surface-container-high"
+          {showMetaSection && (
+            <div className="mt-2 space-y-4 border-t border-outline-variant/10 p-3">
+              <div className="grid gap-4 md:grid-cols-2">
+                {!isEssay && (
+                  <div>
+                    <label className="block text-sm font-medium text-on-surface-variant mb-3">
+                      科目
+                    </label>
+                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                      {(Object.keys(subjectMap) as Subject[]).map((key) => (
+                        <button
+                          key={key}
+                          type="button"
+                          onClick={() => setSubject(key)}
+                          className={`control-button h-9 min-h-0 px-3 text-sm ${
+                            subject === key ? "control-button-primary" : ""
+                          }`}
+                        >
+                          {subjectMap[key]}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div className={isEssay ? "md:col-span-2" : ""}>
+                  <label className="block text-sm font-medium text-on-surface-variant mb-3">
+                    标签
+                  </label>
+                  <input
+                    type="text"
+                    value={tagInput}
+                    onChange={(e) => setTagInput(e.target.value)}
+                    placeholder="输入标签，用逗号分隔..."
+                    className="field-control h-11 w-full px-4 text-sm placeholder:text-on-surface-variant/40"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-on-surface-variant mb-3">
+                  封面图片（可选）
+                </label>
+                <div className="flex gap-3 items-start">
+                  <input
+                    type="text"
+                    value={coverImage}
+                    onChange={(e) => setCoverImageUrl(e.target.value)}
+                    placeholder="输入图片 URL..."
+                    className="field-control h-11 min-w-0 flex-1 px-4 text-sm placeholder:text-on-surface-variant/40"
+                  />
+                  <label
+                    className={`control-button h-11 w-11 flex-shrink-0 p-0 ${
+                      isUploadingCover ? "cursor-not-allowed opacity-60" : "cursor-pointer"
                     }`}
+                    title={isUploadingCover ? "上传中" : "上传图片"}
+                    aria-disabled={isUploadingCover}
                   >
-                    {subjectMap[key]}
-                  </button>
-                ))}
+                    {isUploadingCover ? <Loader2 className="w-5 h-5 animate-spin" /> : <ImageIcon className="w-5 h-5" />}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      disabled={isUploadingCover}
+                      onChange={handleCoverImageUpload}
+                    />
+                  </label>
+                  {coverImage && (
+                    <button
+                      type="button"
+                      onClick={clearCoverImage}
+                      className="control-button h-11 w-11 flex-shrink-0 p-0"
+                      title="清除封面"
+                      aria-label="清除封面"
+                    >
+                      <X className="w-5 h-5" />
+                    </button>
+                  )}
+                </div>
+                {coverUploadError && (
+                  <div className="mt-3 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-600">
+                    {coverUploadError}
+                  </div>
+                )}
+                {isUploadingCover && (
+                  <div className="mt-3 flex items-center gap-2 text-sm text-on-surface-variant/60">
+                    <Loader2 className="w-4 h-4 animate-spin text-primary" />
+                    正在上传封面图片...
+                  </div>
+                )}
+                {coverPreviewSrc && (
+                  <div className="mt-3 max-h-48 overflow-hidden rounded-xl">
+                    {/* eslint-disable-next-line @next/next/no-img-element -- Cover previews can be external URLs or legacy data URLs. */}
+                    <img src={coverPreviewSrc} alt="封面预览" className="h-48 w-full object-cover" />
+                  </div>
+                )}
               </div>
             </div>
           )}
-
-          {/* Tags - Simple comma-separated input */}
-          <div className={isEssay ? "md:col-span-2" : ""}>
-            <label className="block text-sm font-medium text-on-surface-variant mb-3">
-              标签
-            </label>
-            <input
-              type="text"
-              value={tagInput}
-              onChange={(e) => setTagInput(e.target.value)}
-              placeholder="输入标签，用逗号分隔..."
-              className="w-full px-4 py-3 bg-surface-container-low rounded-xl input-soft text-on-surface placeholder:text-on-surface-variant/40"
-            />
-          </div>
-        </motion.div>
+        </motion.section>
 
         {/* Content Editor / Problem Editor */}
         <motion.div
@@ -508,11 +523,11 @@ export default function CreatePage() {
             </>
           ) : (
             <>
-              <div className="flex items-center justify-between mb-3">
+              <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <label className="block text-sm font-medium text-on-surface-variant">
                   内容
                 </label>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   {/* Mode Toggle */}
                   <div className="flex rounded-lg border border-outline-variant/20 overflow-hidden">
                     <button
@@ -550,12 +565,23 @@ export default function CreatePage() {
                     </button>
                   </div>
                   <button
+                    type="button"
+                    onClick={() => setShowEditorTools((value) => !value)}
+                    className={`control-button h-8 min-h-0 px-2.5 text-xs ${showEditorTools ? "control-button-selected" : ""}`}
+                  >
+                    <SlidersHorizontal className="w-3.5 h-3.5" />
+                    编辑工具
+                    {showEditorTools ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                  </button>
+                </div>
+              </div>
+
+              {showEditorTools && (
+                <div className="foldout-panel mb-3 flex flex-wrap items-center justify-end gap-2 p-2">
+                  <button
                     onClick={() => setShowFormulaFixer(true)}
                     disabled={!editorReady || content.length === 0}
-                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium
-                      bg-amber-50 border border-amber-200 text-amber-700
-                      hover:bg-amber-100 transition-colors
-                      disabled:opacity-40 disabled:cursor-not-allowed"
+                    className="control-button h-9 min-h-0 px-3 text-xs disabled:cursor-not-allowed"
                   >
                     <Sparkles className="w-3.5 h-3.5" />
                     修正公式
@@ -563,16 +589,13 @@ export default function CreatePage() {
                   <button
                     onClick={handleAutoRepairMarkdown}
                     disabled={content.length === 0}
-                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium
-                      bg-primary/10 border border-primary/15 text-primary
-                      hover:bg-primary/15 transition-colors
-                      disabled:opacity-40 disabled:cursor-not-allowed"
+                    className="control-button h-9 min-h-0 px-3 text-xs disabled:cursor-not-allowed"
                   >
                     <Sparkles className="w-3.5 h-3.5" />
-                    自动修正 Markdown
+                    修正 Markdown
                   </button>
                 </div>
-              </div>
+              )}
 
               {viewMode === "split" && (
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

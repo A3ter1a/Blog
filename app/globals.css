@@ -309,6 +309,42 @@ h1, h2, h3, h4, h5, h6 {
   font-weight: 700;
 }
 
+.foldout-panel {
+  border: 1px solid color-mix(in srgb, var(--color-outline-variant) 48%, transparent);
+  background: color-mix(in srgb, var(--color-surface-container-lowest) 90%, var(--color-surface-container-low) 10%);
+  border-radius: var(--radius-lg);
+}
+
+.foldout-trigger {
+  display: flex;
+  width: 100%;
+  min-height: 2.5rem;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  border-radius: var(--radius-lg);
+  color: var(--color-on-surface-variant);
+  font-size: 0.875rem;
+  font-weight: 700;
+  transition:
+    background-color 0.16s ease,
+    color 0.16s ease;
+}
+
+.foldout-trigger:hover {
+  background: color-mix(in srgb, var(--color-primary) 6%, transparent);
+  color: var(--color-primary);
+}
+
+.compact-meta-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  color: color-mix(in srgb, var(--color-on-surface-variant) 82%, transparent);
+  font-size: 0.75rem;
+}
+
 /* Selection */
 ::selection {
   background-color: var(--color-primary-container);
@@ -498,6 +534,30 @@ h1, h2, h3, h4, h5, h6 {
 .markdown-compact pre {
   margin-top: 0.55em;
   margin-bottom: 0.65em;
+}
+
+.problem-card-preview {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.problem-card-preview p,
+.problem-card-preview ul,
+.problem-card-preview ol,
+.problem-card-preview blockquote,
+.problem-card-preview pre {
+  display: inline;
+  margin: 0;
+  padding: 0;
+}
+
+.problem-card-preview .katex-display {
+  display: inline-block;
+  max-width: 100%;
+  margin: 0 0.2em;
+  vertical-align: middle;
 }
 
 /* Ambient Shadow Classes */

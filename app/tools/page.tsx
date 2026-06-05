@@ -1,13 +1,11 @@
 import Link from "next/link";
 import {
-  ArrowRight,
   BookOpen,
   ChevronRight,
   ClipboardCheck,
-  Clock,
-  Layers,
   ListChecks,
   Target,
+  Zap,
 } from "lucide-react";
 
 const primaryTools = [
@@ -31,82 +29,55 @@ const primaryTools = [
   },
 ];
 
-const supportTools = [
+const secondaryTools = [
   {
-    id: "reading-time",
-    title: "阅读时间",
-    description: "笔记阅读页自动显示预计阅读时间，帮助安排复习节奏。",
+    id: "problem-bank",
+    title: "题集与刷题",
+    description: "从题集进入阅读、编辑和章节整理，再衔接到目录刷题。",
     href: "/notes",
-    icon: Clock,
+    icon: ListChecks,
     tone: "border-blue-500/20 bg-blue-500/10 text-blue-700",
-    metric: "笔记内置",
+    metric: "题库入口",
   },
-];
-
-const workflowSteps = [
-  { title: "整理", description: "在笔记和题集中沉淀材料", icon: Layers },
-  { title: "定位", description: "用数学三目录锁定章节范围", icon: Target },
-  { title: "检验", description: "用刷题和自测暴露薄弱点", icon: ListChecks },
+  {
+    id: "flashcard",
+    title: "抽卡复习",
+    description: "复习到期闪卡，按掌握程度自动安排下一次回看。",
+    href: "/flashcard",
+    icon: Zap,
+    tone: "border-amber-500/20 bg-amber-500/10 text-amber-700",
+    metric: "间隔重复",
+  },
 ];
 
 export default function ToolsPage() {
   return (
     <main className="min-h-screen bg-surface pt-24">
       <section className="border-b border-outline-variant/20 bg-surface-container-low/70">
-        <div className="mx-auto max-w-7xl px-4 py-8">
-          <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px] lg:items-end">
-            <div>
-              <div className="eyebrow-chip mb-3 px-3 py-1 text-xs">
-                <Target className="h-4 w-4" />
-                学习工具台
-              </div>
-              <h1 className="font-headline text-3xl font-bold text-on-surface md:text-4xl">
-                工具
-              </h1>
-              <p className="mt-3 max-w-2xl text-sm leading-6 text-on-surface-variant md:text-base">
-                把笔记、题集、数学三目录和模拟自测串成一条复习工作流。
-              </p>
+        <div className="mx-auto max-w-5xl px-4 py-8">
+          <div>
+            <div className="eyebrow-chip mb-3 px-3 py-1 text-xs">
+              <Target className="h-4 w-4" />
+              学习工具台
             </div>
-
-            <div className="surface-panel grid grid-cols-3 gap-2 p-3">
-              {workflowSteps.map((step) => {
-                const Icon = step.icon;
-                return (
-                  <div key={step.title} className="surface-muted px-3 py-3">
-                    <Icon className="mb-2 h-4 w-4 text-primary" />
-                    <div className="text-sm font-semibold text-on-surface">{step.title}</div>
-                    <div className="mt-1 text-xs leading-5 text-on-surface-variant">{step.description}</div>
-                  </div>
-                );
-              })}
-            </div>
+            <h1 className="font-headline text-3xl font-bold text-on-surface md:text-4xl">
+              工具
+            </h1>
+            <p className="mt-3 max-w-2xl text-sm leading-6 text-on-surface-variant md:text-base">
+              只保留真正需要进入操作的入口。
+            </p>
           </div>
         </div>
       </section>
 
-      <div className="mx-auto max-w-7xl px-4 py-8">
-        <section className="grid gap-4 lg:grid-cols-2">
+      <div className="mx-auto max-w-5xl px-4 py-8">
+        <section className="grid gap-3">
           {primaryTools.map((tool) => (
-            <ToolCard key={tool.id} tool={tool} priority />
+            <ToolCard key={tool.id} tool={tool} />
           ))}
-        </section>
-
-        <section className="mt-8">
-          <div className="mb-3 flex items-center justify-between gap-3">
-            <h2 className="text-sm font-semibold text-on-surface">辅助能力</h2>
-            <Link
-              href="/notes"
-              className="inline-flex items-center gap-1 text-sm font-medium text-primary transition-colors hover:text-primary-container"
-            >
-              查看笔记
-              <ArrowRight className="h-4 w-4" />
-            </Link>
-          </div>
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {supportTools.map((tool) => (
-              <ToolCard key={tool.id} tool={tool} />
-            ))}
-          </div>
+          {secondaryTools.map((tool) => (
+            <ToolCard key={tool.id} tool={tool} />
+          ))}
         </section>
       </div>
     </main>
@@ -115,7 +86,6 @@ export default function ToolsPage() {
 
 function ToolCard({
   tool,
-  priority = false,
 }: {
   tool: {
     title: string;
@@ -125,37 +95,35 @@ function ToolCard({
     tone: string;
     metric: string;
   };
-  priority?: boolean;
 }) {
   const Icon = tool.icon;
 
   return (
     <Link
       href={tool.href}
-      className={`surface-card group block p-5 hover:-translate-y-0.5 ${
-        priority ? "min-h-52" : ""
-      }`}
+      className="surface-card group block p-4 hover:-translate-y-0.5"
     >
-      <div className="flex h-full flex-col justify-between gap-5">
-        <div>
-          <div className="flex items-start justify-between gap-4">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex min-w-0 items-start gap-4">
             <div className={`flex h-11 w-11 items-center justify-center rounded-lg border ${tool.tone}`}>
               <Icon className="h-5 w-5" />
             </div>
-            <span className="tag-chip px-2.5 py-1 text-xs font-medium">
-              {tool.metric}
-            </span>
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <h3 className="font-headline text-lg font-bold text-on-surface group-hover:text-primary">
+                {tool.title}
+              </h3>
+              <span className="tag-chip px-2 py-0.5 text-xs font-medium">
+                {tool.metric}
+              </span>
+            </div>
+            <p className="mt-1 text-sm leading-6 text-on-surface-variant">
+              {tool.description}
+            </p>
           </div>
-
-          <h3 className="mt-5 font-headline text-xl font-bold text-on-surface group-hover:text-primary">
-            {tool.title}
-          </h3>
-          <p className="mt-2 text-sm leading-6 text-on-surface-variant">
-            {tool.description}
-          </p>
         </div>
 
-        <div className="flex items-center justify-between border-t border-outline-variant/15 pt-4 text-sm font-medium text-primary">
+        <div className="flex shrink-0 items-center justify-end gap-2 text-sm font-medium text-primary">
           <span>进入</span>
           <ChevronRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
         </div>
