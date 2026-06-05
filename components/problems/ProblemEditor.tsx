@@ -824,6 +824,7 @@ function BulkProblemActionBar({
                       value={selectedEditorChapterId}
                       onChange={onChangeEditorChapter}
                       className="w-full"
+                      placement="top"
                     />
                     <button
                       type="button"

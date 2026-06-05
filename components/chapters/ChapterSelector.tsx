@@ -11,9 +11,10 @@ interface ChapterSelectorProps {
   value?: string;
   onChange: (chapterId: string | undefined) => void;
   className?: string;
+  placement?: 'top' | 'bottom';
 }
 
-export function ChapterSelector({ noteId, value, onChange, className = '' }: ChapterSelectorProps) {
+export function ChapterSelector({ noteId, value, onChange, className = '', placement = 'bottom' }: ChapterSelectorProps) {
   const [chapters, setChapters] = useState<Chapter[]>([]);
   const [isOpen, setIsOpen] = useState(false);
 
@@ -33,6 +34,7 @@ export function ChapterSelector({ noteId, value, onChange, className = '' }: Cha
 
   const selected = chapters.find(c => c.id === value);
   const topLevel = getRootChapters(chapters);
+  const dropdownPlacementClass = placement === 'top' ? 'bottom-full mb-1' : 'top-full mt-1';
   const getChildren = useCallback(
     (parentId: string) => getChildChapters(chapters, parentId),
     [chapters],
@@ -66,7 +68,7 @@ export function ChapterSelector({ noteId, value, onChange, className = '' }: Cha
       {isOpen && (
         <>
           <div className="fixed inset-0 z-10" onClick={() => setIsOpen(false)} />
-          <div className="absolute top-full left-0 right-0 mt-1 z-20 bg-surface-container-lowest rounded-xl shadow-elevated border border-outline-variant/10 py-1 max-h-60 overflow-y-auto">
+          <div className={`absolute ${dropdownPlacementClass} left-0 right-0 z-20 bg-surface-container-lowest rounded-xl shadow-elevated border border-outline-variant/10 py-1 max-h-60 overflow-y-auto`}>
             <button
               onClick={handleClear}
               className={`w-full px-3 py-2 text-left text-sm hover:bg-surface-container-low transition-colors ${!value ? 'text-primary font-medium' : 'text-on-surface-variant/50'}`}
