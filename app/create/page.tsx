@@ -144,6 +144,7 @@ function CreateEditorPage() {
     isEditMode,
     editingId,
     isLoadingExistingNote,
+    loadNotice,
     loadError,
   } = useNoteEditorRoute({
     initialImportDraft,
@@ -258,9 +259,16 @@ function CreateEditorPage() {
   if (!routeReady || isLoadingExistingNote) {
     return (
         <main className="pt-32 pb-20 min-h-screen flex items-center justify-center">
-          <div className="flex items-center gap-3 text-on-surface-variant">
-            <Loader2 className="w-6 h-6 animate-spin text-primary" />
-            <span>正在准备编辑器...</span>
+          <div className="max-w-md px-6 text-center text-on-surface-variant">
+            <div className="flex items-center justify-center gap-3">
+              <Loader2 className="w-6 h-6 animate-spin text-primary" />
+              <span>{loadNotice ?? "正在准备编辑器..."}</span>
+            </div>
+            {loadNotice && (
+              <p className="mt-3 text-xs leading-relaxed text-on-surface-variant/70">
+                题集会一次性读取题干、答案和选项，数据量大时会比普通文章慢一些。
+              </p>
+            )}
           </div>
         </main>
     );

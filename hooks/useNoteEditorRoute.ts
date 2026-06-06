@@ -39,15 +39,17 @@ type UseNoteEditorRouteResult = {
   isEditMode: boolean;
   editingId: string;
   isLoadingExistingNote: boolean;
+  loadNotice: string | null;
   loadError: string | null;
 };
 
-const EDIT_NOTE_LOAD_TIMEOUT_MS = 15000;
+const EDIT_NOTE_SLOW_NOTICE_MS = 8000;
+const EDIT_NOTE_LOAD_TIMEOUT_MS = 90000;
 
 function withLoadTimeout<T>(promise: Promise<T>): Promise<T> {
   return new Promise((resolve, reject) => {
     const timer = window.setTimeout(() => {
-      reject(new Error("编辑数据加载超时，请检查网络后重试"));
+      reject(new Error("完整编辑数据加载超过 90 秒，可能是当前网络不稳定，或这篇笔记/题集数据量过大，请刷新后重试"));
     }, EDIT_NOTE_LOAD_TIMEOUT_MS);
 
     promise.then(
@@ -88,6 +90,7 @@ export function useNoteEditorRoute({
   const [isEditMode, setIsEditMode] = useState(false);
   const [editingId, setEditingId] = useState("");
   const [isLoadingExistingNote, setIsLoadingExistingNote] = useState(false);
+  const [loadNotice, setLoadNotice] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -95,16 +98,25 @@ export function useNoteEditorRoute({
     const editId = searchParams.get("edit");
     const importMode = searchParams.get("import");
     let cancelled = false;
+    let slowNoticeTimer: number | undefined;
 
     if (editId) {
       setIsEditMode(true);
       setEditingId(editId);
       setIsLoadingExistingNote(true);
+      setLoadNotice(null);
       setLoadError(null);
+
+      slowNoticeTimer = window.setTimeout(() => {
+        if (!cancelled) {
+          setLoadNotice("这篇内容的数据量较大，正在继续读取完整编辑数据...");
+        }
+      }, EDIT_NOTE_SLOW_NOTICE_MS);
 
       withLoadTimeout(notesApi.getEditableById(editId)).then((existingNote) => {
         if (cancelled) return;
         if (existingNote) {
+          setLoadNotice(null);
           const visibleTags = splitMath3PracticeTags(existingNote.tags).visibleTags;
 
           applyDraft({
@@ -129,6 +141,9 @@ export function useNoteEditorRoute({
         setLoadError(`加载笔记失败：${message}`);
         toast.error("加载笔记失败");
       }).finally(() => {
+        if (slowNoticeTimer !== undefined) {
+          window.clearTimeout(slowNoticeTimer);
+        }
         if (!cancelled) {
           setIsLoadingExistingNote(false);
           setRouteReady(true);
@@ -138,6 +153,7 @@ export function useNoteEditorRoute({
       setIsEditMode(false);
       setEditingId("");
       setLoadError(null);
+      setLoadNotice(null);
       setIsLoadingExistingNote(false);
       if (initialImportDraft) {
         applyDraft(draftFromImport(initialImportDraft));
@@ -149,6 +165,7 @@ export function useNoteEditorRoute({
       setIsEditMode(false);
       setEditingId("");
       setLoadError(null);
+      setLoadNotice(null);
       setIsLoadingExistingNote(false);
       resetDraft();
       setRouteReady(true);
@@ -156,6 +173,9 @@ export function useNoteEditorRoute({
 
     return () => {
       cancelled = true;
+      if (slowNoticeTimer !== undefined) {
+        window.clearTimeout(slowNoticeTimer);
+      }
     };
   }, [applyDraft, initialImportDraft, resetDraft, toast]);
 
@@ -164,6 +184,7 @@ export function useNoteEditorRoute({
     isEditMode,
     editingId,
     isLoadingExistingNote,
+    loadNotice,
     loadError,
   };
 }
