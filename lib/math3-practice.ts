@@ -298,6 +298,10 @@ export function flattenPracticeProblems(problemSets: Note[], scope?: Math3Practi
   );
 }
 
+export function getMath3ScopeProblemCount(problemSets: Note[], scope: Math3PracticeScope): number {
+  return flattenPracticeProblems(problemSets, scope).length;
+}
+
 export function getMath3ScopeProblemSetStats(
   problemSets: Note[],
   scope: Math3PracticeScope,

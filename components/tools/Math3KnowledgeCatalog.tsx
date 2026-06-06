@@ -42,6 +42,7 @@ import {
   getMath3PointIdsFromTags,
   getMath3ScopeChapterIds,
   getMath3ScopePointIds,
+  getMath3ScopeProblemCount,
   getVisibleNoteTags,
   type Math3PracticeScope,
 } from "@/lib/math3-practice";
@@ -156,6 +157,7 @@ export function Math3KnowledgeCatalog() {
           limit: 200,
           offset: 0,
           includeCoverImage: false,
+          includeProblems: true,
         });
 
         if (!cancelled) setProblemSets(sets);
@@ -631,6 +633,7 @@ function AreaPracticeCard({
     title: `${practiceName}刷题`,
   };
   const directLinkedSetIds = getLinkedProblemSetIds(problemSets, scope);
+  const directProblemCount = getMath3ScopeProblemCount(problemSets, scope);
 
   return (
     <div className="rounded-lg border border-outline-variant/20 bg-surface-container-lowest p-4">
@@ -652,7 +655,7 @@ function AreaPracticeCard({
           刷整个{practiceName}
         </button>
         <span className="text-xs text-on-surface-variant">
-          汇总 {directLinkedSetIds.length} 个题集
+          汇总 {isLoadingProblemSets ? "加载中" : `${directProblemCount} 题`}
         </span>
       </div>
 
@@ -792,6 +795,7 @@ function ChapterBlock({
     areaId,
   };
   const linkedSetIds = getLinkedProblemSetIds(problemSets, scope);
+  const linkedProblemCount = getMath3ScopeProblemCount(problemSets, scope);
 
   return (
     <article className="overflow-hidden rounded-lg border border-outline-variant/20 bg-surface-container-lowest">
@@ -822,7 +826,7 @@ function ChapterBlock({
             </span>
             <span className="inline-flex items-center gap-1 rounded-full bg-surface-container-lowest px-3 py-1 text-xs font-medium text-on-surface-variant">
               <Layers className="h-3.5 w-3.5" />
-              {linkedSetIds.length} 题集
+              {isLoadingProblemSets ? "加载题目" : `${linkedProblemCount} 题`}
             </span>
             <button
               type="button"

@@ -41,6 +41,7 @@ export type NoteSummaryQueryOptions = {
   limit?: number;
   offset?: number;
   includeCoverImage?: boolean;
+  includeProblems?: boolean;
 };
 
 export type NoteSearchSummaryOptions = {
@@ -201,6 +202,18 @@ const NOTE_SUMMARY_FIELDS_WITHOUT_COVER = `
         is_published
       `;
 
+const NOTE_SUMMARY_FIELDS_WITH_PROBLEMS = `
+        id,
+        type,
+        title,
+        subject,
+        tags,
+        problems,
+        created_at,
+        updated_at,
+        is_published
+      `;
+
 const NOTE_DETAIL_FIELDS = `
         id,
         type,
@@ -216,7 +229,8 @@ const NOTE_DETAIL_FIELDS = `
         is_published
       `;
 
-function getNoteSummaryFields(includeCoverImage = true): string {
+function getNoteSummaryFields(includeCoverImage = true, includeProblems = false): string {
+  if (includeProblems) return NOTE_SUMMARY_FIELDS_WITH_PROBLEMS;
   return includeCoverImage ? NOTE_SUMMARY_FIELDS_WITH_COVER : NOTE_SUMMARY_FIELDS_WITHOUT_COVER;
 }
 
@@ -352,13 +366,13 @@ function mapCamelToSnake(note: Partial<Note>): NoteUpdate {
 
 // Notes API (使用 getSupabase() 确保延迟初始化)
 export const notesApi = {
-  // Get note summaries for list view. This intentionally excludes content, videos, and problems.
+  // Get note summaries for list view. By default this excludes content, videos, and problems.
   async getSummaries(options: NoteSummaryQueryOptions = {}): Promise<Note[]> {
     const supabase = getSupabase();
     const ascending = options.sortOrder === "asc";
     let query = supabase
       .from("notes")
-      .select(getNoteSummaryFields(options.includeCoverImage))
+      .select(getNoteSummaryFields(options.includeCoverImage, options.includeProblems))
       .eq("is_published", true)
       .order("created_at", { ascending });
 
