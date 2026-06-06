@@ -946,11 +946,18 @@ function mapPracticeStatusSnakeToCamel(row: ProblemPracticeStatusRow): ProblemPr
 
 export const problemPracticeApi = {
   async getByNoteId(noteId: string): Promise<ProblemPracticeStatus[]> {
+    return problemPracticeApi.getByNoteIds([noteId]);
+  },
+
+  async getByNoteIds(noteIds: string[]): Promise<ProblemPracticeStatus[]> {
+    const uniqueNoteIds = [...new Set(noteIds.filter(Boolean))];
+    if (uniqueNoteIds.length === 0) return [];
+
     const supabase = getSupabase();
     const { data, error } = await supabase
       .from("problem_practice_statuses")
       .select("*")
-      .eq("note_id", noteId);
+      .in("note_id", uniqueNoteIds);
 
     if (error) throw error;
     return (data || []).map(mapPracticeStatusSnakeToCamel);

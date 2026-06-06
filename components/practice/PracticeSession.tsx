@@ -28,22 +28,22 @@ import {
   type Math3PracticeScope,
   type PracticeProblemItem,
 } from "@/lib/math3-practice";
+import {
+  getResultLabel,
+  getRoundLabel,
+  getStatusTone,
+  isPracticed,
+  isReviewStatus,
+  matchesPracticeFilter,
+  PRACTICE_FILTERS,
+  toPracticeStatusMap,
+  type PracticeFilter,
+} from "@/lib/problem-practice";
 import { notesApi, problemPracticeApi } from "@/lib/supabase";
 import type { Note, PracticeResult, ProblemPracticeStatus } from "@/lib/types";
 import { difficultyMap, problemTypeMap } from "@/lib/types";
 
 const PROGRESS_WINDOW_SIZE = 45;
-
-type PracticeFilter = "all" | "review" | "wrong" | "unpracticed" | "unmastered" | "mastered";
-
-const PRACTICE_FILTERS: Array<{ value: PracticeFilter; label: string }> = [
-  { value: "all", label: "全部" },
-  { value: "review", label: "待回看" },
-  { value: "wrong", label: "答错" },
-  { value: "unpracticed", label: "未刷" },
-  { value: "unmastered", label: "未掌握" },
-  { value: "mastered", label: "已掌握" },
-];
 
 type PracticeSessionProps = {
   scopeTitle: string;
@@ -52,43 +52,6 @@ type PracticeSessionProps = {
   scope?: Math3PracticeScope;
   onClose?: () => void;
 };
-
-function getRoundLabel(round: number): string {
-  const labels = ["未刷", "一刷", "二刷", "三刷", "四刷", "五刷"];
-  return labels[round] ?? `${round} 刷`;
-}
-
-function getResultLabel(result?: PracticeResult): string {
-  if (result === "correct") return "最近答对";
-  if (result === "wrong") return "最近答错";
-  if (result === "skipped") return "已跳过";
-  return "未作答";
-}
-
-function getStatusTone(status?: ProblemPracticeStatus): string {
-  if (!status || status.round === 0) return "bg-surface-container-high text-on-surface-variant";
-  if (status.lastResult === "wrong") return "bg-red-50 text-red-700";
-  if (status.isMastered) return "bg-green-50 text-green-700";
-  if (status.lastResult === "correct") return "bg-primary/10 text-primary";
-  return "bg-amber-50 text-amber-700";
-}
-
-function isPracticed(status?: ProblemPracticeStatus): boolean {
-  return (status?.round ?? 0) > 0;
-}
-
-function isReviewStatus(status?: ProblemPracticeStatus): boolean {
-  return status?.lastResult === "wrong" || status?.lastResult === "skipped";
-}
-
-function matchesPracticeFilter(status: ProblemPracticeStatus | undefined, filter: PracticeFilter): boolean {
-  if (filter === "all") return true;
-  if (filter === "review") return isReviewStatus(status);
-  if (filter === "wrong") return status?.lastResult === "wrong";
-  if (filter === "unpracticed") return !isPracticed(status);
-  if (filter === "unmastered") return !status?.isMastered;
-  return Boolean(status?.isMastered);
-}
 
 function getProgressWindow(currentIndex: number, total: number): [number, number] {
   if (total <= PROGRESS_WINDOW_SIZE) return [0, total];
@@ -100,12 +63,6 @@ function getProgressWindow(currentIndex: number, total: number): [number, number
   );
 
   return [start, start + PROGRESS_WINDOW_SIZE];
-}
-
-function toStatusMap(statuses: ProblemPracticeStatus[]): Record<string, ProblemPracticeStatus> {
-  return Object.fromEntries(
-    statuses.map((status) => [getPracticeProblemKey(status.noteId, status.problemId), status])
-  );
 }
 
 export function PracticeSession({
@@ -159,20 +116,15 @@ export function PracticeSession({
           normalizedProblemSetIds.map((id) => notesApi.getPracticeSet(id))
         );
         const validSets = loadedSets.filter((set): set is Note => Boolean(set));
-        const statusGroups = await Promise.all(
-          validSets.map((set) =>
-            problemPracticeApi.getByNoteId(set.id).catch((error) => {
-              console.error("Failed to load practice statuses:", error);
-              toast.error("刷题状态加载失败，请确认 problem_practice_statuses 表可访问");
-              return [];
-            })
-          )
-        );
+        const statuses = await problemPracticeApi.getByNoteIds(validSets.map((set) => set.id)).catch(() => {
+          toast.error("刷题状态加载失败，将以未刷状态继续");
+          return [];
+        });
 
         if (requestId !== loadRequestRef.current) return;
 
         setProblemSets(validSets);
-        setStatusMap(toStatusMap(statusGroups.flat()));
+        setStatusMap(toPracticeStatusMap(statuses));
       } catch (error) {
         if (requestId !== loadRequestRef.current) return;
         const message = error instanceof Error ? error.message : "未知错误";

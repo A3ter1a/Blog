@@ -4,11 +4,21 @@ import {
   ChevronRight,
   ClipboardCheck,
   ListChecks,
+  RotateCcw,
   Target,
   Zap,
 } from "lucide-react";
 
 const primaryTools = [
+  {
+    id: "review-center",
+    title: "错题复盘",
+    description: "集中处理答错、跳过和未掌握的数学题，按章节查看薄弱点。",
+    href: "/tools/review",
+    icon: RotateCcw,
+    tone: "border-rose-500/20 bg-rose-500/10 text-rose-700",
+    metric: "待回看",
+  },
   {
     id: "math3-self-test",
     title: "数学三自测",
