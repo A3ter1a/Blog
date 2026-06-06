@@ -21,7 +21,7 @@ interface OCRUploaderProps {
   chapterContext?: ChapterContextItem[];
 }
 
-const MAX_SCAN_IMAGES = 8;
+const MAX_SCAN_IMAGES = 10;
 const MAX_IMAGE_EDGE = 1800;
 const JPEG_QUALITY = 0.86;
 const SUPPORTED_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
@@ -90,8 +90,10 @@ async function prepareScanImage(file: File): Promise<ScanImageInput & { previewU
 export function OCRUploader({ isOpen, onClose, onAccept, chapterContext }: OCRUploaderProps) {
   const [previewUrls, setPreviewUrls] = useState<string[]>([]);
   const [fileError, setFileError] = useState<string | null>(null);
+  const [prepareProgress, setPrepareProgress] = useState<{ total: number; completed: number } | null>(null);
   const { scanState, startScan, resetScan, cancelScan } = useAIScan();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const prepareRunRef = useRef(0);
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
@@ -101,7 +103,10 @@ export function OCRUploader({ isOpen, onClose, onAccept, chapterContext }: OCRUp
     const scanImages: ScanImageInput[] = [];
     const skippedMessages: string[] = [];
     const selectedFiles = files.slice(0, MAX_SCAN_IMAGES);
+    const prepareRunId = prepareRunRef.current + 1;
+    prepareRunRef.current = prepareRunId;
 
+    setPrepareProgress({ total: selectedFiles.length, completed: 0 });
     setFileError(files.length > MAX_SCAN_IMAGES
       ? `一次最多处理 ${MAX_SCAN_IMAGES} 张图片，已自动忽略多余图片`
       : null
@@ -111,6 +116,12 @@ export function OCRUploader({ isOpen, onClose, onAccept, chapterContext }: OCRUp
       for (const file of selectedFiles) {
         try {
           const preparedImage = await prepareScanImage(file);
+          if (prepareRunRef.current !== prepareRunId) {
+            URL.revokeObjectURL(preparedImage.previewUrl);
+            urls.forEach(url => URL.revokeObjectURL(url));
+            return;
+          }
+
           scanImages.push({
             base64: preparedImage.base64,
             mimeType: preparedImage.mimeType,
@@ -118,8 +129,25 @@ export function OCRUploader({ isOpen, onClose, onAccept, chapterContext }: OCRUp
           });
           urls.push(preparedImage.previewUrl);
         } catch (error: unknown) {
+          if (prepareRunRef.current !== prepareRunId) {
+            urls.forEach(url => URL.revokeObjectURL(url));
+            return;
+          }
+
           skippedMessages.push(getErrorMessage(error, `${file.name} 处理失败`));
+        } finally {
+          if (prepareRunRef.current === prepareRunId) {
+            setPrepareProgress((prev) => prev
+              ? { ...prev, completed: Math.min(prev.total, prev.completed + 1) }
+              : prev
+            );
+          }
         }
+      }
+
+      if (prepareRunRef.current !== prepareRunId) {
+        urls.forEach(url => URL.revokeObjectURL(url));
+        return;
       }
 
       if (scanImages.length === 0) {
@@ -130,14 +158,23 @@ export function OCRUploader({ isOpen, onClose, onAccept, chapterContext }: OCRUp
       previewUrls.forEach(url => URL.revokeObjectURL(url));
       setPreviewUrls(urls);
       setFileError((prev) => [prev, ...skippedMessages].filter(Boolean).join('；') || null);
+      setPrepareProgress(null);
       await startScan(scanImages, chapterContext);
     } catch (err: unknown) {
+      if (prepareRunRef.current !== prepareRunId) {
+        urls.forEach(url => URL.revokeObjectURL(url));
+        return;
+      }
+
       console.error('OCR file processing failed:', err);
       urls.forEach(url => URL.revokeObjectURL(url));
       resetScan();
       setPreviewUrls([]);
       setFileError(getErrorMessage(err, '图片处理失败，请重新选择'));
     } finally {
+      if (prepareRunRef.current === prepareRunId) {
+        setPrepareProgress(null);
+      }
       e.target.value = '';
     }
   };
@@ -175,17 +212,21 @@ export function OCRUploader({ isOpen, onClose, onAccept, chapterContext }: OCRUp
   };
 
   const handleClose = () => {
+    prepareRunRef.current += 1;
     cancelScan();
     previewUrls.forEach(url => URL.revokeObjectURL(url));
     setPreviewUrls([]);
     setFileError(null);
+    setPrepareProgress(null);
     onClose();
   };
 
   const handleRetry = () => {
+    prepareRunRef.current += 1;
     previewUrls.forEach(url => URL.revokeObjectURL(url));
     setPreviewUrls([]);
     setFileError(null);
+    setPrepareProgress(null);
     resetScan();
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
@@ -197,12 +238,17 @@ export function OCRUploader({ isOpen, onClose, onAccept, chapterContext }: OCRUp
 
   if (!isOpen) return null;
 
+  const isPreparing = Boolean(prepareProgress);
   const isProcessing = scanState.stage !== 'idle' && scanState.stage !== 'complete' && scanState.stage !== 'error';
+  const isBusy = isPreparing || isProcessing;
   const currentImage = scanState.currentImage || 1;
   const totalImages = scanState.totalImages || 0;
   const completedImages = scanState.completedImages || 0;
   const failedImages = scanState.failedImages || 0;
   const extractedCount = scanState.extractedProblems?.length || 0;
+  const preparePercent = prepareProgress
+    ? Math.round((prepareProgress.completed / Math.max(1, prepareProgress.total)) * 100)
+    : 0;
 
   return (
     <AnimatePresence>
@@ -211,14 +257,14 @@ export function OCRUploader({ isOpen, onClose, onAccept, chapterContext }: OCRUp
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
         className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm"
-        onClick={() => { if (!isProcessing) handleClose(); }}
+        onClick={() => { if (!isBusy) handleClose(); }}
       >
         <motion.div
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
           exit={{ opacity: 0, scale: 0.95 }}
           transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-          className="absolute inset-4 md:inset-auto md:top-1/2 md:left-1/2 md:-translate-x-1/2 md:-translate-y-1/2 md:w-full md:max-w-lg md:h-auto max-h-[90vh] bg-surface-container-lowest rounded-2xl shadow-elevated flex flex-col overflow-hidden"
+          className="absolute inset-4 md:inset-auto md:top-1/2 md:left-1/2 md:-translate-x-1/2 md:-translate-y-1/2 md:w-full md:max-w-3xl md:h-auto max-h-[90vh] bg-surface-container-lowest rounded-2xl shadow-elevated flex flex-col overflow-hidden"
           onClick={e => e.stopPropagation()}
         >
           {/* Header */}
@@ -230,7 +276,7 @@ export function OCRUploader({ isOpen, onClose, onAccept, chapterContext }: OCRUp
             <button
               onClick={handleClose}
               className="p-2 rounded-full hover:bg-surface-container-high transition-colors"
-              title={isProcessing ? '取消扫描' : '关闭'}
+              title={isBusy ? '取消导入' : '关闭'}
             >
               <X className="w-5 h-5 text-on-surface-variant" />
             </button>
@@ -238,14 +284,14 @@ export function OCRUploader({ isOpen, onClose, onAccept, chapterContext }: OCRUp
 
           <div className="flex-1 overflow-y-auto p-5 space-y-4">
             {/* Upload zone */}
-            {scanState.stage === 'idle' && (
+            {scanState.stage === 'idle' && !isPreparing && (
               <label className="flex flex-col items-center justify-center gap-3 p-8 border-2 border-dashed border-outline-variant/30 rounded-xl hover:border-primary/50 hover:bg-primary/[0.02] transition-all cursor-pointer">
                 <div className="w-16 h-16 rounded-2xl bg-primary/5 flex items-center justify-center">
                   <Upload className="w-8 h-8 text-primary" />
                 </div>
                 <div className="text-center">
                   <p className="text-sm font-medium text-on-surface">点击上传题目照片</p>
-                  <p className="text-xs text-on-surface-variant/50 mt-1">支持 JPG、PNG、WebP，可一次选择多张图片</p>
+                  <p className="text-xs text-on-surface-variant/50 mt-1">支持 JPG、PNG、WebP，一次最多 {MAX_SCAN_IMAGES} 张</p>
                 </div>
                 <input
                   ref={fileInputRef}
@@ -256,6 +302,28 @@ export function OCRUploader({ isOpen, onClose, onAccept, chapterContext }: OCRUp
                   className="hidden"
                 />
               </label>
+            )}
+
+            {isPreparing && prepareProgress && (
+              <div className="rounded-xl border border-outline-variant/10 bg-surface-container-low p-4">
+                <div className="flex items-center gap-3">
+                  <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-sm font-medium text-on-surface">正在准备图片</p>
+                      <p className="text-xs text-on-surface-variant/60">
+                        {prepareProgress.completed}/{prepareProgress.total}
+                      </p>
+                    </div>
+                    <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-surface-container-highest">
+                      <div
+                        className="h-full rounded-full editorial-gradient transition-all"
+                        style={{ width: `${preparePercent}%` }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
             )}
 
             {fileError && (
@@ -279,7 +347,7 @@ export function OCRUploader({ isOpen, onClose, onAccept, chapterContext }: OCRUp
 
             {/* Previews (multi-image thumbnails) */}
             {previewUrls.length > 0 && (
-              <div className={`grid gap-2 ${previewUrls.length > 1 ? 'grid-cols-3' : 'grid-cols-1'}`}>
+              <div className={`grid gap-2 ${previewUrls.length > 1 ? 'grid-cols-3 md:grid-cols-5' : 'grid-cols-1'}`}>
                 {previewUrls.map((url, i) => (
                   <div key={i} className="rounded-xl overflow-hidden border border-outline-variant/10">
                     {/* eslint-disable-next-line @next/next/no-img-element -- OCR thumbnails use blob URLs created from local files. */}

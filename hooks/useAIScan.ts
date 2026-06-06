@@ -49,9 +49,14 @@ export interface ScanState {
 
 const MAX_OCR_LENGTH = 6000;
 const FETCH_TIMEOUT = 180000; // 3 min per API call
-const MAX_CONCURRENT_SCANS = 2;
+const MAX_API_ATTEMPTS = 3;
+const LARGE_BATCH_THRESHOLD = 7;
+const SMALL_BATCH_CONCURRENT_SCANS = 2;
+const LARGE_BATCH_CONCURRENT_SCANS = 1;
 const PROGRESS_START = 5;
 const PROGRESS_SPAN = 90;
+const RETRYABLE_STATUS_CODES = new Set([408, 409, 422, 425, 429, 500, 502, 503, 504]);
+const RETRY_DELAYS = [900, 1800];
 const PROBLEM_TYPES: ProblemType[] = ['choice', 'fill', 'calculation', 'proof', 'proofEssay'];
 const DIFFICULTIES: Difficulty[] = ['easy', 'medium', 'hard'];
 
@@ -145,6 +150,39 @@ function getErrorMessage(error: unknown, fallback: string) {
 
 function isAbortError(error: unknown) {
   return error instanceof Error && (error.name === 'AbortError' || error.name === 'TimeoutError');
+}
+
+function createAbortError() {
+  const error = new Error('扫描已取消');
+  error.name = 'AbortError';
+  return error;
+}
+
+function createScanStepError(message: string, retryable: boolean) {
+  const error = new Error(message) as Error & { retryable?: boolean };
+  error.retryable = retryable;
+  return error;
+}
+
+function isRetryableError(error: unknown) {
+  if (isAbortError(error)) return false;
+  if (isRecord(error) && error.retryable === false) return false;
+  return true;
+}
+
+function getRetryDelay(attempt: number) {
+  return RETRY_DELAYS[Math.min(attempt - 1, RETRY_DELAYS.length - 1)];
+}
+
+function getAttemptMessage(message: string, attempt: number) {
+  if (attempt <= 1) return message;
+  return `${message}（重试 ${attempt - 1}/${MAX_API_ATTEMPTS - 1}）`;
+}
+
+function getScanWorkerCount(totalImages: number) {
+  return totalImages >= LARGE_BATCH_THRESHOLD
+    ? LARGE_BATCH_CONCURRENT_SCANS
+    : SMALL_BATCH_CONCURRENT_SCANS;
 }
 
 function findChapterId(suggestedChapter: string | undefined, chapterContext?: ChapterContextItem[]) {
@@ -303,59 +341,111 @@ export function useAIScan() {
       return getApiErrorMessage(payload, fallback);
     };
 
+    const ensureRunIsActive = () => {
+      if (activeRunRef.current !== runId) {
+        throw createAbortError();
+      }
+    };
+
+    const waitBeforeRetry = async (attempt: number) => {
+      await new Promise((resolve) => window.setTimeout(resolve, getRetryDelay(attempt)));
+      ensureRunIsActive();
+    };
+
+    const runStepWithRetry = async <T,>(
+      index: number,
+      status: ScanImageStatus,
+      message: string,
+      task: () => Promise<T>
+    ): Promise<T> => {
+      let lastError: unknown;
+
+      for (let attempt = 1; attempt <= MAX_API_ATTEMPTS; attempt += 1) {
+        ensureRunIsActive();
+        updateImageProgress(index, { status, message: getAttemptMessage(message, attempt) });
+
+        try {
+          return await task();
+        } catch (error: unknown) {
+          lastError = error;
+
+          if (attempt >= MAX_API_ATTEMPTS || !isRetryableError(error)) {
+            throw error;
+          }
+
+          await waitBeforeRetry(attempt);
+        }
+      }
+
+      throw lastError instanceof Error ? lastError : new Error('AI 扫描失败');
+    };
+
     const processImage = async (image: ScanImageInput, index: number) => {
       let unitsDoneForImage = 0;
 
       try {
-        updateImageProgress(index, { status: 'scanning', message: '正在识别文字' });
+        const ocrData = await runStepWithRetry(
+          index,
+          'scanning',
+          '正在识别文字',
+          async () => {
+            const ocrRes = await fetchWithTimeout('/api/ai/ocr', {
+              method: 'POST',
+              headers: await buildAuthHeaders({ 'Content-Type': 'application/json' }),
+              body: JSON.stringify({
+                imageBase64: image.base64,
+                mimeType: image.mimeType || 'image/jpeg',
+                apiKey: ALLOW_CLIENT_AI_KEYS ? config.qwenApiKey : undefined,
+                model: config.qwenModel,
+                endpoint: config.qwenApiEndpoint || DEFAULT_QWEN_ENDPOINT,
+              }),
+            }, runId);
 
-        const ocrRes = await fetchWithTimeout('/api/ai/ocr', {
-          method: 'POST',
-          headers: await buildAuthHeaders({ 'Content-Type': 'application/json' }),
-          body: JSON.stringify({
-            imageBase64: image.base64,
-            mimeType: image.mimeType || 'image/jpeg',
-            apiKey: ALLOW_CLIENT_AI_KEYS ? config.qwenApiKey : undefined,
-            model: config.qwenModel,
-            endpoint: config.qwenApiEndpoint || DEFAULT_QWEN_ENDPOINT,
-          }),
-        }, runId);
+            if (!ocrRes.ok) {
+              const message = await readJsonError(ocrRes, `第 ${index + 1} 张图片 OCR 识别失败`);
+              throw createScanStepError(message, RETRYABLE_STATUS_CODES.has(ocrRes.status));
+            }
 
-        if (!ocrRes.ok) {
-          throw new Error(await readJsonError(ocrRes, `第 ${index + 1} 张图片 OCR 识别失败`));
-        }
-
-        const ocrData = await ocrRes.json() as { text?: unknown };
+            return await ocrRes.json() as { text?: unknown };
+          }
+        );
         const rawText = toCleanString(ocrData.text);
         if (!rawText) {
-          throw new Error(`第 ${index + 1} 张图片没有识别到文字，请换一张更清晰的图片`);
+          throw createScanStepError(`第 ${index + 1} 张图片没有识别到文字，请换一张更清晰的图片`, false);
         }
 
         const ocrText = truncateText(rawText, MAX_OCR_LENGTH);
         recordQwenUsage(1);
         unitsDoneForImage += 1;
         addProgressUnits(1, 'scanning', index + 1, ocrText);
-        updateImageProgress(index, { status: 'analyzing', message: '正在整理成题目' });
 
-        const analyzeRes = await fetchWithTimeout('/api/ai/analyze', {
-          method: 'POST',
-          headers: await buildAuthHeaders({ 'Content-Type': 'application/json' }),
-          body: JSON.stringify({
-            ocrText,
-            apiKey: ALLOW_CLIENT_AI_KEYS ? config.deepseekApiKey : undefined,
-            model: config.deepseekModel || DEFAULT_DEEPSEEK_MODEL,
-            chapterContext: chapterNames,
-          }),
-        }, runId);
+        const analyzeData = await runStepWithRetry(
+          index,
+          'analyzing',
+          '正在整理成题目',
+          async () => {
+            const analyzeRes = await fetchWithTimeout('/api/ai/analyze', {
+              method: 'POST',
+              headers: await buildAuthHeaders({ 'Content-Type': 'application/json' }),
+              body: JSON.stringify({
+                ocrText,
+                apiKey: ALLOW_CLIENT_AI_KEYS ? config.deepseekApiKey : undefined,
+                model: config.deepseekModel || DEFAULT_DEEPSEEK_MODEL,
+                chapterContext: chapterNames,
+              }),
+            }, runId);
 
-        if (!analyzeRes.ok) {
-          throw new Error(await readJsonError(analyzeRes, `第 ${index + 1} 张图片分析失败`));
-        }
+            if (!analyzeRes.ok) {
+              const message = await readJsonError(analyzeRes, `第 ${index + 1} 张图片分析失败`);
+              throw createScanStepError(message, RETRYABLE_STATUS_CODES.has(analyzeRes.status));
+            }
 
-        const analyzeData = await analyzeRes.json() as {
-          tokensUsed?: unknown;
-          problems?: unknown;
-        };
+            return await analyzeRes.json() as {
+              tokensUsed?: unknown;
+              problems?: unknown;
+            };
+          }
+        );
         const tokensUsed = Number(analyzeData.tokensUsed);
         if (Number.isFinite(tokensUsed) && tokensUsed > 0) {
           recordDeepSeekUsage(tokensUsed);
@@ -434,7 +524,7 @@ export function useAIScan() {
         }
       };
 
-      const workerCount = Math.min(MAX_CONCURRENT_SCANS, totalImages);
+      const workerCount = Math.min(getScanWorkerCount(totalImages), totalImages);
       await Promise.all(Array.from({ length: workerCount }, () => worker()));
 
       if (activeRunRef.current !== runId) return;
