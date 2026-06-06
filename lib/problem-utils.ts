@@ -24,12 +24,24 @@ export function normalizeProblemOptions(options?: ProblemOption[]): ProblemOptio
   }));
 }
 
+function normalizeProblemTags(tags?: string[]): string[] {
+  if (!Array.isArray(tags)) return [];
+  return Array.from(
+    new Set(
+      tags
+        .filter((tag): tag is string => typeof tag === "string")
+        .map((tag) => tag.trim())
+        .filter(Boolean)
+    )
+  );
+}
+
 export function normalizeProblem(problem: Problem): Problem {
   return {
     ...problem,
     explanation: "",
     tips: undefined,
-    tags: [],
+    tags: normalizeProblemTags(problem.tags),
     options: problem.type === "choice" ? normalizeProblemOptions(problem.options) : undefined,
   };
 }
@@ -39,7 +51,7 @@ export function normalizeProblemDraft(problem: Partial<Problem>): Partial<Proble
     ...problem,
     explanation: "",
     tips: undefined,
-    tags: [],
+    tags: normalizeProblemTags(problem.tags),
     options: problem.type === "choice" ? normalizeProblemOptions(problem.options) : undefined,
   };
 }

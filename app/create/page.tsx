@@ -517,6 +517,7 @@ function CreateEditorPage() {
                 problems={problems}
                 onChange={handleProblemsChange}
                 noteId={isEditMode ? editingId : undefined}
+                subject={subject}
                 hasUnsavedChanges={isEditMode && hasProblemChanges}
               />
             </>

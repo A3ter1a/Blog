@@ -111,25 +111,19 @@ export function getMath3ChapterIdsFromTags(tags: string[] = []): string[] {
   ]);
 }
 
-export function setMath3ProblemKnowledgeTags(
+export function setMath3ProblemChapterTag(
   tags: string[] = [],
   chapterId?: string,
-  pointIds: string[] = [],
 ): string[] {
-  const chapterResult = chapterId ? getMath3ChapterById(chapterId) : null;
-  const validChapterId = chapterResult?.chapter.id;
-  const validPointIdSet = new Set(chapterResult?.chapter.points.map((pointItem) => pointItem.id) ?? []);
-  const validPointTags = validChapterId
-    ? uniqueStrings(pointIds)
-        .filter((pointId) => validPointIdSet.has(pointId))
-        .map(getMath3PointTag)
-    : [];
   const visibleTags = splitMath3PracticeTags(tags).visibleTags;
+  const chapterResult = chapterId ? getMath3ChapterById(chapterId) : null;
+
+  if (!chapterResult) return visibleTags;
 
   return uniqueStrings([
     ...visibleTags,
-    ...(validChapterId ? [getMath3ChapterTag(validChapterId)] : []),
-    ...validPointTags,
+    getMath3AreaTag(chapterResult.area.id),
+    getMath3ChapterTag(chapterResult.chapter.id),
   ]);
 }
 

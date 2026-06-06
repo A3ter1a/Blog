@@ -103,8 +103,46 @@ function splitProtectedBlocks(content: string): Segment[] {
   return segments;
 }
 
+const SIGNED_MATH_LINE_TOKEN = "AsteroidSignedMathLineToken";
+
+function isLikelyStandaloneSignedMath(body: string): boolean {
+  const trimmed = body.trim();
+  if (!trimmed || /[\u3400-\u9fff]/.test(trimmed)) return false;
+  if (/\s/.test(trimmed)) return false;
+  if (/^[0-9]+(?:[.,][0-9]+)?(?:\/[0-9]+)?$/.test(trimmed)) return true;
+  if (/^[A-Za-z]$/.test(trimmed)) return true;
+  if (!/[0-9\\$^_{}()[\]*/=<>|]/.test(trimmed)) return false;
+
+  return /^[0-9A-Za-z\\$^_{}()[\].,*/+=<>|\-]+$/.test(trimmed);
+}
+
+function protectStandaloneSignedMathLines(text: string): { text: string; values: string[] } {
+  const values: string[] = [];
+  const protectedText = text.replace(
+    /^(\s{0,3})([+-])\s*([^\n]+?)\s*$/gm,
+    (full, indent: string, sign: string, body: string) => {
+      if (!isLikelyStandaloneSignedMath(body)) return full;
+
+      const token = `${SIGNED_MATH_LINE_TOKEN}${values.length}`;
+      values.push(`${sign}${body.trim()}`);
+      return `${indent}${token}`;
+    },
+  );
+
+  return { text: protectedText, values };
+}
+
+function restoreStandaloneSignedMathLines(text: string, values: string[]): string {
+  return text.replace(new RegExp(`${SIGNED_MATH_LINE_TOKEN}(\\d+)`, "g"), (full, indexText: string) => {
+    const value = values[Number(indexText)];
+    return value ?? full;
+  });
+}
+
 function repairUnprotectedMarkdown(text: string): string {
   let next = text.replace(/\r\n?/g, "\n");
+  const signedMathLines = protectStandaloneSignedMathLines(next);
+  next = signedMathLines.text;
 
   next = next.replace(/[ \t]+$/gm, "");
   next = next.replace(/^\s{0,3}(#{1,6})([^\s#])/gm, "$1 $2");
@@ -121,7 +159,7 @@ function repairUnprotectedMarkdown(text: string): string {
   next = next.replace(/(^|\n)([*+-] .+(?:\n[*+-] .+)*)\n(?!\n|[*+-] )/g, "$1$2\n\n");
   next = next.replace(/(^|\n)(\d+\. .+(?:\n\d+\. .+)*)\n(?!\n|\d+\. )/g, "$1$2\n\n");
 
-  return next;
+  return restoreStandaloneSignedMathLines(next, signedMathLines.values);
 }
 
 export function repairMarkdown(content: string): string {

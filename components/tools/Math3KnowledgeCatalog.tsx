@@ -299,22 +299,22 @@ export function Math3KnowledgeCatalog() {
   return (
     <div className="min-h-screen bg-surface pt-24">
       <section className="border-b border-outline-variant/20 bg-surface-container-low">
-        <div className="mx-auto max-w-6xl px-4 py-8">
-          <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+        <div className="mx-auto max-w-6xl px-4 py-6">
+          <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
             <div className="max-w-3xl">
-              <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-primary/15 bg-primary/5 px-3 py-1 text-xs font-medium text-primary">
+              <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-primary/15 bg-primary/5 px-3 py-1 text-xs font-medium text-primary">
                 <GraduationCap className="h-4 w-4" />
                 数三考研
               </div>
-              <h1 className="font-headline text-3xl font-bold text-on-surface md:text-4xl">
+              <h1 className="font-headline text-3xl font-bold text-on-surface">
                 知识目录
               </h1>
-              <p className="mt-3 text-sm leading-6 text-on-surface-variant md:text-base">
+              <p className="mt-2 text-sm leading-6 text-on-surface-variant">
                 依据 {MATH3_KNOWLEDGE_SOURCE} 整理，按模块、章节和知识点拆分成复习清单。
               </p>
             </div>
 
-            <div className="grid grid-cols-2 gap-3 rounded-lg border border-outline-variant/20 bg-surface-container-lowest p-3 shadow-ambient sm:grid-cols-4 lg:min-w-[460px]">
+            <div className="grid grid-cols-4 gap-2 rounded-lg border border-outline-variant/15 bg-surface-container-lowest p-2 lg:min-w-[420px]">
               <StatCard label="章节" value={math3KnowledgeTotals.chapters.toString()} />
               <StatCard label="知识点" value={math3KnowledgeTotals.points.toString()} />
               <StatCard label="已掌握" value={masteredCount.toString()} />
@@ -324,8 +324,8 @@ export function Math3KnowledgeCatalog() {
         </div>
       </section>
 
-      <main className="mx-auto max-w-6xl px-4 py-8">
-        <section className="mb-6 rounded-lg border border-outline-variant/20 bg-surface-container-lowest p-4 shadow-ambient">
+      <main className="mx-auto max-w-6xl px-4 py-6">
+        <section className="mb-5 rounded-lg border border-outline-variant/20 bg-surface-container-lowest p-3 shadow-ambient">
           <div className="grid gap-3 lg:grid-cols-[1fr_auto_auto] lg:items-center">
             <div className="relative">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-on-surface-variant/50" />
@@ -371,7 +371,7 @@ export function Math3KnowledgeCatalog() {
           </div>
 
           {shouldShowCatalogTools && (
-            <div className="mt-4 grid gap-4 border-t border-outline-variant/10 pt-4 xl:grid-cols-[1fr_1fr_1fr_auto] xl:items-center">
+            <div className="mt-3 grid gap-3 border-t border-outline-variant/10 pt-3 xl:grid-cols-[1fr_1fr_1fr_auto] xl:items-center">
               <FilterGroup icon={<BookOpen className="h-4 w-4" />} label="模块">
                 {areaOptions.map((option) => (
                   <FilterButton
@@ -515,17 +515,17 @@ export function Math3KnowledgeCatalog() {
             <p className="mt-3 text-sm text-on-surface-variant">没有匹配的知识点。</p>
           </div>
         ) : (
-          <div className="space-y-8">
+          <div className="space-y-7">
             {visibleAreas.map((area) => (
               <section key={area.id} className="space-y-4">
-                <div className="flex flex-wrap items-end justify-between gap-3 border-b border-outline-variant/20 pb-3">
+                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-outline-variant/20 pb-3">
                   <div>
                     <div className={`mb-2 inline-flex rounded-full border px-3 py-1 text-xs font-medium ${areaTone[area.id]}`}>
                       {area.examWeight}
                     </div>
-                    <h2 className="font-headline text-2xl font-bold text-on-surface">{area.title}</h2>
+                    <h2 className="font-headline text-xl font-bold text-on-surface md:text-2xl">{area.title}</h2>
                   </div>
-                  <div className="text-sm text-on-surface-variant">
+                  <div className="rounded-full bg-surface-container-low px-3 py-1 text-xs font-medium text-on-surface-variant">
                     {area.chapters.length} 章 / {area.chapters.reduce((sum, chapter) => sum + chapter.points.length, 0)} 个知识点
                   </div>
                 </div>
@@ -559,9 +559,9 @@ export function Math3KnowledgeCatalog() {
 
 function StatCard({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-md bg-surface-container-low px-3 py-3 text-center">
-      <div className="text-xl font-bold text-primary">{value}</div>
-      <div className="mt-1 text-xs text-on-surface-variant">{label}</div>
+    <div className="rounded-md bg-surface-container-low px-2 py-2 text-center">
+      <div className="text-base font-bold text-primary md:text-lg">{value}</div>
+      <div className="mt-0.5 text-[11px] text-on-surface-variant">{label}</div>
     </div>
   );
 }
@@ -795,7 +795,7 @@ function ChapterBlock({
 
   return (
     <article className="overflow-hidden rounded-lg border border-outline-variant/20 bg-surface-container-lowest">
-      <div className="border-b border-outline-variant/20 bg-surface-container-low px-4 py-4">
+      <div className="border-b border-outline-variant/15 bg-surface-container-low px-4 py-3">
         <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
           <button
             type="button"
@@ -834,7 +834,7 @@ function ChapterBlock({
             </button>
           </div>
         </div>
-        <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-surface-container-lowest">
+        <div className="mt-3 h-1 overflow-hidden rounded-full bg-surface-container-lowest">
           <div
             className="h-full rounded-full bg-emerald-500 transition-all"
             style={{ width: `${chapterProgressPercent}%` }}
@@ -843,8 +843,8 @@ function ChapterBlock({
       </div>
 
       {!collapsed && (
-        <div className="divide-y divide-outline-variant/15">
-          <div className="p-4">
+        <div className="space-y-3 p-3">
+          <div>
             <ProblemSetLinkPanel
               scope={scope}
               title="相关题集"
@@ -853,16 +853,18 @@ function ChapterBlock({
               isLoadingProblemSets={isLoadingProblemSets}
             />
           </div>
-          {chapter.points.map((pointItem) => (
-            <KnowledgePointRow
-              key={pointItem.id}
-              pointItem={pointItem}
-              starred={starredSet.has(pointItem.id)}
-              mastered={masteredSet.has(pointItem.id)}
-              onToggleStar={() => onToggleStar(pointItem.id)}
-              onToggleMastered={() => onToggleMastered(pointItem.id)}
-            />
-          ))}
+          <div className="grid gap-2 md:grid-cols-2">
+            {chapter.points.map((pointItem) => (
+              <KnowledgePointRow
+                key={pointItem.id}
+                pointItem={pointItem}
+                starred={starredSet.has(pointItem.id)}
+                mastered={masteredSet.has(pointItem.id)}
+                onToggleStar={() => onToggleStar(pointItem.id)}
+                onToggleMastered={() => onToggleMastered(pointItem.id)}
+              />
+            ))}
+          </div>
         </div>
       )}
     </article>
@@ -885,7 +887,7 @@ function KnowledgePointRow({
   const difficulty = difficultyMeta[pointItem.difficulty];
 
   return (
-    <div className={`grid gap-3 px-4 py-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-center ${mastered ? "bg-emerald-500/[0.03]" : ""}`}>
+    <div className={`grid gap-3 rounded-lg border border-outline-variant/15 bg-surface-container-low px-3 py-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-center ${mastered ? "border-emerald-500/20 bg-emerald-500/[0.04]" : ""}`}>
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-2">
           {mastered && (
@@ -898,7 +900,7 @@ function KnowledgePointRow({
             {difficulty.label}
           </span>
           {pointItem.tags.map((tag) => (
-            <span key={tag} className="rounded-full bg-surface-container-low px-2 py-0.5 text-xs text-on-surface-variant">
+            <span key={tag} className="rounded-full bg-surface-container-lowest px-2 py-0.5 text-xs text-on-surface-variant">
               {tag}
             </span>
           ))}
@@ -906,14 +908,14 @@ function KnowledgePointRow({
         <p className="mt-2 text-sm font-medium leading-6 text-on-surface">{pointItem.title}</p>
       </div>
 
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-1 md:justify-end">
         <button
           type="button"
           onClick={onToggleMastered}
           aria-pressed={mastered}
           aria-label={mastered ? "标为未掌握" : "标为已掌握"}
           title={mastered ? "标为未掌握" : "标为已掌握"}
-          className={`flex h-9 w-9 items-center justify-center rounded-full border transition-colors ${
+          className={`flex h-8 w-8 items-center justify-center rounded-full border transition-colors ${
             mastered
               ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-600"
               : "border-outline-variant/30 text-on-surface-variant/60 hover:border-emerald-500/30 hover:text-emerald-600"
@@ -928,7 +930,7 @@ function KnowledgePointRow({
           aria-pressed={starred}
           aria-label={starred ? "取消重点" : "标为重点"}
           title={starred ? "取消重点" : "标为重点"}
-          className={`flex h-9 w-9 items-center justify-center rounded-full border transition-colors ${
+          className={`flex h-8 w-8 items-center justify-center rounded-full border transition-colors ${
             starred
               ? "border-amber-500/30 bg-amber-500/10 text-amber-600"
               : "border-outline-variant/30 text-on-surface-variant/60 hover:border-amber-500/30 hover:text-amber-600"

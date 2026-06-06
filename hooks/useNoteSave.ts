@@ -2,7 +2,11 @@
 
 import { useCallback, useState } from "react";
 import { useToast } from "@/components/ui/Toast";
-import { splitMath3PracticeTags } from "@/lib/math3-practice";
+import {
+  getMath3PracticeTagsFromProblems,
+  mergeVisibleTagsWithMath3Tags,
+  splitMath3PracticeTags,
+} from "@/lib/math3-practice";
 import { getProblemsValidationIssues, normalizeProblem } from "@/lib/problem-utils";
 import { notesApi } from "@/lib/supabase";
 import type { NoteType, Problem, Subject, Video } from "@/lib/types";
@@ -58,13 +62,7 @@ export function useNoteSave(): UseNoteSaveResult {
     }
 
     const normalizedProblems = draft.noteType === "problem"
-      ? draft.problems.map((problem) => {
-        const normalized = normalizeProblem(problem);
-        return {
-          ...normalized,
-          tags: splitMath3PracticeTags(normalized.tags).visibleTags,
-        };
-      })
+      ? draft.problems.map(normalizeProblem)
       : undefined;
     if (normalizedProblems) {
       const firstInvalidProblem = getProblemsValidationIssues(normalizedProblems)[0];
@@ -75,7 +73,13 @@ export function useNoteSave(): UseNoteSaveResult {
     }
 
     const visibleTags = draft.tagInput.split(/[,，]/).map((tag) => tag.trim()).filter(Boolean);
-    const tags = splitMath3PracticeTags(visibleTags).visibleTags;
+    const tags = normalizedProblems
+      ? mergeVisibleTagsWithMath3Tags(
+        splitMath3PracticeTags(visibleTags).visibleTags,
+        [],
+        getMath3PracticeTagsFromProblems(normalizedProblems),
+      )
+      : splitMath3PracticeTags(visibleTags).visibleTags;
     const noteData = {
       type: draft.noteType,
       title: draft.title,

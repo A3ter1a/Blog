@@ -254,14 +254,29 @@ function toStringArray(value: unknown): string[] {
   );
 }
 
-function normalizeQuestionType(value: unknown, fallback: Math3SelfTestQuestionType): Math3SelfTestQuestionType {
-  return value === "choice" || value === "fill" || value === "solution" ? value : fallback;
-}
-
 function normalizeAreaId(value: unknown): Math3KnowledgeAreaId {
   return value === "linear-algebra" || value === "probability-statistics" || value === "calculus"
     ? value
     : "calculus";
+}
+
+const math3ChapterIdSet = new Set(
+  math3KnowledgeAreas.flatMap((area) => area.chapters.map((chapter) => chapter.id))
+);
+
+const math3PointIdSet = new Set(
+  math3KnowledgeAreas.flatMap((area) =>
+    area.chapters.flatMap((chapter) => chapter.points.map((point) => point.id))
+  )
+);
+
+function normalizeChapterId(value: unknown): string | undefined {
+  const chapterId = getString(value);
+  return math3ChapterIdSet.has(chapterId) ? chapterId : undefined;
+}
+
+function normalizeKnowledgePointIds(value: unknown): string[] {
+  return toStringArray(value).filter((pointId) => math3PointIdSet.has(pointId));
 }
 
 function normalizeDifficulty(value: unknown): "easy" | "medium" | "hard" {
@@ -339,16 +354,16 @@ export function normalizeMath3SelfTestPaper(
     if (!questionText) return [];
 
     const id = getString(raw.id, `math3-q-${planned.index}-${crypto.randomUUID()}`);
-    const type = normalizeQuestionType(raw.type, planned.type);
-    const score = getNumber(raw.score, planned.score);
+    const type = planned.type;
+    const score = planned.score;
 
     return [{
       id,
       index: planned.index,
       type,
       areaId: normalizeAreaId(raw.areaId),
-      chapterId: getString(raw.chapterId) || undefined,
-      knowledgePointIds: toStringArray(raw.knowledgePointIds),
+      chapterId: normalizeChapterId(raw.chapterId),
+      knowledgePointIds: normalizeKnowledgePointIds(raw.knowledgePointIds),
       difficulty: normalizeDifficulty(raw.difficulty),
       score,
       question: questionText,

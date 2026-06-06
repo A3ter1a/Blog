@@ -2,14 +2,22 @@
 
 import { useState, useEffect, useMemo, type ReactNode } from "react";
 import { motion, AnimatePresence, Reorder, useDragControls } from "framer-motion";
-import { AlertCircle, Plus, X, ChevronDown, ChevronUp, GripVertical, Sparkles, Scan, Copy, Trash2, FolderTree, CheckSquare, SlidersHorizontal } from "lucide-react";
-import { Problem, ProblemType, Difficulty, problemTypeMap, difficultyMap, difficultyColorMap } from "@/lib/types";
+import { AlertCircle, Plus, X, ChevronDown, ChevronUp, GripVertical, Sparkles, Scan, Copy, Trash2, FolderTree, CheckSquare, SlidersHorizontal, Loader2 } from "lucide-react";
+import { Problem, ProblemType, Difficulty, Subject, problemTypeMap, difficultyMap, difficultyColorMap } from "@/lib/types";
 import { chaptersApi } from "@/lib/chapters-api";
 import { ChapterSelector } from "@/components/chapters/ChapterSelector";
 import { ProblemPreview } from "./ProblemPreview";
 import { MarkdownContent } from "@/components/ui/MarkdownContent";
 import { OCRUploader } from "@/components/ai-assistant/OCRUploader";
 import type { ChapterContextItem } from "@/hooks/useAIScan";
+import { recordDeepSeekUsage } from "@/lib/ai-usage";
+import { buildAuthHeaders } from "@/lib/fetch-with-auth";
+import type { Math3ChapterAssignment } from "@/lib/math3-classification";
+import {
+  getMath3ChapterById,
+  getMath3ProblemChapterIds,
+  setMath3ProblemChapterTag,
+} from "@/lib/math3-practice";
 import {
   ensureChoiceOptions,
   getProblemValidationIssues,
@@ -22,8 +30,11 @@ interface ProblemEditorProps {
   problems: Problem[];
   onChange: (problems: Problem[]) => void;
   noteId?: string;
+  subject?: Subject;
   hasUnsavedChanges?: boolean;
 }
+
+const MATH3_CLASSIFY_BATCH_SIZE = 16;
 
 const createEmptyProblemDraft = (): Partial<Problem> => ({
   type: "calculation",
@@ -33,11 +44,12 @@ const createEmptyProblemDraft = (): Partial<Problem> => ({
   tags: [],
 });
 
-export function ProblemEditor({ problems, onChange, noteId, hasUnsavedChanges = false }: ProblemEditorProps) {
+export function ProblemEditor({ problems, onChange, noteId, subject = "math", hasUnsavedChanges = false }: ProblemEditorProps) {
   const toast = useToast();
   const [showAddForm, setShowAddForm] = useState(false);
   const [showAIScan, setShowAIScan] = useState(false);
   const [showOrganizeTools, setShowOrganizeTools] = useState(false);
+  const [isClassifyingMath3, setIsClassifyingMath3] = useState(false);
   const [newProblem, setNewProblem] = useState<Partial<Problem>>(createEmptyProblemDraft());
   const [newProblemError, setNewProblemError] = useState<string | null>(null);
   const [selectedProblemIds, setSelectedProblemIds] = useState<string[]>([]);
@@ -122,6 +134,89 @@ export function ProblemEditor({ problems, onChange, noteId, hasUnsavedChanges = 
 
   const handleUpdate = (id: string, updates: Partial<Problem>) => {
     onChange(problems.map(p => p.id === id ? { ...p, ...updates } : p));
+  };
+
+  const handleAutoClassifyMath3 = async () => {
+    if (isClassifyingMath3) return;
+    if (subject !== "math") {
+      toast.info("数三大纲归类只适用于数学题集");
+      return;
+    }
+
+    const classifiableProblems = problems.filter((problem) => problem.question.trim());
+    if (classifiableProblems.length === 0) {
+      toast.info("当前没有可归类的题目");
+      return;
+    }
+
+    setIsClassifyingMath3(true);
+    try {
+      const assignments = new Map<string, Math3ChapterAssignment>();
+      let totalTokensUsed = 0;
+
+      for (let start = 0; start < classifiableProblems.length; start += MATH3_CLASSIFY_BATCH_SIZE) {
+        const batch = classifiableProblems.slice(start, start + MATH3_CLASSIFY_BATCH_SIZE);
+        const response = await fetch("/api/ai/math3-classify", {
+          method: "POST",
+          headers: await buildAuthHeaders({ "Content-Type": "application/json" }),
+          body: JSON.stringify({
+            problems: batch.map((problem, batchIndex) => ({
+              id: problem.id,
+              index: start + batchIndex + 1,
+              type: problem.type,
+              question: problem.question,
+              answer: problem.answer,
+              options: problem.options,
+            })),
+          }),
+        });
+
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(typeof payload.error === "string" ? payload.error : "AI 大纲归类失败");
+        }
+
+        const tokensUsed = Number(payload.tokensUsed);
+        if (Number.isFinite(tokensUsed) && tokensUsed > 0) totalTokensUsed += tokensUsed;
+
+        const batchAssignments = Array.isArray(payload.assignments)
+          ? payload.assignments as Math3ChapterAssignment[]
+          : [];
+        for (const assignment of batchAssignments) {
+          assignments.set(assignment.problemId, assignment);
+        }
+      }
+
+      if (totalTokensUsed > 0) recordDeepSeekUsage(totalTokensUsed);
+
+      if (assignments.size === 0) {
+        toast.error("AI 没有返回可用的大纲章节，请重试");
+        return;
+      }
+
+      let changedCount = 0;
+      onChange(problems.map((problem) => {
+        const assignment = assignments.get(problem.id);
+        if (!assignment) return problem;
+
+        const nextTags = setMath3ProblemChapterTag(problem.tags, assignment.chapterId);
+        const changed = nextTags.join("|") !== (problem.tags ?? []).join("|");
+        if (changed) changedCount += 1;
+        return { ...problem, tags: nextTags, aiStatus: "complete" };
+      }));
+
+      const missingCount = classifiableProblems.length - assignments.size;
+      if (missingCount > 0) {
+        toast.info(`已归入 ${assignments.size} 道题，${missingCount} 道题未返回章节，请保存前抽查`);
+      } else {
+        toast.success(`已按数三大纲归入 ${changedCount || assignments.size} 道题，请保存题集后生效`);
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "未知错误";
+      toast.error(`AI 大纲归类失败：${message}`);
+    } finally {
+      setIsClassifyingMath3(false);
+    }
   };
 
   const problemIdSet = useMemo(() => new Set(problems.map((problem) => problem.id)), [problems]);
@@ -269,6 +364,17 @@ export function ProblemEditor({ problems, onChange, noteId, hasUnsavedChanges = 
               <Scan className="h-3.5 w-3.5" />
               AI 扫描
             </button>
+            {subject === "math" && problems.length > 0 && (
+              <button
+                type="button"
+                onClick={handleAutoClassifyMath3}
+                disabled={isClassifyingMath3}
+                className="control-button px-3 text-xs disabled:opacity-50"
+              >
+                {isClassifyingMath3 ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+                {isClassifyingMath3 ? "归类中" : "AI 归入大纲"}
+              </button>
+            )}
             <button
               type="button"
               onClick={() => {
@@ -814,6 +920,9 @@ function ProblemCard({
   const hasOptions = problem.type === "choice";
   const choiceOptions = hasOptions ? ensureChoiceOptions(problem.options) : [];
   const validationIssues = getProblemValidationIssues(hasOptions ? { ...problem, options: choiceOptions } : problem);
+  const math3ChapterTitle = getMath3ProblemChapterIds(problem)
+    .map((chapterId) => getMath3ChapterById(chapterId)?.chapter.title)
+    .find(Boolean);
 
   const updateOption = (optionIndex: number, field: "label" | "content", value: string) => {
     const options = [...choiceOptions];
@@ -878,6 +987,11 @@ function ProblemCard({
             <span className={`rounded-md px-2 py-0.5 text-xs font-medium ${difficultyColorMap[problem.difficulty]}`}>
               {difficultyMap[problem.difficulty]}
             </span>
+            {math3ChapterTitle && (
+              <span className="tag-chip px-2 py-0.5 text-xs">
+                <FolderTree className="h-3 w-3" /> {math3ChapterTitle}
+              </span>
+            )}
             {problem.aiStatus === 'complete' && (
               <span className="tag-chip tag-chip-warning px-2 py-0.5 text-xs">
                 <Sparkles className="h-3 w-3" /> AI

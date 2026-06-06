@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   BookOpenCheck,
   Check,
@@ -185,6 +185,7 @@ function toggleMarkedQuestion(attempt: Math3SelfTestAttempt, questionId: string)
 export function Math3SelfTest() {
   const toast = useToast();
   const { loading: authLoading, isAdmin } = useAdminAuth();
+  const autoSubmittedTestIdRef = useRef<string | null>(null);
   const [mode, setMode] = useState<Math3SelfTestMode>("quick");
   const [difficulty, setDifficulty] = useState<Math3SelfTestDifficulty>("simulation");
   const [tests, setTests] = useState<Math3SelfTestRecord[]>([]);
@@ -337,7 +338,7 @@ export function Math3SelfTest() {
     }
   };
 
-  const handleSubmit = async () => {
+  const handleSubmit = async (options: { auto?: boolean } = {}) => {
     if (!activeTest || isSaving) return;
     setIsSaving(true);
     try {
@@ -352,14 +353,23 @@ export function Math3SelfTest() {
       replaceTest(saved);
       const firstPendingStepIndex = findNextUngradedSolutionIndex(saved);
       if (firstPendingStepIndex >= 0) setActiveIndex(firstPendingStepIndex);
-      toast.success("已交卷，解答题可以开始分步评分");
+      toast.success(options.auto ? "时间到，已自动交卷" : "已交卷，解答题可以开始分步评分");
     } catch (error) {
+      if (options.auto) autoSubmittedTestIdRef.current = null;
       const message = error instanceof Error ? error.message : "未知错误";
       toast.error(`交卷失败：${message}`);
     } finally {
       setIsSaving(false);
     }
   };
+
+  useEffect(() => {
+    if (!activeTest || activeTest.status !== "in_progress" || remainingSeconds > 0 || isSaving) return;
+    if (autoSubmittedTestIdRef.current === activeTest.id) return;
+
+    autoSubmittedTestIdRef.current = activeTest.id;
+    void handleSubmit({ auto: true });
+  }, [activeTest, remainingSeconds, isSaving, handleSubmit]);
 
   const handleGradeNextStep = async (question: Math3SelfTestQuestion) => {
     if (!activeTest || scoringStepId) return;
