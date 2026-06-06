@@ -7,6 +7,7 @@ import { fileToBase64 } from '@/lib/utils';
 import { AIProgressIndicator } from './AIProgressIndicator';
 import { AIExtractionResult } from './AIExtractionResult';
 import {
+  AI_SCAN_CONCURRENT_LIMIT,
   useAIScan,
   type ChapterContextItem,
   type ScanImageInput,
@@ -291,7 +292,9 @@ export function OCRUploader({ isOpen, onClose, onAccept, chapterContext }: OCRUp
                 </div>
                 <div className="text-center">
                   <p className="text-sm font-medium text-on-surface">点击上传题目照片</p>
-                  <p className="text-xs text-on-surface-variant/50 mt-1">支持 JPG、PNG、WebP，一次最多 {MAX_SCAN_IMAGES} 张</p>
+                  <p className="text-xs text-on-surface-variant/50 mt-1">
+                    支持 JPG、PNG、WebP，一次最多 {MAX_SCAN_IMAGES} 张，最多 {AI_SCAN_CONCURRENT_LIMIT} 张并行识别
+                  </p>
                 </div>
                 <input
                   ref={fileInputRef}
@@ -339,7 +342,7 @@ export function OCRUploader({ isOpen, onClose, onAccept, chapterContext }: OCRUp
                 <AIProgressIndicator stage={scanState.stage} progress={scanState.progress} />
                 {totalImages > 1 && (
                   <p className="text-xs text-on-surface-variant/60 text-center">
-                    正在处理第 {currentImage}/{totalImages} 张图片，已完成 {completedImages} 张，失败 {failedImages} 张
+                    最多 {AI_SCAN_CONCURRENT_LIMIT} 张并行识别，当前更新第 {currentImage}/{totalImages} 张，已完成 {completedImages} 张，失败 {failedImages} 张
                   </p>
                 )}
               </div>

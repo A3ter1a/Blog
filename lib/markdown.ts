@@ -1,7 +1,12 @@
 import GithubSlugger from "github-slugger";
 import markdownit from "markdown-it";
 import markdownitMark from "markdown-it-mark";
-import { preprocessDashedSep, preprocessLatex, postprocessDashedSepAsHtml } from "@/lib/utils";
+import {
+  preprocessDashedSep,
+  preprocessLatex,
+  postprocessDashedSepAsHtml,
+  separateCollapsedInlineMathSpans,
+} from "@/lib/utils";
 import type { Problem } from "@/lib/types";
 
 const md = markdownit({
@@ -79,7 +84,9 @@ function splitInlineEnvironmentWithText(content: string): string {
 }
 
 function normalizeLatexInput(content: string): string {
-  return splitInlineEnvironmentWithText(restoreLatexControlChars(content));
+  return splitInlineEnvironmentWithText(
+    separateCollapsedInlineMathSpans(restoreLatexControlChars(content)),
+  );
 }
 
 function splitProtectedBlocks(content: string): Segment[] {

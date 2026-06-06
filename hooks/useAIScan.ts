@@ -50,9 +50,7 @@ export interface ScanState {
 const MAX_OCR_LENGTH = 6000;
 const FETCH_TIMEOUT = 180000; // 3 min per API call
 const MAX_API_ATTEMPTS = 3;
-const LARGE_BATCH_THRESHOLD = 7;
-const SMALL_BATCH_CONCURRENT_SCANS = 2;
-const LARGE_BATCH_CONCURRENT_SCANS = 1;
+export const AI_SCAN_CONCURRENT_LIMIT = 5;
 const PROGRESS_START = 5;
 const PROGRESS_SPAN = 90;
 const RETRYABLE_STATUS_CODES = new Set([408, 409, 422, 425, 429, 500, 502, 503, 504]);
@@ -177,12 +175,6 @@ function getRetryDelay(attempt: number) {
 function getAttemptMessage(message: string, attempt: number) {
   if (attempt <= 1) return message;
   return `${message}（重试 ${attempt - 1}/${MAX_API_ATTEMPTS - 1}）`;
-}
-
-function getScanWorkerCount(totalImages: number) {
-  return totalImages >= LARGE_BATCH_THRESHOLD
-    ? LARGE_BATCH_CONCURRENT_SCANS
-    : SMALL_BATCH_CONCURRENT_SCANS;
 }
 
 function findChapterId(suggestedChapter: string | undefined, chapterContext?: ChapterContextItem[]) {
@@ -524,7 +516,7 @@ export function useAIScan() {
         }
       };
 
-      const workerCount = Math.min(getScanWorkerCount(totalImages), totalImages);
+      const workerCount = Math.min(AI_SCAN_CONCURRENT_LIMIT, totalImages);
       await Promise.all(Array.from({ length: workerCount }, () => worker()));
 
       if (activeRunRef.current !== runId) return;

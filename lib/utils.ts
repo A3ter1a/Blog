@@ -9,6 +9,7 @@ const BARE_LATEX_ENV_PATTERN = new RegExp(
   "g"
 );
 const BARE_LATEX_COMMAND_PATTERN = /(?<!\$)(\\(?!begin\b|end\b)[a-zA-Z]+(?:\{[^}]*\})?)(?!\$)/g;
+const COLLAPSED_INLINE_MATH_PATTERN = /(?<!\$)\$(?!\$)([^$\n]+?)\$\$(?!\$)([^$\n]+?)\$(?!\$)/g;
 
 function protectLatexLineBreaks(content: string): string {
   return content.replace(/\\{2,3}(?![A-Za-z])/g, LATEX_LINE_BREAK_MARKER);
@@ -18,6 +19,24 @@ export function restoreLatexLineBreaks(content: string): string {
   return content
     .replaceAll(LATEX_LINE_BREAK_MARKER, "\\\\")
     .replace(/\\{3,}(?![A-Za-z])/g, "\\\\");
+}
+
+export function separateCollapsedInlineMathSpans(content: string): string {
+  let next = content;
+  let previous: string;
+
+  do {
+    previous = next;
+    next = next.replace(COLLAPSED_INLINE_MATH_PATTERN, (full, left: string, right: string) => {
+      const leftMath = left.trim();
+      const rightMath = right.trim();
+      if (!leftMath || !rightMath) return full;
+
+      return `$${leftMath}$ $${rightMath}$`;
+    });
+  } while (next !== previous);
+
+  return next;
 }
 
 function isInsideDollarMath(content: string, offset: number): boolean {
@@ -126,6 +145,8 @@ export function getDescendantIds(chapterId: string, chapters: Chapter[]): Set<st
  * because they may be part of bracket escaping from the Markdown serializer.
  */
 export function preprocessLatex(content: string): string {
+  content = separateCollapsedInlineMathSpans(content);
+
   // Step 1: Remove spaces between $ and formula content
   // $ formula $ → $formula$
   let changed = true;
@@ -134,6 +155,7 @@ export function preprocessLatex(content: string): string {
     content = content.replace(/\$\s+([^$\n]+?)\s+\$/g, '$$$1$$');
     changed = content !== before;
   }
+  content = separateCollapsedInlineMathSpans(content);
 
   // Step 2: Split into math spans and non-math segments, process each separately
   // Math spans ($...$ or $$...$$) are at odd indices, non-math at even indices
