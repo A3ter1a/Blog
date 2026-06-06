@@ -12,8 +12,8 @@ import { requireAdminRequest, resolveAIKey } from "@/lib/server-admin-auth";
 export const runtime = "nodejs";
 export const maxDuration = 90;
 
-const MAX_PROBLEMS_PER_REQUEST = 24;
-const MAX_FIELD_LENGTH = 1800;
+const MAX_PROBLEMS_PER_REQUEST = 8;
+const MAX_FIELD_LENGTH = 1200;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -89,15 +89,16 @@ export async function POST(req: NextRequest) {
 
 规则：
 - chapterId 必须从给定章节列表中选择，不能自造 id。
-- 每道题都必须返回一个 chapterId。
+- 每道题都必须返回一个 chapterId，assignments 数量必须等于待归类题目数量。
 - 综合题按主要考察比例归类：选择解题中占比最高、最核心的章节。
 - 只做章节归类，不输出知识点 id，不输出解析。
 - 严格返回 JSON 对象，不要输出 markdown 代码块。
+- problemId 必须原样复制输入 id。
 
 输出结构：
 {
   "assignments": [
-    {"problemId":"题目 id","chapterId":"章节 id","confidence":0.0,"reason":"不超过20字的理由"}
+    {"problemId":"题目 id","chapterId":"章节 id","confidence":0.0,"reason":"不超过12字的理由"}
   ]
 }`;
 
@@ -128,7 +129,7 @@ ${JSON.stringify(problems, null, 2)}
       parsed = parseAIJson(content);
     } catch {
       return NextResponse.json(
-        { error: "AI 归类返回格式解析失败，请重试", rawContent: content },
+        { error: "AI 归类返回格式解析失败，请重试", retryable: true, rawContent: content },
         { status: 422 }
       );
     }
