@@ -1,6 +1,7 @@
 import Link from "next/link";
 import {
   BookOpen,
+  Bot,
   ChevronRight,
   ClipboardCheck,
   ListChecks,
@@ -10,6 +11,15 @@ import {
 } from "lucide-react";
 
 const primaryTools = [
+  {
+    id: "note-qa",
+    title: "笔记问答",
+    description: "登录后向自己的已发布笔记和题集提问，回答会带来源片段，适合快速回忆概念和定位内容。",
+    href: "/tools/note-qa",
+    icon: Bot,
+    tone: "border-sky-500/20 bg-sky-500/10 text-sky-700",
+    metric: "AI 检索",
+  },
   {
     id: "review-center",
     title: "错题复盘",

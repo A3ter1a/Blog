@@ -50,6 +50,12 @@ export type NoteSearchSummaryOptions = {
   includeCoverImage?: boolean;
 };
 
+export type NoteQAReadOptions = {
+  type?: NoteType;
+  subject?: Subject;
+  limit?: number;
+};
+
 export type FlashcardRow = {
   id?: string;
   note_id?: string | null;
@@ -223,6 +229,19 @@ const NOTE_DETAIL_FIELDS = `
         tags,
         cover_image,
         videos,
+        problems,
+        created_at,
+        updated_at,
+        is_published
+      `;
+
+const NOTE_QA_FIELDS = `
+        id,
+        type,
+        title,
+        content,
+        subject,
+        tags,
         problems,
         created_at,
         updated_at,
@@ -488,6 +507,27 @@ export const notesApi = {
 
     if (error) return null;
     return mapSnakeToCamel(data);
+  },
+
+  // Public read for the lightweight note Q&A tool. Keep this separate from
+  // list/detail reads so the Q&A route can fetch content without slowing pages.
+  async getQuestionAnswerSources(options: NoteQAReadOptions = {}): Promise<Note[]> {
+    const supabase = getSupabase();
+    const limit = Math.max(1, Math.min(options.limit ?? 120, 200));
+    let query = supabase
+      .from("notes")
+      .select(NOTE_QA_FIELDS)
+      .eq("is_published", true)
+      .order("updated_at", { ascending: false })
+      .limit(limit);
+
+    if (options.type) query = query.eq("type", options.type);
+    if (options.subject) query = query.eq("subject", options.subject);
+
+    const { data, error } = await query;
+
+    if (error) throw error;
+    return ((data || []) as NoteRow[]).map(mapSnakeToCamel);
   },
 
   // Create note
