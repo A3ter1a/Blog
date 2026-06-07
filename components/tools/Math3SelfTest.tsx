@@ -37,7 +37,7 @@ import {
   type Math3SelfTestStepGrade,
   type Math3SelfTestStatus,
 } from "@/lib/math3-self-test";
-import { math3SelfTestsApi } from "@/lib/supabase";
+import { math3SelfTestsApi } from "@/lib/math3-self-test-api";
 
 const MODE_OPTIONS: Math3SelfTestMode[] = ["quick", "full"];
 const DIFFICULTY_OPTIONS: Math3SelfTestDifficulty[] = ["comfort", "simulation", "challenge"];
@@ -230,19 +230,29 @@ export function Math3SelfTest() {
   }, [authLoading, isAdmin]);
 
   useEffect(() => {
-    setActiveIndex(0);
+    const timer = window.setTimeout(() => {
+      setActiveIndex(0);
+    }, 0);
+
+    return () => window.clearTimeout(timer);
   }, [activeTest?.id]);
 
   useEffect(() => {
     if (!isExamRunning) {
-      setRemainingSeconds(getRemainingSeconds(activeTest));
-      return;
+      const timer = window.setTimeout(() => {
+        setRemainingSeconds(getRemainingSeconds(activeTest));
+      }, 0);
+
+      return () => window.clearTimeout(timer);
     }
 
     const tick = () => setRemainingSeconds(getRemainingSeconds(activeTest));
-    tick();
+    const firstTickTimer = window.setTimeout(tick, 0);
     const timer = window.setInterval(tick, 1000);
-    return () => window.clearInterval(timer);
+    return () => {
+      window.clearTimeout(firstTickTimer);
+      window.clearInterval(timer);
+    };
   }, [activeTest, isExamRunning]);
 
   const replaceTest = (test: Math3SelfTestRecord) => {

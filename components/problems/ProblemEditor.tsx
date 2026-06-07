@@ -140,14 +140,8 @@ export function ProblemEditor({ problems, onChange, noteId, subject = "math", ha
   };
 
   const problemIdSet = useMemo(() => new Set(problems.map((problem) => problem.id)), [problems]);
-  const selectedProblemIdsInList = useMemo(
-    () => selectedProblemIds.filter((id) => problemIdSet.has(id)),
-    [problemIdSet, selectedProblemIds],
-  );
-  const selectedProblemIdSet = useMemo(
-    () => new Set(selectedProblemIdsInList),
-    [selectedProblemIdsInList],
-  );
+  const selectedProblemIdsInList = selectedProblemIds.filter((id) => problemIdSet.has(id));
+  const selectedProblemIdSet = new Set(selectedProblemIdsInList);
   const problemIndexById = useMemo(
     () => new Map(problems.map((problem, index) => [problem.id, index])),
     [problems],
@@ -751,7 +745,13 @@ function BulkProblemActionBar({
   const [showBulkDetails, setShowBulkDetails] = useState(false);
 
   useEffect(() => {
-    if (!isOpen) setShowBulkDetails(false);
+    if (isOpen) return;
+
+    const timer = window.setTimeout(() => {
+      setShowBulkDetails(false);
+    }, 0);
+
+    return () => window.clearTimeout(timer);
   }, [isOpen]);
 
   return (

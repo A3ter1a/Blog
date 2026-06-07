@@ -5,8 +5,8 @@ import { Loader2 } from "lucide-react";
 import type { RichTextEditorProps, RichTextEditorRef } from "./RichTextEditor";
 
 const RichTextEditorLazy = lazy(async () => {
-  const module = await import("./RichTextEditor");
-  return { default: module.RichTextEditor };
+  const editorModule = await import("./RichTextEditor");
+  return { default: editorModule.RichTextEditor };
 });
 
 export const LazyRichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props, ref) => (

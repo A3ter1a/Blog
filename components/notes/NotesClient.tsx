@@ -128,39 +128,48 @@ export function NotesClient({
   useEffect(() => {
     const loadId = latestLoadId.current + 1;
     latestLoadId.current = loadId;
-    setIsLoadingMore(false);
-    setSelectedNoteIds(new Set());
+    let fetchTimer: number | undefined;
 
-    const cacheKey = getNotesCacheKey(searchQuery, selectedType, selectedSubject, sortOrder);
-    const cached = readNotesCache(cacheKey);
-    const canKeepInitialRouteData = initialRouteReadyRef.current
-      && !cached
-      && !searchQuery.trim()
-      && selectedType === "all"
-      && selectedSubject === "all"
-      && sortOrder === "desc";
-    initialRouteReadyRef.current = false;
+    const prepareTimer = window.setTimeout(() => {
+      setIsLoadingMore(false);
+      setSelectedNoteIds(new Set());
 
-    if (cached) {
-      setVisibleNotes(cached.notes);
-      setHasMoreNotes(cached.hasMoreNotes);
-      setLoading(false);
-    } else if (canKeepInitialRouteData) {
-      setLoading(false);
-      setIsRefreshingNotes(false);
-      writeNotesCache(cacheKey, notesRef.current, initialHasMoreNotes);
-      return;
-    } else {
-      setVisibleNotes([]);
-      setHasMoreNotes(false);
-      setLoading(true);
-    }
+      const cacheKey = getNotesCacheKey(searchQuery, selectedType, selectedSubject, sortOrder);
+      const cached = readNotesCache(cacheKey);
+      const canKeepInitialRouteData = initialRouteReadyRef.current
+        && !cached
+        && !searchQuery.trim()
+        && selectedType === "all"
+        && selectedSubject === "all"
+        && sortOrder === "desc";
+      initialRouteReadyRef.current = false;
 
-    const timer = window.setTimeout(() => {
-      void fetchNotesPage(0, false, loadId, !cached && !canKeepInitialRouteData);
-    }, searchQuery.trim() ? 250 : 0);
+      if (cached) {
+        setVisibleNotes(cached.notes);
+        setHasMoreNotes(cached.hasMoreNotes);
+        setLoading(false);
+      } else if (canKeepInitialRouteData) {
+        setLoading(false);
+        setIsRefreshingNotes(false);
+        writeNotesCache(cacheKey, notesRef.current, initialHasMoreNotes);
+        return;
+      } else {
+        setVisibleNotes([]);
+        setHasMoreNotes(false);
+        setLoading(true);
+      }
 
-    return () => window.clearTimeout(timer);
+      fetchTimer = window.setTimeout(() => {
+        void fetchNotesPage(0, false, loadId, !cached && !canKeepInitialRouteData);
+      }, searchQuery.trim() ? 250 : 0);
+    }, 0);
+
+    return () => {
+      window.clearTimeout(prepareTimer);
+      if (fetchTimer !== undefined) {
+        window.clearTimeout(fetchTimer);
+      }
+    };
   }, [fetchNotesPage, initialHasMoreNotes, searchQuery, selectedSubject, selectedType, sortOrder, setVisibleNotes]);
 
   useEffect(() => {

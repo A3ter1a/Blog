@@ -85,7 +85,7 @@ on conflict (email) do nothing;
 
 ## 架构扫描第一轮记录
 
-- 数据写入集中在 `notesApi`、`chaptersApi` 和 `supabase-storage`，目前这些入口都已有管理员前置检查。
+- 数据写入集中在 `notesApi`、`chaptersApi`、`problemPracticeApi`、`math3SelfTestsApi` 和 `supabase-storage`，目前这些入口都已有管理员前置检查。
 - `localStorage` 仍用于阅读偏好、AI 使用统计和本地个人资料，这些属于非敏感配置；生产环境 AI key 已被清空和禁用。
 - Markdown 渲染集中在 `lib/markdown.ts` 和 `components/ui/MarkdownContent.tsx`，题库阅读页、编辑器预览和 AI 提取结果都依赖这条链路。后续题库专项优化应优先从这条链路入手。
 - `components/problems/ProblemEditor.tsx` 内部还有一个编辑器专用 `ProblemCard`，同时阅读页使用 `components/problems/ProblemCard.tsx`。这两个题目卡片逻辑存在重复，后续可以作为题库专项优化的重点。

@@ -39,7 +39,8 @@ import {
   toPracticeStatusMap,
   type PracticeFilter,
 } from "@/lib/problem-practice";
-import { notesApi, problemPracticeApi } from "@/lib/supabase";
+import { problemPracticeApi } from "@/lib/problem-practice-api";
+import { notesApi } from "@/lib/supabase";
 import type { Note, PracticeResult, ProblemPracticeStatus } from "@/lib/types";
 import { difficultyMap, problemTypeMap } from "@/lib/types";
 
@@ -95,20 +96,7 @@ export function PracticeSession({
   useEffect(() => {
     const requestId = loadRequestRef.current + 1;
     loadRequestRef.current = requestId;
-    setProblemSets([]);
-    setStatusMap({});
-    setCurrentIndex(0);
-    setPracticeFilter("all");
-    setShowAnswer(false);
-    setShowPracticeTools(false);
-    setLoadError(null);
-
-    if (normalizedProblemSetIds.length === 0) {
-      setIsLoading(false);
-      return;
-    }
-
-    setIsLoading(true);
+    let cancelled = false;
 
     async function loadPracticeSets() {
       try {
@@ -121,21 +109,42 @@ export function PracticeSession({
           return [];
         });
 
-        if (requestId !== loadRequestRef.current) return;
+        if (cancelled || requestId !== loadRequestRef.current) return;
 
         setProblemSets(validSets);
         setStatusMap(toPracticeStatusMap(statuses));
       } catch (error) {
-        if (requestId !== loadRequestRef.current) return;
+        if (cancelled || requestId !== loadRequestRef.current) return;
         const message = error instanceof Error ? error.message : "未知错误";
         setLoadError(message);
         toast.error(`题集加载失败：${message}`);
       } finally {
-        if (requestId === loadRequestRef.current) setIsLoading(false);
+        if (!cancelled && requestId === loadRequestRef.current) setIsLoading(false);
       }
     }
 
-    void loadPracticeSets();
+    const timer = window.setTimeout(() => {
+      setProblemSets([]);
+      setStatusMap({});
+      setCurrentIndex(0);
+      setPracticeFilter("all");
+      setShowAnswer(false);
+      setShowPracticeTools(false);
+      setLoadError(null);
+
+      if (normalizedProblemSetIds.length === 0) {
+        setIsLoading(false);
+        return;
+      }
+
+      setIsLoading(true);
+      void loadPracticeSets();
+    }, 0);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
   }, [normalizedProblemSetIds, problemSetIdsKey, scopeKey, toast]);
 
   const problemSetStats = useMemo(() => {

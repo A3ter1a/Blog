@@ -100,79 +100,82 @@ export function useNoteEditorRoute({
     let cancelled = false;
     let slowNoticeTimer: number | undefined;
 
-    if (editId) {
-      setIsEditMode(true);
-      setEditingId(editId);
-      setIsLoadingExistingNote(true);
-      setLoadNotice(null);
-      setLoadError(null);
+    const routeTimer = window.setTimeout(() => {
+      if (editId) {
+        setIsEditMode(true);
+        setEditingId(editId);
+        setIsLoadingExistingNote(true);
+        setLoadNotice(null);
+        setLoadError(null);
 
-      slowNoticeTimer = window.setTimeout(() => {
-        if (!cancelled) {
-          setLoadNotice("这篇内容的数据量较大，正在继续读取完整编辑数据...");
-        }
-      }, EDIT_NOTE_SLOW_NOTICE_MS);
+        slowNoticeTimer = window.setTimeout(() => {
+          if (!cancelled) {
+            setLoadNotice("这篇内容的数据量较大，正在继续读取完整编辑数据...");
+          }
+        }, EDIT_NOTE_SLOW_NOTICE_MS);
 
-      withLoadTimeout(notesApi.getEditableById(editId)).then((existingNote) => {
-        if (cancelled) return;
-        if (existingNote) {
-          setLoadNotice(null);
-          const visibleTags = splitMath3PracticeTags(existingNote.tags).visibleTags;
+        withLoadTimeout(notesApi.getEditableById(editId)).then((existingNote) => {
+          if (cancelled) return;
+          if (existingNote) {
+            setLoadNotice(null);
+            const visibleTags = splitMath3PracticeTags(existingNote.tags).visibleTags;
 
-          applyDraft({
-            noteType: existingNote.type,
-            title: existingNote.title,
-            subject: existingNote.subject || "math",
-            tagInput: visibleTags.join(", "),
-            content: existingNote.content,
-            videos: existingNote.videos || [],
-            problems: existingNote.problems || [],
-            coverImage: existingNote.coverImage || "",
-          });
-        } else {
-          const message = "没有找到要编辑的笔记，可能已被删除或没有权限访问";
-          setLoadError(message);
-          toast.error(message);
+            applyDraft({
+              noteType: existingNote.type,
+              title: existingNote.title,
+              subject: existingNote.subject || "math",
+              tagInput: visibleTags.join(", "),
+              content: existingNote.content,
+              videos: existingNote.videos || [],
+              problems: existingNote.problems || [],
+              coverImage: existingNote.coverImage || "",
+            });
+          } else {
+            const message = "没有找到要编辑的笔记，可能已被删除或没有权限访问";
+            setLoadError(message);
+            toast.error(message);
+          }
+        }).catch((error) => {
+          if (cancelled) return;
+          console.error("Failed to load note:", error);
+          const message = error instanceof Error ? error.message : "未知错误";
+          setLoadError(`加载笔记失败：${message}`);
+          toast.error("加载笔记失败");
+        }).finally(() => {
+          if (slowNoticeTimer !== undefined) {
+            window.clearTimeout(slowNoticeTimer);
+          }
+          if (!cancelled) {
+            setIsLoadingExistingNote(false);
+            setRouteReady(true);
+          }
+        });
+      } else if (importMode) {
+        setIsEditMode(false);
+        setEditingId("");
+        setLoadError(null);
+        setLoadNotice(null);
+        setIsLoadingExistingNote(false);
+        if (initialImportDraft) {
+          applyDraft(draftFromImport(initialImportDraft));
+          toast.success("已自动填充导入内容，请检查后发布");
+          sessionStorage.removeItem("pendingImport");
         }
-      }).catch((error) => {
-        if (cancelled) return;
-        console.error("Failed to load note:", error);
-        const message = error instanceof Error ? error.message : "未知错误";
-        setLoadError(`加载笔记失败：${message}`);
-        toast.error("加载笔记失败");
-      }).finally(() => {
-        if (slowNoticeTimer !== undefined) {
-          window.clearTimeout(slowNoticeTimer);
-        }
-        if (!cancelled) {
-          setIsLoadingExistingNote(false);
-          setRouteReady(true);
-        }
-      });
-    } else if (importMode) {
-      setIsEditMode(false);
-      setEditingId("");
-      setLoadError(null);
-      setLoadNotice(null);
-      setIsLoadingExistingNote(false);
-      if (initialImportDraft) {
-        applyDraft(draftFromImport(initialImportDraft));
-        toast.success("已自动填充导入内容，请检查后发布");
-        sessionStorage.removeItem("pendingImport");
+        setRouteReady(true);
+      } else {
+        setIsEditMode(false);
+        setEditingId("");
+        setLoadError(null);
+        setLoadNotice(null);
+        setIsLoadingExistingNote(false);
+        resetDraft();
+        setRouteReady(true);
       }
-      setRouteReady(true);
-    } else {
-      setIsEditMode(false);
-      setEditingId("");
-      setLoadError(null);
-      setLoadNotice(null);
-      setIsLoadingExistingNote(false);
-      resetDraft();
-      setRouteReady(true);
-    }
+    }, 0);
 
     return () => {
       cancelled = true;
+      window.clearTimeout(routeTimer);
       if (slowNoticeTimer !== undefined) {
         window.clearTimeout(slowNoticeTimer);
       }

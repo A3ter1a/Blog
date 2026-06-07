@@ -40,7 +40,8 @@ import {
   toPracticeStatusMap,
   type PracticeFilter,
 } from "@/lib/problem-practice";
-import { notesApi, problemPracticeApi } from "@/lib/supabase";
+import { problemPracticeApi } from "@/lib/problem-practice-api";
+import { notesApi } from "@/lib/supabase";
 import type { Note, PracticeResult, ProblemPracticeStatus } from "@/lib/types";
 import { difficultyMap, problemTypeMap } from "@/lib/types";
 
@@ -267,12 +268,20 @@ export function ReviewCenter() {
   const masteredPercent = stats.total > 0 ? Math.round((stats.mastered / stats.total) * 100) : 0;
 
   useEffect(() => {
-    setCurrentIndex(0);
-    setShowAnswer(false);
+    const timer = window.setTimeout(() => {
+      setCurrentIndex(0);
+      setShowAnswer(false);
+    }, 0);
+
+    return () => window.clearTimeout(timer);
   }, [activeFilter, chapterFilter, normalizedQuery]);
 
   useEffect(() => {
-    setCurrentIndex((index) => Math.min(index, Math.max(visibleProblems.length - 1, 0)));
+    const timer = window.setTimeout(() => {
+      setCurrentIndex((index) => Math.min(index, Math.max(visibleProblems.length - 1, 0)));
+    }, 0);
+
+    return () => window.clearTimeout(timer);
   }, [visibleProblems.length]);
 
   const moveToProblem = (index: number) => {

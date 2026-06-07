@@ -135,11 +135,15 @@ export function Math3KnowledgeCatalog() {
   const [activePracticeScope, setActivePracticeScope] = useState<Math3PracticeScope | null>(null);
 
   useEffect(() => {
-    setStarredIds(readJsonStorage(MATH3_KNOWLEDGE_STAR_STORAGE_KEY, [], normalizePointIds));
-    setMasteredIds(readJsonStorage(MATH3_KNOWLEDGE_MASTERED_STORAGE_KEY, [], normalizePointIds));
-    setCollapsedChapterIds(
-      readJsonStorage(MATH3_KNOWLEDGE_COLLAPSED_CHAPTERS_STORAGE_KEY, math3KnowledgeChapterIds, normalizeChapterIds)
-    );
+    const timer = window.setTimeout(() => {
+      setStarredIds(readJsonStorage(MATH3_KNOWLEDGE_STAR_STORAGE_KEY, [], normalizePointIds));
+      setMasteredIds(readJsonStorage(MATH3_KNOWLEDGE_MASTERED_STORAGE_KEY, [], normalizePointIds));
+      setCollapsedChapterIds(
+        readJsonStorage(MATH3_KNOWLEDGE_COLLAPSED_CHAPTERS_STORAGE_KEY, math3KnowledgeChapterIds, normalizeChapterIds)
+      );
+    }, 0);
+
+    return () => window.clearTimeout(timer);
   }, []);
 
   useEffect(() => {

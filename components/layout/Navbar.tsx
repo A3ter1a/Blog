@@ -36,7 +36,11 @@ export function Navbar() {
   }, []);
 
   useEffect(() => {
-    setShowMobileMenu(false);
+    const timer = window.setTimeout(() => {
+      setShowMobileMenu(false);
+    }, 0);
+
+    return () => window.clearTimeout(timer);
   }, [pathname]);
 
   useEffect(() => {

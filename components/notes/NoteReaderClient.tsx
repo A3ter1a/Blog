@@ -57,13 +57,17 @@ export function NoteReaderClient({
   const lastHashScrollRef = useRef("");
 
   useEffect(() => {
-    setNote(initialNote);
-    setLoading(initialLoadError || !initialNote);
-    setChapters(initialChapters);
-    setSelectedChapterId(undefined);
-    setIsCoverExpanded(Boolean(initialNote?.coverImage));
-    setShowProblemTools(false);
-    skipInitialChapterFetchRef.current = initialChaptersLoaded;
+    const timer = window.setTimeout(() => {
+      setNote(initialNote);
+      setLoading(initialLoadError || !initialNote);
+      setChapters(initialChapters);
+      setSelectedChapterId(undefined);
+      setIsCoverExpanded(Boolean(initialNote?.coverImage));
+      setShowProblemTools(false);
+      skipInitialChapterFetchRef.current = initialChaptersLoaded;
+    }, 0);
+
+    return () => window.clearTimeout(timer);
   }, [initialChapters, initialChaptersLoaded, initialLoadError, initialNote, noteId]);
 
   const loadNote = useCallback(async () => {
@@ -90,8 +94,11 @@ export function NoteReaderClient({
   // Load chapters for problem notes
   useEffect(() => {
     if (note?.type !== "problem") {
-      setChapters([]);
-      return;
+      const timer = window.setTimeout(() => {
+        setChapters([]);
+      }, 0);
+
+      return () => window.clearTimeout(timer);
     }
 
     if (skipInitialChapterFetchRef.current) {
