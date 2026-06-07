@@ -4,10 +4,8 @@ import {
   Bot,
   ChevronRight,
   ClipboardCheck,
-  ListChecks,
   RotateCcw,
   Target,
-  Zap,
 } from "lucide-react";
 
 const primaryTools = [
@@ -49,27 +47,6 @@ const primaryTools = [
   },
 ];
 
-const secondaryTools = [
-  {
-    id: "problem-bank",
-    title: "题集与刷题",
-    description: "从题集进入阅读、编辑和章节整理，再衔接到目录刷题。",
-    href: "/notes",
-    icon: ListChecks,
-    tone: "border-blue-500/20 bg-blue-500/10 text-blue-700",
-    metric: "题库入口",
-  },
-  {
-    id: "flashcard",
-    title: "抽卡复习",
-    description: "复习到期闪卡，按掌握程度自动安排下一次回看。",
-    href: "/flashcard",
-    icon: Zap,
-    tone: "border-amber-500/20 bg-amber-500/10 text-amber-700",
-    metric: "间隔重复",
-  },
-];
-
 export default function ToolsPage() {
   return (
     <main className="min-h-screen bg-surface pt-24">
@@ -93,9 +70,6 @@ export default function ToolsPage() {
       <div className="mx-auto max-w-5xl px-4 py-8">
         <section className="grid gap-3">
           {primaryTools.map((tool) => (
-            <ToolCard key={tool.id} tool={tool} />
-          ))}
-          {secondaryTools.map((tool) => (
             <ToolCard key={tool.id} tool={tool} />
           ))}
         </section>
@@ -125,9 +99,9 @@ function ToolCard({
     >
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex min-w-0 items-start gap-4">
-            <div className={`flex h-11 w-11 items-center justify-center rounded-lg border ${tool.tone}`}>
-              <Icon className="h-5 w-5" />
-            </div>
+          <div className={`flex h-11 w-11 items-center justify-center rounded-lg border ${tool.tone}`}>
+            <Icon className="h-5 w-5" />
+          </div>
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <h3 className="font-headline text-lg font-bold text-on-surface group-hover:text-primary">

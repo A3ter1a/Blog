@@ -1,5 +1,5 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import { Note, NoteType, Subject, Flashcard, type PracticeResult, type Problem, type ProblemPracticeStatus, type Profile, type Video } from "./types";
+import { Note, NoteType, Subject, type PracticeResult, type Problem, type ProblemPracticeStatus, type Profile, type Video } from "./types";
 import { DEFAULT_PROFILE, normalizeProfile } from "./profile";
 import {
   createEmptyMath3SelfTestAttempt,
@@ -55,23 +55,6 @@ export type NoteQAReadOptions = {
   subject?: Subject;
   limit?: number;
 };
-
-export type FlashcardRow = {
-  id?: string;
-  note_id?: string | null;
-  question?: string | null;
-  answer?: string | null;
-  interval?: number | null;
-  repetition?: number | null;
-  ease_factor?: number | null;
-  next_review?: string | null;
-  last_review?: string | null;
-  created_at?: string | null;
-  updated_at?: string | null;
-};
-
-export type FlashcardInsert = Partial<FlashcardRow>;
-export type FlashcardUpdate = Partial<FlashcardRow>;
 
 export type ProblemPracticeStatusRow = {
   id?: string;
@@ -144,12 +127,6 @@ type Database = {
         Row: NoteRow;
         Insert: NoteInsert;
         Update: NoteUpdate;
-        Relationships: [];
-      };
-      flashcards: {
-        Row: FlashcardRow;
-        Insert: FlashcardInsert;
-        Update: FlashcardUpdate;
         Relationships: [];
       };
       problem_practice_statuses: {
@@ -847,120 +824,6 @@ export const math3SelfTestsApi = {
     const supabase = getSupabase();
     const { error } = await supabase.from("math3_self_tests").delete().eq("id", id);
     if (error) throw error;
-  },
-};
-
-// Flashcard API
-function mapFlashcardSnakeToCamel(row: FlashcardRow): Flashcard {
-  return {
-    id: row.id ?? "",
-    noteId: row.note_id ?? "",
-    question: row.question ?? "",
-    answer: row.answer ?? "",
-    interval: row.interval || 1,
-    repetition: row.repetition || 0,
-    easeFactor: row.ease_factor || 2.5,
-    nextReview: row.next_review ? new Date(row.next_review) : new Date(),
-    lastReview: row.last_review ? new Date(row.last_review) : undefined,
-    createdAt: row.created_at ? new Date(row.created_at) : new Date(),
-    updatedAt: row.updated_at ? new Date(row.updated_at) : new Date(),
-  };
-}
-
-export const flashcardsApi = {
-  // Get due flashcards (cards ready for review)
-  async getDue(limit: number = 20): Promise<Flashcard[]> {
-    const supabase = getSupabase();
-    const now = new Date().toISOString();
-    const { data, error } = await supabase
-      .from("flashcards")
-      .select("*")
-      .lte("next_review", now)
-      .order("next_review", { ascending: true })
-      .limit(limit);
-
-    if (error) throw error;
-    return (data || []).map(mapFlashcardSnakeToCamel);
-  },
-
-  // Get all flashcards for a note
-  async getByNoteId(noteId: string): Promise<Flashcard[]> {
-    const supabase = getSupabase();
-    const { data, error } = await supabase
-      .from("flashcards")
-      .select("*")
-      .eq("note_id", noteId)
-      .order("created_at", { ascending: true });
-
-    if (error) throw error;
-    return (data || []).map(mapFlashcardSnakeToCamel);
-  },
-
-  // Create flashcard
-  async create(card: Omit<Flashcard, "id" | "createdAt" | "updatedAt">): Promise<Flashcard> {
-    await assertAdminWrite();
-    const supabase = getSupabase();
-    const { data, error } = await supabase
-      .from("flashcards")
-      .insert([{
-        note_id: card.noteId,
-        question: card.question,
-        answer: card.answer,
-        interval: card.interval,
-        repetition: card.repetition,
-        ease_factor: card.easeFactor,
-        next_review: card.nextReview.toISOString(),
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      }])
-      .select()
-      .single();
-
-    if (error) throw error;
-    return mapFlashcardSnakeToCamel(data);
-  },
-
-  // Update flashcard (after review)
-  async update(id: string, updates: Partial<Flashcard>): Promise<Flashcard> {
-    await assertAdminWrite();
-    const supabase = getSupabase();
-    const dbUpdates: FlashcardUpdate = { updated_at: new Date().toISOString() };
-    if (updates.interval !== undefined) dbUpdates.interval = updates.interval;
-    if (updates.repetition !== undefined) dbUpdates.repetition = updates.repetition;
-    if (updates.easeFactor !== undefined) dbUpdates.ease_factor = updates.easeFactor;
-    if (updates.nextReview !== undefined) dbUpdates.next_review = updates.nextReview.toISOString();
-    if (updates.lastReview !== undefined) dbUpdates.last_review = updates.lastReview.toISOString();
-
-    const { data, error } = await supabase
-      .from("flashcards")
-      .update(dbUpdates)
-      .eq("id", id)
-      .select()
-      .single();
-
-    if (error) throw error;
-    return mapFlashcardSnakeToCamel(data);
-  },
-
-  // Delete flashcard
-  async delete(id: string): Promise<void> {
-    await assertAdminWrite();
-    const supabase = getSupabase();
-    const { error } = await supabase.from("flashcards").delete().eq("id", id);
-    if (error) throw error;
-  },
-
-  // Get count of due cards
-  async getDueCount(): Promise<number> {
-    const supabase = getSupabase();
-    const now = new Date().toISOString();
-    const { data, error } = await supabase
-      .from("flashcards")
-      .select("id")
-      .lte("next_review", now);
-
-    if (error) throw error;
-    return data?.length || 0;
   },
 };
 

@@ -55,7 +55,7 @@ QWEN_API_KEY=你的 Qwen key
 
 执行前要知道：
 
-- 生产策略应覆盖 `notes`、`chapters`、`flashcards`、`admin_users` 和 `storage.objects`。
+- 生产策略应覆盖 `notes`、`chapters`、`admin_users` 和 `storage.objects`。
 - 它的目标是让访客只能读公开内容，不能写入、修改、删除数据。
 - 如果未来新增 Storage bucket，需要额外补策略。
 

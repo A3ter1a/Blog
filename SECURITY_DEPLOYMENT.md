@@ -36,7 +36,7 @@ on conflict (email) do nothing;
 
 - Public visitors can read published notes.
 - Public visitors can read note images from the `note-images` bucket.
-- Public visitors cannot create, edit, delete, import, review flashcards, or call AI APIs.
+- Public visitors cannot create, edit, delete, import, or call AI APIs.
 - Public visitors cannot upload, overwrite, or delete note images.
 - `/debug` returns 404 outside development.
 - AI API keys stay on the server in production.
