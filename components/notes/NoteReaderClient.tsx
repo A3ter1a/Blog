@@ -242,7 +242,7 @@ export function NoteReaderClient({
 
   if (loading) {
     return (
-      <main className="pt-32 pb-20 px-6 min-h-screen flex items-center justify-center">
+      <main className="flex min-h-screen items-center justify-center bg-surface px-4 pb-20 pt-24 sm:px-6">
         <div className="flex items-center gap-3">
           <Loader2 className="w-8 h-8 animate-spin text-primary" />
           <span className="text-on-surface-variant">加载笔记中...</span>
@@ -253,8 +253,8 @@ export function NoteReaderClient({
 
   if (!note) {
     return (
-      <main className="pt-32 pb-20 px-6 min-h-screen flex items-center justify-center">
-        <div className="text-center">
+      <main className="flex min-h-screen items-center justify-center bg-surface px-4 pb-20 pt-24 sm:px-6">
+        <div className="surface-panel p-6 text-center">
           <h1 className="text-2xl font-bold text-on-surface mb-4">笔记不存在</h1>
           <Link
             href="/notes"

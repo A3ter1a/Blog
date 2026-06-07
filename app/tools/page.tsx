@@ -7,6 +7,7 @@ import {
   RotateCcw,
   Target,
 } from "lucide-react";
+import { PageHeader, PageShell } from "@/components/ui/PageScaffold";
 
 const primaryTools = [
   {
@@ -49,32 +50,23 @@ const primaryTools = [
 
 export default function ToolsPage() {
   return (
-    <main className="min-h-screen bg-surface pt-24">
-      <section className="border-b border-outline-variant/20 bg-surface-container-low/70">
-        <div className="mx-auto max-w-5xl px-4 py-8">
-          <div>
-            <div className="eyebrow-chip mb-3 px-3 py-1 text-xs">
-              <Target className="h-4 w-4" />
-              学习工具台
-            </div>
-            <h1 className="font-headline text-3xl font-bold text-on-surface md:text-4xl">
-              工具
-            </h1>
-            <p className="mt-3 max-w-2xl text-sm leading-6 text-on-surface-variant md:text-base">
-              只保留真正需要进入操作的入口。
-            </p>
-          </div>
-        </div>
-      </section>
+    <>
+      <PageHeader
+        width="normal"
+        eyebrow="学习工具台"
+        icon={<Target className="h-4 w-4" />}
+        title="工具"
+        description="保留真正需要进入操作的学习入口。"
+      />
 
-      <div className="mx-auto max-w-5xl px-4 py-8">
-        <section className="grid gap-3">
+      <PageShell width="normal" topPadding="content">
+        <section className="grid gap-3 md:grid-cols-2">
           {primaryTools.map((tool) => (
             <ToolCard key={tool.id} tool={tool} />
           ))}
         </section>
-      </div>
-    </main>
+      </PageShell>
+    </>
   );
 }
 
@@ -95,9 +87,9 @@ function ToolCard({
   return (
     <Link
       href={tool.href}
-      className="surface-card group block p-4 hover:-translate-y-0.5"
+      className="surface-card group flex min-h-36 flex-col p-4 hover:-translate-y-0.5"
     >
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-1 flex-col gap-4">
         <div className="flex min-w-0 items-start gap-4">
           <div className={`flex h-11 w-11 items-center justify-center rounded-lg border ${tool.tone}`}>
             <Icon className="h-5 w-5" />
@@ -117,7 +109,7 @@ function ToolCard({
           </div>
         </div>
 
-        <div className="flex shrink-0 items-center justify-end gap-2 text-sm font-medium text-primary">
+        <div className="mt-auto flex shrink-0 items-center justify-end gap-2 text-sm font-medium text-primary">
           <span>进入</span>
           <ChevronRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
         </div>

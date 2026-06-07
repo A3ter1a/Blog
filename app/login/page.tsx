@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Loader2, LogIn, LogOut } from "lucide-react";
 import { getSupabase } from "@/lib/supabase";
 import { useAdminAuth } from "@/hooks/useAdminAuth";
+import { PageShell } from "@/components/ui/PageScaffold";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -41,9 +42,9 @@ export default function LoginPage() {
   };
 
   return (
-    <main className="pt-32 pb-20 px-6 min-h-screen">
-      <div className="max-w-sm mx-auto bg-surface-container-low rounded-xl p-6 shadow-ambient">
-        <h1 className="text-2xl font-bold text-on-surface font-headline mb-2">管理员登录</h1>
+    <PageShell width="compact">
+      <div className="surface-panel mx-auto max-w-sm p-6">
+        <h1 className="mb-2 font-headline text-2xl font-bold text-on-surface">管理员登录</h1>
         <p className="text-sm text-on-surface-variant mb-6">
           登录后才能创建、编辑、删除内容和使用服务端 AI 能力。
         </p>
@@ -64,7 +65,7 @@ export default function LoginPage() {
             <button
               onClick={handleLogout}
               disabled={submitting}
-              className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-surface-container-high text-on-surface-variant text-sm font-medium hover:bg-surface-container-highest transition-colors disabled:opacity-40"
+              className="control-button h-11 w-full px-4 text-sm"
             >
               {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <LogOut className="w-4 h-4" />}
               退出登录
@@ -78,7 +79,7 @@ export default function LoginPage() {
                 type="email"
                 value={email}
                 onChange={(event) => setEmail(event.target.value)}
-                className="w-full px-4 py-3 bg-surface-container-high rounded-xl input-soft text-on-surface"
+                className="field-control h-11 w-full px-4 text-sm"
                 autoComplete="email"
                 required
               />
@@ -89,7 +90,7 @@ export default function LoginPage() {
                 type="password"
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
-                className="w-full px-4 py-3 bg-surface-container-high rounded-xl input-soft text-on-surface"
+                className="field-control h-11 w-full px-4 text-sm"
                 autoComplete="current-password"
                 required
               />
@@ -97,7 +98,7 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={submitting}
-              className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 rounded-xl editorial-gradient text-on-primary text-sm font-medium disabled:opacity-40"
+              className="control-button control-button-primary h-11 w-full px-4 text-sm"
             >
               {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <LogIn className="w-4 h-4" />}
               登录
@@ -111,6 +112,6 @@ export default function LoginPage() {
           </div>
         )}
       </div>
-    </main>
+    </PageShell>
   );
 }

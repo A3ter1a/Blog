@@ -9,6 +9,7 @@ import {
   Search,
 } from "lucide-react";
 import { MarkdownContent } from "@/components/ui/MarkdownContent";
+import { PageHeader, PageShell } from "@/components/ui/PageScaffold";
 import { useToast } from "@/components/ui/Toast";
 import { buildAuthHeaders } from "@/lib/fetch-with-auth";
 import type { NoteQASource } from "@/lib/note-qa";
@@ -75,12 +76,15 @@ export function NoteQA() {
   }
 
   return (
-    <main className="min-h-screen bg-surface pt-24">
-      <div className="mx-auto max-w-4xl px-4 py-6">
-        <header className="mb-4">
-          <h1 className="font-headline text-2xl font-bold text-on-surface md:text-3xl">向笔记提问</h1>
-        </header>
+    <>
+      <PageHeader
+        width="compact"
+        eyebrow="AI 检索"
+        icon={<Search className="h-4 w-4" />}
+        title="向笔记提问"
+      />
 
+      <PageShell width="compact" topPadding="content">
         <section className="surface-panel p-4 md:p-5">
           <form onSubmit={askQuestion} className="space-y-4">
             <label className="block">
@@ -163,7 +167,7 @@ export function NoteQA() {
             </div>
           </section>
         ) : null}
-      </div>
-    </main>
+      </PageShell>
+    </>
   );
 }

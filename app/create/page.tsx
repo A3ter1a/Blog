@@ -5,7 +5,7 @@ import { motion } from "framer-motion";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import type { Editor } from "@tiptap/react";
-import { Save, RotateCcw, X, Image as ImageIcon, FolderTree, Columns, Maximize2, Eye, Loader2, ChevronDown, ChevronUp, SlidersHorizontal } from "lucide-react";
+import { Save, RotateCcw, X, Image as ImageIcon, FolderTree, Columns, Maximize2, Eye, Loader2, ChevronDown, ChevronUp, SlidersHorizontal, Video as VideoIcon } from "lucide-react";
 import { Subject, subjectMap, NoteType, typeMap, Video, Problem } from "@/lib/types";
 import { useToast } from "@/components/ui/Toast";
 import type { RichTextEditorRef } from "@/components/editor/RichTextEditor";
@@ -258,8 +258,8 @@ function CreateEditorPage() {
 
   if (!routeReady || isLoadingExistingNote) {
     return (
-        <main className="pt-32 pb-20 min-h-screen flex items-center justify-center">
-          <div className="max-w-md px-6 text-center text-on-surface-variant">
+        <main className="flex min-h-screen items-center justify-center bg-surface px-4 pb-20 pt-24 sm:px-6">
+          <div className="surface-panel max-w-md p-6 text-center text-on-surface-variant">
             <div className="flex items-center justify-center gap-3">
               <Loader2 className="w-6 h-6 animate-spin text-primary" />
               <span>{loadNotice ?? "正在准备编辑器..."}</span>
@@ -276,14 +276,14 @@ function CreateEditorPage() {
 
   if (loadError) {
     return (
-        <main className="pt-32 pb-20 min-h-screen flex items-center justify-center px-6">
-          <div className="max-w-md text-center space-y-4">
+        <main className="flex min-h-screen items-center justify-center bg-surface px-4 pb-20 pt-24 sm:px-6">
+          <div className="surface-panel max-w-md space-y-4 p-6 text-center">
             <h1 className="text-2xl font-bold text-on-surface">无法编辑这篇笔记</h1>
             <p className="text-sm text-on-surface-variant">{loadError}</p>
             <button
               type="button"
               onClick={() => router.push("/notes")}
-              className="px-4 py-2 rounded-lg bg-surface-container-high text-on-surface-variant hover:bg-surface-container-highest transition-colors text-sm font-medium"
+              className="control-button px-4 py-2 text-sm"
             >
               返回笔记列表
             </button>
@@ -293,13 +293,13 @@ function CreateEditorPage() {
   }
 
   return (
-    <main className="pt-24 pb-20 min-h-screen">
-      <div className="max-w-7xl mx-auto px-6">
+    <main className="min-h-screen bg-surface pb-20 pt-24">
+      <div className="mx-auto w-full max-w-7xl px-4 sm:px-6">
         {/* Header */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="sticky top-20 z-30 mb-6 rounded-lg border border-outline-variant/20 bg-surface/90 p-3 backdrop-blur-xl"
+          className="command-bar sticky top-20 z-30 mb-5 p-3"
         >
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="min-w-0">
@@ -314,7 +314,7 @@ function CreateEditorPage() {
               <button
                 onClick={handleClear}
                 disabled={isSaving}
-                className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-outline-variant/30 px-3 text-sm font-medium text-on-surface-variant transition-colors hover:border-primary/40 hover:text-primary disabled:opacity-40"
+                className="control-button h-10 px-3 text-sm"
               >
                 <RotateCcw className="h-4 w-4" />
                 清空
@@ -322,7 +322,7 @@ function CreateEditorPage() {
               <button
                 onClick={handleSave}
                 disabled={isSaving}
-                className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-on-primary transition-colors hover:bg-primary/90 disabled:opacity-50"
+                className="control-button control-button-primary h-10 px-4 text-sm"
               >
                 {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                 {isSaving ? "保存中" : isEditMode ? "更新" : "发布"}
@@ -339,7 +339,7 @@ function CreateEditorPage() {
           className="surface-toolbar mb-4 p-2"
         >
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <div className="px-2 text-sm font-medium text-on-surface-variant">内容类型</div>
+            <div className="px-2 text-sm font-medium text-on-surface-variant">类型</div>
             <div className="grid gap-2 sm:grid-cols-3">
               {(["note", "problem", "essay"] as NoteType[]).map((type) => (
                 <button
@@ -363,7 +363,7 @@ function CreateEditorPage() {
           transition={{ delay: 0.15 }}
           className="mb-4"
         >
-          <label className="block text-sm font-medium text-on-surface-variant mb-3">
+          <label className="mb-2 block text-sm font-medium text-on-surface-variant">
             标题
           </label>
           <input
@@ -371,7 +371,7 @@ function CreateEditorPage() {
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             placeholder="输入标题..."
-            className="w-full px-4 py-3 bg-surface-container-low rounded-xl input-soft text-on-surface placeholder:text-on-surface-variant/40"
+            className="field-control h-12 w-full px-4 text-base placeholder:text-on-surface-variant/40"
           />
         </motion.div>
 
@@ -515,7 +515,7 @@ function CreateEditorPage() {
                 </label>
                 <button
                   onClick={() => setShowChapterManager(true)}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-surface-container-low text-on-surface-variant hover:bg-surface-container-high transition-all text-xs font-medium"
+                  className="control-button h-9 min-h-0 px-3 text-xs"
                 >
                   <FolderTree className="w-3.5 h-3.5" />
                   章节管理
@@ -579,7 +579,7 @@ function CreateEditorPage() {
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                   {/* Editor Panel */}
                   <div
-                    className="flex flex-col rounded-xl border border-outline-variant/20 bg-surface-container-low overflow-hidden"
+                    className="flex flex-col overflow-hidden rounded-lg border border-outline-variant/20 bg-surface-container-low"
                     style={{ maxHeight: 'calc(100vh - 500px)', minHeight: '400px' }}
                   >
                     {/* Sticky Toolbar */}
@@ -623,7 +623,7 @@ function CreateEditorPage() {
 
                   {/* Preview Panel */}
                   <div
-                    className="flex flex-col rounded-xl border border-outline-variant/20 bg-surface-container-low overflow-hidden"
+                    className="flex flex-col overflow-hidden rounded-lg border border-outline-variant/20 bg-surface-container-low"
                     style={{ maxHeight: 'calc(100vh - 500px)', minHeight: '400px' }}
                   >
                     {/* Preview Header */}
@@ -649,7 +649,7 @@ function CreateEditorPage() {
 
               {viewMode === "editor" && (
                 <div
-                  className="flex flex-col rounded-xl border border-outline-variant/20 bg-surface-container-low overflow-hidden"
+                  className="flex flex-col overflow-hidden rounded-lg border border-outline-variant/20 bg-surface-container-low"
                   style={{ maxHeight: 'calc(100vh - 400px)', minHeight: '500px' }}
                 >
                   {editorReady && (
@@ -703,25 +703,28 @@ function CreateEditorPage() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.28 }}
-            className="mb-8"
+            className="foldout-panel mb-8 p-2"
           >
-            <div className="flex items-center justify-between mb-4">
-              <label className="block text-sm font-medium text-on-surface-variant">
-                关联视频（可选）
-              </label>
-              <button
-                onClick={() => setShowVideoSection(!showVideoSection)}
-                className="text-sm text-primary hover:text-primary-container transition-colors duration-200"
-              >
-                {showVideoSection ? "收起" : "展开"}
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={() => setShowVideoSection((value) => !value)}
+              className="foldout-trigger px-3"
+            >
+              <span className="inline-flex items-center gap-2">
+                <VideoIcon className="h-4 w-4" />
+                关联视频
+              </span>
+              <span className="compact-meta-row justify-end">
+                {videos.length > 0 && <span>{videos.length} 个视频</span>}
+                {showVideoSection ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+              </span>
+            </button>
 
             {showVideoSection && (
               <motion.div
                 initial={{ opacity: 0, height: 0 }}
                 animate={{ opacity: 1, height: "auto" }}
-                className="p-6 bg-surface-container-low rounded-xl overscroll-contain"
+                className="mt-2 border-t border-outline-variant/10 p-3 overscroll-contain"
               >
                 <Playlist
                   videos={videos}

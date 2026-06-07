@@ -8,19 +8,21 @@ export function PageLoadingSkeleton({
   variant = "grid",
 }: PageLoadingSkeletonProps) {
   return (
-    <main className="min-h-screen bg-surface pt-24">
-      <section className="border-b border-outline-variant/20 bg-surface-container-low">
-        <div className="mx-auto max-w-7xl px-4 py-8">
-          <div className="mb-3 h-6 w-28 animate-pulse rounded-full bg-surface-container-high" />
+    <>
+      <section className="border-b border-outline-variant/20 bg-surface-container-low/72">
+        <div className="mx-auto w-full max-w-7xl px-4 py-7 sm:px-6">
+          <div className="mb-3 h-6 w-28 animate-pulse rounded-md bg-surface-container-high" />
           <div className="h-9 w-48 animate-pulse rounded-md bg-surface-container-high" aria-label={title} />
-          <div className="mt-4 h-4 w-full max-w-xl animate-pulse rounded bg-surface-container-high" />
+          <div className="mt-3 h-4 w-full max-w-xl animate-pulse rounded bg-surface-container-high" />
         </div>
       </section>
 
-      <section className="mx-auto max-w-7xl px-4 py-8">
+      <main className="min-h-screen bg-surface pb-20 pt-6">
+        <section className="mx-auto max-w-7xl px-4 sm:px-6">
         {variant === "reader" ? <ReaderSkeleton /> : variant === "workspace" ? <WorkspaceSkeleton /> : <GridSkeleton />}
-      </section>
-    </main>
+        </section>
+      </main>
+    </>
   );
 }
 

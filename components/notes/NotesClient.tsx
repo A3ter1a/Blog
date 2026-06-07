@@ -12,6 +12,7 @@ import { NoteType, Subject, Note } from "@/lib/types";
 import { CheckSquare, Square, Download, X, Trash2, AlertTriangle, Loader2, Plus, LibraryBig, SlidersHorizontal, ChevronDown, ChevronUp } from "lucide-react";
 import { useAdminAuth } from "@/hooks/useAdminAuth";
 import { useToast } from "@/components/ui/Toast";
+import { PageHeader, PageShell } from "@/components/ui/PageScaffold";
 import { getNotesCacheKey, readNotesCache, writeNotesCache } from "@/lib/notes-list-cache";
 import { NOTES_PAGE_SIZE, NOTES_SEARCH_RESULT_LIMIT } from "@/lib/notes-query";
 
@@ -330,57 +331,43 @@ export function NotesClient({
   };
 
   return (
-    <main className="min-h-screen pb-20 pt-24">
-      <section className="border-b border-outline-variant/20 bg-surface-container-low/70">
-        <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-            <div>
-              <div className="eyebrow-chip mb-2 px-2.5 py-1 text-xs">
-                <LibraryBig className="h-3.5 w-3.5 text-primary" />
-                Asteroid 资料库
-              </div>
-              <h1 className="font-headline text-3xl font-bold text-on-surface">文章与题集</h1>
-              <p className="mt-1 text-sm text-on-surface-variant">
-                搜索、阅读、整理你的学习材料；题集作为刷题和复盘的入口。
-              </p>
-              <div className="compact-meta-row mt-3">
-                <span>{filteredNotes.length} 条内容</span>
-                <span>{noteCounts.note} 篇笔记</span>
-                <span>{noteCounts.problem} 个题集</span>
-                <span>{noteCounts.essay} 篇随笔</span>
-              </div>
-            </div>
-
-            {isAdmin && (
-              <div className="flex flex-wrap items-center gap-2">
-                <Link
-                  href="/create"
-                  className="control-button control-button-primary px-4 text-sm"
-                >
-                  <Plus className="h-4 w-4" />
-                  新建
-                </Link>
-                <button
-                  onClick={() => {
-                    setSelectMode(!selectMode);
-                    setSelectedNoteIds(new Set());
-                  }}
-                  className={`control-button px-4 text-sm ${
-                    selectMode
-                      ? "control-button-selected"
-                      : ""
-                  }`}
-                >
-                  <CheckSquare className="h-4 w-4" />
-                  {selectMode ? "退出多选" : "批量"}
-                </button>
-              </div>
-            )}
+    <>
+      <PageHeader
+        width="wide"
+        eyebrow="Asteroid 资料库"
+        icon={<LibraryBig className="h-3.5 w-3.5 text-primary" />}
+        title="文章与题集"
+        description="搜索、阅读、整理你的学习材料。"
+        actions={isAdmin && (
+          <div className="flex flex-wrap items-center gap-2">
+            <Link
+              href="/create"
+              className="control-button control-button-primary px-4 text-sm"
+            >
+              <Plus className="h-4 w-4" />
+              新建
+            </Link>
+            <button
+              onClick={() => {
+                setSelectMode(!selectMode);
+                setSelectedNoteIds(new Set());
+              }}
+              className={`control-button px-4 text-sm ${selectMode ? "control-button-selected" : ""}`}
+            >
+              <CheckSquare className="h-4 w-4" />
+              {selectMode ? "退出多选" : "批量"}
+            </button>
           </div>
-        </div>
-      </section>
+        )}
+        stats={[
+          { label: "当前显示", value: filteredNotes.length },
+          { label: "笔记", value: noteCounts.note },
+          { label: "题集", value: noteCounts.problem },
+          { label: "随笔", value: noteCounts.essay },
+        ]}
+      />
 
-      <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6">
+      <PageShell width="wide" topPadding="content">
 
         {/* Batch Actions Bar (visible in select mode) */}
         {isAdmin && selectMode && (
@@ -569,7 +556,7 @@ export function NotesClient({
             </motion.div>
           )}
         </section>
-      </div>
+      </PageShell>
 
       {/* Export Dialog */}
       <ExportDialog
@@ -630,7 +617,7 @@ export function NotesClient({
           </motion.div>
         )}
       </AnimatePresence>
-    </main>
+    </>
   );
 }
 

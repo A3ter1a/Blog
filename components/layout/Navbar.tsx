@@ -62,7 +62,7 @@ export function Navbar() {
           : "bg-transparent"
       }`}
     >
-      <div className="flex justify-between items-center h-20 px-6 md:px-12 max-w-7xl mx-auto">
+      <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6">
         {/* Logo */}
         <Link
           href="/"
@@ -71,18 +71,18 @@ export function Navbar() {
           <Image
             src="/logo.png"
             alt="Asteroid Logo"
-            width={56}
-            height={56}
-            className="w-14 h-14 object-contain"
+            width={44}
+            height={44}
+            className="h-11 w-11 object-contain"
             priority
           />
-          <span className="text-2xl font-bold font-headline text-primary-container translate-y-[1px]">
+          <span className="font-headline text-xl font-bold text-primary-container">
             Asteroid
           </span>
         </Link>
 
         {/* Desktop Navigation */}
-        <div className="hidden md:flex gap-12 items-center">
+        <div className="hidden items-center gap-1 rounded-full border border-outline-variant/20 bg-surface-container-lowest/70 p-1 shadow-ambient md:flex">
           {visibleNavItems.map((item) => {
             const isActive = item.href === "/" 
               ? pathname === "/" 
@@ -92,16 +92,13 @@ export function Navbar() {
               <Link
                 key={item.href}
                 href={item.href}
-                className={`font-headline font-medium text-lg transition-all duration-300 relative ${
+                className={`rounded-full px-3 py-1.5 text-sm font-medium transition-all duration-200 ${
                   isActive
-                    ? "text-primary-container"
-                    : "text-on-surface/60 hover:text-primary-container"
+                    ? "bg-primary text-on-primary"
+                    : "text-on-surface-variant hover:bg-surface-container-low hover:text-primary"
                 }`}
               >
                 {item.name}
-                {isActive && (
-                  <span className="absolute -bottom-1 left-0 w-full h-0.5 bg-primary-container" />
-                )}
               </Link>
             );
           })}
@@ -112,7 +109,7 @@ export function Navbar() {
           {/* Search */}
           <button
             onClick={() => setShowSearch(true)}
-            className="p-2 rounded-full hover:bg-surface-container-high transition-all duration-300 text-primary-container"
+            className="flex h-9 w-9 items-center justify-center rounded-full text-primary-container transition-colors hover:bg-surface-container-high"
             aria-label="搜索"
           >
             <Search className="w-5 h-5" />
@@ -121,7 +118,7 @@ export function Navbar() {
           {/* Settings */}
           <button
             onClick={() => setShowSettings(true)}
-            className="p-2 rounded-full hover:bg-surface-container-high transition-all duration-300 text-primary-container"
+            className="flex h-9 w-9 items-center justify-center rounded-full text-primary-container transition-colors hover:bg-surface-container-high"
             aria-label="设置"
           >
             <Settings className="w-5 h-5" />
@@ -129,7 +126,7 @@ export function Navbar() {
 
           <button
             onClick={() => setShowMobileMenu(true)}
-            className="p-2 rounded-full hover:bg-surface-container-high transition-all duration-300 text-primary-container md:hidden"
+            className="flex h-9 w-9 items-center justify-center rounded-full text-primary-container transition-colors hover:bg-surface-container-high md:hidden"
             aria-label="打开导航"
             aria-expanded={showMobileMenu}
           >

@@ -35,18 +35,17 @@ export default function About() {
   }, []);
 
   return (
-    <main className="pt-32 pb-12 px-6 min-h-screen flex flex-col items-center">
+    <main className="flex min-h-screen flex-col items-center bg-surface px-4 pb-16 pt-24 sm:px-6">
       {/* Profile Header */}
       <motion.section
         initial={{ opacity: 0, y: 30 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6 }}
-        className="flex flex-col items-center text-center max-w-2xl w-full mb-16"
+        className="mb-12 flex w-full max-w-2xl flex-col items-center text-center"
       >
         {/* Avatar */}
-        <div className="relative mb-8 group">
-          <div className="absolute inset-0 editorial-gradient rounded-full blur-2xl opacity-20 group-hover:opacity-40 transition-opacity duration-500" />
-          <div className="relative w-32 h-32 md:w-40 md:h-40 rounded-full bg-surface-container-lowest ring-1 ring-outline-variant/15 overflow-hidden">
+        <div className="relative mb-8">
+          <div className="relative h-32 w-32 overflow-hidden rounded-full border border-outline-variant/20 bg-surface-container-lowest shadow-ambient md:h-40 md:w-40">
             {profile.avatar ? (
               /* eslint-disable-next-line @next/next/no-img-element -- User profile avatars can be data URLs or arbitrary external URLs. */
               <img src={profile.avatar} alt={profile.name} className="w-full h-full object-cover" />
@@ -63,7 +62,7 @@ export default function About() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2, duration: 0.5 }}
-          className="text-4xl md:text-5xl font-bold text-primary mb-4 font-headline"
+          className="mb-4 font-headline text-4xl font-bold text-primary md:text-5xl"
         >
           {profile.name}
         </motion.h1>
@@ -73,7 +72,7 @@ export default function About() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.3, duration: 0.5 }}
-          className="text-on-surface-variant font-headline text-lg italic md:text-xl leading-relaxed max-w-md"
+          className="max-w-md font-headline text-lg italic leading-relaxed text-on-surface-variant md:text-xl"
         >
           {profile.tagline}
         </motion.p>
@@ -83,12 +82,12 @@ export default function About() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.4, duration: 0.5 }}
-          className="mt-6 flex flex-wrap gap-3 justify-center"
+          className="mt-6 flex flex-wrap justify-center gap-2"
         >
           {profile.badges.map((badge, i) => (
             <span
               key={i}
-              className="px-4 py-2 rounded-full bg-surface-container-low text-sm text-on-surface-variant"
+              className="tag-chip px-3 py-1.5 text-sm"
             >
               {badge}
             </span>
@@ -103,7 +102,7 @@ export default function About() {
         transition={{ delay: 0.5, duration: 0.6 }}
         className="w-full max-w-md"
       >
-        <div className="bg-surface-container-lowest rounded-lg shadow-ambient overflow-hidden divide-y divide-outline-variant/10">
+        <div className="surface-panel overflow-hidden divide-y divide-outline-variant/10">
           {profile.links.map((link, index) => {
             const iconSrc = iconMap[link.icon] || "/icons/email.svg";
             const isLink = link.linkType !== "number";
@@ -165,7 +164,7 @@ export default function About() {
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ delay: 1.2, duration: 0.5 }}
-        className="mt-24 text-center"
+        className="mt-16 text-center"
       >
         <p className="text-on-surface-variant/60 text-sm font-headline italic">
           {profile.footer}

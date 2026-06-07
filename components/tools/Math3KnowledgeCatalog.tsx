@@ -19,6 +19,7 @@ import {
   X,
 } from "lucide-react";
 import { PracticeSession } from "@/components/practice/PracticeSession";
+import { PageHeader, PageShell } from "@/components/ui/PageScaffold";
 import {
   difficultyMeta,
   math3KnowledgeChapterIds,
@@ -303,34 +304,22 @@ export function Math3KnowledgeCatalog() {
   };
 
   return (
-    <div className="min-h-screen bg-surface pt-24">
-      <section className="border-b border-outline-variant/20 bg-surface-container-low">
-        <div className="mx-auto max-w-6xl px-4 py-6">
-          <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-            <div className="max-w-3xl">
-              <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-primary/15 bg-primary/5 px-3 py-1 text-xs font-medium text-primary">
-                <GraduationCap className="h-4 w-4" />
-                数三考研
-              </div>
-              <h1 className="font-headline text-3xl font-bold text-on-surface">
-                知识目录
-              </h1>
-              <p className="mt-2 text-sm leading-6 text-on-surface-variant">
-                依据 {MATH3_KNOWLEDGE_SOURCE} 整理，按模块、章节和知识点拆分成复习清单。
-              </p>
-            </div>
+    <>
+      <PageHeader
+        width="normal"
+        eyebrow="数三考研"
+        icon={<GraduationCap className="h-4 w-4" />}
+        title="知识目录"
+        description={`依据 ${MATH3_KNOWLEDGE_SOURCE} 整理。`}
+        stats={[
+          { label: "章节", value: math3KnowledgeTotals.chapters },
+          { label: "知识点", value: math3KnowledgeTotals.points },
+          { label: "已掌握", value: masteredCount },
+          { label: "已加星", value: starredIds.length },
+        ]}
+      />
 
-            <div className="grid grid-cols-4 gap-2 rounded-lg border border-outline-variant/15 bg-surface-container-lowest p-2 lg:min-w-[420px]">
-              <StatCard label="章节" value={math3KnowledgeTotals.chapters.toString()} />
-              <StatCard label="知识点" value={math3KnowledgeTotals.points.toString()} />
-              <StatCard label="已掌握" value={masteredCount.toString()} />
-              <StatCard label="已加星" value={starredIds.length.toString()} />
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <main className="mx-auto max-w-6xl px-4 py-6">
+      <PageShell width="normal" topPadding="content">
         <section className="mb-5 rounded-lg border border-outline-variant/20 bg-surface-container-lowest p-3 shadow-ambient">
           <div className="grid gap-3 lg:grid-cols-[1fr_auto_auto] lg:items-center">
             <div className="relative">
@@ -558,17 +547,8 @@ export function Math3KnowledgeCatalog() {
             ))}
           </div>
         )}
-      </main>
-    </div>
-  );
-}
-
-function StatCard({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-md bg-surface-container-low px-2 py-2 text-center">
-      <div className="text-base font-bold text-primary md:text-lg">{value}</div>
-      <div className="mt-0.5 text-[11px] text-on-surface-variant">{label}</div>
-    </div>
+      </PageShell>
+    </>
   );
 }
 

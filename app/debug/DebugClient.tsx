@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Database } from "lucide-react";
 import { notesApi } from "@/lib/supabase";
+import { PageHeader, PageShell } from "@/components/ui/PageScaffold";
 
 export function DebugClient() {
   const [result, setResult] = useState<string>("");
@@ -22,13 +24,19 @@ export function DebugClient() {
   }, []);
 
   return (
-    <main className="pt-32 pb-20 px-6 min-h-screen">
-      <div className="max-w-4xl mx-auto">
-        <h1 className="text-2xl font-bold mb-6">Supabase Debug</h1>
-        <pre className="bg-surface-container-low p-4 rounded-xl overflow-auto max-h-[80vh] text-sm whitespace-pre-wrap">
+    <>
+      <PageHeader
+        width="compact"
+        eyebrow="调试"
+        icon={<Database className="h-4 w-4" />}
+        title="Supabase Debug"
+      />
+
+      <PageShell width="compact" topPadding="content">
+        <pre className="max-h-[80vh] overflow-auto rounded-lg border border-outline-variant/20 bg-surface-container-low p-4 text-sm whitespace-pre-wrap">
           {result || "Loading..."}
         </pre>
-      </div>
-    </main>
+      </PageShell>
+    </>
   );
 }

@@ -21,6 +21,7 @@ import {
   X,
 } from "lucide-react";
 import { MarkdownContent } from "@/components/ui/MarkdownContent";
+import { PageHeader, PageShell } from "@/components/ui/PageScaffold";
 import { useToast } from "@/components/ui/Toast";
 import {
   flattenPracticeProblems,
@@ -344,34 +345,22 @@ export function ReviewCenter() {
   };
 
   return (
-    <main className="min-h-screen bg-surface pt-24">
-      <section className="border-b border-outline-variant/20 bg-surface-container-low/70">
-        <div className="mx-auto max-w-6xl px-4 py-7">
-          <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_420px] lg:items-end">
-            <div>
-              <div className="eyebrow-chip mb-3 px-3 py-1 text-xs">
-                <Target className="h-4 w-4" />
-                学习闭环
-              </div>
-              <h1 className="font-headline text-3xl font-bold text-on-surface md:text-4xl">
-                错题复盘
-              </h1>
-              <p className="mt-3 max-w-2xl text-sm leading-6 text-on-surface-variant md:text-base">
-                集中处理答错、跳过和未掌握的题目，按章节看薄弱点，做完后直接记录状态。
-              </p>
-            </div>
+    <>
+      <PageHeader
+        width="normal"
+        eyebrow="学习闭环"
+        icon={<Target className="h-4 w-4" />}
+        title="错题复盘"
+        description="处理答错、跳过和未掌握的题目。"
+        stats={[
+          { label: "待回看", value: stats.review, tone: "text-red-600" },
+          { label: "答错", value: stats.wrong, tone: "text-red-600" },
+          { label: "已掌握", value: stats.mastered, tone: "text-green-600" },
+          { label: "掌握率", value: `${masteredPercent}%` },
+        ]}
+      />
 
-            <div className="grid grid-cols-2 gap-2 rounded-lg border border-outline-variant/15 bg-surface-container-lowest p-2 sm:grid-cols-4">
-              <HeaderStat label="待回看" value={stats.review} tone="text-red-600" />
-              <HeaderStat label="答错" value={stats.wrong} tone="text-red-600" />
-              <HeaderStat label="已掌握" value={stats.mastered} tone="text-green-600" />
-              <HeaderStat label="掌握率" value={`${masteredPercent}%`} tone="text-primary" />
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <div className="mx-auto max-w-6xl px-4 py-6">
+      <PageShell width="normal" topPadding="content">
         <section className="mb-5 rounded-lg border border-outline-variant/20 bg-surface-container-lowest p-3 shadow-ambient">
           <div className="grid gap-3 lg:grid-cols-[1fr_auto_auto] lg:items-center">
             <div className="relative">
@@ -497,17 +486,8 @@ export function ReviewCenter() {
             onSelect={moveToProblem}
           />
         </section>
-      </div>
-    </main>
-  );
-}
-
-function HeaderStat({ label, value, tone }: { label: string; value: number | string; tone: string }) {
-  return (
-    <div className="rounded-md bg-surface-container-low px-2 py-2 text-center">
-      <div className={`text-base font-bold md:text-lg ${tone}`}>{value}</div>
-      <div className="mt-0.5 text-[11px] text-on-surface-variant">{label}</div>
-    </div>
+      </PageShell>
+    </>
   );
 }
 

@@ -16,6 +16,7 @@ import {
   Target,
 } from "lucide-react";
 import { MarkdownContent } from "@/components/ui/MarkdownContent";
+import { PageHeader, PageShell } from "@/components/ui/PageScaffold";
 import { useToast } from "@/components/ui/Toast";
 import { useAdminAuth } from "@/hooks/useAdminAuth";
 import { buildAuthHeaders } from "@/lib/fetch-with-auth";
@@ -465,28 +466,22 @@ export function Math3SelfTest() {
   }
 
   return (
-    <div className="min-h-screen bg-surface pt-24">
-      <section className="border-b border-outline-variant/20 bg-surface-container-low">
-        <div className="mx-auto max-w-7xl px-4 py-7">
-          <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-            <div>
-              <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-primary/15 bg-primary/5 px-3 py-1 text-xs font-medium text-primary">
-                <BookOpenCheck className="h-4 w-4" />
-                数学三
-              </div>
-              <h1 className="font-headline text-3xl font-bold text-on-surface">自测</h1>
-            </div>
-            <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-              <HeaderStat label="已保存" value={tests.length.toString()} />
-              <HeaderStat label="当前得分" value={activeTest ? `${activeTest.score}/${activeTest.maxScore}` : "-"} />
-              <HeaderStat label="剩余时间" value={activeTest ? formatDuration(remainingSeconds) : "-"} />
-              <HeaderStat label="待评分" value={pendingStepLabel} />
-            </div>
-          </div>
-        </div>
-      </section>
+    <>
+      <PageHeader
+        width="wide"
+        eyebrow="数学三"
+        icon={<BookOpenCheck className="h-4 w-4" />}
+        title="自测"
+        stats={[
+          { label: "已保存", value: tests.length },
+          { label: "当前得分", value: activeTest ? `${activeTest.score}/${activeTest.maxScore}` : "-" },
+          { label: "剩余时间", value: activeTest ? formatDuration(remainingSeconds) : "-" },
+          { label: "待评分", value: pendingStepLabel },
+        ]}
+      />
 
-      <main className="mx-auto grid max-w-7xl gap-6 px-4 py-6 lg:grid-cols-[320px_minmax(0,1fr)]">
+      <PageShell width="wide" topPadding="content">
+        <div className="grid gap-6 lg:grid-cols-[320px_minmax(0,1fr)]">
         <aside className="space-y-4">
           <section className="rounded-lg border border-outline-variant/20 bg-surface-container-lowest p-4 shadow-ambient">
             <h2 className="mb-3 text-sm font-semibold text-on-surface">生成新卷</h2>
@@ -594,8 +589,9 @@ export function Math3SelfTest() {
             />
           )}
         </section>
-      </main>
-    </div>
+        </div>
+      </PageShell>
+    </>
   );
 }
 
@@ -607,15 +603,6 @@ function ShellMessage({ icon, title, description }: { icon: ReactNode; title: st
       </div>
       <div className="text-sm font-semibold text-on-surface">{title}</div>
       {description && <p className="max-w-md text-sm leading-6">{description}</p>}
-    </div>
-  );
-}
-
-function HeaderStat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-lg bg-surface-container-lowest px-4 py-3 text-center shadow-ambient">
-      <div className="text-lg font-bold text-primary">{value}</div>
-      <div className="text-xs text-on-surface-variant">{label}</div>
     </div>
   );
 }
