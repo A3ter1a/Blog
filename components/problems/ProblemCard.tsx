@@ -49,6 +49,7 @@ export function ProblemCard({ problem, index, onUpdate }: ProblemCardProps) {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [editData, setEditData] = useState<ProblemEditData>(() => createEditData(problem));
 
+  const problemAnchorId = problem.id || String(index);
   const hasOptions = problem.type === "choice" && Array.isArray(problem.options) && problem.options.length > 0;
   const fieldBaseClass = "w-full rounded-lg border border-outline-variant/15 bg-surface-container-low px-3 py-2 text-sm text-on-surface outline-none transition-colors placeholder:text-on-surface-variant/40 focus:border-primary/35 focus:bg-surface-container-lowest";
   const textareaClass = `${fieldBaseClass} resize-y leading-6`;
@@ -106,7 +107,7 @@ export function ProblemCard({ problem, index, onUpdate }: ProblemCardProps) {
 
   return (
     <motion.div
-      id={`problem-${problem.id}`}
+      id={`problem-${problemAnchorId}`}
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: Math.min(index * 0.04, 0.24) }}

@@ -5,10 +5,7 @@ import { FormEvent, useMemo, useState } from "react";
 import {
   AlertCircle,
   ArrowRight,
-  BookOpen,
   Bot,
-  FileText,
-  Layers,
   Loader2,
   MessageSquareText,
   Search,
@@ -30,18 +27,17 @@ type NoteQAResponse = {
 const scopeOptions: Array<{
   value: NoteQAScope;
   label: string;
-  description: string;
 }> = [
-  { value: "all", label: "全部", description: "笔记、题集、随笔一起找" },
-  { value: "note", label: "笔记", description: "只看文章笔记" },
-  { value: "problem", label: "题集", description: "只看题目和答案" },
-  { value: "essay", label: "随笔", description: "只看随笔内容" },
+  { value: "all", label: "全部" },
+  { value: "note", label: "笔记" },
+  { value: "problem", label: "题集" },
+  { value: "essay", label: "随笔" },
 ];
 
-const suggestions = [
-  "帮我总结一下最近笔记里和矩阵相关的关键结论",
-  "线性方程组有解、唯一解、无解分别看什么条件？",
-  "从题集里找一下极限题常见的易错点",
+const suggestions: Array<{ label: string; prompt: string }> = [
+  { label: "矩阵结论", prompt: "帮我总结一下最近笔记里和矩阵相关的关键结论" },
+  { label: "方程组判别", prompt: "线性方程组有解、唯一解、无解分别看什么条件？" },
+  { label: "极限易错点", prompt: "从题集里找一下极限题常见的易错点" },
 ];
 
 const typeLabel: Record<NoteQASource["noteType"], string> = {
@@ -103,22 +99,23 @@ export function NoteQA() {
 
   return (
     <main className="min-h-screen bg-surface pt-24">
-      <section className="border-b border-outline-variant/20 bg-surface-container-low/70">
-        <div className="mx-auto max-w-6xl px-4 py-8">
-          <div className="eyebrow-chip mb-3 px-3 py-1 text-xs">
-            <Bot className="h-4 w-4" />
-            笔记问答
+      <div className="mx-auto max-w-5xl px-4 py-6">
+        <header className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <div className="eyebrow-chip mb-2 px-3 py-1 text-xs">
+              <Bot className="h-4 w-4" />
+              笔记问答
+            </div>
+            <h1 className="font-headline text-2xl font-bold text-on-surface md:text-3xl">
+              向笔记提问
+            </h1>
           </div>
-          <h1 className="font-headline text-3xl font-bold text-on-surface md:text-4xl">
-            向自己的笔记提问
-          </h1>
-          <p className="mt-3 max-w-2xl text-sm leading-6 text-on-surface-variant md:text-base">
-            从已发布笔记和题集里找相关片段，再让 AI 基于这些片段回答。适合快速回忆概念、定位题目和复习薄弱点。
-          </p>
-        </div>
-      </section>
+          <div className="flex items-center gap-2 rounded-full border border-outline-variant/40 bg-surface-container-lowest px-3 py-1.5 text-xs text-on-surface-variant">
+            <Bot className="h-4 w-4" />
+            <span>回答附来源</span>
+          </div>
+        </header>
 
-      <div className="mx-auto grid max-w-6xl gap-4 px-4 py-6 lg:grid-cols-[minmax(0,1fr)_320px]">
         <section className="surface-panel p-4 md:p-5">
           <form onSubmit={askQuestion} className="space-y-4">
             <div className="flex flex-wrap gap-2">
@@ -128,7 +125,6 @@ export function NoteQA() {
                   type="button"
                   onClick={() => setScope(option.value)}
                   className={`control-button px-3 py-2 text-sm ${scope === option.value ? "control-button-selected" : ""}`}
-                  title={option.description}
                 >
                   {option.label}
                 </button>
@@ -136,12 +132,11 @@ export function NoteQA() {
             </div>
 
             <label className="block">
-              <span className="mb-2 block text-sm font-semibold text-on-surface">问题</span>
               <textarea
                 value={question}
                 onChange={(event) => setQuestion(event.target.value)}
-                className="field-control min-h-32 w-full resize-y px-4 py-3 text-sm leading-6"
-                placeholder="例如：矩阵相似和合同有什么区别？"
+                className="field-control min-h-36 w-full resize-y px-4 py-3 text-sm leading-6"
+                placeholder="输入问题，例如：矩阵相似和合同有什么区别？"
                 maxLength={500}
               />
             </label>
@@ -150,12 +145,12 @@ export function NoteQA() {
               <div className="flex flex-wrap gap-2">
                 {suggestions.map((item) => (
                   <button
-                    key={item}
+                    key={item.label}
                     type="button"
-                    onClick={() => setQuestion(item)}
+                    onClick={() => setQuestion(item.prompt)}
                     className="rounded-full border border-outline-variant/50 bg-surface-container-lowest px-3 py-1.5 text-xs text-on-surface-variant transition-colors hover:border-primary/30 hover:text-primary"
                   >
-                    {item}
+                    {item.label}
                   </button>
                 ))}
               </div>
@@ -188,8 +183,11 @@ export function NoteQA() {
             ) : answer ? (
               <div className="space-y-3">
                 <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-on-surface-variant">
-                  <span>{sources.length} 个来源片段</span>
-                  <span>{tokensUsed > 0 ? `约 ${tokensUsed} tokens` : "已生成回答"}</span>
+                  <span>
+                    来源 {sources.length}
+                    {totalChunks > 0 ? ` · 片段 ${totalChunks}` : ""}
+                  </span>
+                  {tokensUsed > 0 ? <span>约 {tokensUsed} tokens</span> : null}
                 </div>
                 <MarkdownContent content={answer} className="rounded-lg bg-surface-container-lowest p-4" />
               </div>
@@ -198,10 +196,8 @@ export function NoteQA() {
                 <div className="flex items-start gap-3">
                   <MessageSquareText className="mt-1 h-5 w-5 text-primary" />
                   <div>
-                    <h2 className="font-headline text-lg font-bold text-on-surface">先问一个具体问题</h2>
-                    <p className="mt-1 text-sm leading-6 text-on-surface-variant">
-                      问得越具体，检索到的笔记片段越准。比如直接问某个概念、题型、公式使用条件，效果会比“帮我复习数学”更稳定。
-                    </p>
+                    <h2 className="font-headline text-base font-bold text-on-surface">输入问题后开始检索</h2>
+                    <p className="mt-1 text-sm text-on-surface-variant">建议问具体概念、题型或公式条件。</p>
                   </div>
                 </div>
               </div>
@@ -209,18 +205,14 @@ export function NoteQA() {
           </div>
         </section>
 
-        <aside className="space-y-4">
-          <section className="surface-panel p-4">
-            <div className="flex items-center gap-2">
-              <Layers className="h-4 w-4 text-primary" />
-              <h2 className="font-headline text-lg font-bold text-on-surface">来源</h2>
+        {sources.length > 0 ? (
+          <section className="mt-4 surface-panel p-4">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <h2 className="font-headline text-base font-bold text-on-surface">来源</h2>
+              <span className="text-xs text-on-surface-variant">{sources.length} 条</span>
             </div>
-            <p className="mt-1 text-xs leading-5 text-on-surface-variant">
-              AI 只会看到命中的少量片段，完整笔记不会一次性全部塞进去。
-            </p>
-
-            <div className="mt-4 space-y-3">
-              {sources.length > 0 ? sources.map((source) => (
+            <div className="grid gap-3 md:grid-cols-2">
+              {sources.map((source) => (
                 <Link
                   key={source.id}
                   href={source.href}
@@ -240,33 +232,14 @@ export function NoteQA() {
                     {source.excerpt}
                   </p>
                   <div className="mt-3 flex items-center gap-1 text-xs font-medium text-primary">
-                    打开原文
+                    原文
                     <ArrowRight className="h-3.5 w-3.5" />
                   </div>
                 </Link>
-              )) : (
-                <div className="rounded-lg border border-dashed border-outline-variant/50 p-4 text-sm text-on-surface-variant">
-                  回答后会在这里列出引用片段。
-                </div>
-              )}
+              ))}
             </div>
           </section>
-
-          <section className="surface-panel p-4">
-            <div className="flex items-center gap-2">
-              <BookOpen className="h-4 w-4 text-primary" />
-              <h2 className="font-headline text-lg font-bold text-on-surface">轻量模式</h2>
-            </div>
-            <div className="mt-3 space-y-2 text-sm leading-6 text-on-surface-variant">
-              <p>当前先用关键词检索，不新增数据库表。</p>
-              <p>已扫描片段：{totalChunks > 0 ? totalChunks : "等待提问"}</p>
-              <p className="flex items-center gap-2 text-xs">
-                <FileText className="h-3.5 w-3.5" />
-                后续如果笔记量变大，再升级向量检索。
-              </p>
-            </div>
-          </section>
-        </aside>
+        ) : null}
       </div>
     </main>
   );

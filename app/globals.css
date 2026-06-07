@@ -391,6 +391,7 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .markdown-surface h1 {
+  scroll-margin-top: 6rem;
   margin: 1.8em 0 0.8em;
   font-size: 1.5rem;
   font-weight: 700;
@@ -398,6 +399,7 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .markdown-surface h2 {
+  scroll-margin-top: 6rem;
   margin: 1.55em 0 0.7em;
   font-size: 1.25rem;
   font-weight: 700;
@@ -405,6 +407,7 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .markdown-surface h3 {
+  scroll-margin-top: 6rem;
   margin: 1.25em 0 0.55em;
   font-size: 1.125rem;
   font-weight: 600;
@@ -414,6 +417,7 @@ h1, h2, h3, h4, h5, h6 {
 .markdown-surface h4,
 .markdown-surface h5,
 .markdown-surface h6 {
+  scroll-margin-top: 6rem;
   margin: 1em 0 0.5em;
   font-size: 1rem;
   font-weight: 600;

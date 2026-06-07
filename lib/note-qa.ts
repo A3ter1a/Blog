@@ -1,4 +1,5 @@
 import type { Note, NoteType, Problem, Subject } from "@/lib/types";
+import GithubSlugger from "github-slugger";
 
 export type NoteQAScope = "all" | NoteType;
 
@@ -104,6 +105,55 @@ function splitLongContent(content: string): string[] {
   return chunks;
 }
 
+function stripHeadingText(value: string): string {
+  return stripMarkdown(
+    value
+      .replace(/^\s{0,3}#{1,6}\s+/, "")
+      .replace(/\s+#+\s*$/, ""),
+  );
+}
+
+function getContentSections(note: Note): Array<{
+  content: string;
+  sourceLabel: string;
+  href: string;
+}> {
+  const baseHref = `/notes/${note.id}`;
+  const content = note.content || "";
+  const headingMatches = Array.from(content.matchAll(/^ {0,3}#{1,6}\s+(.+?)\s*#*\s*$/gm));
+
+  if (headingMatches.length === 0) {
+    return [{ content, sourceLabel: "正文", href: baseHref }];
+  }
+
+  const sections: Array<{ content: string; sourceLabel: string; href: string }> = [];
+  const slugger = new GithubSlugger();
+
+  const firstIndex = headingMatches[0].index ?? 0;
+  if (firstIndex > 0) {
+    sections.push({
+      content: content.slice(0, firstIndex),
+      sourceLabel: "正文开头",
+      href: baseHref,
+    });
+  }
+
+  headingMatches.forEach((match, index) => {
+    const start = match.index ?? 0;
+    const next = headingMatches[index + 1];
+    const end = next?.index ?? content.length;
+    const title = stripHeadingText(match[0]) || `正文片段 ${index + 1}`;
+
+    sections.push({
+      content: content.slice(start, end),
+      sourceLabel: title,
+      href: `${baseHref}#${slugger.slug(title)}`,
+    });
+  });
+
+  return sections;
+}
+
 function formatProblem(problem: Problem, index: number): string {
   const optionText = problem.options?.length
     ? `\n选项：${problem.options.map((option) => `${option.label}. ${option.content}`).join("；")}`
@@ -119,26 +169,32 @@ function buildChunksFromNote(note: Note): NoteQAChunk[] {
     noteTitle: note.title,
     noteType: note.type,
     subject: note.subject,
-    href: `/notes/${note.id}`,
   };
 
-  splitLongContent(note.content).forEach((content, index) => {
-    chunks.push({
-      ...base,
-      id: `${note.id}:content:${index}`,
-      sourceLabel: index === 0 ? "正文" : `正文片段 ${index + 1}`,
-      content,
-      excerpt: toExcerpt(content),
-      score: 0,
+  getContentSections(note).forEach((section, sectionIndex) => {
+    splitLongContent(section.content).forEach((content, chunkIndex) => {
+      chunks.push({
+        ...base,
+        id: `${note.id}:content:${sectionIndex}:${chunkIndex}`,
+        sourceLabel: chunkIndex === 0
+          ? section.sourceLabel
+          : `${section.sourceLabel} · 片段 ${chunkIndex + 1}`,
+        href: section.href,
+        content,
+        excerpt: toExcerpt(content),
+        score: 0,
+      });
     });
   });
 
   note.problems?.forEach((problem, index) => {
     const content = formatProblem(problem, index);
+    const problemAnchorId = problem.id || String(index);
     chunks.push({
       ...base,
-      id: `${note.id}:problem:${problem.id || index}`,
+      id: `${note.id}:problem:${problemAnchorId}`,
       sourceLabel: `题目 ${index + 1}`,
+      href: `/notes/${note.id}#problem-${problemAnchorId}`,
       content,
       excerpt: toExcerpt(content),
       score: 0,

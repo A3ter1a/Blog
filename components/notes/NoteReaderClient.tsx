@@ -54,6 +54,7 @@ export function NoteReaderClient({
   const [selectedChapterId, setSelectedChapterId] = useState<string | undefined>(undefined);
   const [showProblemTools, setShowProblemTools] = useState(false);
   const skipInitialChapterFetchRef = useRef(initialChaptersLoaded);
+  const lastHashScrollRef = useRef("");
 
   useEffect(() => {
     setNote(initialNote);
@@ -145,6 +146,40 @@ export function NoteReaderClient({
     () => allProblems.filter((problem) => !problem.chapterId).length,
     [allProblems],
   );
+
+  useEffect(() => {
+    if (!note?.id) return;
+
+    const rawHash = window.location.hash.slice(1);
+    if (!rawHash) return;
+
+    let targetId = rawHash;
+    try {
+      targetId = decodeURIComponent(rawHash);
+    } catch {
+      targetId = rawHash;
+    }
+
+    const scrollKey = `${note.id}:${targetId}`;
+    if (lastHashScrollRef.current === scrollKey) return;
+
+    const scrollToTarget = () => {
+      const target = document.getElementById(targetId);
+      if (!target) return;
+      target.scrollIntoView({ behavior: "smooth", block: "start" });
+      lastHashScrollRef.current = scrollKey;
+    };
+
+    const frame = window.requestAnimationFrame(scrollToTarget);
+    const timer = window.setTimeout(scrollToTarget, 180);
+    const lateTimer = window.setTimeout(scrollToTarget, 520);
+
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.clearTimeout(timer);
+      window.clearTimeout(lateTimer);
+    };
+  }, [allProblems.length, note?.content, note?.id]);
 
   const handleDelete = async () => {
     if (!isAdmin || isDeletingNote) return;
