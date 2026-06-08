@@ -34,7 +34,7 @@ export function PageShell({
 }) {
   return (
     <main className={`min-h-screen bg-surface pb-20 ${topPaddingClasses[topPadding]} ${className}`}>
-      <div className={`mx-auto w-full px-4 sm:px-6 ${widthClasses[width]}`}>
+      <div className={`mx-auto w-full px-4 sm:px-6 lg:px-8 ${widthClasses[width]}`}>
         {children}
       </div>
     </main>
@@ -60,8 +60,8 @@ export function PageHeader({
 }) {
   return (
     <section className="border-b border-outline-variant/20 bg-surface-container-low/72">
-      <div className={`mx-auto w-full px-4 py-6 sm:px-6 sm:py-7 ${widthClasses[width]}`}>
-        <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
+      <div className={`mx-auto w-full px-4 py-5 sm:px-6 sm:py-7 lg:px-8 ${widthClasses[width]}`}>
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
           <div className="min-w-0">
             {eyebrow && (
               <div className="eyebrow-chip mb-3 px-3 py-1 text-xs">
@@ -69,7 +69,7 @@ export function PageHeader({
                 {eyebrow}
               </div>
             )}
-            <h1 className="font-headline text-3xl font-bold leading-tight text-on-surface md:text-4xl">
+            <h1 className="font-headline text-2xl font-bold leading-tight text-on-surface sm:text-3xl md:text-4xl">
               {title}
             </h1>
             {description && (
@@ -101,7 +101,7 @@ export function StatStrip({
   if (stats.length === 0) return null;
 
   return (
-    <div className={`grid w-full grid-cols-2 gap-2 rounded-lg border border-outline-variant/15 bg-surface-container-lowest p-2 shadow-ambient sm:grid-cols-4 ${className}`}>
+    <div className={`grid w-full grid-cols-2 gap-2 rounded-lg border border-outline-variant/15 bg-surface-container-lowest p-2 shadow-ambient md:grid-cols-4 ${className}`}>
       {stats.map((stat) => (
         <div key={stat.label} className="rounded-md bg-surface-container-low px-3 py-2 text-center">
           <div className={`text-base font-bold md:text-lg ${stat.tone ?? "text-primary"}`}>

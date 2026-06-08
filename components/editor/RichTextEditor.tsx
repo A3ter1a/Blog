@@ -32,6 +32,7 @@ export interface RichTextEditorRef {
   editor: Editor | null;
   insertImage: (url: string) => void;
   insertContent: (content: string) => void;
+  insertMarkdown: (content: string) => void;
 }
 
 export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>(
@@ -117,7 +118,15 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
       insertContent: (content: string) => {
         editor?.chain().focus().insertContent(content).run();
       },
-    }), [editor]);
+      insertMarkdown: (markdown: string) => {
+        const current = editor
+          ? (editor.storage as unknown as MarkdownStorage).markdown.getMarkdown()
+          : content;
+        const next = `${current.trimEnd()}${markdown}`;
+        onChange(next);
+        editor?.commands.setContent(parseProblemMarkers(next));
+      },
+    }), [content, editor, onChange]);
 
     // 当外部 content 变化时更新编辑器（仅在编辑器未聚焦时同步，
     // 避免在用户输入过程中覆盖编辑器内容导致光标跳动）

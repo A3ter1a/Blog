@@ -1,6 +1,6 @@
 "use client";
 
-import { MarkdownContent } from "./MarkdownContent";
+import { ProblemReferenceContent } from "@/components/problems/ProblemReferenceContent";
 
 interface ContentPreviewProps {
   content: string;
@@ -8,5 +8,5 @@ interface ContentPreviewProps {
 }
 
 export function ContentPreview({ content, className = "" }: ContentPreviewProps) {
-  return <MarkdownContent content={content} className={className} />;
+  return <ProblemReferenceContent content={content} className={className} />;
 }

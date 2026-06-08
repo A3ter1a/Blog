@@ -17,7 +17,7 @@ import { VideoPlayer } from "@/components/video/VideoPlayer";
 import { ProblemCard } from "@/components/problems/ProblemCard";
 import { ProblemList } from "@/components/problems/ProblemList";
 import { ChapterFilter } from "@/components/chapters/ChapterFilter";
-import { MarkdownContent } from "@/components/ui/MarkdownContent";
+import { ProblemReferenceContent } from "@/components/problems/ProblemReferenceContent";
 import { TableOfContents } from "@/components/ui/TableOfContents";
 import { useReadingPreferences } from "@/lib/useReadingPreferences";
 import { ReadingProgress } from "@/components/ui/ReadingProgress";
@@ -278,8 +278,8 @@ export function NoteReaderClient({
       {preferences.showProgressBar && <ReadingProgress />}
 
       {/* Top Bar with Breadcrumb and Immersive Mode Button */}
-      <div className="sticky top-16 z-30 border-b border-outline-variant/20 bg-surface/80 backdrop-blur-xl">
-        <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-3 sm:px-6">
+      <div className="sticky top-20 z-30 border-b border-outline-variant/20 bg-surface/80 backdrop-blur-xl">
+        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6 lg:px-8">
           <Link
             href="/notes"
             className="control-button h-9 px-3 text-sm"
@@ -288,7 +288,7 @@ export function NoteReaderClient({
             返回
           </Link>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center justify-end gap-2">
             {isProblem && allProblems.length > 0 && (
               <button
                 onClick={() => setShowProblemTools((value) => !value)}
@@ -336,7 +336,7 @@ export function NoteReaderClient({
 
       {/* Cover Image (Collapsible) */}
       {note.coverImage && (
-        <div className="max-w-7xl mx-auto px-6 mb-6">
+        <div className="mx-auto mb-6 max-w-7xl px-4 sm:px-6 lg:px-8">
           <motion.div
             initial={false}
             animate={{ height: isCoverExpanded ? "auto" : 0 }}
@@ -371,7 +371,7 @@ export function NoteReaderClient({
       )}
 
       {/* Main Layout: Content + Sidebar */}
-      <div className="mx-auto grid max-w-7xl grid-cols-1 gap-8 px-4 sm:px-6 lg:grid-cols-12">
+      <div className="mx-auto grid max-w-7xl grid-cols-1 gap-6 px-4 sm:px-6 lg:grid-cols-12 lg:gap-8 lg:px-8">
         {/* Article Content */}
         <div className={contentColumnClass}>
           {/* Article Header */}
@@ -400,7 +400,7 @@ export function NoteReaderClient({
               )}
             </div>
 
-            <h1 className="mb-4 font-headline text-3xl font-bold leading-tight text-on-surface md:text-4xl">
+            <h1 className="mb-4 font-headline text-2xl font-bold leading-tight text-on-surface sm:text-3xl md:text-4xl">
               {note.title}
             </h1>
 
@@ -577,7 +577,7 @@ export function NoteReaderClient({
               </>
             ) : (
               <>
-                <MarkdownContent 
+                <ProblemReferenceContent
                   content={note.content} 
                   className="text-on-surface-variant" 
                   style={{ fontSize: `${preferences.fontSize}px` }}
@@ -750,7 +750,7 @@ export function NoteReaderClient({
                     ))}
                   </div>
                 ) : (
-                  <MarkdownContent 
+                  <ProblemReferenceContent
                     content={note.content} 
                     className="text-on-surface leading-relaxed text-lg" 
                   />

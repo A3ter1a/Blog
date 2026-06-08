@@ -1,31 +1,46 @@
 import { Node, mergeAttributes } from "@tiptap/core";
 import { ReactNodeViewRenderer, NodeViewWrapper, type NodeViewProps } from "@tiptap/react";
+import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
+import type { MarkdownSerializerState } from "prosemirror-markdown";
+
+function getProblemBlockMarker(node: ProseMirrorNode): string {
+  const noteId = typeof node.attrs.noteId === "string" ? node.attrs.noteId : "";
+  const selection = typeof node.attrs.selection === "string" ? node.attrs.selection : "";
+  if (noteId && selection) return `<!--asteroid-problems:${noteId}:${selection}-->`;
+
+  const rawNumber = node.attrs.number;
+  const number = typeof rawNumber === "number" ? rawNumber : Number(rawNumber) || 1;
+  return `<!--problem:${number}-->`;
+}
 
 // Problem Block Node View Component
 function ProblemBlockView({ node }: NodeViewProps) {
+  const noteId = typeof node.attrs.noteId === "string" ? node.attrs.noteId : "";
+  const selection = typeof node.attrs.selection === "string" ? node.attrs.selection : "";
   const rawNumber = node.attrs.number;
   const number = typeof rawNumber === "number" ? rawNumber : Number(rawNumber) || 1;
+  const isReference = Boolean(noteId && selection);
 
   return (
     <NodeViewWrapper className="my-6">
-      <div className="rounded-xl border-2 border-primary/20 bg-primary/5 overflow-hidden">
+      <div className="overflow-hidden rounded-lg border-2 border-primary/20 bg-primary/5">
         {/* Header */}
-        <div className="px-4 py-3 bg-primary/10 border-b border-primary/20 flex items-center justify-between">
+        <div className="flex items-center justify-between border-b border-primary/20 bg-primary/10 px-4 py-3">
           <div className="flex items-center gap-3">
-            <span className="w-7 h-7 rounded-full editorial-gradient text-on-primary text-xs font-bold flex items-center justify-center">
-              {number}
+            <span className="editorial-gradient flex h-7 min-w-7 items-center justify-center rounded-md px-2 text-xs font-bold text-on-primary">
+              {isReference ? selection : number}
             </span>
-            <span className="text-sm font-semibold text-on-surface">题目</span>
+            <span className="text-sm font-semibold text-on-surface">
+              {isReference ? "题目引用" : "题目"}
+            </span>
           </div>
           <button
             onClick={() => {
-              // Copy problem marker
-              const text = `<!--problem:${number}-->`;
-              navigator.clipboard.writeText(text).catch(() => {});
+              navigator.clipboard.writeText(getProblemBlockMarker(node)).catch(() => {});
             }}
-            className="px-3 py-1.5 rounded-lg bg-primary/10 text-primary hover:bg-primary/20 transition-colors text-xs font-medium"
+            className="rounded-lg bg-primary/10 px-3 py-1.5 text-xs font-medium text-primary transition-colors hover:bg-primary/20"
           >
-            复制题号
+            复制标记
           </button>
         </div>
 
@@ -33,7 +48,9 @@ function ProblemBlockView({ node }: NodeViewProps) {
         <div className="p-4">
           <div contentEditable={false} suppressContentEditableWarning>
             <p className="text-sm text-on-surface-variant">
-              此题目已插入，详细内容请在发布后查看
+              {isReference
+                ? "阅读页会在这里展示引用的题目卡片。"
+                : "此题目已插入，详细内容请在发布后查看。"}
             </p>
           </div>
         </div>
@@ -52,6 +69,18 @@ export const ProblemBlock = Node.create({
     return {
       number: {
         default: 1,
+        parseHTML: (element) => Number(element.getAttribute("number")) || 1,
+        renderHTML: (attributes) => ({ number: attributes.number }),
+      },
+      noteId: {
+        default: "",
+        parseHTML: (element) => element.getAttribute("note-id") || "",
+        renderHTML: (attributes) => (attributes.noteId ? { "note-id": attributes.noteId } : {}),
+      },
+      selection: {
+        default: "",
+        parseHTML: (element) => element.getAttribute("selection") || "",
+        renderHTML: (attributes) => (attributes.selection ? { selection: attributes.selection } : {}),
       },
     };
   },
@@ -68,6 +97,17 @@ export const ProblemBlock = Node.create({
     return ["problem-block", mergeAttributes(HTMLAttributes)];
   },
 
+  addStorage() {
+    return {
+      markdown: {
+        serialize(state: MarkdownSerializerState, node: ProseMirrorNode) {
+          state.write(getProblemBlockMarker(node));
+          state.closeBlock(node);
+        },
+      },
+    };
+  },
+
   addNodeView() {
     return ReactNodeViewRenderer(ProblemBlockView);
   },
@@ -75,11 +115,15 @@ export const ProblemBlock = Node.create({
 
 // Helper function to parse problem markers from content
 export function parseProblemMarkers(content: string): string {
-  // Convert <!--problem:N--> markers to problem-block tags
-  return content.replace(
-    /<!--problem:(\d+)-->/g,
-    '<problem-block number="$1"></problem-block>'
-  );
+  return content
+    .replace(
+      /<!--\s*asteroid-problems:([A-Za-z0-9_-]+):([0-9,\s，、-]+)\s*-->/g,
+      '<problem-block note-id="$1" selection="$2"></problem-block>'
+    )
+    .replace(
+      /<!--problem:(\d+)-->/g,
+      '<problem-block number="$1"></problem-block>'
+    );
 }
 
 // Helper function to extract problem number from marker

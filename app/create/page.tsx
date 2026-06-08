@@ -5,7 +5,7 @@ import { motion } from "framer-motion";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import type { Editor } from "@tiptap/react";
-import { Save, RotateCcw, X, Image as ImageIcon, FolderTree, Columns, Maximize2, Eye, Loader2, ChevronDown, ChevronUp, SlidersHorizontal, Video as VideoIcon } from "lucide-react";
+import { Save, RotateCcw, X, Image as ImageIcon, FolderTree, Columns, Maximize2, Eye, Loader2, ChevronDown, ChevronUp, SlidersHorizontal, Video as VideoIcon, Target } from "lucide-react";
 import { Subject, subjectMap, NoteType, typeMap, Video, Problem } from "@/lib/types";
 import { useToast } from "@/components/ui/Toast";
 import type { RichTextEditorRef } from "@/components/editor/RichTextEditor";
@@ -14,6 +14,7 @@ import { EditorToolbar } from "@/components/editor/EditorToolbar";
 import { uploadImage, generateFileName } from "@/lib/supabase-storage";
 import { splitMath3PracticeTags } from "@/lib/math3-practice";
 import { AdminGate } from "@/components/auth/AdminGate";
+import { ProblemReferencePicker } from "@/components/problems/ProblemReferencePicker";
 import { useCoverUpload } from "@/hooks/useCoverUpload";
 import { useNoteSave } from "@/hooks/useNoteSave";
 import { type ImportDraft, type NoteEditorDraft, useNoteEditorRoute } from "@/hooks/useNoteEditorRoute";
@@ -108,6 +109,7 @@ function CreateEditorPage() {
   const [showMetaSection, setShowMetaSection] = useState(false);
   const [editorReady, setEditorReady] = useState(false);
   const [showChapterManager, setShowChapterManager] = useState(false);
+  const [showProblemReferencePicker, setShowProblemReferencePicker] = useState(false);
   const [viewMode, setViewMode] = useState<"split" | "editor" | "preview">("editor");
   const editorRef = useRef<RichTextEditorRef>(null);
   const [toolbarEditor, setToolbarEditor] = useState<Editor | null>(null);
@@ -253,6 +255,15 @@ function CreateEditorPage() {
     input.click();
   };
 
+  const handleInsertProblemReference = useCallback((marker: string) => {
+    if (editorRef.current?.editor) {
+      editorRef.current.insertMarkdown(marker);
+    } else {
+      setContent((current) => `${current.trimEnd()}${marker}`);
+    }
+    toast.success("已插入题目引用");
+  }, [toast]);
+
   const isEssay = noteType === "essay";
   const isProblem = noteType === "problem";
 
@@ -310,7 +321,7 @@ function CreateEditorPage() {
                 {title.trim() || `${isEditMode ? "未命名" : "创建新"}${typeMap[noteType]}`}
               </h1>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <button
                 onClick={handleClear}
                 disabled={isSaving}
@@ -536,8 +547,17 @@ function CreateEditorPage() {
                   内容
                 </label>
                 <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowProblemReferencePicker((value) => !value)}
+                    className={`control-button h-9 min-h-0 px-3 text-xs ${showProblemReferencePicker ? "control-button-selected" : ""}`}
+                  >
+                    <Target className="h-3.5 w-3.5" />
+                    题目引用
+                    {showProblemReferencePicker ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                  </button>
                   {/* Mode Toggle */}
-                  <div className="flex rounded-lg border border-outline-variant/20 overflow-hidden">
+                  <div className="grid w-full grid-cols-3 overflow-hidden rounded-lg border border-outline-variant/20 sm:flex sm:w-auto">
                     <button
                       onClick={() => setViewMode("split")}
                       className={`px-2.5 py-1.5 text-xs font-medium transition-colors flex items-center gap-1 ${
@@ -575,12 +595,16 @@ function CreateEditorPage() {
                 </div>
               </div>
 
+              <ProblemReferencePicker
+                isOpen={showProblemReferencePicker}
+                onInsert={handleInsertProblemReference}
+              />
+
               {viewMode === "split" && (
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                   {/* Editor Panel */}
                   <div
-                    className="flex flex-col overflow-hidden rounded-lg border border-outline-variant/20 bg-surface-container-low"
-                    style={{ maxHeight: 'calc(100vh - 500px)', minHeight: '400px' }}
+                    className="flex min-h-[420px] flex-col overflow-hidden rounded-lg border border-outline-variant/20 bg-surface-container-low lg:max-h-[calc(100vh-500px)]"
                   >
                     {/* Sticky Toolbar */}
                     {editorReady && (
@@ -623,8 +647,7 @@ function CreateEditorPage() {
 
                   {/* Preview Panel */}
                   <div
-                    className="flex flex-col overflow-hidden rounded-lg border border-outline-variant/20 bg-surface-container-low"
-                    style={{ maxHeight: 'calc(100vh - 500px)', minHeight: '400px' }}
+                    className="flex min-h-[420px] flex-col overflow-hidden rounded-lg border border-outline-variant/20 bg-surface-container-low lg:max-h-[calc(100vh-500px)]"
                   >
                     {/* Preview Header */}
                     <div className="shrink-0 border-b border-outline-variant/20 px-4 py-2 flex items-center" style={{ minHeight: '48px' }}>
@@ -649,8 +672,7 @@ function CreateEditorPage() {
 
               {viewMode === "editor" && (
                 <div
-                  className="flex flex-col overflow-hidden rounded-lg border border-outline-variant/20 bg-surface-container-low"
-                  style={{ maxHeight: 'calc(100vh - 400px)', minHeight: '500px' }}
+                  className="flex min-h-[520px] flex-col overflow-hidden rounded-lg border border-outline-variant/20 bg-surface-container-low lg:max-h-[calc(100vh-400px)]"
                 >
                   {editorReady && (
                     <div className="sticky top-0 z-10 shrink-0 border-b border-outline-variant/20">

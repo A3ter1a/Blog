@@ -13,6 +13,7 @@ interface ProblemCardProps {
   index: number;
   noteId?: string;
   onUpdate?: (updated: Problem) => void | Promise<void>;
+  anchorPrefix?: string;
 }
 
 type ProblemEditData = {
@@ -42,7 +43,7 @@ function problemOptionsForSave(editData: ProblemEditData): ProblemOption[] | und
   return normalizeProblemOptions(editData.options);
 }
 
-export function ProblemCard({ problem, index, onUpdate }: ProblemCardProps) {
+export function ProblemCard({ problem, index, onUpdate, anchorPrefix = "problem" }: ProblemCardProps) {
   const [showAnswer, setShowAnswer] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -107,7 +108,7 @@ export function ProblemCard({ problem, index, onUpdate }: ProblemCardProps) {
 
   return (
     <motion.div
-      id={`problem-${problemAnchorId}`}
+      id={`${anchorPrefix}-${problemAnchorId}`}
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: Math.min(index * 0.04, 0.24) }}
