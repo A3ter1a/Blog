@@ -59,7 +59,7 @@ export function PageHeader({
   width?: PageWidth;
 }) {
   return (
-    <section className="border-b border-outline-variant/20 bg-surface-container-low/72">
+    <section className="border-b border-outline-variant/20 bg-surface-container-low/72 pt-20">
       <div className={`mx-auto w-full px-4 py-5 sm:px-6 sm:py-7 lg:px-8 ${widthClasses[width]}`}>
         <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
           <div className="min-w-0">

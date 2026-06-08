@@ -62,27 +62,27 @@ export function Navbar() {
           : "bg-transparent"
       }`}
     >
-      <div className="flex justify-between items-center h-20 px-6 md:px-8 lg:px-12 max-w-7xl mx-auto">
+      <div className="mx-auto grid h-20 max-w-7xl grid-cols-[minmax(8rem,1fr)_auto_minmax(8rem,1fr)] items-center gap-3 px-4 sm:px-6 md:px-8 lg:grid-cols-[minmax(11rem,1fr)_auto_minmax(11rem,1fr)] lg:px-10">
         {/* Logo */}
         <Link
           href="/"
-          className="flex items-center gap-2 hover:opacity-80 transition-opacity duration-300"
+          className="flex min-w-0 items-center gap-2 justify-self-start transition-opacity duration-300 hover:opacity-80 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
         >
           <Image
             src="/logo.png"
             alt="Asteroid Logo"
-            width={56}
-            height={56}
-            className="w-14 h-14 object-contain"
+            width={48}
+            height={48}
+            className="h-12 w-12 shrink-0 object-contain"
             priority
           />
-          <span className="text-2xl font-bold font-headline text-primary-container translate-y-[1px]">
+          <span className="hidden truncate whitespace-nowrap font-headline text-2xl font-bold text-primary-container sm:block">
             Asteroid
           </span>
         </Link>
 
         {/* Desktop Navigation */}
-        <div className="hidden md:flex gap-7 lg:gap-12 items-center">
+        <div className="hidden min-w-0 items-center justify-center gap-6 justify-self-center md:flex lg:gap-10">
           {visibleNavItems.map((item) => {
             const isActive = item.href === "/" 
               ? pathname === "/" 
@@ -92,7 +92,7 @@ export function Navbar() {
               <Link
                 key={item.href}
                 href={item.href}
-                className={`font-headline text-base font-medium transition-all duration-300 relative lg:text-lg ${
+                className={`relative whitespace-nowrap px-1 py-2 font-headline text-base font-medium transition-all duration-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 lg:text-lg ${
                   isActive
                     ? "text-primary-container"
                     : "text-on-surface/60 hover:text-primary-container"
@@ -108,11 +108,12 @@ export function Navbar() {
         </div>
 
         {/* Utility Icons */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center justify-end gap-1.5 justify-self-end sm:gap-2">
           {/* Search */}
           <button
+            type="button"
             onClick={() => setShowSearch(true)}
-            className="p-2 rounded-full hover:bg-surface-container-high transition-all duration-300 text-primary-container"
+            className="rounded-full p-2 text-primary-container transition-all duration-300 hover:bg-surface-container-high focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
             aria-label="搜索"
           >
             <Search className="w-5 h-5" />
@@ -120,16 +121,18 @@ export function Navbar() {
 
           {/* Settings */}
           <button
+            type="button"
             onClick={() => setShowSettings(true)}
-            className="p-2 rounded-full hover:bg-surface-container-high transition-all duration-300 text-primary-container"
+            className="rounded-full p-2 text-primary-container transition-all duration-300 hover:bg-surface-container-high focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
             aria-label="设置"
           >
             <Settings className="w-5 h-5" />
           </button>
 
           <button
+            type="button"
             onClick={() => setShowMobileMenu(true)}
-            className="p-2 rounded-full hover:bg-surface-container-high transition-all duration-300 text-primary-container md:hidden"
+            className="rounded-full p-2 text-primary-container transition-all duration-300 hover:bg-surface-container-high focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 md:hidden"
             aria-label="打开导航"
             aria-expanded={showMobileMenu}
           >
@@ -184,7 +187,7 @@ export function Navbar() {
                   <Link
                     key={item.href}
                     href={item.href}
-                    className={`flex items-center gap-3 rounded-lg px-3 py-3 text-sm font-medium transition-colors ${
+                    className={`flex items-center gap-3 rounded-lg px-3 py-3 text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 ${
                       isActive
                         ? "bg-primary/10 text-primary"
                         : "text-on-surface-variant hover:bg-surface-container-low hover:text-primary"
