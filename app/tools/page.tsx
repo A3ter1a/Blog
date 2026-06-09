@@ -5,7 +5,6 @@ import {
   ChevronRight,
   ClipboardCheck,
   RotateCcw,
-  Target,
 } from "lucide-react";
 import { PageHeader, PageShell } from "@/components/ui/PageScaffold";
 
@@ -53,8 +52,6 @@ export default function ToolsPage() {
     <>
       <PageHeader
         width="normal"
-        eyebrow="学习工具台"
-        icon={<Target className="h-4 w-4" />}
         title="工具"
         description="保留真正需要进入操作的学习入口。"
       />

@@ -9,7 +9,7 @@ import { NoteCard } from "@/components/notes/NoteCard";
 import { ExportDialog } from "@/components/export/ExportDialog";
 import { notesApi } from "@/lib/supabase";
 import { NoteType, Subject, Note } from "@/lib/types";
-import { CheckSquare, Square, Download, X, Trash2, AlertTriangle, Loader2, Plus, LibraryBig, SlidersHorizontal, ChevronDown, ChevronUp } from "lucide-react";
+import { CheckSquare, Square, Download, X, Trash2, AlertTriangle, Loader2, Plus, SlidersHorizontal, ChevronDown, ChevronUp } from "lucide-react";
 import { useAdminAuth } from "@/hooks/useAdminAuth";
 import { useToast } from "@/components/ui/Toast";
 import { PageHeader, PageShell } from "@/components/ui/PageScaffold";
@@ -334,8 +334,6 @@ export function NotesClient({
     <>
       <PageHeader
         width="wide"
-        eyebrow="Asteroid 资料库"
-        icon={<LibraryBig className="h-3.5 w-3.5 text-primary" />}
         title="文章与题集"
         description="搜索、阅读、整理你的学习材料。"
         actions={isAdmin && (
