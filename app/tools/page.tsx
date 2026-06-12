@@ -12,11 +12,11 @@ const primaryTools = [
   {
     id: "note-qa",
     title: "笔记问答",
-    description: "登录后向自己的已发布笔记和题集提问，回答会带来源片段，适合快速回忆概念和定位内容。",
+    description: "在已发布笔记和题集中查答案、找位置、整理提纲。",
     href: "/tools/note-qa",
     icon: Bot,
     tone: "border-sky-500/20 bg-sky-500/10 text-sky-700",
-    metric: "AI 检索",
+    metric: "检索",
   },
   {
     id: "review-center",

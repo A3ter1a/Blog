@@ -3,14 +3,34 @@ import { callDeepSeek } from "@/lib/ai-client";
 import { DEFAULT_DEEPSEEK_MODEL } from "@/lib/ai-config";
 import {
   buildNoteQAContext,
+  normalizeNoteQAContextLimit,
+  normalizeNoteQAMode,
   normalizeNoteQAQuestion,
   normalizeNoteQAScope,
+  normalizeNoteQASubject,
+  type NoteQAMode,
 } from "@/lib/note-qa";
 import { requireAdminRequest, resolveAIKey } from "@/lib/server-admin-auth";
 import { notesApi } from "@/lib/supabase";
 
 export const runtime = "nodejs";
 export const maxDuration = 90;
+
+function getModeInstruction(mode: NoteQAMode): string {
+  if (mode === "locate") {
+    return "优先指出答案在笔记中的位置，按来源编号列出对应结论；证据不足时只说明可继续检索的关键词。";
+  }
+
+  if (mode === "outline") {
+    return "把相关内容整理成复习提纲，先给结论，再列关键概念、易错点和可回看的来源编号。";
+  }
+
+  if (mode === "quiz") {
+    return "根据笔记内容生成 3 到 5 个自测问题，并给出简短答案；不要编造笔记里没有的知识点。";
+  }
+
+  return "直接回答问题，保留必要推导和来源编号。";
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -23,9 +43,12 @@ export async function POST(req: NextRequest) {
       : {};
     const question = normalizeNoteQAQuestion(record.question);
     const scope = normalizeNoteQAScope(record.scope);
+    const subject = normalizeNoteQASubject(record.subject);
+    const mode = normalizeNoteQAMode(record.mode);
+    const contextLimit = normalizeNoteQAContextLimit(record.contextLimit);
 
     if (!question) {
-      return NextResponse.json({ error: "请输入要问的问题", success: false }, { status: 400 });
+      return NextResponse.json({ error: "请输入要查的问题", success: false }, { status: 400 });
     }
 
     const apiKey = resolveAIKey("deepseek", record.apiKey);
@@ -39,30 +62,31 @@ export async function POST(req: NextRequest) {
 
     const notes = await notesApi.getQuestionAnswerSources({
       type: scope === "all" ? undefined : scope,
-      limit: 140,
+      subject: subject === "all" ? undefined : subject,
+      limit: 160,
     });
 
-    const { context, sources, totalChunks } = buildNoteQAContext(notes, question, scope);
+    const { context, sources, totalChunks } = buildNoteQAContext(notes, question, scope, contextLimit);
     if (!context || sources.length === 0) {
       return NextResponse.json({
-        error: "没有找到可用于回答的已发布笔记",
+        error: "没有找到可用于回答的已发布内容",
         success: false,
       }, { status: 404 });
     }
 
-    const systemPrompt = `你是 Asteroid 个人学习知识库的笔记问答助手。
-回答规则：
-- 只能依据用户给出的笔记片段回答，不要编造笔记中没有的内容。
-- 如果笔记片段证据不足，直接说“我的笔记里暂时没有找到足够依据”，然后给出可以继续检索的建议。
-- 回答要简洁、清楚，适合考研复习。
+    const systemPrompt = `你只根据给出的笔记片段回答。
+规则：
+- 不补充笔记片段之外的事实。
+- 证据不足时直接说明没有足够依据。
+- 回答要短、准、适合复习。
 - 涉及公式时使用 Markdown 和 LaTeX。
 - 关键结论后引用来源编号，例如 [S1]、[S2]。
-- 不要引用没有出现在上下文里的来源编号。`;
+- 不要引用没有出现在上下文里的来源编号。
+- ${getModeInstruction(mode)}`;
 
-    const userPrompt = `问题：
-${question}
+    const userPrompt = `问题：${question}
 
-可用笔记片段：
+可用片段：
 ${context}`;
 
     const { content, tokensUsed } = await callDeepSeek(
@@ -72,7 +96,7 @@ ${context}`;
         { role: "system", content: systemPrompt },
         { role: "user", content: userPrompt },
       ],
-      { temperature: 0.2, maxTokens: 1400 },
+      { temperature: mode === "quiz" ? 0.35 : 0.2, maxTokens: mode === "quiz" ? 1600 : 1400 },
     );
 
     return NextResponse.json({

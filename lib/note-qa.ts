@@ -2,6 +2,8 @@ import type { Note, NoteType, Problem, Subject } from "@/lib/types";
 import GithubSlugger from "github-slugger";
 
 export type NoteQAScope = "all" | NoteType;
+export type NoteQASubjectScope = "all" | Subject;
+export type NoteQAMode = "answer" | "locate" | "outline" | "quiz";
 
 export type NoteQASource = {
   id: string;
@@ -54,6 +56,21 @@ export function normalizeNoteQAQuestion(value: unknown): string {
 
 export function normalizeNoteQAScope(value: unknown): NoteQAScope {
   return value === "note" || value === "problem" || value === "essay" ? value : "all";
+}
+
+export function normalizeNoteQASubject(value: unknown): NoteQASubjectScope {
+  return value === "math" || value === "english" || value === "politics" || value === "economics"
+    ? value
+    : "all";
+}
+
+export function normalizeNoteQAMode(value: unknown): NoteQAMode {
+  return value === "locate" || value === "outline" || value === "quiz" ? value : "answer";
+}
+
+export function normalizeNoteQAContextLimit(value: unknown): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) return DEFAULT_CONTEXT_LIMIT;
+  return Math.max(4, Math.min(12, Math.round(value)));
 }
 
 function stripMarkdown(value: string): string {

@@ -4,7 +4,7 @@ import { NoteQA } from "@/components/tools/NoteQA";
 
 export const metadata: Metadata = {
   title: "笔记问答 - Asteroid",
-  description: "基于已发布笔记和题集片段进行轻量 AI 问答。",
+  description: "在已发布笔记和题集中检索答案与来源。",
 };
 
 export default function NoteQAPage() {

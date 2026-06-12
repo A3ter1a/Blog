@@ -291,7 +291,7 @@ export const math3KnowledgeAreas: Math3KnowledgeArea[] = [
     title: "概率论与数理统计",
     shortTitle: "概率统计",
     examWeight: "20%",
-    description: "按附件中的概率统计部分整理，覆盖随机事件、随机变量、数字特征、极限定理、统计量和参数估计。",
+    description: "按附件中的概率统计部分整理，覆盖随机事件、随机变量、数字特征、极限定理与参数估计。",
     chapters: [
       {
         id: "prob-events-probability",
