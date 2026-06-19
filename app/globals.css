@@ -653,3 +653,111 @@ mark + mark {
 .confidence-bar {
   animation: confidence-fill 0.8s ease-out;
 }
+
+/* Problem booklet PDF export */
+.problem-booklet-print {
+  display: none;
+}
+
+.booklet-answer-space {
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent 0,
+    transparent 1.85rem,
+    rgba(156, 163, 175, 0.32) 1.9rem
+  );
+}
+
+.booklet-page .katex-display {
+  max-width: 100%;
+}
+
+@media print {
+  @page {
+    size: 280mm 210mm;
+    margin: 0;
+  }
+
+  html,
+  body {
+    width: 280mm;
+    background: #ffffff !important;
+  }
+
+  body * {
+    visibility: hidden !important;
+  }
+
+  body[data-problem-booklet-print="questions"] .problem-booklet-questions,
+  body[data-problem-booklet-print="questions"] .problem-booklet-questions *,
+  body[data-problem-booklet-print="answers"] .problem-booklet-answers,
+  body[data-problem-booklet-print="answers"] .problem-booklet-answers * {
+    visibility: visible !important;
+  }
+
+  body[data-problem-booklet-print="questions"] .problem-booklet-questions,
+  body[data-problem-booklet-print="answers"] .problem-booklet-answers {
+    position: absolute !important;
+    inset: 0 !important;
+    display: block !important;
+    width: 280mm !important;
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+
+  .booklet-page {
+    width: 280mm !important;
+    min-height: 210mm !important;
+    break-after: page;
+    page-break-after: always;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    background: #ffffff !important;
+    color: #111827 !important;
+    padding: 14mm 16mm !important;
+  }
+
+  .booklet-page:last-child {
+    break-after: auto;
+    page-break-after: auto;
+  }
+
+  .booklet-page-header {
+    padding-bottom: 5mm !important;
+  }
+
+  .booklet-question {
+    margin-top: 7mm !important;
+  }
+
+  .booklet-markdown {
+    font-size: 12.5pt !important;
+    line-height: 1.75 !important;
+  }
+
+  .booklet-options {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 5mm !important;
+    margin-top: 6mm !important;
+  }
+
+  .booklet-answer-space {
+    min-height: 50mm !important;
+    margin-top: 8mm !important;
+    border-color: #d1d5db !important;
+    background-image: repeating-linear-gradient(
+      to bottom,
+      transparent 0,
+      transparent 8mm,
+      rgba(156, 163, 175, 0.46) 8.2mm
+    ) !important;
+  }
+}

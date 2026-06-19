@@ -4,6 +4,7 @@ import {
   Bot,
   ChevronRight,
   ClipboardCheck,
+  FileDown,
   RotateCcw,
 } from "lucide-react";
 import { PageHeader, PageShell } from "@/components/ui/PageScaffold";
@@ -35,6 +36,15 @@ const primaryTools = [
     icon: ClipboardCheck,
     tone: "border-emerald-500/20 bg-emerald-500/10 text-emerald-700",
     metric: "AI 组卷",
+  },
+  {
+    id: "problem-booklet",
+    title: "PDF 做题本",
+    description: "从题集中批量选择题目，导出横屏一题一页的题目册和答案册。",
+    href: "/tools/problem-booklet",
+    icon: FileDown,
+    tone: "border-amber-500/20 bg-amber-500/10 text-amber-700",
+    metric: "PDF",
   },
   {
     id: "math3-catalog",
