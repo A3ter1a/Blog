@@ -1,12 +1,13 @@
 import type { ReactNode } from "react";
 
-type PageWidth = "compact" | "normal" | "wide";
+type PageWidth = "compact" | "normal" | "wide" | "workspace";
 type PageTopPadding = "nav" | "content" | "none";
 
 const widthClasses: Record<PageWidth, string> = {
   compact: "max-w-4xl",
   normal: "max-w-6xl",
   wide: "max-w-7xl",
+  workspace: "max-w-[104rem]",
 };
 
 const topPaddingClasses: Record<PageTopPadding, string> = {

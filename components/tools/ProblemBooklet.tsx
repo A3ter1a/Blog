@@ -339,7 +339,7 @@ export function ProblemBooklet() {
     <>
       <div className="no-print">
         <PageHeader
-          width="wide"
+          width="workspace"
           title="做题本"
           description="批量选择题目，导出 iPad 横屏一题一页的题目册；答案册独立导出。"
           stats={[
@@ -351,8 +351,8 @@ export function ProblemBooklet() {
         />
       </div>
 
-      <PageShell width="wide" topPadding="content" className="no-print">
-        <section className="grid gap-4 lg:grid-cols-[320px_minmax(0,1fr)]">
+      <PageShell width="workspace" topPadding="content" className="no-print">
+        <section className="grid gap-4 lg:grid-cols-[18rem_minmax(0,1fr)] xl:grid-cols-[19rem_minmax(0,1fr)] 2xl:grid-cols-[20rem_minmax(0,1fr)]">
           <SetPanel
             sets={visibleSets}
             loadedSets={loadedSets}
@@ -369,25 +369,25 @@ export function ProblemBooklet() {
           />
 
           <section className="min-w-0 space-y-4">
-            <div className="surface-panel p-4">
-              <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_150px_150px_auto] xl:items-center">
+            <div className="command-bar p-3 sm:p-4">
+              <div className="grid gap-3 lg:grid-cols-[minmax(16rem,1fr)_minmax(9.5rem,11rem)_minmax(9.5rem,11rem)] 2xl:grid-cols-[minmax(20rem,1fr)_10rem_10rem_auto] 2xl:items-center">
                 <SearchBox value={problemQuery} onChange={setProblemQuery} placeholder="搜索题干、选项或来源" />
                 <SelectControl value={problemType} options={typeOptions} onChange={(value) => setProblemType(value as ProblemTypeFilter)} />
                 <SelectControl value={difficulty} options={difficultyOptions} onChange={(value) => setDifficulty(value as DifficultyFilter)} />
-                <div className="flex flex-wrap gap-2 xl:justify-end">
-                  <button type="button" onClick={toggleVisibleProblems} disabled={visibleProblems.length === 0} className="control-button h-11 px-3 text-sm">
+                <div className="flex flex-wrap gap-2 lg:col-span-3 2xl:col-span-1 2xl:justify-end">
+                  <button type="button" onClick={toggleVisibleProblems} disabled={visibleProblems.length === 0} className="control-button h-11 whitespace-nowrap px-3 text-sm max-sm:flex-1">
                     {allVisibleProblemsSelected ? "取消当前题目" : "选择当前题目"}
                   </button>
-                  <button type="button" onClick={resetSelection} disabled={selectedSetIds.length === 0} className="control-button h-11 px-3 text-sm" title="清空选择">
+                  <button type="button" onClick={resetSelection} disabled={selectedSetIds.length === 0} className="control-button h-11 w-11 p-0 text-sm" title="重置选择" aria-label="重置选择">
                     <RotateCcw className="h-4 w-4" />
                   </button>
-                  <button type="button" onClick={() => exportPdfFile("questions")} disabled={selectedProblems.length === 0} className="control-button control-button-primary h-11 px-3 text-sm">
+                  <button type="button" onClick={() => exportPdfFile("questions")} disabled={selectedProblems.length === 0} className="control-button control-button-primary h-11 whitespace-nowrap px-3 text-sm max-sm:flex-1">
                     <FileDown className="h-4 w-4" />
-                    导出题目文件
+                    导出题目册
                   </button>
-                  <button type="button" onClick={() => exportPdfFile("answers")} disabled={selectedProblems.length === 0} className="control-button h-11 px-3 text-sm">
+                  <button type="button" onClick={() => exportPdfFile("answers")} disabled={selectedProblems.length === 0} className="control-button h-11 whitespace-nowrap px-3 text-sm max-sm:flex-1">
                     <Printer className="h-4 w-4" />
-                    导出答案文件
+                    导出答案册
                   </button>
                 </div>
               </div>
@@ -399,7 +399,7 @@ export function ProblemBooklet() {
               </div>
             </div>
 
-            <div className="grid gap-4 xl:grid-cols-[360px_minmax(0,1fr)]">
+            <div className="grid gap-4 xl:grid-cols-[minmax(18rem,22rem)_minmax(0,1fr)] 2xl:grid-cols-[minmax(22rem,24rem)_minmax(0,1fr)]">
               <ProblemPicker
                 problems={visibleProblems}
                 selectedKeys={selectedProblemKeySet}
@@ -454,19 +454,19 @@ function SetPanel({
   onToggleVisible: () => void;
 }) {
   return (
-    <aside className="surface-panel h-fit p-4 lg:sticky lg:top-24">
-      <div className="mb-3 flex items-center justify-between gap-3">
+    <aside className="surface-panel flex flex-col p-3 sm:p-4 lg:sticky lg:top-24 lg:h-[calc(100vh-7rem)]">
+      <div className="mb-3 flex shrink-0 items-center justify-between gap-3">
         <h2 className="text-sm font-semibold text-on-surface">题集</h2>
         <span className="tag-chip px-2 py-0.5 text-xs">{sets.length} 个</span>
       </div>
-      <div className="space-y-3">
+      <div className="shrink-0 space-y-3">
         <SearchBox value={query} onChange={onQueryChange} placeholder="搜索题集" compact />
         <SelectControl value={subject} options={subjectOptions} onChange={(value) => onSubjectChange(value as SubjectFilter)} compact />
         <button type="button" onClick={onToggleVisible} disabled={sets.length === 0} className="control-button h-10 w-full px-3 text-sm">
           {allVisibleSelected ? "取消当前题集" : "选择当前题集"}
         </button>
       </div>
-      <div className="mt-4 max-h-[520px] space-y-2 overflow-y-auto pr-1">
+      <div className="mt-4 min-h-[18rem] flex-1 space-y-2 overflow-y-auto pr-1 lg:min-h-0">
         {loading ? (
           <LoadingText text="加载题集..." />
         ) : error ? (
@@ -481,7 +481,7 @@ function SetPanel({
               key={set.id}
               type="button"
               onClick={() => onToggleSet(set.id)}
-              className={`w-full rounded-lg border px-3 py-2.5 text-left transition-colors ${selected ? "border-primary/30 bg-primary/[0.06]" : "border-outline-variant/20 bg-surface-container-low hover:border-primary/25"}`}
+              className={`w-full rounded-md border px-3 py-2.5 text-left transition-all ${selected ? "border-primary/40 bg-primary/[0.07] ring-1 ring-primary/15" : "border-outline-variant/20 bg-surface-container-low/70 hover:border-primary/25 hover:bg-surface-container-lowest"}`}
             >
               <div className="flex items-start gap-2">
                 <SelectionIcon selected={selected} />
@@ -519,12 +519,12 @@ function ProblemPicker({
   onToggle: (key: string) => void;
 }) {
   return (
-    <section className="surface-panel h-fit p-4 xl:sticky xl:top-24">
-      <div className="mb-3 flex items-center justify-between gap-2">
+    <section className="surface-panel flex flex-col p-3 sm:p-4 xl:sticky xl:top-24 xl:h-[calc(100vh-7rem)]">
+      <div className="mb-3 flex shrink-0 items-center justify-between gap-2">
         <h2 className="text-sm font-semibold text-on-surface">题目</h2>
-        <span className="text-xs text-on-surface-variant">{selectedCount}/{totalCount}</span>
+        <span className="tag-chip px-2 py-0.5 text-xs">{selectedCount}/{totalCount}</span>
       </div>
-      <div className="max-h-[640px] space-y-2 overflow-y-auto pr-1">
+      <div className="min-h-[22rem] flex-1 space-y-2 overflow-y-auto pr-1 xl:min-h-0">
         {!hasSelectedSets ? (
           <EmptyPanel icon={<BookOpen className="h-8 w-8 opacity-50" />} text="先选择题集。" />
         ) : loading && totalCount === 0 ? (
@@ -538,7 +538,7 @@ function ProblemPicker({
               key={problem.practiceKey}
               type="button"
               onClick={() => onToggle(problem.practiceKey)}
-              className={`w-full rounded-lg border px-3 py-2.5 text-left transition-colors ${selected ? "border-primary/30 bg-primary/[0.06]" : "border-outline-variant/20 bg-surface-container-low hover:border-primary/25"}`}
+              className={`w-full rounded-md border px-3 py-2.5 text-left transition-all ${selected ? "border-primary/40 bg-primary/[0.07] ring-1 ring-primary/15" : "border-outline-variant/20 bg-surface-container-low/70 hover:border-primary/25 hover:bg-surface-container-lowest"}`}
             >
               <div className="flex items-start gap-2">
                 <SelectionIcon selected={selected} />
@@ -562,19 +562,19 @@ function ProblemPicker({
 
 function BookletPreview({ problems, onPrintQuestions }: { problems: PracticeProblemItem[]; onPrintQuestions: () => void }) {
   if (problems.length === 0) {
-    return <EmptyPanel className="min-h-[520px]" icon={<BookOpen className="h-10 w-10 opacity-45" />} text="选择题目后预览题目册。" />;
+    return <EmptyPanel className="min-h-[520px] bg-surface-container-lowest" icon={<BookOpen className="h-10 w-10 opacity-45" />} text="选择题目后预览题目册。" />;
   }
 
   return (
     <section className="min-w-0 space-y-3">
-      <div className="surface-panel flex flex-wrap items-center justify-between gap-3 p-3">
+      <div className="surface-panel flex flex-wrap items-center justify-between gap-3 p-3 xl:sticky xl:top-24 xl:z-10">
         <div className="text-sm font-semibold text-on-surface">{problems.length} 页题目册</div>
         <button type="button" onClick={onPrintQuestions} className="control-button h-10 px-3 text-sm">
           <Printer className="h-4 w-4" />
-          打印题目
+          打印题目册
         </button>
       </div>
-      <div className="space-y-4">
+      <div className="space-y-4 rounded-lg bg-surface-container-low/45 p-3 sm:p-4">
         {problems.map((problem, index) => (
           <QuestionPage key={problem.practiceKey} problem={problem} pageIndex={index} total={problems.length} />
         ))}
@@ -659,7 +659,7 @@ function BookletHeader({ problem, pageIndex, total, label }: { problem: Practice
 
 function SearchBox({ value, onChange, placeholder, compact = false }: { value: string; onChange: (value: string) => void; placeholder: string; compact?: boolean }) {
   return (
-    <div className="relative">
+    <div className="relative min-w-0">
       <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-on-surface-variant/50" />
       <input value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} className={`field-control w-full px-9 text-sm ${compact ? "h-10" : "h-11"}`} />
       {value && (
@@ -673,7 +673,7 @@ function SearchBox({ value, onChange, placeholder, compact = false }: { value: s
 
 function SelectControl({ value, options, onChange, compact = false }: { value: string; options: Array<{ value: string; label: string }>; onChange: (value: string) => void; compact?: boolean }) {
   return (
-    <select value={value} onChange={(event) => onChange(event.target.value)} className={`field-control w-full px-3 text-sm ${compact ? "h-10" : "h-11"}`}>
+    <select value={value} onChange={(event) => onChange(event.target.value)} className={`field-control min-w-0 w-full px-3 text-sm ${compact ? "h-10" : "h-11"}`}>
       {options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
     </select>
   );
