@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   BookOpenCheck,
   Check,
@@ -256,13 +256,13 @@ export function Math3SelfTest() {
     };
   }, [activeTest, isExamRunning]);
 
-  const replaceTest = (test: Math3SelfTestRecord) => {
+  const replaceTest = useCallback((test: Math3SelfTestRecord) => {
     setTests((current) => {
       const without = current.filter((item) => item.id !== test.id);
       return [test, ...without].sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
     });
     setActiveTest(test);
-  };
+  }, []);
 
   const patchActiveAttempt = (updater: (attempt: Math3SelfTestAttempt) => Math3SelfTestAttempt) => {
     setActiveTest((current) => current ? { ...current, attempt: updater(current.attempt) } : current);
@@ -349,7 +349,7 @@ export function Math3SelfTest() {
     }
   };
 
-  const handleSubmit = async (options: { auto?: boolean } = {}) => {
+  const handleSubmit = useCallback(async (options: { auto?: boolean } = {}) => {
     if (!activeTest || isSaving) return;
     setIsSaving(true);
     try {
@@ -372,7 +372,7 @@ export function Math3SelfTest() {
     } finally {
       setIsSaving(false);
     }
-  };
+  }, [activeTest, isSaving, replaceTest, toast]);
 
   useEffect(() => {
     if (!activeTest || activeTest.status !== "in_progress" || remainingSeconds > 0 || isSaving) return;

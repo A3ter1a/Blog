@@ -98,7 +98,6 @@ export function ProblemBooklet() {
   const [problemType, setProblemType] = useState<ProblemTypeFilter>("all");
   const [difficulty, setDifficulty] = useState<DifficultyFilter>("all");
   const [loadingSummaries, setLoadingSummaries] = useState(true);
-  const [loadingSets, setLoadingSets] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [activePrintTarget, setActivePrintTarget] = useState<ExportTarget | null>(null);
 
@@ -136,36 +135,46 @@ export function ProblemBooklet() {
 
   useEffect(() => {
     const missingIds = selectedSetIds.filter((id) => !loadedSets[id]);
-    if (missingIds.length === 0) {
-      setLoadingSets(false);
-      return;
-    }
+    if (missingIds.length === 0) return;
 
     let cancelled = false;
-    setLoadingSets(true);
 
     async function loadSelectedSets() {
       try {
-        const results = await Promise.all(missingIds.map((id) => notesApi.getPracticeSet(id)));
+        const results = await Promise.all(missingIds.map(async (id) => ({
+          id,
+          set: await notesApi.getPracticeSet(id),
+        })));
         if (cancelled) return;
 
-        const validSets = results.filter((set): set is Note => Boolean(set));
-        setLoadedSets((current) => {
-          const next = { ...current };
-          for (const set of validSets) next[set.id] = set;
-          return next;
-        });
-        setSelectedProblemKeys((current) => unique([
-          ...current,
-          ...validSets.flatMap((set) => getSetProblemKeys(set)),
-        ]));
+        const validSets = results.map((result) => result.set).filter((set): set is Note => Boolean(set));
+        const validIds = new Set(validSets.map((set) => set.id));
+        const invalidIds = results.filter((result) => !validIds.has(result.id)).map((result) => result.id);
+
+        if (validSets.length > 0) {
+          setLoadedSets((current) => {
+            const next = { ...current };
+            for (const set of validSets) next[set.id] = set;
+            return next;
+          });
+          setSelectedProblemKeys((current) => unique([
+            ...current,
+            ...validSets.flatMap((set) => getSetProblemKeys(set)),
+          ]));
+        }
+
+        if (invalidIds.length > 0) {
+          const invalidIdSet = new Set(invalidIds);
+          setSelectedSetIds((current) => current.filter((id) => !invalidIdSet.has(id)));
+          toast.error("部分题集无法读取，已从做题本选择中移除。");
+        }
       } catch (error) {
         if (!cancelled) {
           const message = error instanceof Error ? error.message : "未知错误";
+          const failedIdSet = new Set(missingIds);
+          setSelectedSetIds((current) => current.filter((id) => !failedIdSet.has(id)));
           toast.error(`题目加载失败：${message}`);
         }
-      } finally {
-        if (!cancelled) setLoadingSets(false);
       }
     }
 
@@ -196,6 +205,7 @@ export function ProblemBooklet() {
     () => selectedSetIds.map((id) => loadedSets[id]).filter((set): set is Note => Boolean(set)),
     [loadedSets, selectedSetIds],
   );
+  const loadingSets = selectedSetIds.some((id) => !loadedSets[id]);
   const loadedProblems = useMemo(() => flattenPracticeProblems(loadedProblemSets), [loadedProblemSets]);
   const visibleProblems = useMemo(() => loadedProblems.filter((problem) => (
     (problemType === "all" || problem.type === problemType)

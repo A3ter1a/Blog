@@ -143,7 +143,10 @@ export function NoteQA() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    setRecentQuestions(readJsonStorage(RECENT_QUESTIONS_KEY, [], normalizeRecentQuestions));
+    const timer = window.setTimeout(() => {
+      setRecentQuestions(readJsonStorage(RECENT_QUESTIONS_KEY, [], normalizeRecentQuestions));
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, []);
 
   const trimmedQuestion = question.trim();
@@ -178,7 +181,7 @@ export function NoteQA() {
     writeJsonStorage(RECENT_QUESTIONS_KEY, []);
   }
 
-  function useRecentQuestion(item: RecentQuestion) {
+  function applyRecentQuestion(item: RecentQuestion) {
     setQuestion(item.text);
     setMode(item.mode);
     setScope(item.scope);
@@ -328,7 +331,7 @@ export function NoteQA() {
                   <button
                     key={item.id}
                     type="button"
-                    onClick={() => useRecentQuestion(item)}
+                    onClick={() => applyRecentQuestion(item)}
                     className="w-full rounded-lg border border-outline-variant/20 bg-surface-container-lowest px-3 py-2 text-left transition-colors hover:border-primary/30"
                   >
                     <span className="line-clamp-2 text-xs font-medium leading-5 text-on-surface">
