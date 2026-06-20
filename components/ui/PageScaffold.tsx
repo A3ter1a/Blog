@@ -102,9 +102,9 @@ export function StatStrip({
   if (stats.length === 0) return null;
 
   return (
-    <div className={`grid w-full grid-cols-2 gap-2 rounded-lg border border-outline-variant/15 bg-surface-container-lowest p-2 shadow-ambient md:grid-cols-4 ${className}`}>
+    <div className={`grid w-full grid-cols-2 gap-2 rounded-2xl border border-outline-variant/15 bg-surface-container-lowest/90 p-2 shadow-ambient md:grid-cols-4 ${className}`}>
       {stats.map((stat) => (
-        <div key={stat.label} className="rounded-md bg-surface-container-low px-3 py-2 text-center">
+        <div key={stat.label} className="rounded-xl bg-surface-container-low px-3 py-2 text-center">
           <div className={`text-base font-bold md:text-lg ${stat.tone ?? "text-primary"}`}>
             {stat.value}
           </div>

@@ -435,7 +435,7 @@ export function NotesClient({
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2, duration: 0.5 }}
-          className="surface-panel mb-6 p-4"
+          className="surface-panel mb-6 p-5"
         >
           <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start">
             <SearchBar value={searchQuery} onChange={setSearchQuery} />
@@ -456,7 +456,7 @@ export function NotesClient({
                 <button
                   type="button"
                   onClick={handleResetFilters}
-                  className="rounded-md px-2 py-1 text-primary transition-colors hover:bg-primary/10"
+                  className="rounded-lg px-2 py-1 text-primary transition-all duration-300 ease-out hover:bg-primary/10"
                 >
                   清除筛选
                 </button>
@@ -508,7 +508,7 @@ export function NotesClient({
             </div>
           ) : filteredNotes.length > 0 ? (
             <>
-              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+              <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-3">
                 {filteredNotes.map((note, index) => (
                   <NoteCard
                     key={note.id}
@@ -621,7 +621,7 @@ export function NotesClient({
 
 function LibraryStat({ label, value }: { label: string; value: number }) {
   return (
-    <div className="surface-muted px-4 py-3">
+    <div className="surface-muted px-4 py-3 transition-all duration-300 ease-out">
       <div className="text-lg font-bold text-primary">{value}</div>
       <div className="text-xs text-on-surface-variant">{label}</div>
     </div>

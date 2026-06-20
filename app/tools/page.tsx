@@ -67,7 +67,7 @@ export default function ToolsPage() {
       />
 
       <PageShell width="normal" topPadding="content">
-        <section className="grid gap-3 md:grid-cols-2">
+        <section className="grid gap-4 md:grid-cols-2 lg:gap-6">
           {primaryTools.map((tool) => (
             <ToolCard key={tool.id} tool={tool} />
           ))}
@@ -94,23 +94,23 @@ function ToolCard({
   return (
     <Link
       href={tool.href}
-      className="surface-card group flex min-h-36 flex-col p-4 hover:-translate-y-0.5"
+      className="surface-card group flex min-h-40 flex-col p-5 transition-all duration-300 ease-out hover:-translate-y-1 hover:shadow-float"
     >
-      <div className="flex flex-1 flex-col gap-4">
+      <div className="flex flex-1 flex-col gap-6">
         <div className="flex min-w-0 items-start gap-4">
-          <div className={`flex h-11 w-11 items-center justify-center rounded-lg border ${tool.tone}`}>
+          <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border transition-all duration-300 ease-out group-hover:scale-[1.03] ${tool.tone}`}>
             <Icon className="h-5 w-5" />
           </div>
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <h3 className="font-headline text-lg font-bold text-on-surface group-hover:text-primary">
+              <h3 className="font-headline text-lg font-bold text-on-surface transition-colors duration-300 ease-out group-hover:text-primary">
                 {tool.title}
               </h3>
               <span className="tag-chip px-2 py-0.5 text-xs font-medium">
                 {tool.metric}
               </span>
             </div>
-            <p className="mt-1 text-sm leading-6 text-on-surface-variant">
+            <p className="mt-2 text-sm leading-6 text-on-surface-variant">
               {tool.description}
             </p>
           </div>
@@ -118,7 +118,7 @@ function ToolCard({
 
         <div className="mt-auto flex shrink-0 items-center justify-end gap-2 text-sm font-medium text-primary">
           <span>进入</span>
-          <ChevronRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+          <ChevronRight className="h-4 w-4 transition-transform duration-300 ease-out group-hover:translate-x-1" />
         </div>
       </div>
     </Link>

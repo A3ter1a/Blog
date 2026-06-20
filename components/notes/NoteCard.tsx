@@ -36,9 +36,9 @@ export function NoteCard({ note, index, isSelected = false, onToggleSelect, sele
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: animationDelay, duration: 0.25 }}
-      whileHover={{ y: -2, transition: { duration: 0.16 } }}
+      whileHover={{ y: -4, transition: { duration: 0.3, ease: "easeOut" } }}
       onClick={handleClick}
-      className={`surface-card group h-full cursor-pointer overflow-hidden ${
+      className={`surface-card group h-full cursor-pointer overflow-hidden transition-all duration-300 ease-out ${
         selectMode
           ? isSelected
             ? "border-primary/50 bg-primary/5 ring-2 ring-primary/15"
@@ -48,7 +48,7 @@ export function NoteCard({ note, index, isSelected = false, onToggleSelect, sele
     >
       <Link href={`/notes/${note.id}`} className="flex h-full flex-col" onClick={selectMode ? (e) => e.preventDefault() : undefined}>
         {/* Cover Image or Placeholder */}
-        <div className="relative h-32 overflow-hidden bg-surface-container-low">
+        <div className="relative aspect-[16/9] overflow-hidden rounded-t-2xl bg-surface-container-low">
           {note.coverImage ? (
             // Has cover image
             <>
@@ -58,7 +58,7 @@ export function NoteCard({ note, index, isSelected = false, onToggleSelect, sele
                 alt={note.title}
                 loading={index < 3 ? "eager" : "lazy"}
                 decoding="async"
-                className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.02]"
+                className="h-full w-full object-cover object-center transition-transform duration-300 ease-out group-hover:scale-[1.03]"
               />
             </>
           ) : (
@@ -101,7 +101,7 @@ export function NoteCard({ note, index, isSelected = false, onToggleSelect, sele
           {!selectMode && (
             <div className="absolute left-3 top-3">
               <span
-                className={`rounded-md border px-2.5 py-1 text-xs font-medium ${
+                className={`rounded-lg border px-2.5 py-1 text-xs font-medium ${
                   isProblem
                     ? "border-primary/20 bg-primary text-on-primary"
                     : isEssay
@@ -124,13 +124,13 @@ export function NoteCard({ note, index, isSelected = false, onToggleSelect, sele
         </div>
 
         {/* Card Content */}
-        <div className="flex flex-1 flex-col p-4">
-          <h3 className="font-headline text-lg font-bold leading-snug text-on-surface line-clamp-2 transition-colors duration-200 group-hover:text-primary">
+        <div className="flex flex-1 flex-col p-5">
+          <h3 className="line-clamp-2 font-headline text-lg font-bold leading-snug text-on-surface transition-colors duration-300 ease-out group-hover:text-primary">
             {note.title}
           </h3>
 
           {/* Tags */}
-          <div className="mt-3 flex min-h-7 flex-wrap gap-1.5">
+          <div className="mt-4 flex min-h-7 flex-wrap gap-2">
             {visibleTags.slice(0, 3).map((tag) => (
               <span
                 key={tag}
@@ -147,7 +147,7 @@ export function NoteCard({ note, index, isSelected = false, onToggleSelect, sele
           </div>
 
           {/* Meta Info */}
-          <div className="mt-auto flex flex-wrap items-center gap-x-4 gap-y-1 pt-4 text-xs text-on-surface-variant/65">
+          <div className="mt-auto flex flex-wrap items-center gap-x-4 gap-y-1 pt-5 text-xs text-on-surface-variant">
             <span className="flex items-center gap-1">
               <Calendar className="h-3.5 w-3.5" />
               {updatedAt.getTime() !== createdAt.getTime() ? (
