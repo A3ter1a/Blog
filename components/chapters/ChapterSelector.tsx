@@ -9,6 +9,8 @@ import { getChildChapters, getRootChapters } from '@/lib/chapter-utils';
 
 interface ChapterSelectorProps {
   noteId?: string;
+  chapters?: Chapter[];
+  isLoading?: boolean;
   value?: string;
   onChange: (chapterId: string | undefined) => void;
   className?: string;
@@ -19,31 +21,50 @@ const DROPDOWN_MAX_HEIGHT = 300;
 const DROPDOWN_MIN_HEIGHT = 140;
 const DROPDOWN_MARGIN = 10;
 
-export function ChapterSelector({ noteId, value, onChange, className = '', placement = 'bottom' }: ChapterSelectorProps) {
-  const [chapters, setChapters] = useState<Chapter[]>([]);
+export function ChapterSelector({
+  noteId,
+  chapters,
+  isLoading: isLoadingExternal = false,
+  value,
+  onChange,
+  className = '',
+  placement = 'bottom',
+}: ChapterSelectorProps) {
+  const [loadedChapters, setLoadedChapters] = useState<Chapter[]>([]);
+  const [isLoadingLocal, setIsLoadingLocal] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
   const [dropdownStyle, setDropdownStyle] = useState<CSSProperties>({});
   const buttonRef = useRef<HTMLButtonElement>(null);
+  const isControlled = chapters !== undefined;
+  const displayedChapters = chapters ?? loadedChapters;
+  const isLoadingChapters = isControlled ? isLoadingExternal : isLoadingLocal;
 
   const loadChapters = useCallback(async () => {
+    if (isControlled) return;
+    setIsLoadingLocal(true);
     try {
       const data = noteId ? await chaptersApi.getByNoteId(noteId) : await chaptersApi.getTemplates();
-      setChapters(data);
-    } catch { /* ignore */ }
-  }, [noteId]);
+      setLoadedChapters(data);
+    } catch {
+      setLoadedChapters([]);
+    } finally {
+      setIsLoadingLocal(false);
+    }
+  }, [isControlled, noteId]);
 
   useEffect(() => {
+    if (isControlled) return;
     const timer = window.setTimeout(() => {
       void loadChapters();
     }, 0);
     return () => window.clearTimeout(timer);
-  }, [loadChapters]);
+  }, [isControlled, loadChapters]);
 
-  const selected = chapters.find(c => c.id === value);
-  const topLevel = getRootChapters(chapters);
+  const selected = displayedChapters.find(c => c.id === value);
+  const topLevel = getRootChapters(displayedChapters);
   const getChildren = useCallback(
-    (parentId: string) => getChildChapters(chapters, parentId),
-    [chapters],
+    (parentId: string) => getChildChapters(displayedChapters, parentId),
+    [displayedChapters],
   );
 
   const updateDropdownPosition = useCallback(() => {
@@ -115,7 +136,7 @@ export function ChapterSelector({ noteId, value, onChange, className = '', place
         <span className="flex items-center gap-2 truncate">
           <Layers className="w-3.5 h-3.5 flex-shrink-0" />
           <span className={selected ? 'text-on-surface font-medium' : ''}>
-            {selected ? selected.name : '选择章节'}
+            {selected ? selected.name : isLoadingChapters ? '加载章节中' : '选择章节'}
           </span>
         </span>
         <ChevronDown className={`w-4 h-4 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
@@ -125,6 +146,11 @@ export function ChapterSelector({ noteId, value, onChange, className = '', place
         <>
           <div className="fixed inset-0 z-[110]" onClick={() => setIsOpen(false)} />
           <div className="surface-panel fixed z-[120] overflow-y-auto py-1 shadow-elevated" style={dropdownStyle}>
+            {isLoadingChapters && (
+              <div className="px-3 py-2 text-sm text-on-surface-variant/60">
+                加载章节中
+              </div>
+            )}
             <button
               type="button"
               onClick={handleClear}
@@ -132,6 +158,11 @@ export function ChapterSelector({ noteId, value, onChange, className = '', place
             >
               无章节
             </button>
+            {!isLoadingChapters && topLevel.length === 0 && (
+              <div className="px-3 py-2 text-sm text-on-surface-variant/50">
+                暂无章节
+              </div>
+            )}
             {topLevel.map(chapter => (
               <ChapterOption
                 key={chapter.id}

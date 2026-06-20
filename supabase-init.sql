@@ -1,68 +1,17 @@
--- =============================================
--- 考研笔记数据库初始化脚本
--- =============================================
+-- Legacy entry point for older setup notes.
+--
+-- Do not use this file for production setup. The previous version contained an
+-- all-open development policy, which has been removed from the repository.
+--
+-- Apply the canonical migrations in this order:
+--
+--   1. supabase/migrations/0001_base_schema.sql
+--   2. supabase/migrations/0002_rls_policies.sql
+--
+-- Then insert the first admin email in the Supabase SQL Editor:
+--
+--   insert into public.admin_users (email)
+--   values ('your_admin_email@example.com')
+--   on conflict do nothing;
 
--- 1. 创建枚举类型
-CREATE TYPE note_type AS ENUM ('note', 'problem', 'essay');
-CREATE TYPE subject AS ENUM ('math', 'english', 'politics', 'economics');
-CREATE TYPE problem_type AS ENUM ('choice', 'fill', 'calculation', 'proof', 'proofEssay');
-CREATE TYPE difficulty AS ENUM ('easy', 'medium', 'hard');
-CREATE TYPE video_platform AS ENUM ('bilibili', 'youtube');
-
--- 2. 创建 notes 表
-CREATE TABLE IF NOT EXISTS notes (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  type note_type NOT NULL,
-  title TEXT NOT NULL,
-  content TEXT NOT NULL,
-  subject subject,
-  tags TEXT[] DEFAULT '{}',
-  cover_image TEXT,
-  videos JSONB DEFAULT '[]',
-  problems JSONB DEFAULT '[]',
-  is_published BOOLEAN DEFAULT true,
-  created_at TIMESTAMPTZ DEFAULT NOW(),
-  updated_at TIMESTAMPTZ DEFAULT NOW()
-);
-
--- 3. 创建索引
-CREATE INDEX IF NOT EXISTS idx_notes_type ON notes(type);
-CREATE INDEX IF NOT EXISTS idx_notes_subject ON notes(subject);
-CREATE INDEX IF NOT EXISTS idx_notes_created_at ON notes(created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_notes_is_published ON notes(is_published);
-CREATE INDEX IF NOT EXISTS idx_notes_public_created_at ON notes(created_at DESC) WHERE is_published = true;
-CREATE INDEX IF NOT EXISTS idx_notes_public_type_created_at ON notes(type, created_at DESC) WHERE is_published = true;
-CREATE INDEX IF NOT EXISTS idx_notes_public_subject_created_at ON notes(subject, created_at DESC) WHERE is_published = true;
-CREATE INDEX IF NOT EXISTS idx_notes_tags_gin ON notes USING gin (tags);
-
--- 4. 创建 RLS 策略（行级安全）
-ALTER TABLE notes ENABLE ROW LEVEL SECURITY;
-
--- 允许所有人读取已发布的笔记
-CREATE POLICY "公开笔记可读" ON notes
-  FOR SELECT
-  USING (is_published = true);
-
--- 允许所有操作（开发阶段，生产环境应该限制为用户自己的笔记）
-CREATE POLICY "允许所有操作" ON notes
-  FOR ALL
-  USING (true)
-  WITH CHECK (true);
-
--- 5. 创建触发器自动更新 updated_at
-CREATE OR REPLACE FUNCTION update_updated_at_column()
-RETURNS TRIGGER AS $$
-BEGIN
-  NEW.updated_at = NOW();
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
-CREATE TRIGGER update_notes_updated_at
-  BEFORE UPDATE ON notes
-  FOR EACH ROW
-  EXECUTE FUNCTION update_updated_at_column();
-
--- =============================================
--- 初始化完成
--- =============================================
+select 'Use supabase/migrations/0001_base_schema.sql, then supabase/migrations/0002_rls_policies.sql.' as asteroid_database_setup;

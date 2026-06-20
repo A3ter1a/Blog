@@ -55,9 +55,22 @@ QWEN_API_KEY=你的 Qwen key
 
 执行前要知道：
 
-- 生产策略应覆盖 `notes`、`chapters`、`admin_users` 和 `storage.objects`。
+- 生产策略应覆盖 `notes`、`chapters`、`problem_practice_statuses`、`math3_self_tests`、`admin_users` 和 `storage.objects`。
 - 它的目标是让访客只能读公开内容，不能写入、修改、删除数据。
 - 如果未来新增 Storage bucket，需要额外补策略。
+
+当前仓库的标准 SQL 入口是：
+
+1. `supabase/migrations/0001_base_schema.sql`
+2. `supabase/migrations/0002_rls_policies.sql`
+
+执行前可以在本地先跑一次资产检查：
+
+```bash
+npm run verify:rls-assets
+```
+
+这个命令只检查仓库文件，不会连接 Supabase，也不会修改生产数据库。
 
 风险解释：
 

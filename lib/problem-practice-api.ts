@@ -6,6 +6,13 @@ import {
 } from "./supabase";
 import type { PracticeResult, ProblemPracticeStatus } from "./types";
 
+const PRACTICE_STATUS_FIELDS = "id,user_id,note_id,problem_id,round,attempts,correct_count,wrong_count,last_result,is_mastered,last_practiced_at,created_at,updated_at";
+
+async function getCurrentUserId(): Promise<string | null> {
+  const { data } = await getSupabase().auth.getSession();
+  return data.session?.user.id ?? null;
+}
+
 function mapPracticeStatusSnakeToCamel(row: ProblemPracticeStatusRow): ProblemPracticeStatus {
   const createdAt = row.created_at ? new Date(row.created_at) : new Date();
   const updatedAt = row.updated_at ? new Date(row.updated_at) : createdAt;
@@ -35,10 +42,14 @@ export const problemPracticeApi = {
     const uniqueNoteIds = [...new Set(noteIds.filter(Boolean))];
     if (uniqueNoteIds.length === 0) return [];
 
+    const userId = await getCurrentUserId();
+    if (!userId) return [];
+
     const supabase = getSupabase();
     const { data, error } = await supabase
       .from("problem_practice_statuses")
-      .select("*")
+      .select(PRACTICE_STATUS_FIELDS)
+      .eq("user_id", userId)
       .in("note_id", uniqueNoteIds);
 
     if (error) throw error;
@@ -75,7 +86,7 @@ export const problemPracticeApi = {
     const { data, error } = await supabase
       .from("problem_practice_statuses")
       .upsert(payload, { onConflict: "user_id,note_id,problem_id" })
-      .select()
+      .select(PRACTICE_STATUS_FIELDS)
       .single();
 
     if (error) throw error;

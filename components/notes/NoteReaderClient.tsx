@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Calendar, Tag, Edit2, Trash2, AlertTriangle, ChevronDown, ChevronUp, BookOpen, BookMarked, Loader2, Clock, Layers, SlidersHorizontal } from "lucide-react";
+import { ArrowLeft, Calendar, Tag, Edit2, Trash2, ChevronDown, ChevronUp, BookOpen, BookMarked, Loader2, Clock, Layers, SlidersHorizontal } from "lucide-react";
 import { notesApi } from "@/lib/supabase";
 import { chaptersApi } from "@/lib/chapters-api";
 import { subjectMap, typeMap, Note, Chapter, Problem } from "@/lib/types";
@@ -21,6 +21,7 @@ import { ProblemReferenceContent } from "@/components/problems/ProblemReferenceC
 import { TableOfContents } from "@/components/ui/TableOfContents";
 import { useReadingPreferences } from "@/lib/useReadingPreferences";
 import { ReadingProgress } from "@/components/ui/ReadingProgress";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { useAdminAuth } from "@/hooks/useAdminAuth";
 import { useToast } from "@/components/ui/Toast";
 
@@ -442,55 +443,16 @@ export function NoteReaderClient({
             )}
           </motion.header>
 
-          {/* Delete Confirmation Modal */}
-          <AnimatePresence>
-            {showDeleteConfirm && (
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
-                onClick={() => {
-                  if (!isDeletingNote) setShowDeleteConfirm(false);
-                }}
-              >
-                <motion.div
-                  initial={{ scale: 0.95, opacity: 0 }}
-                  animate={{ scale: 1, opacity: 1 }}
-                  exit={{ scale: 0.95, opacity: 0 }}
-                  onClick={(e) => e.stopPropagation()}
-                  className="bg-surface-container-lowest rounded-xl shadow-elevated p-6 max-w-sm w-full mx-4"
-                >
-                  <div className="flex items-center gap-3 mb-4">
-                    <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center">
-                      <AlertTriangle className="w-5 h-5 text-red-600" />
-                    </div>
-                    <h3 className="text-lg font-bold text-on-surface">确认删除</h3>
-                  </div>
-                  <p className="text-sm text-on-surface-variant mb-6">
-                    确定要删除「{note.title}」吗？此操作不可撤销。
-                  </p>
-                  <div className="flex gap-3 justify-end">
-                    <button
-                      onClick={() => setShowDeleteConfirm(false)}
-                      disabled={isDeletingNote}
-                      className="px-4 py-2 rounded-lg bg-surface-container-high text-on-surface-variant hover:bg-surface-container-highest transition-colors text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed"
-                    >
-                      取消
-                    </button>
-                    <button
-                      onClick={handleDelete}
-                      disabled={isDeletingNote}
-                      className="flex items-center gap-2 px-4 py-2 rounded-lg bg-red-600 text-white hover:bg-red-700 transition-colors text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed"
-                    >
-                      {isDeletingNote && <Loader2 className="w-4 h-4 animate-spin" />}
-                      {isDeletingNote ? "删除中" : "确认删除"}
-                    </button>
-                  </div>
-                </motion.div>
-              </motion.div>
-            )}
-          </AnimatePresence>
+          <ConfirmDialog
+            isOpen={showDeleteConfirm}
+            title="确认删除"
+            description={<>确定要删除「{note.title}」吗？此操作不可撤销。</>}
+            confirmLabel="确认删除"
+            confirmingLabel="删除中"
+            isWorking={isDeletingNote}
+            onClose={() => setShowDeleteConfirm(false)}
+            onConfirm={handleDelete}
+          />
 
           {/* Inline Video Player (shown when clicking play in sidebar) */}
           <AnimatePresence>

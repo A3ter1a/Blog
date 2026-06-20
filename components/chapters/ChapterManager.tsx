@@ -6,6 +6,7 @@ import { Plus, Trash2, Edit3, Save, X, FolderTree, Layers, Loader2 } from 'lucid
 import type { Chapter } from '@/lib/types';
 import { chaptersApi } from '@/lib/chapters-api';
 import { getChildChapters, getRootChapters, hasSiblingChapterName, normalizeChapterName } from '@/lib/chapter-utils';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 
 const ROOT_CHAPTER_KEY = '__root__';
 
@@ -30,6 +31,7 @@ export function ChapterManager({ isOpen, onClose, noteId, selectedChapterId, onS
   const [creatingParentId, setCreatingParentId] = useState<string | null>(null);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [chapterPendingDelete, setChapterPendingDelete] = useState<Chapter | null>(null);
   const isMutating = Boolean(creatingParentId || updatingId || deletingId);
 
   const loadChapters = useCallback(async () => {
@@ -137,6 +139,7 @@ export function ChapterManager({ isOpen, onClose, noteId, selectedChapterId, onS
       await chaptersApi.delete(id);
       if (selectedChapterId === id && onSelectChapter) onSelectChapter(undefined);
       onChapterDeleted?.(id);
+      setChapterPendingDelete(null);
       await loadChapters();
     } catch (err) {
       console.error('Failed to delete chapter:', err);
@@ -144,6 +147,12 @@ export function ChapterManager({ isOpen, onClose, noteId, selectedChapterId, onS
     } finally {
       setDeletingId(null);
     }
+  };
+
+  const requestDeleteChapter = (id: string) => {
+    if (isMutating) return;
+    const chapter = chapters.find((item) => item.id === id);
+    if (chapter) setChapterPendingDelete(chapter);
   };
 
   const startEdit = (chapter: Chapter) => {
@@ -223,7 +232,7 @@ export function ChapterManager({ isOpen, onClose, noteId, selectedChapterId, onS
                 isSelected={chapter.id === selectedChapterId}
                 onSelect={() => onSelectChapter?.(chapter.id)}
                 onEdit={() => startEdit(chapter)}
-                onDelete={() => handleDelete(chapter.id)}
+                onDelete={() => requestDeleteChapter(chapter.id)}
                 onAddChild={() => startAddChapter(chapter.id)}
                 editingId={editingId}
                 editForm={editForm}
@@ -237,7 +246,7 @@ export function ChapterManager({ isOpen, onClose, noteId, selectedChapterId, onS
                 selectedChapterId={selectedChapterId}
                 onChildSelect={(childId) => onSelectChapter?.(childId)}
                 onChildEdit={(child) => startEdit(child)}
-                onChildDelete={(childId) => handleDelete(childId)}
+                onChildDelete={requestDeleteChapter}
                 onChildAddChild={(childId) => startAddChapter(childId)}
                 onChildSaveEdit={(childId) => handleUpdate(childId)}
                 onChildConfirmChild={(childId) => handleCreate(childId)}
@@ -283,10 +292,23 @@ export function ChapterManager({ isOpen, onClose, noteId, selectedChapterId, onS
                 className="w-full px-4 py-3 rounded-xl border-2 border-dashed border-outline-variant/30 text-on-surface-variant hover:border-primary/50 hover:text-primary transition-all flex items-center justify-center gap-2 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <Plus className="w-4 h-4" />
-                添加章节
-              </button>
-            )}
-          </div>
+              添加章节
+            </button>
+          )}
+        </div>
+
+        <ConfirmDialog
+          isOpen={Boolean(chapterPendingDelete)}
+          title="确认删除章节"
+          description={<>确定要删除「{chapterPendingDelete?.name ?? ''}」吗？题目本身不会被删除，但已归入这个章节的题目需要重新分配章节。</>}
+          confirmLabel="确认删除"
+          confirmingLabel="删除中"
+          isWorking={Boolean(deletingId)}
+          onClose={() => setChapterPendingDelete(null)}
+          onConfirm={() => {
+            if (chapterPendingDelete) void handleDelete(chapterPendingDelete.id);
+          }}
+        />
         </motion.div>
       </motion.div>
     </AnimatePresence>

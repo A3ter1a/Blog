@@ -1,6 +1,17 @@
 import { assertAdminWrite, getSupabase, type ChapterInsert, type ChapterRow, type ChapterUpdate } from './supabase';
 import type { Chapter } from './types';
 
+const CHAPTER_FIELDS = 'id,note_id,name,parent_id,sort_order,description,color,created_at,updated_at';
+
+function normalizeChapterNoteId(noteId: string): string | null {
+  const trimmed = noteId.trim();
+  if (!trimmed) return null;
+  if (!/^[a-zA-Z0-9_-]+$/.test(trimmed)) {
+    throw new Error('章节查询参数无效');
+  }
+  return trimmed;
+}
+
 // Map snake_case DB row to camelCase Chapter
 function mapChapter(row: ChapterRow): Chapter {
   return {
@@ -19,11 +30,14 @@ function mapChapter(row: ChapterRow): Chapter {
 export const chaptersApi = {
   // Get all chapters for a note (including global templates where note_id IS NULL)
   async getByNoteId(noteId: string): Promise<Chapter[]> {
+    const normalizedNoteId = normalizeChapterNoteId(noteId);
+    if (!normalizedNoteId) return chaptersApi.getTemplates();
+
     const supabase = getSupabase();
     const { data, error } = await supabase
       .from('chapters')
-      .select('*')
-      .or(`note_id.eq.${noteId},note_id.is.null`)
+      .select(CHAPTER_FIELDS)
+      .or(`note_id.eq.${normalizedNoteId},note_id.is.null`)
       .order('sort_order', { ascending: true })
       .order('name', { ascending: true });
 
@@ -36,7 +50,7 @@ export const chaptersApi = {
     const supabase = getSupabase();
     const { data, error } = await supabase
       .from('chapters')
-      .select('*')
+      .select(CHAPTER_FIELDS)
       .is('note_id', null)
       .order('sort_order', { ascending: true })
       .order('name', { ascending: true });
@@ -49,6 +63,7 @@ export const chaptersApi = {
   async create(chapter: Omit<Chapter, 'id' | 'createdAt' | 'updatedAt'>): Promise<Chapter> {
     await assertAdminWrite();
     const supabase = getSupabase();
+    const timestamp = new Date().toISOString();
     const newChapter: ChapterInsert = {
       note_id: chapter.noteId || null,
       name: chapter.name,
@@ -56,14 +71,14 @@ export const chaptersApi = {
       sort_order: chapter.sortOrder ?? 0,
       description: chapter.description || null,
       color: chapter.color || null,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
+      created_at: timestamp,
+      updated_at: timestamp,
     };
 
     const { data, error } = await supabase
       .from('chapters')
       .insert([newChapter])
-      .select()
+      .select(CHAPTER_FIELDS)
       .single();
 
     if (error) throw error;
@@ -85,7 +100,7 @@ export const chaptersApi = {
       .from('chapters')
       .update(db)
       .eq('id', id)
-      .select()
+      .select(CHAPTER_FIELDS)
       .single();
 
     if (error) throw error;
@@ -104,10 +119,11 @@ export const chaptersApi = {
   async reorder(ids: string[]): Promise<void> {
     await assertAdminWrite();
     const supabase = getSupabase();
+    const timestamp = new Date().toISOString();
     const updates: ChapterInsert[] = ids.map((id, index) => ({
       id,
       sort_order: index,
-      updated_at: new Date().toISOString(),
+      updated_at: timestamp,
     }));
 
     const { error } = await supabase.from('chapters').upsert(updates);

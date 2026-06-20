@@ -3,9 +3,11 @@
 import { useState, useEffect, useMemo, type ReactNode } from "react";
 import { motion, AnimatePresence, Reorder, useDragControls } from "framer-motion";
 import { AlertCircle, Plus, X, ChevronDown, ChevronUp, GripVertical, Sparkles, Scan, Copy, Trash2, FolderTree, CheckSquare, SlidersHorizontal, Loader2 } from "lucide-react";
-import { Problem, ProblemType, Difficulty, Subject, problemTypeMap, difficultyMap, difficultyColorMap } from "@/lib/types";
+import { problemTypeMap, difficultyMap, difficultyColorMap } from "@/lib/types";
+import type { Chapter, Difficulty, Problem, ProblemType, Subject } from "@/lib/types";
 import { chaptersApi } from "@/lib/chapters-api";
 import { ChapterSelector } from "@/components/chapters/ChapterSelector";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { ProblemPreview } from "./ProblemPreview";
 import { MarkdownContent } from "@/components/ui/MarkdownContent";
 import { OCRUploader } from "@/components/ai-assistant/OCRUploader";
@@ -29,6 +31,7 @@ interface ProblemEditorProps {
   noteId?: string;
   subject?: Subject;
   hasUnsavedChanges?: boolean;
+  chapterRefreshKey?: number;
 }
 
 const createEmptyProblemDraft = (): Partial<Problem> => ({
@@ -39,7 +42,14 @@ const createEmptyProblemDraft = (): Partial<Problem> => ({
   tags: [],
 });
 
-export function ProblemEditor({ problems, onChange, noteId, subject = "math", hasUnsavedChanges = false }: ProblemEditorProps) {
+export function ProblemEditor({
+  problems,
+  onChange,
+  noteId,
+  subject = "math",
+  hasUnsavedChanges = false,
+  chapterRefreshKey = 0,
+}: ProblemEditorProps) {
   const toast = useToast();
   const [showAddForm, setShowAddForm] = useState(false);
   const [showAIScan, setShowAIScan] = useState(false);
@@ -49,6 +59,9 @@ export function ProblemEditor({ problems, onChange, noteId, subject = "math", ha
   const [selectedProblemIds, setSelectedProblemIds] = useState<string[]>([]);
   const [bulkSelectEditorChapterId, setBulkSelectEditorChapterId] = useState<string | undefined>();
   const [selectedEditorChapterId, setSelectedEditorChapterId] = useState<string | undefined>();
+  const [editorChapters, setEditorChapters] = useState<Chapter[]>([]);
+  const [isLoadingEditorChapters, setIsLoadingEditorChapters] = useState(false);
+  const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
   const {
     isClassifyingMath3,
     math3ClassifyProgress,
@@ -59,15 +72,28 @@ export function ProblemEditor({ problems, onChange, noteId, subject = "math", ha
     onChange,
   });
 
-  // Load local chapter context so OCR can suggest chapter placement.
-  const [chapterContext, setChapterContext] = useState<ChapterContextItem[]>([]);
+  // One shared chapter load powers OCR context and all editor chapter selectors.
   useEffect(() => {
-    if (noteId) {
-      chaptersApi.getByNoteId(noteId).then(chapters => {
-        setChapterContext(chapters.map(c => ({ id: c.id, name: c.name })));
-      }).catch(() => {});
-    }
-  }, [noteId]);
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      setIsLoadingEditorChapters(true);
+      void (async () => {
+        try {
+          const data = noteId ? await chaptersApi.getByNoteId(noteId) : await chaptersApi.getTemplates();
+          if (!cancelled) setEditorChapters(data);
+        } catch {
+          if (!cancelled) setEditorChapters([]);
+        } finally {
+          if (!cancelled) setIsLoadingEditorChapters(false);
+        }
+      })();
+    }, 0);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [chapterRefreshKey, noteId]);
 
   const updateNewProblemType = (type: ProblemType) => {
     setNewProblem((current) => ({
@@ -122,12 +148,14 @@ export function ProblemEditor({ problems, onChange, noteId, subject = "math", ha
 
   const handleRemoveSelected = () => {
     if (selectedProblemIdsInList.length === 0) return;
+    setShowBulkDeleteConfirm(true);
+  };
 
-    const confirmed = window.confirm(`确定删除已选的 ${selectedProblemIdsInList.length} 道题吗？保存题集后删除才会正式生效。`);
-    if (!confirmed) return;
-
+  const confirmRemoveSelected = () => {
+    if (selectedProblemIdsInList.length === 0) return;
     onChange(problems.filter((problem) => !selectedProblemIdSet.has(problem.id)));
     setSelectedProblemIds([]);
+    setShowBulkDeleteConfirm(false);
     toast.success(`已从题集中移除 ${selectedProblemIdsInList.length} 道题，请保存题集后生效`);
   };
 
@@ -241,6 +269,10 @@ export function ProblemEditor({ problems, onChange, noteId, subject = "math", ha
     onChange([...problems, ...newProblems.map(normalizeProblem)]);
   };
 
+  const chapterContext = useMemo<ChapterContextItem[]>(
+    () => editorChapters.map((chapter) => ({ id: chapter.id, name: chapter.name })),
+    [editorChapters],
+  );
   const newProblemOptions = newProblem.type === "choice" ? ensureChoiceOptions(newProblem.options) : [];
   const editorModeLabel = showOrganizeTools ? "批量编辑" : showAddForm ? "新增题目" : "浏览题目";
   const math3ClassifyLabel = math3ClassifyProgress
@@ -345,6 +377,8 @@ export function ProblemEditor({ problems, onChange, noteId, subject = "math", ha
               selectedCount={selectedProblemIdsInList.length}
               allVisibleSelected={allVisibleProblemsSelected}
               noteId={noteId}
+              chapters={editorChapters}
+              isLoadingChapters={isLoadingEditorChapters}
               selectedChapterId={bulkSelectEditorChapterId}
               selectedChapterProblemCount={bulkSelectEditorChapterProblemIds.length}
               unassignedChapterCount={unassignedEditorChapterProblemIds.length}
@@ -373,6 +407,8 @@ export function ProblemEditor({ problems, onChange, noteId, subject = "math", ha
                     problem={problem}
                     index={problemIndexById.get(problem.id) ?? index}
                     noteId={noteId}
+                    chapters={editorChapters}
+                    isLoadingChapters={isLoadingEditorChapters}
                     selected={selectedProblemIdSet.has(problem.id)}
                     showSelectionTools={showOrganizeTools || selectedProblemIdSet.size > 0}
                     organizeMode={showOrganizeTools}
@@ -403,6 +439,8 @@ export function ProblemEditor({ problems, onChange, noteId, subject = "math", ha
               <label className="text-xs text-on-surface-variant/60 mb-1 block">章节分类</label>
               <ChapterSelector
                 noteId={noteId}
+                chapters={editorChapters}
+                isLoading={isLoadingEditorChapters}
                 value={newProblem.chapterId}
                 onChange={(chapterId) => setNewProblem({ ...newProblem, chapterId })}
               />
@@ -582,6 +620,8 @@ export function ProblemEditor({ problems, onChange, noteId, subject = "math", ha
         selectedCount={selectedProblemIdsInList.length}
         totalCount={problems.length}
         noteId={noteId}
+        chapters={editorChapters}
+        isLoadingChapters={isLoadingEditorChapters}
         selectedEditorChapterId={selectedEditorChapterId}
         canClassifyMath3={subject === "math"}
         isClassifyingMath3={isClassifyingMath3}
@@ -591,6 +631,15 @@ export function ProblemEditor({ problems, onChange, noteId, subject = "math", ha
         onApplyEditorChapter={applyEditorChapterToSelected}
         onClassifySelectedMath3={classifySelectedProblemsToMath3Catalog}
         onRemoveSelected={handleRemoveSelected}
+      />
+
+      <ConfirmDialog
+        isOpen={showBulkDeleteConfirm}
+        title="确认移除题目"
+        description={<>确定从当前题集中移除选中的 {selectedProblemIdsInList.length} 道题吗？保存题集后才会正式生效。</>}
+        confirmLabel="确认移除"
+        onClose={() => setShowBulkDeleteConfirm(false)}
+        onConfirm={confirmRemoveSelected}
       />
     </div>
   );
@@ -622,6 +671,8 @@ function ProblemOrganizerPanel({
   selectedCount,
   allVisibleSelected,
   noteId,
+  chapters,
+  isLoadingChapters,
   selectedChapterId,
   selectedChapterProblemCount,
   unassignedChapterCount,
@@ -635,6 +686,8 @@ function ProblemOrganizerPanel({
   selectedCount: number;
   allVisibleSelected: boolean;
   noteId?: string;
+  chapters: Chapter[];
+  isLoadingChapters: boolean;
   selectedChapterId?: string;
   selectedChapterProblemCount: number;
   unassignedChapterCount: number;
@@ -689,6 +742,8 @@ function ProblemOrganizerPanel({
           <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_auto]">
             <ChapterSelector
               noteId={noteId}
+              chapters={chapters}
+              isLoading={isLoadingChapters}
               value={selectedChapterId}
               onChange={onChangeChapter}
               className="w-full"
@@ -718,6 +773,8 @@ function BulkProblemActionBar({
   selectedCount,
   totalCount,
   noteId,
+  chapters,
+  isLoadingChapters,
   selectedEditorChapterId,
   canClassifyMath3,
   isClassifyingMath3,
@@ -732,6 +789,8 @@ function BulkProblemActionBar({
   selectedCount: number;
   totalCount: number;
   noteId?: string;
+  chapters: Chapter[];
+  isLoadingChapters: boolean;
   selectedEditorChapterId?: string;
   canClassifyMath3: boolean;
   isClassifyingMath3: boolean;
@@ -816,6 +875,8 @@ function BulkProblemActionBar({
                       <div className="text-xs font-semibold text-on-surface-variant">题集章节</div>
                       <ChapterSelector
                         noteId={noteId}
+                        chapters={chapters}
+                        isLoading={isLoadingChapters}
                         value={selectedEditorChapterId}
                         onChange={onChangeEditorChapter}
                         className="w-full"
@@ -863,6 +924,8 @@ function ProblemCard({
   problem,
   index,
   noteId,
+  chapters,
+  isLoadingChapters,
   selected,
   showSelectionTools,
   organizeMode,
@@ -875,6 +938,8 @@ function ProblemCard({
   problem: Problem;
   index: number;
   noteId?: string;
+  chapters: Chapter[];
+  isLoadingChapters: boolean;
   selected: boolean;
   showSelectionTools: boolean;
   organizeMode: boolean;
@@ -1026,6 +1091,8 @@ function ProblemCard({
                 <label className="text-xs text-on-surface-variant/60 mb-1 block">章节分类</label>
                 <ChapterSelector
                   noteId={noteId}
+                  chapters={chapters}
+                  isLoading={isLoadingChapters}
                   value={problem.chapterId}
                   onChange={(chapterId) => onUpdate({ chapterId })}
                 />

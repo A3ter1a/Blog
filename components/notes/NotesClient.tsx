@@ -9,10 +9,11 @@ import { NoteCard } from "@/components/notes/NoteCard";
 import { ExportDialog } from "@/components/export/ExportDialog";
 import { notesApi } from "@/lib/supabase";
 import { NoteType, Subject, Note } from "@/lib/types";
-import { CheckSquare, Square, Download, X, Trash2, AlertTriangle, Loader2, Plus, SlidersHorizontal, ChevronDown, ChevronUp } from "lucide-react";
+import { CheckSquare, Square, Download, X, Trash2, Loader2, Plus, SlidersHorizontal, ChevronDown, ChevronUp } from "lucide-react";
 import { useAdminAuth } from "@/hooks/useAdminAuth";
 import { useToast } from "@/components/ui/Toast";
 import { PageHeader, PageShell } from "@/components/ui/PageScaffold";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { getNotesCacheKey, readNotesCache, writeNotesCache } from "@/lib/notes-list-cache";
 import { NOTES_PAGE_SIZE, NOTES_SEARCH_RESULT_LIMIT } from "@/lib/notes-query";
 
@@ -566,55 +567,16 @@ export function NotesClient({
         notes={exportNotes}
       />
 
-      {/* Delete Confirmation Modal */}
-      <AnimatePresence>
-        {showDeleteConfirm && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
-            onClick={() => {
-              if (!isDeletingNotes) setShowDeleteConfirm(false);
-            }}
-          >
-            <motion.div
-              initial={{ scale: 0.95, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.95, opacity: 0 }}
-              onClick={(e) => e.stopPropagation()}
-              className="bg-surface-container-lowest rounded-xl shadow-elevated p-6 max-w-sm w-full mx-4"
-            >
-              <div className="flex items-center gap-3 mb-4">
-                <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center">
-                  <AlertTriangle className="w-5 h-5 text-red-600" />
-                </div>
-                <h3 className="text-lg font-bold text-on-surface">确认删除</h3>
-              </div>
-              <p className="text-sm text-on-surface-variant mb-6">
-                确定要删除选中的 {selectedNoteIds.size} 条笔记吗？此操作不可撤销。
-              </p>
-              <div className="flex gap-3 justify-end">
-                <button
-                  onClick={() => setShowDeleteConfirm(false)}
-                  disabled={isDeletingNotes}
-                  className="px-4 py-2 rounded-lg bg-surface-container-high text-on-surface-variant hover:bg-surface-container-highest transition-colors text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  取消
-                </button>
-                <button
-                  onClick={handleBatchDelete}
-                  disabled={isDeletingNotes}
-                  className="flex items-center gap-2 px-4 py-2 rounded-lg bg-red-600 text-white hover:bg-red-700 transition-colors text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  {isDeletingNotes && <Loader2 className="w-4 h-4 animate-spin" />}
-                  {isDeletingNotes ? "删除中" : "确认删除"}
-                </button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <ConfirmDialog
+        isOpen={showDeleteConfirm}
+        title="确认删除"
+        description={<>确定要删除选中的 {selectedNoteIds.size} 条笔记吗？此操作不可撤销。</>}
+        confirmLabel="确认删除"
+        confirmingLabel="删除中"
+        isWorking={isDeletingNotes}
+        onClose={() => setShowDeleteConfirm(false)}
+        onConfirm={handleBatchDelete}
+      />
     </>
   );
 }

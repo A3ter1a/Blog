@@ -23,7 +23,13 @@ QWEN_API_KEY=your_qwen_api_key
 `ADMIN_EMAILS` protects server Route Handlers. Keep it server-side only.
 The email list is not a password; Supabase Auth login and RLS remain required.
 
-3. Confirm the production RLS and Storage policies in the Supabase SQL Editor.
+3. Apply the production database and RLS files in the Supabase SQL Editor:
+
+```text
+supabase/migrations/0001_base_schema.sql
+supabase/migrations/0002_rls_policies.sql
+```
+
 4. Add the admin email to the `admin_users` table:
 
 ```sql
@@ -55,6 +61,13 @@ more storage buckets later, add explicit policies for those buckets too.
 
 After the Vercel environment variables are set and the Supabase policies have
 been applied, run:
+
+```bash
+npm run verify:rls-assets
+```
+
+This command scans local SQL assets only. It does not prove that production has
+already run the migrations.
 
 ```bash
 npm run verify:production-security

@@ -23,8 +23,8 @@ b4258ff Add production security verification checklist
 | 阶段 | 目标 | 当前状态 | 验收证据 |
 | --- | --- | --- | --- |
 | 1. 安全现状确认 | 核对当前分支、提交、安全文件和核心权限链 | 已完成 | `git status` 干净，`main` 与 `origin/main` 同步，安全文件存在 |
-| 2. 公网安全收尾 | 确认 `/debug`、AI API、管理员鉴权、RLS 脚本没有明显遗漏 | 自动验收已通过，待后台确认 | 公网 `/debug` 为 404，未登录 `/api/auth/admin` 和 `/api/ai/config` 为 401，首页 HTML 未发现明显创建入口 |
-| 3. 后台配置执行 | 在 Vercel 设置服务端环境变量，在 Supabase 确认 RLS 生产策略 | 待用户执行 | Vercel 环境变量存在，Supabase policy 与 `admin_users` 生效 |
+| 2. 公网安全收尾 | 确认 `/debug`、AI API、管理员鉴权、RLS 脚本没有明显遗漏 | 自动验收已通过，RLS 迁移资产已补齐，待后台执行确认 | 公网 `/debug` 为 404，未登录 `/api/auth/admin` 和 `/api/ai/config` 为 401，首页 HTML 未发现明显创建入口，`npm run verify:rls-assets` 通过 |
+| 3. 后台配置执行 | 在 Vercel 设置服务端环境变量，在 Supabase 执行迁移并确认 RLS 生产策略 | 待用户执行 | Vercel 环境变量存在，Supabase policy 与 `admin_users` 生效 |
 | 4. 线上验收 | 验证公网未登录访问不能写入、不能调用 AI、不能访问 `/debug` | 自动检查已通过，待人工检查 | 自动脚本已验证关键未登录安全门，仍需无痕窗口和管理员登录后人工确认 |
 | 5. 架构清理 | 清理冗余代码、重复数据访问逻辑、旧兼容逻辑和易错模块 | 待开始 | 构建通过，改动有明确范围，删除或合并的逻辑有证据 |
 | 6. 题库专项优化 | 继续优化题库编辑、阅读页小题编辑、一键修正和 Markdown 渲染链路 | 待排期 | 题库编辑和阅读页编辑路径行为一致，答案/解析 Markdown 稳定渲染 |
@@ -38,7 +38,9 @@ b4258ff Add production security verification checklist
    - `ADMIN_EMAILS`
    - `DEEPSEEK_API_KEY`
    - `QWEN_API_KEY`
-2. 在 Supabase SQL Editor 确认生产 RLS 与 Storage 策略已经生效。
+2. 在 Supabase SQL Editor 按顺序执行：
+   - `supabase/migrations/0001_base_schema.sql`
+   - `supabase/migrations/0002_rls_policies.sql`
 3. 在 Supabase 插入管理员邮箱：
 
 ```sql
@@ -72,6 +74,9 @@ on conflict (email) do nothing;
 - 生产环境下 AI key 优先并仅使用服务端环境变量，客户端 key fallback 已禁用。
 - 写操作入口已统一加入 `assertAdminWrite()` 前置检查。
 - Supabase RLS 仍是最终安全边界，必须确认生产策略生效后才算真正完成。
+- 数据库迁移与 RLS 标准入口已收口到 `supabase/migrations/0001_base_schema.sql` 和 `supabase/migrations/0002_rls_policies.sql`。
+- 旧的 `supabase-init.sql` 已改为安全指针，不再包含历史的全放开开发策略。
+- 已新增 `npm run verify:rls-assets`，用于在本地检查迁移文件覆盖关键表、Storage bucket 和危险 RLS 写法。
 - `npm.cmd run lint` 已通过。
 - `npm.cmd run build` 已通过。
 - 本地生产服务验证通过：`/debug` 返回 `404`，未登录访问 `/api/auth/admin` 和 `/api/ai/config` 返回 `401`。

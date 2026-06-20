@@ -18,12 +18,7 @@ type InitialNotePayload = {
 
 async function getInitialNote(noteId: string): Promise<InitialNotePayload> {
   try {
-    const [note, chaptersResult] = await Promise.all([
-      notesApi.getPublishedById(noteId),
-      chaptersApi.getByNoteId(noteId)
-        .then((chapters) => ({ chapters, error: null }))
-        .catch((error: unknown) => ({ chapters: [] as Chapter[], error })),
-    ]);
+    const note = await notesApi.getPublishedById(noteId);
 
     if (!note) {
       return {
@@ -43,8 +38,16 @@ async function getInitialNote(noteId: string): Promise<InitialNotePayload> {
       };
     }
 
-    if (chaptersResult.error) {
-      console.error("Failed to preload note chapters:", chaptersResult.error);
+    try {
+      const chapters = await chaptersApi.getByNoteId(noteId);
+      return {
+        note,
+        chapters,
+        chaptersLoaded: true,
+        loadError: false,
+      };
+    } catch (error) {
+      console.error("Failed to preload note chapters:", error);
       return {
         note,
         chapters: [],
@@ -52,13 +55,6 @@ async function getInitialNote(noteId: string): Promise<InitialNotePayload> {
         loadError: false,
       };
     }
-
-    return {
-      note,
-      chapters: chaptersResult.chapters,
-      chaptersLoaded: true,
-      loadError: false,
-    };
   } catch (error) {
     console.error("Failed to preload note:", error);
     return {

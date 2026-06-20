@@ -159,41 +159,6 @@ type Database = {
 };
 
 const SITE_PROFILE_ID = "main";
-const NOTE_SUMMARY_FIELDS_WITH_COVER = `
-        id,
-        type,
-        title,
-        subject,
-        tags,
-        cover_image,
-        created_at,
-        updated_at,
-        is_published
-      `;
-
-const NOTE_SUMMARY_FIELDS_WITHOUT_COVER = `
-        id,
-        type,
-        title,
-        subject,
-        tags,
-        created_at,
-        updated_at,
-        is_published
-      `;
-
-const NOTE_SUMMARY_FIELDS_WITH_PROBLEMS = `
-        id,
-        type,
-        title,
-        subject,
-        tags,
-        problems,
-        created_at,
-        updated_at,
-        is_published
-      `;
-
 const NOTE_DETAIL_FIELDS = `
         id,
         type,
@@ -223,8 +188,18 @@ const NOTE_QA_FIELDS = `
       `;
 
 function getNoteSummaryFields(includeCoverImage = true, includeProblems = false): string {
-  if (includeProblems) return NOTE_SUMMARY_FIELDS_WITH_PROBLEMS;
-  return includeCoverImage ? NOTE_SUMMARY_FIELDS_WITH_COVER : NOTE_SUMMARY_FIELDS_WITHOUT_COVER;
+  return [
+    "id",
+    "type",
+    "title",
+    "subject",
+    "tags",
+    includeCoverImage ? "cover_image" : null,
+    includeProblems ? "problems" : null,
+    "created_at",
+    "updated_at",
+    "is_published",
+  ].filter(Boolean).join(",");
 }
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
@@ -519,7 +494,7 @@ export const notesApi = {
         created_at: createdAt.toISOString(),
         updated_at: updatedAt.toISOString(),
       }])
-      .select()
+      .select(NOTE_DETAIL_FIELDS)
       .single();
 
     if (error) throw error;
@@ -562,7 +537,7 @@ export const notesApi = {
       .from("notes")
       .update(dbUpdates)
       .eq("id", id)
-      .select()
+      .select(NOTE_DETAIL_FIELDS)
       .single();
 
     if (error) throw error;

@@ -109,6 +109,7 @@ function CreateEditorPage() {
   const [showMetaSection, setShowMetaSection] = useState(false);
   const [editorReady, setEditorReady] = useState(false);
   const [showChapterManager, setShowChapterManager] = useState(false);
+  const [chapterRefreshKey, setChapterRefreshKey] = useState(0);
   const [showProblemReferencePicker, setShowProblemReferencePicker] = useState(false);
   const [viewMode, setViewMode] = useState<"split" | "editor" | "preview">("editor");
   const editorRef = useRef<RichTextEditorRef>(null);
@@ -194,6 +195,11 @@ function CreateEditorPage() {
     setHasProblemChanges(true);
     toast.info(`已将 ${affectedCount} 道题移到无章节，保存笔记后生效`);
   }, [problems, toast]);
+
+  const handleChapterManagerClose = useCallback(() => {
+    setShowChapterManager(false);
+    setChapterRefreshKey((key) => key + 1);
+  }, []);
 
   const handleSave = async () => {
     const result = await saveNote({
@@ -538,6 +544,7 @@ function CreateEditorPage() {
                 noteId={isEditMode ? editingId : undefined}
                 subject={subject}
                 hasUnsavedChanges={isEditMode && hasProblemChanges}
+                chapterRefreshKey={chapterRefreshKey}
               />
             </>
           ) : (
@@ -764,7 +771,7 @@ function CreateEditorPage() {
       {showChapterManager && (
         <ChapterManager
           isOpen={showChapterManager}
-          onClose={() => setShowChapterManager(false)}
+          onClose={handleChapterManagerClose}
           noteId={isEditMode ? editingId : undefined}
           onChapterDeleted={handleChapterDeleted}
         />

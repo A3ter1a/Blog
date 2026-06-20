@@ -6,6 +6,8 @@ import {
   type Math3SelfTestRecord,
 } from "./math3-self-test";
 
+const MATH3_SELF_TEST_FIELDS = "id,user_id,title,mode,difficulty,status,paper,attempt,score,max_score,started_at,submitted_at,created_at,updated_at";
+
 function mapMath3SelfTestSnakeToCamel(row: Math3SelfTestRow): Math3SelfTestRecord {
   const createdAt = row.created_at ? new Date(row.created_at) : new Date();
   const updatedAt = row.updated_at ? new Date(row.updated_at) : createdAt;
@@ -48,11 +50,12 @@ function mapMath3SelfTestCamelToSnake(test: Partial<Math3SelfTestRecord>): Math3
 
 export const math3SelfTestsApi = {
   async getAll(): Promise<Math3SelfTestRecord[]> {
-    await assertAdminWrite();
+    const userId = await assertAdminWrite();
     const supabase = getSupabase();
     const { data, error } = await supabase
       .from("math3_self_tests")
-      .select("*")
+      .select(MATH3_SELF_TEST_FIELDS)
+      .eq("user_id", userId)
       .order("updated_at", { ascending: false });
 
     if (error) throw error;
@@ -60,12 +63,13 @@ export const math3SelfTestsApi = {
   },
 
   async getById(id: string): Promise<Math3SelfTestRecord | null> {
-    await assertAdminWrite();
+    const userId = await assertAdminWrite();
     const supabase = getSupabase();
     const { data, error } = await supabase
       .from("math3_self_tests")
-      .select("*")
+      .select(MATH3_SELF_TEST_FIELDS)
       .eq("id", id)
+      .eq("user_id", userId)
       .maybeSingle();
 
     if (error || !data) return null;
@@ -86,7 +90,7 @@ export const math3SelfTestsApi = {
     const { data, error } = await supabase
       .from("math3_self_tests")
       .insert([payload])
-      .select("*")
+      .select(MATH3_SELF_TEST_FIELDS)
       .single();
 
     if (error) throw error;
@@ -94,7 +98,7 @@ export const math3SelfTestsApi = {
   },
 
   async update(id: string, updates: Partial<Math3SelfTestRecord>): Promise<Math3SelfTestRecord> {
-    await assertAdminWrite();
+    const userId = await assertAdminWrite();
     const supabase = getSupabase();
     const payload = {
       ...mapMath3SelfTestCamelToSnake(updates),
@@ -105,7 +109,8 @@ export const math3SelfTestsApi = {
       .from("math3_self_tests")
       .update(payload)
       .eq("id", id)
-      .select("*")
+      .eq("user_id", userId)
+      .select(MATH3_SELF_TEST_FIELDS)
       .single();
 
     if (error) throw error;
@@ -113,9 +118,13 @@ export const math3SelfTestsApi = {
   },
 
   async delete(id: string): Promise<void> {
-    await assertAdminWrite();
+    const userId = await assertAdminWrite();
     const supabase = getSupabase();
-    const { error } = await supabase.from("math3_self_tests").delete().eq("id", id);
+    const { error } = await supabase
+      .from("math3_self_tests")
+      .delete()
+      .eq("id", id)
+      .eq("user_id", userId);
     if (error) throw error;
   },
 };

@@ -527,7 +527,7 @@ export function Math3SelfTest() {
             {loadError ? (
               <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-700">
                 {loadError.includes("math3_self_tests")
-                  ? "需要先执行 supabase/math3_self_tests_schema.sql。"
+                  ? "当前 Supabase 数据库缺少 math3_self_tests 表，请先在 Supabase 后台补建数三自测试卷表。"
                   : loadError}
               </div>
             ) : tests.length === 0 ? (
