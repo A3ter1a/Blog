@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Upload, Type, ListTree, Eye, AlignLeft, XCircle } from "lucide-react";
 import type { Profile } from "@/lib/types";
@@ -24,6 +25,9 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
   const { preferences, updatePreference } = useReadingPreferences();
   const { isAdmin } = useAdminAuth();
   const toast = useToast();
+  const [portalRoot] = useState<HTMLElement | null>(() => (
+    typeof document === "undefined" ? null : document.body
+  ));
 
   // Profile state
   const [profile, setProfile] = useState<Profile>(DEFAULT_PROFILE);
@@ -100,7 +104,7 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
     e.target.value = '';
   };
 
-  return (
+  const panel = (
     <AnimatePresence>
       {isOpen && (
         <>
@@ -109,7 +113,7 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm"
+            className="fixed inset-0 z-[100] bg-black/40 backdrop-blur-sm"
             onClick={onClose}
           />
 
@@ -119,7 +123,7 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
             animate={{ x: 0 }}
             exit={{ x: "100%" }}
             transition={{ type: "spring", damping: 25, stiffness: 200 }}
-            className="fixed right-0 top-0 h-full w-full max-w-md z-50 bg-surface-container-lowest shadow-elevated flex flex-col"
+            className="fixed inset-y-0 right-0 z-[110] flex h-dvh w-full max-w-md flex-col bg-surface-container-lowest shadow-elevated"
           >
             {/* Header */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-outline-variant/10 flex-shrink-0">
@@ -324,4 +328,6 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
       )}
     </AnimatePresence>
   );
+
+  return portalRoot ? createPortal(panel, portalRoot) : null;
 }

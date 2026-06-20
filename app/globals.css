@@ -93,13 +93,12 @@
 /* Base Styles */
 html {
   scroll-padding-top: 7rem;
+  background: var(--color-surface);
 }
 
 body {
   font-family: var(--font-body);
-  background:
-    linear-gradient(180deg, color-mix(in srgb, var(--color-surface-bright) 78%, white) 0%, var(--color-surface) 28rem),
-    var(--color-surface);
+  background: var(--color-surface);
   color: var(--color-on-surface);
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
@@ -536,6 +535,29 @@ h1, h2, h3, h4, h5, h6 {
   margin: 1em 0;
   overflow-x: auto;
   overflow-y: hidden;
+}
+
+.markdown-surface.reader-content {
+  line-height: 1.78;
+  letter-spacing: 0;
+}
+
+.markdown-surface.reader-content p {
+  margin-bottom: 1.2em;
+}
+
+.markdown-surface.reader-content .katex-inline {
+  margin-inline: 0.12em;
+}
+
+.markdown-surface.reader-content .katex-display {
+  margin: 1.25em 0;
+  padding-block: 0.15rem;
+}
+
+.markdown-surface.reader-content blockquote {
+  background: color-mix(in srgb, var(--color-surface-container-low) 82%, white);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.56);
 }
 
 .markdown-compact {

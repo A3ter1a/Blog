@@ -270,7 +270,7 @@ export function NoteReaderClient({
   const isProblem = note.type === "problem";
   const isEssay = note.type === "essay";
   const showReaderSidebar = isProblem ? showProblemTools : preferences.tocPosition !== "hidden";
-  const contentColumnClass = showReaderSidebar ? "lg:col-span-9" : "lg:col-span-12";
+  const contentColumnClass = showReaderSidebar ? "min-w-0 lg:col-span-9" : "min-w-0 lg:col-span-12";
 
   return (
     <main className="min-h-screen pb-20 pt-20">
@@ -340,9 +340,10 @@ export function NoteReaderClient({
           <motion.div
             initial={false}
             animate={{ height: isCoverExpanded ? "auto" : 0 }}
+            transition={{ duration: 0.5, ease: "easeInOut" }}
             className="overflow-hidden"
           >
-            <div className="rounded-xl overflow-hidden shadow-elevated">
+            <div className="overflow-hidden rounded-2xl shadow-elevated">
               {/* eslint-disable-next-line @next/next/no-img-element -- Saved cover images can be data URLs or arbitrary user-provided URLs. */}
               <img
                 src={note.coverImage}
@@ -353,7 +354,7 @@ export function NoteReaderClient({
           </motion.div>
           <button
             onClick={() => setIsCoverExpanded(!isCoverExpanded)}
-            className="flex items-center gap-1 text-xs text-on-surface-variant hover:text-primary transition-colors mt-2"
+            className="mt-2 flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-on-surface-variant transition-all duration-300 ease-out hover:bg-primary/10 hover:text-primary"
           >
             {isCoverExpanded ? (
               <>
@@ -379,11 +380,11 @@ export function NoteReaderClient({
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5 }}
-            className="surface-panel p-5 sm:p-6"
+            className={`surface-panel p-6 sm:p-8 ${isProblem ? "" : "mx-auto max-w-4xl"}`}
           >
             <div className="mb-4 flex flex-wrap items-center gap-2">
               <span
-                className={`rounded-md border px-2.5 py-1 text-xs font-medium ${
+                className={`rounded-lg border px-2.5 py-1 text-xs font-medium ${
                   isProblem
                     ? "border-primary/20 bg-primary text-on-primary"
                     : isEssay
@@ -516,7 +517,7 @@ export function NoteReaderClient({
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.2, duration: 0.5 }}
-            className={`py-8 ${isProblem ? "" : "max-w-[78ch]"}`}
+            className={`py-8 ${isProblem ? "" : "mx-auto max-w-4xl"}`}
           >
             {isProblem && allProblems.length > 0 ? (
               <>
@@ -578,8 +579,8 @@ export function NoteReaderClient({
             ) : (
               <>
                 <ProblemReferenceContent
-                  content={note.content} 
-                  className="text-on-surface-variant" 
+                  content={note.content}
+                  className="reader-content text-on-surface"
                   style={{ fontSize: `${preferences.fontSize}px` }}
                 />
               </>
@@ -751,8 +752,8 @@ export function NoteReaderClient({
                   </div>
                 ) : (
                   <ProblemReferenceContent
-                    content={note.content} 
-                    className="text-on-surface leading-relaxed text-lg" 
+                    content={note.content}
+                    className="reader-content text-on-surface text-lg"
                   />
                 )}
               </motion.div>
