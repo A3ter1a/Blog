@@ -58,6 +58,7 @@ QWEN_API_KEY=你的 Qwen key
 - 生产策略应覆盖 `notes`、`chapters`、`problem_practice_statuses`、`math3_self_tests`、`admin_users` 和 `storage.objects`。
 - 它的目标是让访客只能读公开内容，不能写入、修改、删除数据。
 - 如果未来新增 Storage bucket，需要额外补策略。
+- `storage.objects` 是 Supabase 内置表，迁移只创建 policy，不直接 `ALTER TABLE storage.objects`。
 
 当前仓库的标准 SQL 入口是：
 

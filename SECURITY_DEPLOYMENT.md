@@ -44,6 +44,8 @@ on conflict (email) do nothing;
 - Public visitors can read note images from the `note-images` bucket.
 - Public visitors cannot create, edit, delete, import, or call AI APIs.
 - Public visitors cannot upload, overwrite, or delete note images.
+- Storage policies do not directly `ALTER TABLE storage.objects`, because hosted
+  Supabase projects own that internal table.
 - `/debug` returns 404 outside development.
 - AI API keys stay on the server in production.
 - Client-provided AI keys are ignored in production.

@@ -30,7 +30,6 @@ alter table public.site_profile enable row level security;
 alter table public.admin_users enable row level security;
 alter table public.problem_practice_statuses enable row level security;
 alter table public.math3_self_tests enable row level security;
-alter table storage.objects enable row level security;
 
 drop policy if exists "公开笔记可读" on public.notes;
 drop policy if exists "允许所有操作" on public.notes;
@@ -226,16 +225,23 @@ for delete
 to authenticated
 using (user_id = (select auth.uid()));
 
+-- Supabase owns storage.objects in hosted projects. Do not ALTER TABLE it here.
+-- The note-images bucket is public, so public image URLs remain readable without
+-- adding an anonymous SELECT policy that could also expose object listing.
 drop policy if exists note_images_public_read on storage.objects;
+drop policy if exists note_images_admin_select on storage.objects;
 drop policy if exists note_images_admin_insert on storage.objects;
 drop policy if exists note_images_admin_update on storage.objects;
 drop policy if exists note_images_admin_delete on storage.objects;
 
-create policy note_images_public_read
+create policy note_images_admin_select
 on storage.objects
 for select
-to anon, authenticated
-using (bucket_id = 'note-images');
+to authenticated
+using (
+  bucket_id = 'note-images'
+  and (select private.current_user_is_admin())
+);
 
 create policy note_images_admin_insert
 on storage.objects

@@ -17,7 +17,7 @@ Do not run `supabase-init.sql` for production setup. It is kept only as a legacy
 - `admin_users`: direct table access is limited to existing admins. Initial admin insertion must be done from the Supabase dashboard SQL Editor.
 - `problem_practice_statuses`: authenticated users can only access their own practice rows.
 - `math3_self_tests`: authenticated users can only access their own self-test rows.
-- `note-images` Storage bucket: public reads are allowed; uploads, overwrites, and deletes require admin access.
+- `note-images` Storage bucket: public image URLs remain readable because the bucket is public; object metadata reads for upsert plus uploads, overwrites, and deletes require admin access.
 
 ## Add the first admin
 

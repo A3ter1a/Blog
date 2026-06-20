@@ -82,7 +82,7 @@ const requiredPolicyMarkers = [
   "math3_self_tests_owner_insert",
   "math3_self_tests_owner_update",
   "math3_self_tests_owner_delete",
-  "note_images_public_read",
+  "note_images_admin_select",
   "note_images_admin_insert",
   "note_images_admin_update",
   "note_images_admin_delete",
@@ -109,9 +109,9 @@ check(
 );
 
 check(
-  "Storage objects 已启用 RLS",
-  /alter\s+table\s+storage\.objects\s+enable\s+row\s+level\s+security/i.test(rlsSql),
-  "Storage 写入和删除也需要通过 RLS 限制管理员权限。",
+  "迁移文件不直接 ALTER storage.objects",
+  !/alter\s+table\s+storage\.objects\b/i.test(rlsSql),
+  "Supabase 托管项目中的 storage.objects 通常由 Supabase 内部角色拥有，直接 ALTER 会在 SQL Editor 报 must be owner。",
 );
 
 const dangerousPatterns = [
