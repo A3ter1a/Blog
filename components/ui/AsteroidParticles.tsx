@@ -1,182 +1,169 @@
 "use client";
 
-import { useEffect, useRef, useCallback } from "react";
+import { useEffect, useRef } from "react";
 
-interface Particle {
+type Spark = {
   x: number;
   y: number;
-  z: number;
-  originalX: number;
-  originalY: number;
-  originalZ: number;
   size: number;
-  brightness: number;
-  projX: number;
-  projY: number;
-  projZ: number;
-  scale: number;
+  alpha: number;
+  speed: number;
+  phase: number;
+  lane: number;
+};
+
+const SPARK_COUNT = 46;
+
+const STREAKS = [
+  { x: -0.42, y: 0.2, length: 0.34, alpha: 0.14 },
+  { x: -0.3, y: 0.31, length: 0.45, alpha: 0.1 },
+  { x: -0.18, y: 0.42, length: 0.4, alpha: 0.09 },
+  { x: 0.08, y: 0.14, length: 0.28, alpha: 0.08 },
+];
+
+function seededRandom(seed: number) {
+  let value = seed;
+
+  return () => {
+    value += 0x6d2b79f5;
+    let next = value;
+    next = Math.imul(next ^ (next >>> 15), next | 1);
+    next ^= next + Math.imul(next ^ (next >>> 7), next | 61);
+    return ((next ^ (next >>> 14)) >>> 0) / 4294967296;
+  };
 }
 
-export function AsteroidParticles() {
+function createSparks() {
+  const random = seededRandom(0xA57E801D);
+  const sparks: Spark[] = [];
+
+  for (let index = 0; index < SPARK_COUNT; index += 1) {
+    sparks.push({
+      x: -0.58 + random() * 1.16,
+      y: -0.42 + random() * 0.88,
+      size: 0.65 + random() * 1.25,
+      alpha: 0.08 + random() * 0.17,
+      speed: 0.025 + random() * 0.055,
+      phase: random() * Math.PI * 2,
+      lane: random(),
+    });
+  }
+
+  return sparks;
+}
+
+export function AsteroidParticles({ className = "" }: { className?: string }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const particlesRef = useRef<Particle[]>([]);
-  const animationRef = useRef<number>(0);
   const containerRef = useRef<HTMLDivElement>(null);
-  
-  const rotRef = useRef({ x: 0, y: 0, z: 0 });
-  const timeRef = useRef(0);
-  const particleCount = 300;
-  const rotationSpeed = 0.8;
-
-  const fibonacciSphere = useCallback((samples: number) => {
-    const points = [];
-    const goldenAngle = Math.PI * (3 - Math.sqrt(5));
-    
-    for (let i = 0; i < samples; i++) {
-      const y = 1 - (i / (samples - 1)) * 2;
-      const radiusAtY = Math.sqrt(1 - y * y);
-      const theta = goldenAngle * i;
-      
-      points.push({
-        x: Math.cos(theta) * radiusAtY,
-        y: y,
-        z: Math.sin(theta) * radiusAtY
-      });
-    }
-    
-    return points;
-  }, []);
-
-  const initParticles = useCallback((sphereRadius: number) => {
-    const particles: Particle[] = [];
-    const spherePoints = fibonacciSphere(particleCount);
-    
-    spherePoints.forEach((point) => {
-      particles.push({
-        x: point.x * sphereRadius,
-        y: point.y * sphereRadius,
-        z: point.z * sphereRadius,
-        originalX: point.x * sphereRadius,
-        originalY: point.y * sphereRadius,
-        originalZ: point.z * sphereRadius,
-        size: Math.random() * 1.2 + 0.8,
-        brightness: Math.random() * 0.3 + 0.7,
-        projX: 0,
-        projY: 0,
-        projZ: 0,
-        scale: 0
-      });
-    });
-    
-    particlesRef.current = particles;
-  }, [fibonacciSphere]);
-
-  const rotateX = (p: { x: number; y: number; z: number }, angle: number) => {
-    const c = Math.cos(angle), s = Math.sin(angle);
-    return { x: p.x, y: p.y * c - p.z * s, z: p.y * s + p.z * c };
-  };
-
-  const rotateY = (p: { x: number; y: number; z: number }, angle: number) => {
-    const c = Math.cos(angle), s = Math.sin(angle);
-    return { x: p.x * c + p.z * s, y: p.y, z: -p.x * s + p.z * c };
-  };
-
-  const rotateZ = (p: { x: number; y: number; z: number }, angle: number) => {
-    const c = Math.cos(angle), s = Math.sin(angle);
-    return { x: p.x * c - p.y * s, y: p.x * s + p.y * c, z: p.z };
-  };
-
-  const animate = useCallback(function animateFrame() {
-    const canvas = canvasRef.current;
-    const container = containerRef.current;
-    if (!canvas || !container) return;
-
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-
-    const rect = container.getBoundingClientRect();
-    const width = rect.width;
-    const height = rect.height;
-    const centerX = width / 2;
-    const centerY = height / 2;
-    const sphereRadius = width * 0.32;
-
-    // Update rotation
-    const dt = 0.016;
-    timeRef.current += dt;
-    rotRef.current.x += dt * 0.25 * rotationSpeed;
-    rotRef.current.y += dt * 0.4 * rotationSpeed;
-    rotRef.current.z += dt * 0.1 * rotationSpeed;
-
-    // Update particles
-    particlesRef.current.forEach(p => {
-      let rotated = { x: p.originalX, y: p.originalY, z: p.originalZ };
-      rotated = rotateX(rotated, rotRef.current.x);
-      rotated = rotateY(rotated, rotRef.current.y);
-      rotated = rotateZ(rotated, rotRef.current.z);
-
-      const fov = 500;
-      const distance = fov + rotated.z;
-      const scale = fov / distance;
-
-      p.projX = centerX + rotated.x * scale;
-      p.projY = centerY + rotated.y * scale;
-      p.projZ = rotated.z;
-      p.scale = scale;
-    });
-
-    // Draw
-    ctx.clearRect(0, 0, width, height);
-    
-    particlesRef.current.sort((a, b) => b.projZ - a.projZ);
-
-    particlesRef.current.forEach(p => {
-      const depthNorm = (p.projZ + sphereRadius) / (2 * sphereRadius);
-      const opacity = p.brightness * (0.25 + depthNorm * 0.75);
-      const size = p.size * (0.5 + depthNorm * 0.5) * p.scale;
-
-      ctx.fillStyle = `rgba(0, 0, 0, ${opacity})`;
-      ctx.beginPath();
-      ctx.arc(p.projX, p.projY, size, 0, Math.PI * 2);
-      ctx.fill();
-    });
-
-    animationRef.current = requestAnimationFrame(animateFrame);
-  }, [rotationSpeed]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
     const container = containerRef.current;
-    if (!canvas || !container) return;
+    const context = canvas?.getContext("2d");
+
+    if (!canvas || !container || !context) return;
+
+    const sparks = createSparks();
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    let animationFrame = 0;
+    let timeout = 0;
+    let width = 0;
+    let height = 0;
 
     const resize = () => {
       const rect = container.getBoundingClientRect();
-      const dpr = window.devicePixelRatio || 1;
-      canvas.width = rect.width * dpr;
-      canvas.height = rect.height * dpr;
-      canvas.style.width = rect.width + 'px';
-      canvas.style.height = rect.height + 'px';
-      
-      const sphereRadius = rect.width * 0.32;
-      initParticles(sphereRadius);
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+
+      width = Math.max(1, rect.width);
+      height = Math.max(1, rect.height);
+      canvas.width = Math.round(width * dpr);
+      canvas.height = Math.round(height * dpr);
+      canvas.style.width = `${width}px`;
+      canvas.style.height = `${height}px`;
+      context.setTransform(dpr, 0, 0, dpr, 0, 0);
+    };
+
+    const draw = (timestamp: number) => {
+      context.clearRect(0, 0, width, height);
+
+      const time = timestamp * 0.001;
+      const scale = Math.min(width, height);
+      const centerX = width * 0.5;
+      const centerY = height * 0.5;
+      const angle = -0.78;
+      const cos = Math.cos(angle);
+      const sin = Math.sin(angle);
+
+      context.save();
+      context.globalCompositeOperation = "source-over";
+
+      for (const streak of STREAKS) {
+        const startX = centerX + streak.x * scale;
+        const startY = centerY + streak.y * scale;
+        const endX = startX + streak.length * scale * cos;
+        const endY = startY + streak.length * scale * sin;
+        const gradient = context.createLinearGradient(startX, startY, endX, endY);
+
+        gradient.addColorStop(0, "rgba(20, 49, 75, 0)");
+        gradient.addColorStop(0.38, `rgba(20, 49, 75, ${streak.alpha})`);
+        gradient.addColorStop(1, "rgba(20, 49, 75, 0)");
+
+        context.beginPath();
+        context.moveTo(startX, startY);
+        context.lineTo(endX, endY);
+        context.lineCap = "round";
+        context.lineWidth = Math.max(1, scale * 0.003);
+        context.strokeStyle = gradient;
+        context.stroke();
+      }
+
+      for (const spark of sparks) {
+        const travel = reducedMotion ? spark.lane : (spark.lane + time * spark.speed) % 1;
+        const shimmer = reducedMotion ? 0.72 : 0.62 + Math.sin(time * 1.1 + spark.phase) * 0.24;
+        const x = centerX + (spark.x + (travel - 0.5) * 0.1) * scale;
+        const y = centerY + (spark.y - (travel - 0.5) * 0.08) * scale;
+        const radius = spark.size * (0.92 + travel * 0.18);
+        const alpha = spark.alpha * shimmer * (0.72 + travel * 0.28);
+
+        context.beginPath();
+        context.arc(x, y, radius, 0, Math.PI * 2);
+        context.fillStyle = `rgba(20, 49, 75, ${alpha})`;
+        context.fill();
+      }
+
+      context.restore();
+
+      if (!reducedMotion) {
+        animationFrame = window.requestAnimationFrame(draw);
+      }
     };
 
     resize();
-    window.addEventListener("resize", resize);
-    animate();
+
+    const observer = new ResizeObserver(() => {
+      resize();
+      draw(performance.now());
+    });
+    observer.observe(container);
+
+    timeout = window.setTimeout(() => {
+      draw(performance.now());
+    }, 80);
 
     return () => {
-      window.removeEventListener("resize", resize);
-      cancelAnimationFrame(animationRef.current);
+      window.clearTimeout(timeout);
+      window.cancelAnimationFrame(animationFrame);
+      observer.disconnect();
     };
-  }, [animate, initParticles]);
+  }, []);
 
   return (
-    <div ref={containerRef} className="absolute inset-0 pointer-events-none">
-      <canvas
-        ref={canvasRef}
-        className="w-full h-full"
-      />
+    <div
+      ref={containerRef}
+      aria-hidden="true"
+      className={`pointer-events-none ${className}`}
+    >
+      <canvas ref={canvasRef} className="h-full w-full" />
     </div>
   );
 }
