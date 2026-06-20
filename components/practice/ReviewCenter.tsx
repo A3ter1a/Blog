@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { AnimatePresence, motion } from "framer-motion";
 import {
   AlertCircle,
   BookOpen,
@@ -22,6 +21,7 @@ import {
   X,
 } from "lucide-react";
 import { MarkdownContent } from "@/components/ui/MarkdownContent";
+import { AnswerReveal } from "@/components/problems/AnswerReveal";
 import { PageHeader, PageShell } from "@/components/ui/PageScaffold";
 import { useToast } from "@/components/ui/Toast";
 import {
@@ -652,25 +652,15 @@ function ReviewProblemCard({
           </div>
         )}
 
-        <AnimatePresence initial={false}>
-          {showAnswer && (
-            <motion.div
-              initial={{ height: 0, opacity: 0 }}
-              animate={{ height: "auto", opacity: 1 }}
-              exit={{ height: 0, opacity: 0 }}
-              transition={{ duration: 0.5, ease: "easeInOut" }}
-              className="overflow-hidden"
-            >
-              <div className="rounded-lg border border-green-200 bg-green-50 p-4 sm:p-5">
-                <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold text-green-700">
-                  <Check className="h-4 w-4" />
-                  答案
-                </h3>
-                <MarkdownContent content={problem.answer || "暂无答案"} className="text-green-950" />
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
+        <AnswerReveal open={showAnswer}>
+          <div className="rounded-lg border border-green-200 bg-green-50 p-4 sm:p-5">
+            <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold text-green-700">
+              <Check className="h-4 w-4" />
+              答案
+            </h3>
+            <MarkdownContent content={problem.answer || "暂无答案"} className="text-green-950" />
+          </div>
+        </AnswerReveal>
       </div>
 
       <div className="mt-5 rounded-lg border border-outline-variant/15 bg-surface-container-low p-3">

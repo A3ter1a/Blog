@@ -1,12 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import { Check, Eye, EyeOff, Loader2, Pencil, Plus, Trash2, X } from "lucide-react";
 import type { Difficulty, Problem, ProblemOption, ProblemType } from "@/lib/types";
 import { difficultyColorMap, difficultyMap, problemTypeMap } from "@/lib/types";
 import { MarkdownContent } from "@/components/ui/MarkdownContent";
 import { ensureChoiceOptions, normalizeProblemOptions } from "@/lib/problem-utils";
+import { AnswerReveal } from "@/components/problems/AnswerReveal";
 
 interface ProblemCardProps {
   problem: Problem;
@@ -343,26 +344,16 @@ export function ProblemCard({ problem, index, onUpdate, anchorPrefix = "problem"
             </button>
           </div>
 
-          <AnimatePresence>
-            {showAnswer && (
-              <motion.div
-                initial={{ height: 0, opacity: 0 }}
-                animate={{ height: "auto", opacity: 1 }}
-                exit={{ height: 0, opacity: 0 }}
-                transition={{ duration: 0.5, ease: "easeInOut" }}
-                className="overflow-hidden"
-              >
-                <div className="px-4 pb-4">
-                  <div className="rounded-lg border border-green-200 bg-green-50 p-4">
-                    <span className="text-sm font-bold text-green-700">答案：</span>
-                    <div className="mt-2 text-green-700">
-                      <MarkdownContent content={problem.answer || "暂无答案"} compact />
-                    </div>
-                  </div>
+          <AnswerReveal open={showAnswer}>
+            <div className="px-4 pb-4">
+              <div className="rounded-lg border border-green-200 bg-green-50 p-4">
+                <span className="text-sm font-bold text-green-700">答案：</span>
+                <div className="mt-2 text-green-700">
+                  <MarkdownContent content={problem.answer || "暂无答案"} compact />
                 </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
+              </div>
+            </div>
+          </AnswerReveal>
         </>
       )}
     </motion.div>
