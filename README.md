@@ -122,12 +122,12 @@ npm run dev
 ## 常用验证
 
 ```bash
-npm run build
-npm run lint -- --quiet
-npm run verify:rls-assets
+npm run verify:predeploy
 npm run verify:production-security
 ```
 
+- `verify:predeploy` 会依次执行 lint、RLS 本地资产检查和生产构建，适合作为上线前本地总检查。
+- 如需单项排查，可分别运行 `npm run lint -- --quiet`、`npm run verify:rls-assets` 或 `npm run build`。
 - `verify:rls-assets` 只检查本地迁移和验证脚本是否完整，不连接生产数据库。
 - `verify:production-security` 用于检查公开部署前后的关键安全配置。
 - 做数据库变更后，还需要在 Supabase SQL Editor 运行 `supabase/verification.sql` 做线上核验。

@@ -12,10 +12,6 @@ const staticRoutes: Array<{
   { path: "/", changeFrequency: "weekly", priority: 1 },
   { path: "/notes", changeFrequency: "daily", priority: 0.9 },
   { path: "/tools", changeFrequency: "weekly", priority: 0.8 },
-  { path: "/tools/note-qa", changeFrequency: "monthly", priority: 0.7 },
-  { path: "/tools/review", changeFrequency: "monthly", priority: 0.7 },
-  { path: "/tools/math3-self-test", changeFrequency: "monthly", priority: 0.7 },
-  { path: "/tools/problem-booklet", changeFrequency: "monthly", priority: 0.7 },
   { path: "/tools/math3-catalog", changeFrequency: "monthly", priority: 0.7 },
   { path: "/about", changeFrequency: "monthly", priority: 0.6 },
 ];

@@ -5,6 +5,8 @@ import { notesApi } from "@/lib/supabase";
 import type { Chapter, Note } from "@/lib/types";
 import { NoteReaderClient } from "@/components/notes/NoteReaderClient";
 import {
+  SITE_NAME,
+  createNoIndexMetadata,
   getNoteDescription,
   getShareableImageUrl,
 } from "@/lib/site-metadata";
@@ -82,17 +84,11 @@ export async function generateMetadata(
   const note = await getPublishedNote(id);
 
   if (!note) {
-    return {
+    return createNoIndexMetadata({
       title: "笔记不存在",
       description: "这篇内容可能尚未发布、已经移除，或当前没有公开访问权限。",
-      alternates: {
-        canonical: `/notes/${id}`,
-      },
-      robots: {
-        index: false,
-        follow: false,
-      },
-    };
+      path: `/notes/${id}`,
+    });
   }
 
   const description = getNoteDescription(note);
@@ -107,6 +103,7 @@ export async function generateMetadata(
     },
     openGraph: {
       type: "article",
+      siteName: SITE_NAME,
       title: note.title,
       description,
       url: `/notes/${note.id}`,

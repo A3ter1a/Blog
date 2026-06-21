@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import type { Note } from "@/lib/types";
 
 export const SITE_NAME = "Asteroid";
@@ -5,6 +6,30 @@ export const SITE_TAGLINE = "知识的沉淀与共鸣";
 export const SITE_DESCRIPTION = "个人考研笔记与学习工具库，沉淀数学三、英语一、政治与经济学的笔记、题集和复盘路径。";
 export const DEFAULT_SITE_URL = "https://www.a3ter1a.cn";
 export const DEFAULT_OG_IMAGE = "/logo.png";
+
+const NO_INDEX_ROBOTS = {
+  index: false,
+  follow: false,
+  googleBot: {
+    index: false,
+    follow: false,
+    noimageindex: true,
+  },
+} satisfies Metadata["robots"];
+
+type PageMetadataOptions = {
+  title: string;
+  description: string;
+  path: string;
+  image?: string;
+  keywords?: string[];
+};
+
+type NoIndexMetadataOptions = {
+  title: string;
+  description: string;
+  path?: string;
+};
 
 export function getSiteUrl(): string {
   const candidate =
@@ -53,4 +78,62 @@ export function getShareableImageUrl(imageUrl: string | undefined): string {
     return imageUrl;
   }
   return DEFAULT_OG_IMAGE;
+}
+
+export function createPageMetadata({
+  title,
+  description,
+  path,
+  image,
+  keywords,
+}: PageMetadataOptions): Metadata {
+  const imageUrl = getShareableImageUrl(image);
+
+  return {
+    title,
+    description,
+    keywords,
+    alternates: {
+      canonical: path,
+    },
+    openGraph: {
+      type: "website",
+      url: path,
+      siteName: SITE_NAME,
+      title,
+      description,
+      images: [
+        {
+          url: imageUrl,
+          alt: `${SITE_NAME} logo`,
+        },
+      ],
+    },
+    twitter: {
+      card: "summary_large_image",
+      title,
+      description,
+      images: [imageUrl],
+    },
+  };
+}
+
+export function createNoIndexMetadata({
+  title,
+  description,
+  path,
+}: NoIndexMetadataOptions): Metadata {
+  const metadata: Metadata = {
+    title,
+    description,
+    robots: NO_INDEX_ROBOTS,
+  };
+
+  if (path) {
+    metadata.alternates = {
+      canonical: path,
+    };
+  }
+
+  return metadata;
 }

@@ -8,6 +8,14 @@ import {
   RotateCcw,
 } from "lucide-react";
 import { PageHeader, PageShell } from "@/components/ui/PageScaffold";
+import { createPageMetadata } from "@/lib/site-metadata";
+
+export const metadata = createPageMetadata({
+  title: "工具",
+  description: "进入 Asteroid 的学习工具台，管理笔记问答、错题复盘、数学三自测、PDF 做题本和知识目录。",
+  path: "/tools",
+  keywords: ["学习工具", "错题复盘", "数学三自测", "PDF 做题本"],
+});
 
 const primaryTools = [
   {

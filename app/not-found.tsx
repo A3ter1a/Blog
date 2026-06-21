@@ -1,11 +1,11 @@
-import type { Metadata } from "next";
 import { Compass } from "lucide-react";
 import { RouteFallback } from "@/components/ui/RouteFallback";
+import { createNoIndexMetadata } from "@/lib/site-metadata";
 
-export const metadata: Metadata = {
-  title: "页面不存在 - Asteroid",
+export const metadata = createNoIndexMetadata({
+  title: "页面不存在",
   description: "这个页面不存在，可能已经移动、尚未发布，或链接输入有误。",
-};
+});
 
 export default function NotFound() {
   return (

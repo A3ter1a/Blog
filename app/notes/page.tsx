@@ -1,7 +1,15 @@
 import { NotesClient } from "@/components/notes/NotesClient";
 import { NOTES_PAGE_SIZE } from "@/lib/notes-query";
+import { createPageMetadata } from "@/lib/site-metadata";
 import { notesApi } from "@/lib/supabase";
 import type { Note } from "@/lib/types";
+
+export const metadata = createPageMetadata({
+  title: "文章与题集",
+  description: "检索和阅读 Asteroid 中沉淀的考研笔记、随笔、数学三题集和复盘材料。",
+  path: "/notes",
+  keywords: ["考研笔记", "数学三题集", "学习复盘", "LaTeX 笔记"],
+});
 
 export const revalidate = 60;
 

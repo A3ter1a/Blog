@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "verify:predeploy": "npm run lint -- --quiet && npm run verify:rls-assets && npm run build",
     "verify:rls-assets": "node scripts/verify-rls-assets.mjs",
     "verify:production-security": "node scripts/verify-production-security.mjs"
   },
