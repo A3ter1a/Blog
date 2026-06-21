@@ -100,19 +100,22 @@ admin_email_summary as (
     case when count(*) > 0 then 'pass' else 'warn' end as status,
     count(*)::text || ' admin_users row(s)' as details
   from public.admin_users
+),
+all_checks as (
+  select check_name, status, details from table_checks
+  union all
+  select check_name, status, details from rls_checks
+  union all
+  select check_name, status, details from policy_checks
+  union all
+  select check_name, status, details from bucket_check
+  union all
+  select check_name, status, details from admin_email_rows
+  union all
+  select check_name, status, details from admin_email_summary
 )
 select check_name, status, details
-from table_checks
-union all
-select check_name, status, details from rls_checks
-union all
-select check_name, status, details from policy_checks
-union all
-select check_name, status, details from bucket_check
-union all
-select check_name, status, details from admin_email_rows
-union all
-select check_name, status, details from admin_email_summary
+from all_checks
 order by
   case status
     when 'fail' then 1
