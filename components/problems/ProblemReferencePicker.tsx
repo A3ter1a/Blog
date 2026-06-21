@@ -6,6 +6,7 @@ import { BookOpen, ExternalLink, Loader2, Plus, Target } from "lucide-react";
 import { createProblemReferenceMarker, parseProblemSelection } from "@/lib/problem-references";
 import { notesApi } from "@/lib/supabase";
 import type { Note, Problem } from "@/lib/types";
+import { scheduleDeferredClientWork } from "@/lib/deferred-client-work";
 
 interface ProblemReferencePickerProps {
   isOpen: boolean;
@@ -28,7 +29,7 @@ export function ProblemReferencePicker({ isOpen, onInsert }: ProblemReferencePic
     if (!isOpen || hasLoaded) return;
 
     let cancelled = false;
-    const timer = window.setTimeout(() => {
+    const cancelDeferredLoad = scheduleDeferredClientWork(() => {
       setIsLoading(true);
       setLoadError(null);
 
@@ -48,11 +49,11 @@ export function ProblemReferencePicker({ isOpen, onInsert }: ProblemReferencePic
         .finally(() => {
           if (!cancelled) setIsLoading(false);
         });
-    }, 0);
+    });
 
     return () => {
       cancelled = true;
-      window.clearTimeout(timer);
+      cancelDeferredLoad();
     };
   }, [hasLoaded, isOpen]);
 

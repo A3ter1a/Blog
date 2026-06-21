@@ -10,6 +10,7 @@ import {
   splitProblemReferenceContent,
   type ProblemReference,
 } from "@/lib/problem-references";
+import { scheduleDeferredClientWork } from "@/lib/deferred-client-work";
 import { MarkdownContent } from "@/components/ui/MarkdownContent";
 import { ProblemCard } from "@/components/problems/ProblemCard";
 
@@ -67,7 +68,7 @@ export function ProblemReferenceContent({
     const idsToLoad = noteIds.filter((noteId) => !problemSets[noteId]);
     if (idsToLoad.length === 0) return;
 
-    const timer = window.setTimeout(() => {
+    const cancelDeferredLoad = scheduleDeferredClientWork(() => {
       setProblemSets((current) => {
         const next = { ...current };
         idsToLoad.forEach((noteId) => {
@@ -95,11 +96,11 @@ export function ProblemReferenceContent({
           return next;
         });
       });
-    }, 0);
+    });
 
     return () => {
       cancelled = true;
-      window.clearTimeout(timer);
+      cancelDeferredLoad();
     };
   }, [noteIds, problemSets]);
 

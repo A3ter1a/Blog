@@ -86,10 +86,34 @@ npm run verify:rls-assets
 ```sql
 insert into public.admin_users (email)
 values ('你的管理员邮箱')
-on conflict (email) do nothing;
+on conflict do nothing;
 ```
 
 这个邮箱必须和 Supabase Auth 登录邮箱一致。
+
+执行后可以用下面这段只读 SQL 检查是否写对：
+
+```sql
+select
+  au.email as inserted_admin_email,
+  u.id as matched_auth_user_id,
+  u.email as matched_auth_email,
+  u.created_at as auth_user_created_at
+from public.admin_users au
+left join auth.users u
+  on lower(u.email) = lower(au.email)
+order by au.created_at desc;
+```
+
+如果 `matched_auth_user_id` 是空的，说明 `admin_users` 里的邮箱没有匹配到 Supabase Auth 用户；通常是邮箱拼写不一致，或你实际登录用的是另一个邮箱。
+
+然后执行仓库里的只读核验脚本：
+
+```text
+supabase/verification.sql
+```
+
+这个脚本应至少看到核心表、RLS、policy、`note-images` bucket 为 `pass`。如果 `admin_email_configured` 是 `warn`，说明还没有插入管理员邮箱。
 
 ## 第五步：运行自动验收脚本
 
@@ -108,7 +132,10 @@ PASS 未登录不能读取 AI 配置状态: HTTP 401
 PASS 未登录不能测试 AI 配置: HTTP 401
 PASS 未登录不能调用 DeepSeek 题目分析: HTTP 401
 PASS 未登录不能调用 Qwen OCR: HTTP 401
-PASS 未登录不能调用 AI 复习检查: HTTP 401
+PASS 未登录不能调用笔记问答: HTTP 401
+PASS 未登录不能调用数学三章节归类: HTTP 401
+PASS 未登录不能生成数学三自测试卷: HTTP 401
+PASS 未登录不能调用数学三分步评分: HTTP 401
 ```
 
 如果脚本显示网络失败，不代表网站一定不安全，只代表当前电脑没有成功连到公网地址。可以换网络、检查代理，或稍后重试。

@@ -32,6 +32,16 @@ function formatExpected(expected) {
   return expected.join(" 或 ");
 }
 
+function jsonPostCheck(name, path, risk) {
+  return {
+    name,
+    method: "POST",
+    path,
+    expected: [401],
+    risk,
+  };
+}
+
 async function runStatusChecks(baseUrl) {
   const checks = [
     {
@@ -55,27 +65,41 @@ async function runStatusChecks(baseUrl) {
       expected: [401],
       risk: "如果这里不是 401，AI 配置接口可能没有被管理员保护。",
     },
-    {
-      name: "未登录不能测试 AI 配置",
-      method: "POST",
-      path: "/api/ai/config",
-      expected: [401],
-      risk: "如果这里不是 401，未登录访客可能触发 AI key 测试或外部 API 调用。",
-    },
-    {
-      name: "未登录不能调用 DeepSeek 题目分析",
-      method: "POST",
-      path: "/api/ai/analyze",
-      expected: [401],
-      risk: "如果这里不是 401，未登录访客可能消耗 DeepSeek 配额或探测 AI 接口。",
-    },
-    {
-      name: "未登录不能调用 Qwen OCR",
-      method: "POST",
-      path: "/api/ai/ocr",
-      expected: [401],
-      risk: "如果这里不是 401，未登录访客可能消耗 Qwen OCR 配额或上传图片内容。",
-    },
+    jsonPostCheck(
+      "未登录不能测试 AI 配置",
+      "/api/ai/config",
+      "如果这里不是 401，未登录访客可能触发 AI key 测试或外部 API 调用。",
+    ),
+    jsonPostCheck(
+      "未登录不能调用 DeepSeek 题目分析",
+      "/api/ai/analyze",
+      "如果这里不是 401，未登录访客可能消耗 DeepSeek 配额或探测 AI 接口。",
+    ),
+    jsonPostCheck(
+      "未登录不能调用 Qwen OCR",
+      "/api/ai/ocr",
+      "如果这里不是 401，未登录访客可能消耗 Qwen OCR 配额或上传图片内容。",
+    ),
+    jsonPostCheck(
+      "未登录不能调用笔记问答",
+      "/api/ai/note-qa",
+      "如果这里不是 401，未登录访客可能用公开页面消耗 DeepSeek 配额或批量提取笔记上下文。",
+    ),
+    jsonPostCheck(
+      "未登录不能调用数学三章节归类",
+      "/api/ai/math3-classify",
+      "如果这里不是 401，未登录访客可能批量消耗 DeepSeek 配额或探测题库分类接口。",
+    ),
+    jsonPostCheck(
+      "未登录不能生成数学三自测试卷",
+      "/api/ai/math3-self-test/generate",
+      "如果这里不是 401，未登录访客可能触发高 token 成本的整卷生成。",
+    ),
+    jsonPostCheck(
+      "未登录不能调用数学三分步评分",
+      "/api/ai/math3-self-test/grade-step",
+      "如果这里不是 401，未登录访客可能绕过前端限制反复调用 AI 阅卷接口。",
+    ),
   ];
 
   let failed = 0;

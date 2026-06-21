@@ -6,6 +6,7 @@ import { ChevronDown, Layers } from 'lucide-react';
 import type { Chapter } from '@/lib/types';
 import { chaptersApi } from '@/lib/chapters-api';
 import { getChildChapters, getRootChapters } from '@/lib/chapter-utils';
+import { scheduleDeferredClientWork } from '@/lib/deferred-client-work';
 
 interface ChapterSelectorProps {
   noteId?: string;
@@ -54,10 +55,9 @@ export function ChapterSelector({
 
   useEffect(() => {
     if (isControlled) return;
-    const timer = window.setTimeout(() => {
+    return scheduleDeferredClientWork(() => {
       void loadChapters();
-    }, 0);
-    return () => window.clearTimeout(timer);
+    });
   }, [isControlled, loadChapters]);
 
   const selected = displayedChapters.find(c => c.id === value);

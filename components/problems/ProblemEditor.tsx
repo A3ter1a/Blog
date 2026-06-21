@@ -24,6 +24,7 @@ import {
   normalizeProblemDraft,
 } from "@/lib/problem-utils";
 import { useToast } from "@/components/ui/Toast";
+import { scheduleDeferredClientWork } from "@/lib/deferred-client-work";
 
 interface ProblemEditorProps {
   problems: Problem[];
@@ -75,7 +76,7 @@ export function ProblemEditor({
   // One shared chapter load powers OCR context and all editor chapter selectors.
   useEffect(() => {
     let cancelled = false;
-    const timer = window.setTimeout(() => {
+    const cancelDeferredLoad = scheduleDeferredClientWork(() => {
       setIsLoadingEditorChapters(true);
       void (async () => {
         try {
@@ -87,11 +88,11 @@ export function ProblemEditor({
           if (!cancelled) setIsLoadingEditorChapters(false);
         }
       })();
-    }, 0);
+    });
 
     return () => {
       cancelled = true;
-      window.clearTimeout(timer);
+      cancelDeferredLoad();
     };
   }, [chapterRefreshKey, noteId]);
 

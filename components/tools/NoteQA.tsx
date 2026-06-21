@@ -14,6 +14,7 @@ import { MarkdownContent } from "@/components/ui/MarkdownContent";
 import { PageHeader, PageShell } from "@/components/ui/PageScaffold";
 import { useToast } from "@/components/ui/Toast";
 import { readJsonStorage, writeJsonStorage } from "@/lib/browser-storage";
+import { scheduleDeferredClientWork } from "@/lib/deferred-client-work";
 import { buildAuthHeaders } from "@/lib/fetch-with-auth";
 import type {
   NoteQAMode,
@@ -143,10 +144,9 @@ export function NoteQA() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const timer = window.setTimeout(() => {
+    return scheduleDeferredClientWork(() => {
       setRecentQuestions(readJsonStorage(RECENT_QUESTIONS_KEY, [], normalizeRecentQuestions));
-    }, 0);
-    return () => window.clearTimeout(timer);
+    });
   }, []);
 
   const trimmedQuestion = question.trim();

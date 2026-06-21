@@ -90,6 +90,7 @@ npm run dev
 1. 先在 Supabase SQL Editor 执行 `supabase/migrations/0001_base_schema.sql`
 2. 再执行 `supabase/migrations/0002_rls_policies.sql`
 3. 最后把 Supabase Auth 管理员邮箱插入 `public.admin_users`
+4. 执行只读核验脚本 `supabase/verification.sql`，确认表、RLS、策略、`note-images` bucket 和管理员邮箱匹配都正常
 
 本地只检查迁移资产是否完整、不连接生产数据库：
 

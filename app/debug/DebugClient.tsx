@@ -4,12 +4,13 @@ import { useEffect, useState } from "react";
 import { Database } from "lucide-react";
 import { notesApi } from "@/lib/supabase";
 import { PageHeader, PageShell } from "@/components/ui/PageScaffold";
+import { scheduleDeferredClientWork } from "@/lib/deferred-client-work";
 
 export function DebugClient() {
   const [result, setResult] = useState<string>("");
 
   useEffect(() => {
-    const timer = window.setTimeout(() => {
+    return scheduleDeferredClientWork(() => {
       void (async () => {
         try {
           const notes = await notesApi.getAll();
@@ -18,9 +19,7 @@ export function DebugClient() {
           setResult(`Error: ${error instanceof Error ? error.message : "Unknown error"}`);
         }
       })();
-    }, 0);
-
-    return () => window.clearTimeout(timer);
+    });
   }, []);
 
   return (

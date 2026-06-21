@@ -35,8 +35,18 @@ supabase/migrations/0002_rls_policies.sql
 ```sql
 insert into public.admin_users (email)
 values ('your_admin_email@example.com')
-on conflict (email) do nothing;
+on conflict do nothing;
 ```
+
+5. Run the read-only database verification SQL:
+
+```text
+supabase/verification.sql
+```
+
+The verification SQL checks required tables, RLS state, policy names, the
+`note-images` bucket, and whether each `admin_users.email` matches a Supabase
+Auth user email.
 
 ## Expected behavior after deployment
 
@@ -93,7 +103,10 @@ Expected critical results:
 - `/api/auth/admin` returns `401` when signed out.
 - `/api/ai/config` returns `401` when signed out.
 - AI `POST` endpoints return `401` when signed out:
-  `/api/ai/config`, `/api/ai/analyze`, and `/api/ai/ocr`.
+  `/api/ai/config`, `/api/ai/analyze`, `/api/ai/ocr`,
+  `/api/ai/note-qa`, `/api/ai/math3-classify`,
+  `/api/ai/math3-self-test/generate`, and
+  `/api/ai/math3-self-test/grade-step`.
 
 The script also warns if the homepage HTML still contains an obvious create
 entry. That warning is not a database security proof by itself, but it is a

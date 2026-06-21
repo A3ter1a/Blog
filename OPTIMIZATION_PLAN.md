@@ -46,7 +46,7 @@ b4258ff Add production security verification checklist
 ```sql
 insert into public.admin_users (email)
 values ('your_admin_email@example.com')
-on conflict (email) do nothing;
+on conflict do nothing;
 ```
 
 4. 确认 Vercel 生产部署至少包含提交 `b4258ff`，或已经部署到它之后的 `main` 提交。

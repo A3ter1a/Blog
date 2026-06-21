@@ -6,6 +6,7 @@ Run the files in order in the Supabase SQL Editor:
 
 1. `supabase/migrations/0001_base_schema.sql`
 2. `supabase/migrations/0002_rls_policies.sql`
+3. `supabase/verification.sql` as a read-only check after both migrations have finished
 
 Do not run `supabase-init.sql` for production setup. It is kept only as a legacy pointer so older notes do not lead someone back to the previous all-open development policy.
 
@@ -33,6 +34,32 @@ The app also checks `ADMIN_EMAILS` in the deployment platform. Keep both in sync
 
 - `ADMIN_EMAILS` protects Next.js Route Handlers.
 - `admin_users` protects Supabase tables and Storage through RLS.
+
+To check whether the inserted email matches a real Supabase Auth user, run:
+
+```sql
+select
+  au.email as inserted_admin_email,
+  u.id as matched_auth_user_id,
+  u.email as matched_auth_email,
+  u.created_at as auth_user_created_at
+from public.admin_users au
+left join auth.users u
+  on lower(u.email) = lower(au.email)
+order by au.created_at desc;
+```
+
+If `matched_auth_user_id` is empty, the email in `admin_users` does not match the Supabase Auth login email.
+
+## Post-migration verification
+
+After running both migrations and inserting the admin email, run:
+
+```text
+supabase/verification.sql
+```
+
+This script only reads metadata and admin email matching state. It should report `pass` for required tables, RLS, policies, the `note-images` bucket, and the admin email row. A `warn` on `admin_email_configured` means no admin email has been inserted yet.
 
 ## Local asset check
 

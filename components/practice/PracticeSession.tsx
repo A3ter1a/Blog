@@ -44,6 +44,7 @@ import { problemPracticeApi } from "@/lib/problem-practice-api";
 import { notesApi } from "@/lib/supabase";
 import type { Note, PracticeResult, ProblemPracticeStatus } from "@/lib/types";
 import { difficultyMap, problemTypeMap } from "@/lib/types";
+import { scheduleDeferredClientWork } from "@/lib/deferred-client-work";
 
 const PROGRESS_WINDOW_SIZE = 45;
 
@@ -124,7 +125,7 @@ export function PracticeSession({
       }
     }
 
-    const timer = window.setTimeout(() => {
+    const cancelDeferredLoad = scheduleDeferredClientWork(() => {
       setProblemSets([]);
       setStatusMap({});
       setCurrentIndex(0);
@@ -140,11 +141,11 @@ export function PracticeSession({
 
       setIsLoading(true);
       void loadPracticeSets();
-    }, 0);
+    });
 
     return () => {
       cancelled = true;
-      window.clearTimeout(timer);
+      cancelDeferredLoad();
     };
   }, [normalizedProblemSetIds, problemSetIdsKey, scopeKey, toast]);
 

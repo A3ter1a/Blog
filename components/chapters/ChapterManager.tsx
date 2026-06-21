@@ -7,6 +7,7 @@ import type { Chapter } from '@/lib/types';
 import { chaptersApi } from '@/lib/chapters-api';
 import { getChildChapters, getRootChapters, hasSiblingChapterName, normalizeChapterName } from '@/lib/chapter-utils';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { scheduleDeferredClientWork } from '@/lib/deferred-client-work';
 
 const ROOT_CHAPTER_KEY = '__root__';
 
@@ -50,10 +51,9 @@ export function ChapterManager({ isOpen, onClose, noteId, selectedChapterId, onS
 
   useEffect(() => {
     if (!isOpen) return;
-    const timer = window.setTimeout(() => {
+    return scheduleDeferredClientWork(() => {
       void loadChapters();
-    }, 0);
-    return () => window.clearTimeout(timer);
+    });
   }, [isOpen, loadChapters]);
 
   const topLevel = getRootChapters(chapters);
