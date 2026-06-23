@@ -10,6 +10,7 @@ import {
   ALLOW_CLIENT_AI_KEYS,
   DEEPSEEK_MODEL_OPTIONS,
   DEFAULT_AI_CONFIG,
+  QWEN_OCR_MODEL_OPTIONS,
   normalizeAIConfig,
   sanitizeAIConfig,
 } from '@/lib/ai-config';
@@ -122,6 +123,7 @@ export function AISettings() {
   const qwenConfigured = ALLOW_CLIENT_AI_KEYS
     ? Boolean(config.qwenApiKey)
     : Boolean(serverConfig?.qwenConfigured);
+  const isPresetQwenOcrModel = QWEN_OCR_MODEL_OPTIONS.some((option) => option.value === config.qwenModel);
 
   return (
     <div className="space-y-4">
@@ -252,13 +254,19 @@ export function AISettings() {
               />
             </div>
             <div>
-              <label className="text-xs text-on-surface-variant/60 mb-1 block">模型名称</label>
-              <input
-                type="text"
+              <label className="text-xs text-on-surface-variant/60 mb-1 block">OCR 模型</label>
+              <select
                 value={config.qwenModel}
                 onChange={e => setConfig({ ...config, qwenModel: e.target.value })}
-                className="w-full px-3 py-2 bg-surface-container-highest rounded-lg input-soft text-on-surface text-sm"
-              />
+                className="w-full px-3 py-2 bg-surface-container-highest rounded-lg text-sm text-on-surface outline-none focus:ring-2 focus:ring-primary/20"
+              >
+                {!isPresetQwenOcrModel && config.qwenModel && (
+                  <option value={config.qwenModel}>当前模型：{config.qwenModel}</option>
+                )}
+                {QWEN_OCR_MODEL_OPTIONS.map(m => (
+                  <option key={m.value} value={m.value}>{m.label}</option>
+                ))}
+              </select>
             </div>
             <div>
               <label className="text-xs text-on-surface-variant/60 mb-1 block">API 端点</label>
