@@ -1,7 +1,7 @@
 import type { Chapter } from "@/lib/types";
 
 const LATEX_LINE_BREAK_MARKER = "AsteroidLatexLineBreakToken";
-const MATH_SPAN_SPLIT_PATTERN = /(\$\$[\s\S]*?\$\$|\$[^$]*?\$)/;
+const MATH_SPAN_SPLIT_PATTERN = /(\$\$[\s\S]*?\$\$|(?<!\$)\$(?!\$)(?:(?!\n\s*\n)[\s\S])*?(?<!\$)\$(?!\$))/;
 const LATEX_ENV_NAMES = "align|equation|gather|aligned|split|cases|multline|array|matrix|pmatrix|bmatrix|vmatrix|Vmatrix";
 const LATEX_ENV_START_PATTERN = new RegExp(`\\\\begin\\{(?:${LATEX_ENV_NAMES})\\*?\\}`);
 const BARE_LATEX_ENV_PATTERN = new RegExp(
@@ -10,6 +10,8 @@ const BARE_LATEX_ENV_PATTERN = new RegExp(
 );
 const BARE_LATEX_COMMAND_PATTERN = /(?<!\$)(\\(?!begin\b|end\b)[a-zA-Z]+(?:\{[^}]*\})?)(?!\$)/g;
 const COLLAPSED_INLINE_MATH_PATTERN = /(?<!\$)\$(?!\$)([^$\n]+?)\$\$(?!\$)([^$\n]+?)\$(?!\$)/g;
+const SIMPLE_MISSING_LOWER_BOUND_PATTERN = /\\(int|sum|prod)\s*\{([^{}\n]+)\}\s*(?=\^)/g;
+const SIMPLE_MISSING_LIMIT_BOUND_PATTERN = /\\lim\s*\{([^{}\n]+)\}/g;
 
 function protectLatexLineBreaks(content: string): string {
   return content.replace(/\\{2,3}(?![A-Za-z])/g, LATEX_LINE_BREAK_MARKER);
@@ -63,7 +65,9 @@ function isInsideDollarMath(content: string, offset: number): boolean {
 }
 
 function normalizeMathSpanForMarkdown(segment: string): string {
-  let next = protectLatexLineBreaks(segment);
+  let next = protectLatexLineBreaks(segment)
+    .replace(SIMPLE_MISSING_LOWER_BOUND_PATTERN, "\\$1_{$2}")
+    .replace(SIMPLE_MISSING_LIMIT_BOUND_PATTERN, "\\lim_{$1}");
 
   if (next.startsWith("$$") || LATEX_ENV_START_PATTERN.test(next)) {
     next = next.replace(/\n/g, " ");
@@ -163,28 +167,7 @@ export function preprocessLatex(content: string): string {
 
   for (let i = 0; i < segments.length; i++) {
     if (i % 2 === 1) {
-      // Math span
-      // For display math ($$...$$), collapse newlines to prevent
-      // markdown-it's breaks:true from splitting them into <br> nodes,
-      // which would separate $$ from content across text nodes.
-      segments[i] = protectLatexLineBreaks(segments[i]);
-      if (segments[i].startsWith('$$') || LATEX_ENV_START_PATTERN.test(segments[i])) {
-        segments[i] = segments[i].replace(/\n/g, ' ');
-      }
-
-      // Escape unescaped [ and ] to prevent markdown-it link parsing
-      // e.g. $[a,b]$ → $\[a,b\]$
-      // Already-escaped \( e.g. $\[a,b\]$ stays as-is
-      segments[i] = segments[i]
-        .replace(/(?<!\\)\[/g, '\\[')
-        .replace(/(?<!\\)\]/g, '\\]')
-        // Replace \{ → \lbrace{} and \} → \rbrace{} to prevent
-        // markdown-it from stripping the backslash (CommonMark escape).
-        // The {} ensures KaTeX treats \lbrace/\rbrace as delimiters,
-        // not as commands that absorb following text (e.g. \lbracea → \lbrace{}a).
-        // Also works with \left\{ since \left\lbrace{} is valid KaTeX.
-        .replace(/\\\{/g, '\\lbrace{}')
-        .replace(/\\\}/g, '\\rbrace{}');
+      segments[i] = normalizeMathSpanForMarkdown(segments[i]);
     } else {
       // Non-math content: convert \[ \] and \( \) to $$ $$ and $ $
       // These are guaranteed to be outside math spans

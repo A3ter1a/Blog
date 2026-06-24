@@ -91,7 +91,7 @@ function normalizeLatexInput(content: string): string {
 
 function splitProtectedBlocks(content: string): Segment[] {
   const segments: Segment[] = [];
-  const pattern = /(```[\s\S]*?```|~~~[\s\S]*?~~~|\$\$[\s\S]*?\$\$|`[^`\n]*`|\$[^$\n]*?\$)/g;
+  const pattern = /(```[\s\S]*?```|~~~[\s\S]*?~~~|\$\$[\s\S]*?\$\$|`[^`\n]*`|(?<!\$)\$(?!\$)(?:(?!\n\s*\n)[\s\S])*?(?<!\$)\$(?!\$))/g;
   let lastIndex = 0;
 
   for (const match of content.matchAll(pattern)) {
@@ -108,6 +108,47 @@ function splitProtectedBlocks(content: string): Segment[] {
   }
 
   return segments;
+}
+
+const MATH_SPAN_TOKEN = "AsteroidMathSpanToken";
+
+function isDollarMathSpan(text: string): boolean {
+  return text.startsWith("$") && text.endsWith("$");
+}
+
+function escapeHtmlText(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function protectMathSpansForMarkdown(content: string): { content: string; values: string[] } {
+  const values: string[] = [];
+  const protectedContent = splitProtectedBlocks(content)
+    .map((segment) => {
+      if (!segment.protected || !isDollarMathSpan(segment.text)) {
+        return segment.text;
+      }
+
+      const token = `${MATH_SPAN_TOKEN}${values.length}`;
+      values.push(segment.text);
+      return token;
+    })
+    .join("");
+
+  return { content: protectedContent, values };
+}
+
+function restoreMathSpanTokens(text: string, values: string[], escape = false): string {
+  if (values.length === 0) return text;
+
+  return text.replace(new RegExp(`${MATH_SPAN_TOKEN}(\\d+)`, "g"), (full, indexText: string) => {
+    const value = values[Number(indexText)];
+    if (value === undefined) return full;
+    return escape ? escapeHtmlText(value) : value;
+  });
 }
 
 const SIGNED_MATH_LINE_TOKEN = "AsteroidSignedMathLineToken";
@@ -196,13 +237,15 @@ export function normalizeMarkdownForRender(content: string): string {
 }
 
 export function renderMarkdownToHtml(content: string): string {
-  const html = md.render(normalizeMarkdownForRender(content));
-  return postprocessDashedSepAsHtml(html);
+  const protectedMath = protectMathSpansForMarkdown(normalizeMarkdownForRender(content));
+  const html = md.render(protectedMath.content);
+  return restoreMathSpanTokens(postprocessDashedSepAsHtml(html), protectedMath.values, true);
 }
 
 export function extractTocItems(content: string): TocItem[] {
   const slugger = new GithubSlugger();
-  const tokens = md.parse(normalizeMarkdownForRender(content), {});
+  const protectedMath = protectMathSpansForMarkdown(normalizeMarkdownForRender(content));
+  const tokens = md.parse(protectedMath.content, {});
   const items: TocItem[] = [];
 
   for (let i = 0; i < tokens.length; i++) {
@@ -214,7 +257,7 @@ export function extractTocItems(content: string): TocItem[] {
     const inline = tokens[i + 1];
     if (inline?.type !== "inline") continue;
 
-    const title = inline.content.trim();
+    const title = restoreMathSpanTokens(inline.content, protectedMath.values).trim();
     if (!title) continue;
 
     items.push({

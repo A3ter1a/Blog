@@ -280,6 +280,13 @@ export function ProblemCard({ problem, index, onUpdate, anchorPrefix = "problem"
                     />
                   </div>
 
+                  <div className="rounded-lg border border-outline-variant/10 bg-surface-container-low/60 p-3">
+                    <div className={labelClass}>题干预览</div>
+                    <div className="max-h-64 overflow-y-auto rounded-lg bg-surface-container-lowest p-3 text-sm leading-7 text-on-surface">
+                      <MarkdownContent content={editData.question || "暂无题干"} compact />
+                    </div>
+                  </div>
+
                   {saveError && (
                     <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-600">
                       {saveError}
