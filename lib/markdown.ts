@@ -3,6 +3,7 @@ import katex from "katex";
 import markdownit from "markdown-it";
 import markdownitMark from "markdown-it-mark";
 import {
+  decodeLatexHtmlEntities,
   preprocessDashedSep,
   preprocessLatex,
   postprocessDashedSepAsHtml,
@@ -153,8 +154,9 @@ function restoreMathSpanTokens(text: string, values: string[], escape = false): 
 function renderMathSpanToHtml(value: string): string {
   const displayMode = value.startsWith("$$") && value.endsWith("$$");
   const delimiterLength = displayMode ? 2 : 1;
-  const latex = restoreLatexLineBreaks(value.slice(delimiterLength, -delimiterLength))
+  const latex = restoreLatexLineBreaks(decodeLatexHtmlEntities(value.slice(delimiterLength, -delimiterLength)))
     .replace(/[\n\r]+/g, displayMode ? " " : "\n")
+    .replace(/\\([[\](),.;:!?<>])/g, "$1")
     .trim();
 
   if (!latex) return escapeHtmlText(value);
@@ -227,8 +229,6 @@ function repairUnprotectedMarkdown(text: string): string {
   next = next.replace(/\*\*\s+([^*\n]+?)\s+\*\*/g, "**$1**");
   next = next.replace(/(?<!\*)\*\s+([^*\n]+?)\s+\*(?!\*)/g, "*$1*");
   next = next.replace(/\$\s+([^$\n]+?)\s+\$/g, "$$$1$$");
-  next = next.replace(/\\\[/g, "$$").replace(/\\\]/g, "$$");
-  next = next.replace(/\\\(/g, "$").replace(/\\\)/g, "$");
 
   next = next.replace(/(^|\n)(#{1,6} .+)(?=\n(?!\n))/g, "$1$2\n");
   next = next.replace(/(^|\n)([*+-] .+(?:\n[*+-] .+)*)\n(?!\n|[*+-] )/g, "$1$2\n\n");

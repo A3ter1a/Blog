@@ -4,7 +4,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import katex from "katex";
 import GithubSlugger from "github-slugger";
 import { renderMarkdownToHtml } from "@/lib/markdown";
-import { restoreLatexLineBreaks } from "@/lib/utils";
+import { decodeLatexHtmlEntities, restoreLatexLineBreaks } from "@/lib/utils";
 import "katex/dist/katex.min.css";
 
 interface MarkdownContentProps {
@@ -43,7 +43,9 @@ export function processContent(container: HTMLElement) {
         return;
       }
 
-      const latex = restoreLatexLineBreaks(part).trim();
+      const latex = restoreLatexLineBreaks(decodeLatexHtmlEntities(part))
+        .replace(/\\([[\](),.;:!?<>])/g, "$1")
+        .trim();
       const displayMode = DISPLAY_MATH_ENV_PATTERN.test(latex);
       const span = document.createElement("span");
       span.className = displayMode ? "katex-display" : "katex-inline";
@@ -90,7 +92,10 @@ export function processContent(container: HTMLElement) {
 
           const span = document.createElement("span");
           span.className = "katex-display";
-          const latex = restoreLatexLineBreaks(part).replace(/[\n\r]+/g, " ").trim();
+          const latex = restoreLatexLineBreaks(decodeLatexHtmlEntities(part))
+            .replace(/[\n\r]+/g, " ")
+            .replace(/\\([[\](),.;:!?<>])/g, "$1")
+            .trim();
           try {
             span.innerHTML = katex.renderToString(
               latex,

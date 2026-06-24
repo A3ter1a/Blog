@@ -185,12 +185,40 @@ export function restoreLatexEscapedControlChars(content: string): string {
     .join("");
 }
 
+export function decodeLatexHtmlEntities(content: string): string {
+  let next = content;
+
+  for (let index = 0; index < 2; index += 1) {
+    const before = next;
+    next = next
+      .replace(/&lt;|&#60;|&#x3c;/gi, "<")
+      .replace(/&gt;|&#62;|&#x3e;/gi, ">")
+      .replace(/&le;|&leq;/gi, "\\le ")
+      .replace(/&ge;|&geq;/gi, "\\ge ")
+      .replace(/&nbsp;/gi, " ")
+      .replace(/&amp;/gi, "&");
+
+    if (next === before) break;
+  }
+
+  return next;
+}
+
+function looksLikeLatexDelimiterBody(body: string, displayMode: boolean): boolean {
+  const trimmed = body.trim();
+  if (!trimmed) return false;
+  if (displayMode && /[\r\n]/.test(body)) return true;
+  return /\\[A-Za-z]+|[_^{}=<>]|\\begin\{/.test(trimmed);
+}
+
 function normalizeLatexDelimiterEscapes(content: string): string {
   return content
-    .replace(/\\{1,2}\[/g, "$$")
-    .replace(/\\{1,2}\]/g, "$$")
-    .replace(/\\{1,2}\(/g, "$")
-    .replace(/\\{1,2}\)/g, "$");
+    .replace(/\\{1,2}\[([\s\S]*?)\\{1,2}\]/g, (full: string, body: string) => (
+      looksLikeLatexDelimiterBody(body, true) ? `$$${body.trim()}$$` : full
+    ))
+    .replace(/\\{1,2}\(([\s\S]*?)\\{1,2}\)/g, (full: string, body: string) => (
+      looksLikeLatexDelimiterBody(body, false) ? `$${body.trim()}$` : full
+    ));
 }
 
 function protectLatexLineBreaks(content: string): string {
@@ -245,7 +273,8 @@ function isInsideDollarMath(content: string, offset: number): boolean {
 }
 
 function normalizeMathSpanForMarkdown(segment: string): string {
-  let next = protectLatexLineBreaks(segment)
+  let next = protectLatexLineBreaks(decodeLatexHtmlEntities(segment))
+    .replace(/\\([[\](),.;:!?<>])/g, "$1")
     .replace(OVER_ESCAPED_LATEX_COMMAND_PATTERN, "\\$1")
     .replace(MISSING_LATEX_COMMAND_BACKSLASH_PATTERN, "\\$1")
     .replace(SIMPLE_MISSING_LOWER_BOUND_PATTERN, "\\$1_{$2}")
