@@ -8,5 +8,5 @@ interface ContentPreviewProps {
 }
 
 export function ContentPreview({ content, className = "" }: ContentPreviewProps) {
-  return <ProblemReferenceContent content={content} className={className} />;
+  return <ProblemReferenceContent content={content} className={className} loadMode="adminAware" />;
 }

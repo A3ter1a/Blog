@@ -102,10 +102,7 @@ export function PracticeSession({
 
     async function loadPracticeSets() {
       try {
-        const loadedSets = await Promise.all(
-          normalizedProblemSetIds.map((id) => notesApi.getPracticeSet(id))
-        );
-        const validSets = loadedSets.filter((set): set is Note => Boolean(set));
+        const validSets = await notesApi.getPracticeSets(normalizedProblemSetIds);
         const statuses = await problemPracticeApi.getByNoteIds(validSets.map((set) => set.id)).catch(() => {
           toast.error("刷题状态加载失败，将以未刷状态继续");
           return [];

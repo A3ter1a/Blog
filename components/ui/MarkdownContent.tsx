@@ -24,6 +24,8 @@ export function processContent(container: HTMLElement) {
     heading.id = slugger.slug(text);
   });
 
+  if (!container.textContent?.includes("$")) return;
+
   const processInlineMath = (textNode: Text) => {
     const text = textNode.textContent || "";
     if (!/\$(?!\$)[\s\S]+?\$(?!\$)/.test(text)) return;
@@ -130,7 +132,7 @@ export function MarkdownContent({
     if (containerRef.current) {
       processContent(containerRef.current);
     }
-  });
+  }, [htmlContent]);
 
   useEffect(() => {
     const process = () => {
@@ -148,7 +150,7 @@ export function MarkdownContent({
       window.clearTimeout(lateFrame);
       window.clearTimeout(animationFrame);
     };
-  });
+  }, [htmlContent]);
 
   return (
     <div

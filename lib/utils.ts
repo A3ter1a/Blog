@@ -12,53 +12,186 @@ const BARE_LATEX_COMMAND_PATTERN = /(?<!\$)(\\(?!begin\b|end\b)[a-zA-Z]+(?:\{[^}
 const COLLAPSED_INLINE_MATH_PATTERN = /(?<!\$)\$(?!\$)([^$\n]+?)\$\$(?!\$)([^$\n]+?)\$(?!\$)/g;
 const SIMPLE_MISSING_LOWER_BOUND_PATTERN = /\\(int|sum|prod)\s*\{([^{}\n]+)\}\s*(?=\^)/g;
 const SIMPLE_MISSING_LIMIT_BOUND_PATTERN = /\\lim\s*\{([^{}\n]+)\}/g;
-const LATEX_COMMAND_WORDS = [
+const LATEX_COMMAND_WORD_LIST = [
   "alpha",
   "arccos",
   "arcsin",
   "arctan",
   "approx",
+  "argmax",
+  "argmin",
+  "bar",
   "begin",
   "beta",
+  "binom",
+  "because",
+  "big",
+  "Big",
+  "bigg",
+  "Bigg",
+  "cap",
   "cdot",
+  "cdots",
+  "chi",
   "cos",
+  "cot",
+  "csc",
+  "cup",
   "delta",
+  "Delta",
+  "det",
+  "dim",
+  "displaystyle",
+  "div",
+  "dfrac",
+  "dot",
+  "ddot",
+  "dots",
   "end",
+  "equiv",
   "epsilon",
+  "eta",
+  "exists",
+  "forall",
   "frac",
   "gamma",
+  "Gamma",
+  "ge",
   "geq",
+  "hat",
+  "in",
   "infty",
   "int",
+  "ker",
   "lambda",
+  "Lambda",
+  "langle",
+  "lbrace",
+  "lceil",
+  "ldots",
+  "le",
   "leq",
+  "left",
+  "lfloor",
   "lim",
+  "limits",
   "ln",
   "log",
+  "mathbb",
+  "mathbf",
+  "mathcal",
+  "max",
+  "min",
   "mathrm",
+  "mp",
   "mu",
   "nabla",
+  "natural",
+  "neg",
   "ne",
   "neq",
+  "ni",
+  "nleq",
+  "ngeq",
+  "nmid",
+  "not",
+  "notin",
+  "nparallel",
+  "nsubseteq",
+  "nu",
   "omega",
+  "Omega",
   "operatorname",
+  "over",
+  "overline",
+  "parallel",
+  "partial",
   "phi",
+  "Phi",
   "pi",
+  "Pi",
+  "pm",
+  "prime",
   "prod",
+  "psi",
+  "Psi",
+  "quad",
+  "qquad",
+  "rangle",
+  "rbrace",
+  "rceil",
+  "rfloor",
   "right",
+  "rho",
+  "sec",
+  "setminus",
   "sigma",
+  "Sigma",
   "sin",
+  "span",
   "sqrt",
+  "subset",
+  "subseteq",
+  "supset",
+  "supseteq",
   "sum",
   "tan",
+  "tau",
+  "text",
+  "textstyle",
   "theta",
+  "Theta",
+  "therefore",
+  "tilde",
   "times",
   "to",
+  "tfrac",
+  "underline",
+  "upsilon",
+  "Upsilon",
   "varepsilon",
   "varphi",
+  "varnothing",
+  "varrho",
+  "vartheta",
+  "vec",
+  "vee",
+  "wedge",
+  "widehat",
+  "widetilde",
   "xi",
-].sort((a, b) => b.length - a.length).join("|");
+  "Xi",
+  "zeta",
+].sort((a, b) => b.length - a.length);
+const LATEX_COMMAND_WORDS = LATEX_COMMAND_WORD_LIST.join("|");
 const MISSING_LATEX_COMMAND_BACKSLASH_PATTERN = new RegExp(`(?<![\\\\A-Za-z])(${LATEX_COMMAND_WORDS})(?![A-Za-z])`, "g");
+const OVER_ESCAPED_LATEX_COMMAND_PATTERN = new RegExp(`\\\\{2,}(${LATEX_COMMAND_WORDS})(?![A-Za-z])`, "g");
+const LATEX_N_CONTROL_ESCAPE_SUFFIX_PATTERN = /\n(?=(?:abla|atural|eg|eq|e|i|leq|geq|mid|ot(?:in)?|parallel|subseteq|supseteq|u)(?![A-Za-z]))/g;
+
+export function restoreLatexEscapedControlChars(content: string): string {
+  const restored = content
+    .replace(/\u0008/g, "\\b")
+    .replace(/\u000c(?=[A-Za-z])/g, "\\f")
+    .replace(/\u0009(?=[A-Za-z])/g, "\\t")
+    .replace(/\u000d(?=[A-Za-z])/g, "\\r");
+
+  return restored
+    .split(MATH_SPAN_SPLIT_PATTERN)
+    .map((part, index) => (
+      index % 2 === 1
+        ? part.replace(LATEX_N_CONTROL_ESCAPE_SUFFIX_PATTERN, "\\n")
+        : part
+    ))
+    .join("");
+}
+
+function normalizeLatexDelimiterEscapes(content: string): string {
+  return content
+    .replace(/\\{1,2}\[/g, "$$")
+    .replace(/\\{1,2}\]/g, "$$")
+    .replace(/\\{1,2}\(/g, "$")
+    .replace(/\\{1,2}\)/g, "$");
+}
 
 function protectLatexLineBreaks(content: string): string {
   return content.replace(/\\{2,3}(?![A-Za-z])/g, LATEX_LINE_BREAK_MARKER);
@@ -113,6 +246,7 @@ function isInsideDollarMath(content: string, offset: number): boolean {
 
 function normalizeMathSpanForMarkdown(segment: string): string {
   let next = protectLatexLineBreaks(segment)
+    .replace(OVER_ESCAPED_LATEX_COMMAND_PATTERN, "\\$1")
     .replace(MISSING_LATEX_COMMAND_BACKSLASH_PATTERN, "\\$1")
     .replace(SIMPLE_MISSING_LOWER_BOUND_PATTERN, "\\$1_{$2}")
     .replace(SIMPLE_MISSING_LIMIT_BOUND_PATTERN, "\\lim_{$1}");
@@ -134,11 +268,7 @@ function wrapBareLatexEnvironments(segment: string): string {
 }
 
 function normalizeTextOutsideMath(segment: string): string {
-  const withConvertedDelimiters = segment
-    .replace(/\\\[/g, "$$")
-    .replace(/\\\]/g, "$$")
-    .replace(/\\\(/g, "$")
-    .replace(/\\\)/g, "$");
+  const withConvertedDelimiters = normalizeLatexDelimiterEscapes(segment);
 
   return withConvertedDelimiters
     .split(MATH_SPAN_SPLIT_PATTERN)

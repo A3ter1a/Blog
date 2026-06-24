@@ -141,15 +141,11 @@ export function ProblemBooklet() {
 
     async function loadSelectedSets() {
       try {
-        const results = await Promise.all(missingIds.map(async (id) => ({
-          id,
-          set: await notesApi.getPracticeSet(id),
-        })));
+        const validSets = await notesApi.getPracticeSets(missingIds);
         if (cancelled) return;
 
-        const validSets = results.map((result) => result.set).filter((set): set is Note => Boolean(set));
         const validIds = new Set(validSets.map((set) => set.id));
-        const invalidIds = results.filter((result) => !validIds.has(result.id)).map((result) => result.id);
+        const invalidIds = missingIds.filter((id) => !validIds.has(id));
 
         if (validSets.length > 0) {
           setLoadedSets((current) => {

@@ -10,7 +10,6 @@ import {
   splitProblemReferenceContent,
   type ProblemReference,
 } from "@/lib/problem-references";
-import { scheduleDeferredClientWork } from "@/lib/deferred-client-work";
 import { MarkdownContent } from "@/components/ui/MarkdownContent";
 import { ProblemCard } from "@/components/problems/ProblemCard";
 
@@ -18,6 +17,7 @@ interface ProblemReferenceContentProps {
   content: string;
   className?: string;
   style?: React.CSSProperties;
+  loadMode?: "published" | "adminAware";
 }
 
 type ProblemSetLoadState = {
@@ -56,53 +56,51 @@ export function ProblemReferenceContent({
   content,
   className = "",
   style,
+  loadMode = "published",
 }: ProblemReferenceContentProps) {
   const segments = useMemo(() => splitProblemReferenceContent(content), [content]);
   const noteIds = useMemo(() => extractProblemReferenceNoteIds(content), [content]);
+  const noteIdsKey = noteIds.join("|");
   const [problemSets, setProblemSets] = useState<Record<string, ProblemSetLoadState>>({});
 
   useEffect(() => {
     if (noteIds.length === 0) return;
 
     let cancelled = false;
-    const idsToLoad = noteIds.filter((noteId) => !problemSets[noteId]);
-    if (idsToLoad.length === 0) return;
-
-    const cancelDeferredLoad = scheduleDeferredClientWork(() => {
-      setProblemSets((current) => {
-        const next = { ...current };
-        idsToLoad.forEach((noteId) => {
-          next[noteId] = current[noteId] ?? { status: "loading" };
-        });
-        return next;
-      });
-
-      void Promise.all(
-        idsToLoad.map(async (noteId) => {
-          try {
-            const note = await notesApi.getPracticeSet(noteId);
-            return { noteId, state: note ? { status: "ready" as const, note } : { status: "error" as const } };
-          } catch {
-            return { noteId, state: { status: "error" as const } };
-          }
-        }),
-      ).then((results) => {
+    const loadProblemSets = async () => {
+      try {
+        const notes = loadMode === "adminAware"
+          ? await notesApi.getPracticeSets(noteIds)
+          : await notesApi.getPublishedPracticeSets(noteIds);
         if (cancelled) return;
+
+        const noteById = new Map(notes.map((note) => [note.id, note]));
         setProblemSets((current) => {
           const next = { ...current };
-          results.forEach(({ noteId, state }) => {
-            next[noteId] = state;
+          noteIds.forEach((noteId) => {
+            const note = noteById.get(noteId);
+            next[noteId] = note ? { status: "ready", note } : { status: "error" };
           });
           return next;
         });
-      });
-    });
+      } catch {
+        if (cancelled) return;
+        setProblemSets((current) => {
+          const next = { ...current };
+          noteIds.forEach((noteId) => {
+            next[noteId] = { status: "error" };
+          });
+          return next;
+        });
+      }
+    };
+
+    void loadProblemSets();
 
     return () => {
       cancelled = true;
-      cancelDeferredLoad();
     };
-  }, [noteIds, problemSets]);
+  }, [loadMode, noteIds, noteIdsKey]);
 
   useEffect(() => {
     if (noteIds.length === 0) return;
@@ -113,7 +111,7 @@ export function ProblemReferenceContent({
       window.cancelAnimationFrame(frame);
       window.clearTimeout(timer);
     };
-  }, [noteIds.length, problemSets]);
+  }, [noteIds.length, noteIdsKey, problemSets]);
 
   if (segments.every((segment) => segment.type === "markdown")) {
     return <MarkdownContent content={content} className={className} style={style} />;

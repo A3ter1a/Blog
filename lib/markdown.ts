@@ -6,6 +6,7 @@ import {
   preprocessDashedSep,
   preprocessLatex,
   postprocessDashedSepAsHtml,
+  restoreLatexEscapedControlChars,
   restoreLatexLineBreaks,
   separateCollapsedInlineMathSpans,
 } from "@/lib/utils";
@@ -52,14 +53,6 @@ const LATEX_ENV_PATTERN = new RegExp(
   `\\\\begin\\{(${LATEX_ENV_NAMES})\\*?\\}[\\s\\S]*?\\\\end\\{\\1\\*?\\}`,
 );
 
-function restoreLatexControlChars(content: string): string {
-  return content
-    .replace(/\u0008/g, "\\b")
-    .replace(/\u000c(?=[A-Za-z])/g, "\\f")
-    .replace(/\u0009(?=[A-Za-z])/g, "\\t")
-    .replace(/\u000d(?=[A-Za-z])/g, "\\r");
-}
-
 function hasProseText(content: string): boolean {
   return /[\u3400-\u9fff，。；：、（）《》“”]/.test(content)
     || /\b(where|when|if|then|for|with|and|or)\b/i.test(content);
@@ -91,7 +84,7 @@ function splitInlineEnvironmentWithText(content: string): string {
 
 function normalizeLatexInput(content: string): string {
   return splitInlineEnvironmentWithText(
-    separateCollapsedInlineMathSpans(restoreLatexControlChars(content)),
+    separateCollapsedInlineMathSpans(restoreLatexEscapedControlChars(content)),
   );
 }
 

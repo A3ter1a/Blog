@@ -78,6 +78,18 @@ const NOTE_QA_FIELDS = `
         is_published
       `;
 
+const NOTE_PRACTICE_FIELDS = `
+        id,
+        type,
+        title,
+        subject,
+        tags,
+        problems,
+        created_at,
+        updated_at,
+        is_published
+      `;
+
 function getNoteSummaryFields(includeCoverImage = true, includeProblems = false): string {
   return [
     "id",
@@ -185,6 +197,30 @@ async function hasAdminSession(): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+async function readPracticeSets(ids: string[], publishedOnly: boolean): Promise<Note[]> {
+  const uniqueIds = Array.from(new Set(ids.map((id) => id.trim()).filter(Boolean)));
+  if (uniqueIds.length === 0) return [];
+
+  const orderById = new Map(uniqueIds.map((id, index) => [id, index]));
+  let query = getSupabase()
+    .from("notes")
+    .select(NOTE_PRACTICE_FIELDS)
+    .in("id", uniqueIds)
+    .eq("type", "problem");
+
+  if (publishedOnly) {
+    query = query.eq("is_published", true);
+  }
+
+  const { data, error } = await query;
+
+  if (error) throw error;
+
+  return ((data || []) as NoteRow[])
+    .map(mapSnakeToCamel)
+    .sort((a, b) => (orderById.get(a.id) ?? 0) - (orderById.get(b.id) ?? 0));
 }
 
 // 字段转换：snake_case → camelCase
@@ -322,31 +358,16 @@ export const notesApi = {
 
   // Get the fields required by the practice page without loading note content, videos, or cover image.
   async getPracticeSet(id: string): Promise<Note | null> {
-    const supabase = getSupabase();
-    let query = supabase
-      .from("notes")
-      .select(`
-        id,
-        type,
-        title,
-        subject,
-        tags,
-        problems,
-        created_at,
-        updated_at,
-        is_published
-      `)
-      .eq("id", id)
-      .eq("type", "problem");
+    const sets = await notesApi.getPracticeSets([id]);
+    return sets[0] ?? null;
+  },
 
-    if (!(await hasAdminSession())) {
-      query = query.eq("is_published", true);
-    }
+  async getPracticeSets(ids: string[]): Promise<Note[]> {
+    return readPracticeSets(ids, !(await hasAdminSession()));
+  },
 
-    const { data, error } = await query.single();
-
-    if (error) return null;
-    return mapSnakeToCamel(data);
+  async getPublishedPracticeSets(ids: string[]): Promise<Note[]> {
+    return readPracticeSets(ids, true);
   },
 
   // Public read for the lightweight note Q&A tool. Keep this separate from

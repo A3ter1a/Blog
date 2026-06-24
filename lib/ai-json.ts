@@ -1,3 +1,5 @@
+import { restoreLatexEscapedControlChars } from "@/lib/utils";
+
 function stripCodeFence(text: string): string {
   const trimmed = text.trim();
   const fenceMatch = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
@@ -101,11 +103,7 @@ function escapeInvalidBackslashes(jsonText: string): string {
 
 function restoreLatexControlEscapes(value: unknown): unknown {
   if (typeof value === 'string') {
-    return value
-      .replace(/\f/g, '\\f')
-      .replace(/\x08/g, '\\b')
-      .replace(/\t(?=[A-Za-z])/g, '\\t')
-      .replace(/\r(?=[A-Za-z])/g, '\\r');
+    return restoreLatexEscapedControlChars(value);
   }
 
   if (Array.isArray(value)) {
