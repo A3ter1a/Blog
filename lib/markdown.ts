@@ -4,11 +4,11 @@ import markdownit from "markdown-it";
 import markdownitMark from "markdown-it-mark";
 import {
   decodeLatexHtmlEntities,
+  normalizeLatexForKatex,
   preprocessDashedSep,
   preprocessLatex,
   postprocessDashedSepAsHtml,
   restoreLatexEscapedControlChars,
-  restoreLatexLineBreaks,
   separateCollapsedInlineMathSpans,
 } from "@/lib/utils";
 import type { Problem } from "@/lib/types";
@@ -154,9 +154,11 @@ function restoreMathSpanTokens(text: string, values: string[], escape = false): 
 function renderMathSpanToHtml(value: string): string {
   const displayMode = value.startsWith("$$") && value.endsWith("$$");
   const delimiterLength = displayMode ? 2 : 1;
-  const latex = restoreLatexLineBreaks(decodeLatexHtmlEntities(value.slice(delimiterLength, -delimiterLength)))
+  const latex = normalizeLatexForKatex(
+    decodeLatexHtmlEntities(value.slice(delimiterLength, -delimiterLength)),
+    displayMode,
+  )
     .replace(/[\n\r]+/g, displayMode ? " " : "\n")
-    .replace(/\\([[\](),.;:!?<>])/g, "$1")
     .trim();
 
   if (!latex) return escapeHtmlText(value);

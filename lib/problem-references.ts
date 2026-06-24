@@ -9,21 +9,36 @@ export type ProblemReferenceContentSegment =
   | { type: "markdown"; content: string }
   | { type: "reference"; reference: ProblemReference };
 
-const PROBLEM_REFERENCE_PATTERN = /<!--\s*asteroid-problems:([A-Za-z0-9_-]+):([0-9,\s，、-]+)\s*-->/g;
-const PROBLEM_BLOCK_TAG_PATTERN = /(?:<|&lt;|\\<)problem-block\b([\s\S]*?)(?:>|&gt;|\\>)(?:\s*(?:<|&lt;|\\<)\/problem-block(?:>|&gt;|\\>))?/gi;
+const PROBLEM_BLOCK_LT = String.raw`(?:<|&lt;|&#60;|&#x3c;|&amp;lt;|&amp;#60;|&amp;#x3c;|\\<|\\&lt;|\\&amp;lt;)`;
+const PROBLEM_BLOCK_GT = String.raw`(?:>|&gt;|&#62;|&#x3e;|&amp;gt;|&amp;#62;|&amp;#x3e;|\\>|\\&gt;|\\&amp;gt;)`;
+const PROBLEM_REFERENCE_PATTERN = new RegExp(
+  String.raw`(?:<!--|&lt;!--|&#60;!--|&#x3c;!--|&amp;lt;!--|\\<!--)\s*asteroid-problems:([A-Za-z0-9_-]+):([0-9,\s，、-]+)\s*(?:-->|--&gt;|--&#62;|--&#x3e;|--&amp;gt;|--\\>)`,
+  "g",
+);
+const PROBLEM_BLOCK_TAG_PATTERN = new RegExp(
+  String.raw`${PROBLEM_BLOCK_LT}problem-block\b([\s\S]*?)${PROBLEM_BLOCK_GT}(?:\s*${PROBLEM_BLOCK_LT}\\?/problem-block${PROBLEM_BLOCK_GT})?`,
+  "gi",
+);
 const PROBLEM_BLOCK_ATTRIBUTE_PATTERN = /([A-Za-z][A-Za-z0-9_-]*)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/g;
 const PROBLEM_REFERENCE_NOTE_ID_PATTERN = /^[A-Za-z0-9_-]+$/;
 
 function decodeProblemBlockSyntax(value: string): string {
-  return value
-    .replace(/&lt;/gi, "<")
-    .replace(/&gt;/gi, ">")
-    .replace(/&quot;/gi, "\"")
-    .replace(/&#34;/g, "\"")
-    .replace(/&apos;/gi, "'")
-    .replace(/&#39;/g, "'")
-    .replace(/&amp;/gi, "&")
-    .replace(/\\([<>/"'=])/g, "$1");
+  let next = value;
+
+  for (let index = 0; index < 3; index += 1) {
+    const before = next;
+    next = next
+      .replace(/&lt;|&#60;|&#x3c;/gi, "<")
+      .replace(/&gt;|&#62;|&#x3e;/gi, ">")
+      .replace(/&quot;|&#34;|&#x22;/gi, "\"")
+      .replace(/&apos;|&#39;|&#x27;/gi, "'")
+      .replace(/&amp;/gi, "&")
+      .replace(/\\([<>/"'=])/g, "$1");
+
+    if (next === before) break;
+  }
+
+  return next;
 }
 
 function decodeProblemBlockAttribute(value: string): string {

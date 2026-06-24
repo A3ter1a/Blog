@@ -272,21 +272,33 @@ function isInsideDollarMath(content: string, offset: number): boolean {
   return inSingleDollar || inDoubleDollar;
 }
 
-function normalizeMathSpanForMarkdown(segment: string): string {
-  let next = protectLatexLineBreaks(decodeLatexHtmlEntities(segment))
+export function normalizeLatexForKatex(latex: string, displayMode = false): string {
+  let next = protectLatexLineBreaks(decodeLatexHtmlEntities(latex))
     .replace(/\\([[\](),.;:!?<>])/g, "$1")
     .replace(OVER_ESCAPED_LATEX_COMMAND_PATTERN, "\\$1")
     .replace(MISSING_LATEX_COMMAND_BACKSLASH_PATTERN, "\\$1")
     .replace(SIMPLE_MISSING_LOWER_BOUND_PATTERN, "\\$1_{$2}")
     .replace(SIMPLE_MISSING_LIMIT_BOUND_PATTERN, "\\lim_{$1}");
 
-  if (next.startsWith("$$") || LATEX_ENV_START_PATTERN.test(next)) {
+  if (displayMode || LATEX_ENV_START_PATTERN.test(next)) {
     next = next.replace(/\n/g, " ");
   }
 
-  return next
+  return restoreLatexLineBreaks(next)
     .replace(/\\\{/g, "\\lbrace{}")
     .replace(/\\\}/g, "\\rbrace{}");
+}
+
+function normalizeMathSpanForMarkdown(segment: string): string {
+  const displayMode = segment.startsWith("$$");
+  const delimiterLength = displayMode ? 2 : 1;
+
+  if (!segment.startsWith("$") || !segment.endsWith("$")) {
+    return normalizeLatexForKatex(segment);
+  }
+
+  const latex = segment.slice(delimiterLength, -delimiterLength);
+  return `${"$".repeat(delimiterLength)}${protectLatexLineBreaks(normalizeLatexForKatex(latex, displayMode))}${"$".repeat(delimiterLength)}`;
 }
 
 function wrapBareLatexEnvironments(segment: string): string {
