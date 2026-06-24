@@ -435,12 +435,17 @@ export function useAIScan() {
             return await analyzeRes.json() as {
               tokensUsed?: unknown;
               problems?: unknown;
+              warning?: unknown;
             };
           }
         );
         const tokensUsed = Number(analyzeData.tokensUsed);
         if (Number.isFinite(tokensUsed) && tokensUsed > 0) {
           recordDeepSeekUsage(tokensUsed);
+        }
+        const analyzeWarning = toOptionalString(analyzeData.warning);
+        if (analyzeWarning) {
+          warnings.push(`第 ${index + 1} 张图片：${analyzeWarning}`);
         }
 
         const rawProblems = Array.isArray(analyzeData.problems) ? analyzeData.problems : [];
