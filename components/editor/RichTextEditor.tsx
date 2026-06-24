@@ -92,7 +92,7 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
           event.preventDefault();
 
           try {
-            const html = renderMarkdownToHtml(repairMarkdown(text));
+            const html = renderMarkdownToHtml(repairMarkdown(text), { renderMath: false });
             const dom = document.createElement('div');
             dom.innerHTML = html;
             const slice = DOMParser.fromSchema(view.state.schema).parseSlice(dom, {

@@ -12,6 +12,53 @@ const BARE_LATEX_COMMAND_PATTERN = /(?<!\$)(\\(?!begin\b|end\b)[a-zA-Z]+(?:\{[^}
 const COLLAPSED_INLINE_MATH_PATTERN = /(?<!\$)\$(?!\$)([^$\n]+?)\$\$(?!\$)([^$\n]+?)\$(?!\$)/g;
 const SIMPLE_MISSING_LOWER_BOUND_PATTERN = /\\(int|sum|prod)\s*\{([^{}\n]+)\}\s*(?=\^)/g;
 const SIMPLE_MISSING_LIMIT_BOUND_PATTERN = /\\lim\s*\{([^{}\n]+)\}/g;
+const LATEX_COMMAND_WORDS = [
+  "alpha",
+  "arccos",
+  "arcsin",
+  "arctan",
+  "approx",
+  "begin",
+  "beta",
+  "cdot",
+  "cos",
+  "delta",
+  "end",
+  "epsilon",
+  "frac",
+  "gamma",
+  "geq",
+  "infty",
+  "int",
+  "lambda",
+  "leq",
+  "lim",
+  "ln",
+  "log",
+  "mathrm",
+  "mu",
+  "nabla",
+  "ne",
+  "neq",
+  "omega",
+  "operatorname",
+  "phi",
+  "pi",
+  "prod",
+  "right",
+  "sigma",
+  "sin",
+  "sqrt",
+  "sum",
+  "tan",
+  "theta",
+  "times",
+  "to",
+  "varepsilon",
+  "varphi",
+  "xi",
+].sort((a, b) => b.length - a.length).join("|");
+const MISSING_LATEX_COMMAND_BACKSLASH_PATTERN = new RegExp(`(?<![\\\\A-Za-z])(${LATEX_COMMAND_WORDS})(?![A-Za-z])`, "g");
 
 function protectLatexLineBreaks(content: string): string {
   return content.replace(/\\{2,3}(?![A-Za-z])/g, LATEX_LINE_BREAK_MARKER);
@@ -66,6 +113,7 @@ function isInsideDollarMath(content: string, offset: number): boolean {
 
 function normalizeMathSpanForMarkdown(segment: string): string {
   let next = protectLatexLineBreaks(segment)
+    .replace(MISSING_LATEX_COMMAND_BACKSLASH_PATTERN, "\\$1")
     .replace(SIMPLE_MISSING_LOWER_BOUND_PATTERN, "\\$1_{$2}")
     .replace(SIMPLE_MISSING_LIMIT_BOUND_PATTERN, "\\lim_{$1}");
 

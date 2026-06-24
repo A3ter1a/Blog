@@ -10,23 +10,31 @@ export type ProblemReferenceContentSegment =
   | { type: "reference"; reference: ProblemReference };
 
 const PROBLEM_REFERENCE_PATTERN = /<!--\s*asteroid-problems:([A-Za-z0-9_-]+):([0-9,\s，、-]+)\s*-->/g;
-const PROBLEM_BLOCK_TAG_PATTERN = /<problem-block\b([^>]*)>(?:\s*<\/problem-block>)?/gi;
+const PROBLEM_BLOCK_TAG_PATTERN = /(?:<|&lt;|\\<)problem-block\b([\s\S]*?)(?:>|&gt;|\\>)(?:\s*(?:<|&lt;|\\<)\/problem-block(?:>|&gt;|\\>))?/gi;
 const PROBLEM_BLOCK_ATTRIBUTE_PATTERN = /([A-Za-z][A-Za-z0-9_-]*)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/g;
 const PROBLEM_REFERENCE_NOTE_ID_PATTERN = /^[A-Za-z0-9_-]+$/;
 
-function decodeProblemBlockAttribute(value: string): string {
+function decodeProblemBlockSyntax(value: string): string {
   return value
-    .replace(/&quot;/g, "\"")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, "\"")
     .replace(/&#34;/g, "\"")
-    .replace(/&apos;/g, "'")
+    .replace(/&apos;/gi, "'")
     .replace(/&#39;/g, "'")
-    .replace(/&amp;/g, "&");
+    .replace(/&amp;/gi, "&")
+    .replace(/\\([<>/"'=])/g, "$1");
+}
+
+function decodeProblemBlockAttribute(value: string): string {
+  return decodeProblemBlockSyntax(value);
 }
 
 function getProblemBlockAttributes(rawAttributes: string): Record<string, string> {
   const attributes: Record<string, string> = {};
+  const normalizedAttributes = decodeProblemBlockSyntax(rawAttributes);
 
-  for (const match of rawAttributes.matchAll(PROBLEM_BLOCK_ATTRIBUTE_PATTERN)) {
+  for (const match of normalizedAttributes.matchAll(PROBLEM_BLOCK_ATTRIBUTE_PATTERN)) {
     const name = match[1].toLowerCase();
     const value = match[2] ?? match[3] ?? match[4] ?? "";
     attributes[name] = decodeProblemBlockAttribute(value.trim());

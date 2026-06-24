@@ -1,10 +1,12 @@
 import GithubSlugger from "github-slugger";
+import katex from "katex";
 import markdownit from "markdown-it";
 import markdownitMark from "markdown-it-mark";
 import {
   preprocessDashedSep,
   preprocessLatex,
   postprocessDashedSepAsHtml,
+  restoreLatexLineBreaks,
   separateCollapsedInlineMathSpans,
 } from "@/lib/utils";
 import type { Problem } from "@/lib/types";
@@ -24,6 +26,10 @@ export interface TocItem {
 type Segment = {
   text: string;
   protected: boolean;
+};
+
+type RenderMarkdownOptions = {
+  renderMath?: boolean;
 };
 
 const LATEX_ENV_NAMES = [
@@ -151,6 +157,34 @@ function restoreMathSpanTokens(text: string, values: string[], escape = false): 
   });
 }
 
+function renderMathSpanToHtml(value: string): string {
+  const displayMode = value.startsWith("$$") && value.endsWith("$$");
+  const delimiterLength = displayMode ? 2 : 1;
+  const latex = restoreLatexLineBreaks(value.slice(delimiterLength, -delimiterLength))
+    .replace(/[\n\r]+/g, displayMode ? " " : "\n")
+    .trim();
+
+  if (!latex) return escapeHtmlText(value);
+
+  try {
+    return `<span class="${displayMode ? "katex-display" : "katex-inline"}">${katex.renderToString(latex, {
+      throwOnError: false,
+      displayMode,
+    })}</span>`;
+  } catch {
+    return escapeHtmlText(value);
+  }
+}
+
+function restoreMathSpanTokensAsHtml(text: string, values: string[]): string {
+  if (values.length === 0) return text;
+
+  return text.replace(new RegExp(`${MATH_SPAN_TOKEN}(\\d+)`, "g"), (full, indexText: string) => {
+    const value = values[Number(indexText)];
+    return value === undefined ? full : renderMathSpanToHtml(value);
+  });
+}
+
 const SIGNED_MATH_LINE_TOKEN = "AsteroidSignedMathLineToken";
 
 function isLikelyStandaloneSignedMath(body: string): boolean {
@@ -236,10 +270,13 @@ export function normalizeMarkdownForRender(content: string): string {
   return preprocessDashedSep(preprocessLatex(repairMarkdown(content)));
 }
 
-export function renderMarkdownToHtml(content: string): string {
+export function renderMarkdownToHtml(content: string, options: RenderMarkdownOptions = {}): string {
   const protectedMath = protectMathSpansForMarkdown(normalizeMarkdownForRender(content));
   const html = md.render(protectedMath.content);
-  return restoreMathSpanTokens(postprocessDashedSepAsHtml(html), protectedMath.values, true);
+  const dashedHtml = postprocessDashedSepAsHtml(html);
+  return options.renderMath === false
+    ? restoreMathSpanTokens(dashedHtml, protectedMath.values, true)
+    : restoreMathSpanTokensAsHtml(dashedHtml, protectedMath.values);
 }
 
 export function extractTocItems(content: string): TocItem[] {
