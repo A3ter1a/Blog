@@ -10,6 +10,30 @@ export type ProblemReferenceContentSegment =
   | { type: "reference"; reference: ProblemReference };
 
 const PROBLEM_REFERENCE_PATTERN = /<!--\s*asteroid-problems:([A-Za-z0-9_-]+):([0-9,\s，、-]+)\s*-->/g;
+const PROBLEM_BLOCK_TAG_PATTERN = /<problem-block\b([^>]*)>(?:\s*<\/problem-block>)?/gi;
+const PROBLEM_BLOCK_ATTRIBUTE_PATTERN = /([A-Za-z][A-Za-z0-9_-]*)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/g;
+const PROBLEM_REFERENCE_NOTE_ID_PATTERN = /^[A-Za-z0-9_-]+$/;
+
+function decodeProblemBlockAttribute(value: string): string {
+  return value
+    .replace(/&quot;/g, "\"")
+    .replace(/&#34;/g, "\"")
+    .replace(/&apos;/g, "'")
+    .replace(/&#39;/g, "'")
+    .replace(/&amp;/g, "&");
+}
+
+function getProblemBlockAttributes(rawAttributes: string): Record<string, string> {
+  const attributes: Record<string, string> = {};
+
+  for (const match of rawAttributes.matchAll(PROBLEM_BLOCK_ATTRIBUTE_PATTERN)) {
+    const name = match[1].toLowerCase();
+    const value = match[2] ?? match[3] ?? match[4] ?? "";
+    attributes[name] = decodeProblemBlockAttribute(value.trim());
+  }
+
+  return attributes;
+}
 
 export function parseProblemSelection(selection: string): number[] {
   const seen = new Set<number>();
@@ -72,14 +96,29 @@ export function createProblemReferenceMarker(noteId: string, numbers: number[]):
   return selection ? `<!--asteroid-problems:${noteId}:${selection}-->` : "";
 }
 
+export function normalizeProblemReferenceMarkup(content: string): string {
+  return content.replace(PROBLEM_BLOCK_TAG_PATTERN, (rawTag: string, rawAttributes: string) => {
+    const attributes = getProblemBlockAttributes(rawAttributes);
+    const noteId = attributes["note-id"] ?? attributes.noteid ?? "";
+    const selection = attributes.selection ?? "";
+
+    if (!PROBLEM_REFERENCE_NOTE_ID_PATTERN.test(noteId)) return rawTag;
+
+    const numbers = parseProblemSelection(selection);
+    const marker = createProblemReferenceMarker(noteId, numbers);
+    return marker || rawTag;
+  });
+}
+
 export function splitProblemReferenceContent(content: string): ProblemReferenceContentSegment[] {
   const segments: ProblemReferenceContentSegment[] = [];
+  const normalizedContent = normalizeProblemReferenceMarkup(content);
   let lastIndex = 0;
 
-  for (const match of content.matchAll(PROBLEM_REFERENCE_PATTERN)) {
+  for (const match of normalizedContent.matchAll(PROBLEM_REFERENCE_PATTERN)) {
     const index = match.index ?? 0;
     if (index > lastIndex) {
-      segments.push({ type: "markdown", content: content.slice(lastIndex, index) });
+      segments.push({ type: "markdown", content: normalizedContent.slice(lastIndex, index) });
     }
 
     const noteId = match[1];
@@ -102,11 +141,11 @@ export function splitProblemReferenceContent(content: string): ProblemReferenceC
     lastIndex = index + match[0].length;
   }
 
-  if (lastIndex < content.length) {
-    segments.push({ type: "markdown", content: content.slice(lastIndex) });
+  if (lastIndex < normalizedContent.length) {
+    segments.push({ type: "markdown", content: normalizedContent.slice(lastIndex) });
   }
 
-  return segments.length > 0 ? segments : [{ type: "markdown", content }];
+  return segments.length > 0 ? segments : [{ type: "markdown", content: normalizedContent }];
 }
 
 export function extractProblemReferenceNoteIds(content: string): string[] {
