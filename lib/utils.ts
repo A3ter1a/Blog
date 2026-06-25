@@ -136,6 +136,7 @@ const LATEX_COMMAND_WORD_LIST = [
   "setminus",
   "sigma",
   "Sigma",
+  "sim",
   "sin",
   "span",
   "sqrt",
@@ -174,6 +175,7 @@ const LATEX_COMMAND_WORD_LIST = [
 ].sort((a, b) => b.length - a.length);
 const LATEX_COMMAND_WORDS = LATEX_COMMAND_WORD_LIST.join("|");
 const MISSING_LATEX_COMMAND_BACKSLASH_PATTERN = new RegExp(`(?<![\\\\A-Za-z])(${LATEX_COMMAND_WORDS})(?![A-Za-z])`, "g");
+const COMPACT_SIM_DISTRIBUTION_PATTERN = /(?<![\\A-Za-z])\\?sim(?=[A-Z]\s*\()/g;
 const OVER_ESCAPED_LATEX_COMMAND_PATTERN = new RegExp(`\\\\{2,}(${LATEX_COMMAND_WORDS})(?![A-Za-z])`, "g");
 const LATEX_N_CONTROL_ESCAPE_SUFFIX_PATTERN = /\n(?=(?:abla|atural|eg|eq|e|i|leq|geq|mid|ot(?:in)?|parallel|subseteq|supseteq|u)(?![A-Za-z]))/g;
 const LATEX_ESCAPED_STRUCTURAL_CHAR_PATTERN = /\\([_[\](),.;:!?<>=|^*])/g;
@@ -308,6 +310,7 @@ export function normalizeLatexForKatex(latex: string, displayMode = false): stri
   let next = restoreLatexMarkdownEscapes(
     protectLatexLineBreaks(decodeLatexHtmlEntities(latex))
       .replace(OVER_ESCAPED_LATEX_COMMAND_PATTERN, "\\$1")
+      .replace(COMPACT_SIM_DISTRIBUTION_PATTERN, "\\sim ")
       .replace(MISSING_LATEX_COMMAND_BACKSLASH_PATTERN, "\\$1"),
   )
     .replace(SIMPLE_MISSING_LOWER_BOUND_PATTERN, "\\$1_{$2}")
