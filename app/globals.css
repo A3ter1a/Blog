@@ -438,20 +438,44 @@ h1, h2, h3, h4, h5, h6 {
 
 .markdown-surface ul,
 .markdown-surface ol {
-  margin: 0.8em 0 1.1em 1.5em;
-  padding-left: 0.4em;
+  margin: 0.9em 0 1.2em;
+  padding-inline-start: 1.65em;
+  list-style-position: outside;
 }
 
 .markdown-surface ul {
-  list-style: disc;
+  list-style-type: disc;
 }
 
 .markdown-surface ol {
-  list-style: decimal;
+  list-style-type: decimal;
 }
 
 .markdown-surface li {
-  margin: 0.3em 0;
+  margin: 0.45em 0;
+  padding-inline-start: 0.18em;
+}
+
+.markdown-surface li::marker {
+  color: color-mix(in srgb, var(--color-primary) 72%, var(--color-on-surface));
+  font-weight: 700;
+}
+
+.markdown-surface li > p {
+  margin: 0.25em 0;
+}
+
+.markdown-surface li > .katex-display {
+  margin: 0.45em 0;
+}
+
+.markdown-surface li .katex-inline {
+  margin-inline: 0.08em;
+}
+
+.markdown-surface li > ul,
+.markdown-surface li > ol {
+  margin-block: 0.35em 0.45em;
 }
 
 .markdown-surface blockquote {

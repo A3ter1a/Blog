@@ -5,6 +5,7 @@ import {
   Bold, Italic, Strikethrough, List, ListOrdered, Quote,
   Heading1, Heading2, Heading3, Code, Code2, Link as LinkIcon,
   Minus, Image as ImageIcon, Undo, Redo, Highlighter, FileText, ListChecks, Divide,
+  IndentDecrease, IndentIncrease,
 } from "lucide-react";
 import { useState } from "react";
 import { useClickOutside } from "@/hooks/useClickOutside";
@@ -20,174 +21,187 @@ export function EditorToolbar({
 }: EditorToolbarProps) {
   if (!editor) return null;
 
+  const isInsideList = editor.isActive("bulletList") || editor.isActive("orderedList");
+  const toggleList = (kind: "bullet" | "ordered") => {
+    const chain = editor.chain().focus();
+    if (!isInsideList) {
+      chain.clearNodes();
+    }
+
+    if (kind === "bullet") {
+      chain.toggleBulletList().run();
+      return;
+    }
+
+    chain.toggleOrderedList().run();
+  };
+
   return (
-    <div className="flex flex-nowrap items-center gap-1 p-2 overflow-x-auto
-      [&::-webkit-scrollbar]:h-1
-      [&::-webkit-scrollbar-thumb]:bg-outline-variant/20
-      [&::-webkit-scrollbar-thumb]:rounded-full">
-      {/* Undo / Redo */}
-      <ToolbarBtn
-        onClick={() => editor.chain().focus().undo().run()}
-        disabled={!editor.can().undo()}
-        tooltip="撤销 (Ctrl+Z)"
-      >
-        <Undo className="w-4 h-4" />
-      </ToolbarBtn>
-      <ToolbarBtn
-        onClick={() => editor.chain().focus().redo().run()}
-        disabled={!editor.can().redo()}
-        tooltip="重做 (Ctrl+Y)"
-      >
-        <Redo className="w-4 h-4" />
-      </ToolbarBtn>
+    <div className="flex flex-wrap items-center gap-2 px-2 py-2">
+      <ToolbarGroup label="历史">
+        <ToolbarBtn
+          onClick={() => editor.chain().focus().undo().run()}
+          disabled={!editor.can().undo()}
+          tooltip="撤销 (Ctrl+Z)"
+        >
+          <Undo className="w-4 h-4" />
+        </ToolbarBtn>
+        <ToolbarBtn
+          onClick={() => editor.chain().focus().redo().run()}
+          disabled={!editor.can().redo()}
+          tooltip="重做 (Ctrl+Y)"
+        >
+          <Redo className="w-4 h-4" />
+        </ToolbarBtn>
+      </ToolbarGroup>
 
-      <div className="w-px h-6 bg-outline-variant/20 mx-1" />
+      <ToolbarGroup label="文字">
+        <ToolbarBtn
+          onClick={() => editor.chain().focus().toggleBold().run()}
+          active={editor.isActive("bold")}
+          tooltip="加粗 (Ctrl+B)"
+        >
+          <Bold className="w-4 h-4" />
+        </ToolbarBtn>
+        <ToolbarBtn
+          onClick={() => editor.chain().focus().toggleItalic().run()}
+          active={editor.isActive("italic")}
+          tooltip="斜体 (Ctrl+I)"
+        >
+          <Italic className="w-4 h-4" />
+        </ToolbarBtn>
+        <ToolbarBtn
+          onClick={() => editor.chain().focus().toggleStrike().run()}
+          active={editor.isActive("strike")}
+          tooltip="删除线"
+        >
+          <Strikethrough className="w-4 h-4" />
+        </ToolbarBtn>
+      </ToolbarGroup>
 
-      {/* Text Formatting */}
-      <ToolbarBtn
-        onClick={() => editor.chain().focus().toggleBold().run()}
-        active={editor.isActive("bold")}
-        tooltip="加粗 (Ctrl+B)"
-      >
-        <Bold className="w-4 h-4" />
-      </ToolbarBtn>
-      <ToolbarBtn
-        onClick={() => editor.chain().focus().toggleItalic().run()}
-        active={editor.isActive("italic")}
-        tooltip="斜体 (Ctrl+I)"
-      >
-        <Italic className="w-4 h-4" />
-      </ToolbarBtn>
-      <ToolbarBtn
-        onClick={() => editor.chain().focus().toggleStrike().run()}
-        active={editor.isActive("strike")}
-        tooltip="删除线"
-      >
-        <Strikethrough className="w-4 h-4" />
-      </ToolbarBtn>
+      <ToolbarGroup label="标题">
+        <ToolbarBtn
+          onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}
+          active={editor.isActive("heading", { level: 1 })}
+          tooltip="一级标题"
+        >
+          <Heading1 className="w-4 h-4" />
+        </ToolbarBtn>
+        <ToolbarBtn
+          onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
+          active={editor.isActive("heading", { level: 2 })}
+          tooltip="二级标题"
+        >
+          <Heading2 className="w-4 h-4" />
+        </ToolbarBtn>
+        <ToolbarBtn
+          onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}
+          active={editor.isActive("heading", { level: 3 })}
+          tooltip="三级标题"
+        >
+          <Heading3 className="w-4 h-4" />
+        </ToolbarBtn>
+      </ToolbarGroup>
 
-      <div className="w-px h-6 bg-outline-variant/20 mx-1" />
+      <ToolbarGroup label="段落结构">
+        <ToolbarBtn
+          onClick={() => toggleList("bullet")}
+          active={editor.isActive("bulletList")}
+          tooltip="无序列表"
+        >
+          <List className="w-4 h-4" />
+        </ToolbarBtn>
+        <ToolbarBtn
+          onClick={() => toggleList("ordered")}
+          active={editor.isActive("orderedList")}
+          tooltip="有序列表"
+        >
+          <ListOrdered className="w-4 h-4" />
+        </ToolbarBtn>
+        <ToolbarBtn
+          onClick={() => editor.chain().focus().liftListItem("listItem").run()}
+          disabled={!isInsideList || !editor.can().liftListItem("listItem")}
+          tooltip="减少列表缩进"
+        >
+          <IndentDecrease className="w-4 h-4" />
+        </ToolbarBtn>
+        <ToolbarBtn
+          onClick={() => editor.chain().focus().sinkListItem("listItem").run()}
+          disabled={!isInsideList || !editor.can().sinkListItem("listItem")}
+          tooltip="增加列表缩进"
+        >
+          <IndentIncrease className="w-4 h-4" />
+        </ToolbarBtn>
+        <ToolbarBtn
+          onClick={() => editor.chain().focus().toggleBlockquote().run()}
+          active={editor.isActive("blockquote")}
+          tooltip="引用"
+        >
+          <Quote className="w-4 h-4" />
+        </ToolbarBtn>
+      </ToolbarGroup>
 
-      {/* Headings */}
-      <ToolbarBtn
-        onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}
-        active={editor.isActive("heading", { level: 1 })}
-        tooltip="一级标题"
-      >
-        <Heading1 className="w-4 h-4" />
-      </ToolbarBtn>
-      <ToolbarBtn
-        onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
-        active={editor.isActive("heading", { level: 2 })}
-        tooltip="二级标题"
-      >
-        <Heading2 className="w-4 h-4" />
-      </ToolbarBtn>
-      <ToolbarBtn
-        onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}
-        active={editor.isActive("heading", { level: 3 })}
-        tooltip="三级标题"
-      >
-        <Heading3 className="w-4 h-4" />
-      </ToolbarBtn>
+      <ToolbarGroup label="代码与高亮">
+        <ToolbarBtn
+          onClick={() => editor.chain().focus().toggleCode().run()}
+          active={editor.isActive("code")}
+          tooltip="行内代码"
+        >
+          <Code className="w-4 h-4" />
+        </ToolbarBtn>
+        <ToolbarBtn
+          onClick={() => editor.chain().focus().toggleCodeBlock().run()}
+          active={editor.isActive("codeBlock")}
+          tooltip="代码块"
+        >
+          <Code2 className="w-4 h-4" />
+        </ToolbarBtn>
+        <HighlightColorPicker editor={editor} />
+      </ToolbarGroup>
 
-      <div className="w-px h-6 bg-outline-variant/20 mx-1" />
+      <ToolbarGroup label="插入">
+        <ToolbarBtn
+          onClick={() => {
+            const url = window.prompt("输入链接地址:");
+            if (url) editor.chain().focus().setLink({ href: url }).run();
+          }}
+          active={editor.isActive("link")}
+          tooltip="插入链接"
+        >
+          <LinkIcon className="w-4 h-4" />
+        </ToolbarBtn>
+        <ToolbarBtn
+          onClick={() => editor.chain().focus().setHorizontalRule().run()}
+          tooltip="分割线"
+        >
+          <Minus className="w-4 h-4" />
+        </ToolbarBtn>
+        <ToolbarBtn
+          onClick={() => editor.chain().focus().insertContent({ type: "dashedSeparator" }).run()}
+          tooltip="虚线分隔线"
+        >
+          <Divide className="w-4 h-4" />
+        </ToolbarBtn>
+        <ToolbarBtn onClick={onImageUpload} tooltip="插入图片" accent>
+          <ImageIcon className="w-4 h-4" />
+        </ToolbarBtn>
+      </ToolbarGroup>
 
-      {/* Lists & Blockquote */}
-      <ToolbarBtn
-        onClick={() => editor.chain().focus().toggleBulletList().run()}
-        active={editor.isActive("bulletList")}
-        tooltip="无序列表"
-      >
-        <List className="w-4 h-4" />
-      </ToolbarBtn>
-      <ToolbarBtn
-        onClick={() => editor.chain().focus().toggleOrderedList().run()}
-        active={editor.isActive("orderedList")}
-        tooltip="有序列表"
-      >
-        <ListOrdered className="w-4 h-4" />
-      </ToolbarBtn>
-      <ToolbarBtn
-        onClick={() => editor.chain().focus().toggleBlockquote().run()}
-        active={editor.isActive("blockquote")}
-        tooltip="引用"
-      >
-        <Quote className="w-4 h-4" />
-      </ToolbarBtn>
-
-      <div className="w-px h-6 bg-outline-variant/20 mx-1" />
-
-      {/* Code */}
-      <ToolbarBtn
-        onClick={() => editor.chain().focus().toggleCode().run()}
-        active={editor.isActive("code")}
-        tooltip="行内代码"
-      >
-        <Code className="w-4 h-4" />
-      </ToolbarBtn>
-      <ToolbarBtn
-        onClick={() => editor.chain().focus().toggleCodeBlock().run()}
-        active={editor.isActive("codeBlock")}
-        tooltip="代码块"
-      >
-        <Code2 className="w-4 h-4" />
-      </ToolbarBtn>
-
-      <div className="w-px h-6 bg-outline-variant/20 mx-1" />
-
-      {/* Highlight */}
-      <HighlightColorPicker editor={editor} />
-
-      <div className="w-px h-6 bg-outline-variant/20 mx-1" />
-
-      {/* Link & Horizontal Rule */}
-      <ToolbarBtn
-        onClick={() => {
-          const url = window.prompt("输入链接地址:");
-          if (url) editor.chain().focus().setLink({ href: url }).run();
-        }}
-        active={editor.isActive("link")}
-        tooltip="插入链接"
-      >
-        <LinkIcon className="w-4 h-4" />
-      </ToolbarBtn>
-      <ToolbarBtn
-        onClick={() => editor.chain().focus().setHorizontalRule().run()}
-        tooltip="分割线"
-      >
-        <Minus className="w-4 h-4" />
-      </ToolbarBtn>
-      <ToolbarBtn
-        onClick={() => editor.chain().focus().insertContent({ type: 'dashedSeparator' }).run()}
-        tooltip="虚线分隔线"
-      >
-        <Divide className="w-4 h-4" />
-      </ToolbarBtn>
-
-      <div className="w-px h-6 bg-outline-variant/20 mx-1" />
-
-      {/* Math Note Helpers */}
-      <ToolbarBtn
-        onClick={() => editor.chain().focus().insertContent("\n\n> **题干：** \n\n").run()}
-        tooltip="插入题干区块"
-      >
-        <FileText className="w-4 h-4" />
-      </ToolbarBtn>
-      <ToolbarBtn
-        onClick={() => editor.chain().focus().insertContent("\n\n> **解答：** \n\n").run()}
-        tooltip="插入解答区块"
-      >
-        <Quote className="w-4 h-4" />
-      </ToolbarBtn>
-      <StepLabelPicker editor={editor} />
-
-      <div className="w-px h-6 bg-outline-variant/20 mx-1" />
-
-      {/* Advanced Features */}
-      <ToolbarBtn onClick={onImageUpload} tooltip="插入图片" accent>
-        <ImageIcon className="w-4 h-4" />
-      </ToolbarBtn>
+      <ToolbarGroup label="数学笔记">
+        <ToolbarBtn
+          onClick={() => editor.chain().focus().insertContent("\n\n> **题干：** \n\n").run()}
+          tooltip="插入题干区块"
+        >
+          <FileText className="w-4 h-4" />
+        </ToolbarBtn>
+        <ToolbarBtn
+          onClick={() => editor.chain().focus().insertContent("\n\n> **解答：** \n\n").run()}
+          tooltip="插入解答区块"
+        >
+          <Quote className="w-4 h-4" />
+        </ToolbarBtn>
+        <StepLabelPicker editor={editor} />
+      </ToolbarGroup>
     </div>
   );
 }
@@ -201,21 +215,36 @@ interface ToolbarBtnProps {
   children: React.ReactNode;
 }
 
+function ToolbarGroup({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div
+      role="group"
+      aria-label={label}
+      className="flex shrink-0 items-center gap-0.5 rounded-xl border border-outline-variant/20 bg-surface-container-lowest/75 p-1 shadow-sm"
+    >
+      {children}
+    </div>
+  );
+}
+
 function ToolbarBtn({ onClick, tooltip, active, disabled, accent, children }: ToolbarBtnProps) {
-  const baseClass = "p-2 rounded-lg transition-colors";
+  const baseClass = "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-transparent transition-all duration-200 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30";
   const stateClass = disabled
     ? "opacity-40 cursor-not-allowed text-on-surface-variant/40"
     : active
-    ? "bg-primary/10 text-primary"
+    ? "border-primary/20 bg-primary/10 text-primary shadow-sm"
     : accent
-    ? "hover:bg-secondary/10 text-secondary"
-    : "hover:bg-surface-container-high text-on-surface-variant";
+    ? "text-secondary hover:border-secondary/20 hover:bg-secondary/10 hover:shadow-sm"
+    : "text-on-surface-variant hover:border-outline-variant/30 hover:bg-surface-container-high hover:text-on-surface";
 
   return (
     <button
       type="button"
       onClick={disabled ? undefined : onClick}
+      onMouseDown={(event) => event.preventDefault()}
       title={tooltip}
+      aria-label={tooltip}
+      aria-pressed={active}
       disabled={disabled}
       className={`${baseClass} ${stateClass}`}
     >

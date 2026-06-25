@@ -183,6 +183,7 @@ function restoreMathSpanTokensAsHtml(text: string, values: string[]): string {
 }
 
 const SIGNED_MATH_LINE_TOKEN = "AsteroidSignedMathLineToken";
+const LIST_MARKER_SPACE_TOKEN = "AsteroidListMarkerSpaceToken";
 
 function isLikelyStandaloneSignedMath(body: string): boolean {
   const trimmed = body.trim();
@@ -218,11 +219,20 @@ function restoreStandaloneSignedMathLines(text: string, values: string[]): strin
   });
 }
 
+function protectListMarkerTrailingSpaces(text: string): string {
+  return text.replace(/^(\s{0,3}(?:[*+-]|\d+\.))[ \t]+$/gm, `$1${LIST_MARKER_SPACE_TOKEN}`);
+}
+
+function restoreListMarkerTrailingSpaces(text: string): string {
+  return text.replaceAll(LIST_MARKER_SPACE_TOKEN, "");
+}
+
 function repairUnprotectedMarkdown(text: string): string {
   let next = text.replace(/\r\n?/g, "\n");
   const signedMathLines = protectStandaloneSignedMathLines(next);
   next = signedMathLines.text;
 
+  next = protectListMarkerTrailingSpaces(next);
   next = next.replace(/[ \t]+$/gm, "");
   next = next.replace(/^\s{0,3}(#{1,6})([^\s#])/gm, "$1 $2");
   next = next.replace(/^\s{0,3}([*+-])([^\s*+-])/gm, "$1 $2");
@@ -236,7 +246,9 @@ function repairUnprotectedMarkdown(text: string): string {
   next = next.replace(/(^|\n)([*+-] .+(?:\n[*+-] .+)*)\n(?!\n|[*+-] )/g, "$1$2\n\n");
   next = next.replace(/(^|\n)(\d+\. .+(?:\n\d+\. .+)*)\n(?!\n|\d+\. )/g, "$1$2\n\n");
 
-  return restoreStandaloneSignedMathLines(next, signedMathLines.values);
+  return restoreListMarkerTrailingSpaces(
+    restoreStandaloneSignedMathLines(next, signedMathLines.values),
+  );
 }
 
 export function repairMarkdown(content: string): string {
