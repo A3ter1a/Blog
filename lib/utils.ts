@@ -176,7 +176,7 @@ const LATEX_COMMAND_WORDS = LATEX_COMMAND_WORD_LIST.join("|");
 const MISSING_LATEX_COMMAND_BACKSLASH_PATTERN = new RegExp(`(?<![\\\\A-Za-z])(${LATEX_COMMAND_WORDS})(?![A-Za-z])`, "g");
 const OVER_ESCAPED_LATEX_COMMAND_PATTERN = new RegExp(`\\\\{2,}(${LATEX_COMMAND_WORDS})(?![A-Za-z])`, "g");
 const LATEX_N_CONTROL_ESCAPE_SUFFIX_PATTERN = /\n(?=(?:abla|atural|eg|eq|e|i|leq|geq|mid|ot(?:in)?|parallel|subseteq|supseteq|u)(?![A-Za-z]))/g;
-const LATEX_ESCAPED_STRUCTURAL_CHAR_PATTERN = /\\([_[\](),.;:!?<>=|^])/g;
+const LATEX_ESCAPED_STRUCTURAL_CHAR_PATTERN = /\\([_[\](),.;:!?<>=|^*])/g;
 const LATEX_ESCAPED_SCRIPT_GROUP_PATTERN = /([_^])\\\{([^{}]*)\\\}/g;
 const LATEX_ESCAPED_ONE_GROUP_COMMAND_PATTERN = /\\(begin|end|sqrt|text|mathrm|mathbf|mathbb|mathcal|operatorname|overline|underline|bar|hat|vec|dot|ddot|tilde|widetilde|widehat|boxed)\\\{([^{}]*)\\\}/g;
 const LATEX_ESCAPED_TWO_GROUP_COMMAND_PATTERN = /\\(frac|dfrac|tfrac|binom)\\\{([^{}]*)\\\}\\\{([^{}]*)\\\}/g;
