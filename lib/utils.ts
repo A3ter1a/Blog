@@ -59,6 +59,10 @@ const LATEX_COMMAND_WORD_LIST = [
   "ge",
   "geq",
   "hat",
+  "idotsint",
+  "iiiint",
+  "iiint",
+  "iint",
   "in",
   "infty",
   "int",
@@ -74,7 +78,9 @@ const LATEX_COMMAND_WORD_LIST = [
   "left",
   "lfloor",
   "lim",
+  "liminf",
   "limits",
+  "limsup",
   "ln",
   "log",
   "mathbb",
@@ -102,6 +108,9 @@ const LATEX_COMMAND_WORD_LIST = [
   "omega",
   "Omega",
   "operatorname",
+  "oiiint",
+  "oiint",
+  "oint",
   "over",
   "overline",
   "parallel",
@@ -167,6 +176,10 @@ const LATEX_COMMAND_WORDS = LATEX_COMMAND_WORD_LIST.join("|");
 const MISSING_LATEX_COMMAND_BACKSLASH_PATTERN = new RegExp(`(?<![\\\\A-Za-z])(${LATEX_COMMAND_WORDS})(?![A-Za-z])`, "g");
 const OVER_ESCAPED_LATEX_COMMAND_PATTERN = new RegExp(`\\\\{2,}(${LATEX_COMMAND_WORDS})(?![A-Za-z])`, "g");
 const LATEX_N_CONTROL_ESCAPE_SUFFIX_PATTERN = /\n(?=(?:abla|atural|eg|eq|e|i|leq|geq|mid|ot(?:in)?|parallel|subseteq|supseteq|u)(?![A-Za-z]))/g;
+const LATEX_ESCAPED_STRUCTURAL_CHAR_PATTERN = /\\([_[\](),.;:!?<>=|^])/g;
+const LATEX_ESCAPED_SCRIPT_GROUP_PATTERN = /([_^])\\\{([^{}]*)\\\}/g;
+const LATEX_ESCAPED_ONE_GROUP_COMMAND_PATTERN = /\\(begin|end|sqrt|text|mathrm|mathbf|mathbb|mathcal|operatorname|overline|underline|bar|hat|vec|dot|ddot|tilde|widetilde|widehat|boxed)\\\{([^{}]*)\\\}/g;
+const LATEX_ESCAPED_TWO_GROUP_COMMAND_PATTERN = /\\(frac|dfrac|tfrac|binom)\\\{([^{}]*)\\\}\\\{([^{}]*)\\\}/g;
 
 export function restoreLatexEscapedControlChars(content: string): string {
   const restored = content
@@ -231,6 +244,25 @@ export function restoreLatexLineBreaks(content: string): string {
     .replace(/\\{3,}(?![A-Za-z])/g, "\\\\");
 }
 
+function restoreLatexMarkdownEscapes(content: string): string {
+  let next = content
+    .replace(LATEX_ESCAPED_STRUCTURAL_CHAR_PATTERN, "$1")
+    .replace(LATEX_ESCAPED_TWO_GROUP_COMMAND_PATTERN, "\\$1{$2}{$3}")
+    .replace(LATEX_ESCAPED_ONE_GROUP_COMMAND_PATTERN, "\\$1{$2}")
+    .replace(LATEX_ESCAPED_SCRIPT_GROUP_PATTERN, "$1{$2}");
+
+  let previous: string;
+  do {
+    previous = next;
+    next = next
+      .replace(LATEX_ESCAPED_TWO_GROUP_COMMAND_PATTERN, "\\$1{$2}{$3}")
+      .replace(LATEX_ESCAPED_ONE_GROUP_COMMAND_PATTERN, "\\$1{$2}")
+      .replace(LATEX_ESCAPED_SCRIPT_GROUP_PATTERN, "$1{$2}");
+  } while (next !== previous);
+
+  return next;
+}
+
 export function separateCollapsedInlineMathSpans(content: string): string {
   let next = content;
   let previous: string;
@@ -273,10 +305,11 @@ function isInsideDollarMath(content: string, offset: number): boolean {
 }
 
 export function normalizeLatexForKatex(latex: string, displayMode = false): string {
-  let next = protectLatexLineBreaks(decodeLatexHtmlEntities(latex))
-    .replace(/\\([[\](),.;:!?<>])/g, "$1")
-    .replace(OVER_ESCAPED_LATEX_COMMAND_PATTERN, "\\$1")
-    .replace(MISSING_LATEX_COMMAND_BACKSLASH_PATTERN, "\\$1")
+  let next = restoreLatexMarkdownEscapes(
+    protectLatexLineBreaks(decodeLatexHtmlEntities(latex))
+      .replace(OVER_ESCAPED_LATEX_COMMAND_PATTERN, "\\$1")
+      .replace(MISSING_LATEX_COMMAND_BACKSLASH_PATTERN, "\\$1"),
+  )
     .replace(SIMPLE_MISSING_LOWER_BOUND_PATTERN, "\\$1_{$2}")
     .replace(SIMPLE_MISSING_LIMIT_BOUND_PATTERN, "\\lim_{$1}");
 
