@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
+  Bookmark,
   BookOpen,
   Check,
   ChevronLeft,
@@ -86,6 +87,7 @@ export function PracticeSession({
   const [showPracticeTools, setShowPracticeTools] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [recordingResult, setRecordingResult] = useState<PracticeResult | null>(null);
+  const [markingProblemKey, setMarkingProblemKey] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const normalizedProblemSetIds = useMemo(
@@ -184,6 +186,7 @@ export function PracticeSession({
     let wrong = 0;
     let mastered = 0;
     let review = 0;
+    let marked = 0;
 
     for (const problem of problems) {
       const status = statusMap[problem.practiceKey];
@@ -191,15 +194,17 @@ export function PracticeSession({
       if (status?.lastResult === "wrong") wrong += 1;
       if (status?.isMastered) mastered += 1;
       if (isReviewStatus(status)) review += 1;
+      if (status?.isMarked) marked += 1;
     }
 
     const unpracticed = problems.length - practiced;
     const unmastered = problems.length - mastered;
-    return { total: problems.length, practiced, wrong, mastered, review, unpracticed, unmastered };
+    return { total: problems.length, practiced, wrong, mastered, review, marked, unpracticed, unmastered };
   }, [problems, statusMap]);
 
   const filterCounts = useMemo<Record<PracticeFilter, number>>(() => ({
     all: stats.total,
+    marked: stats.marked,
     review: stats.review,
     wrong: stats.wrong,
     unpracticed: stats.unpracticed,
@@ -256,18 +261,54 @@ export function PracticeSession({
     }
   };
 
+  const handleToggleMarked = async () => {
+    if (!currentProblem || markingProblemKey || recordingResult || !canRecord) return;
+
+    const nextMarked = !currentStatus?.isMarked;
+    setMarkingProblemKey(currentProblem.practiceKey);
+
+    try {
+      const saved = await problemPracticeApi.setMarked(
+        currentProblem.sourceNoteId,
+        currentProblem.id,
+        nextMarked,
+        currentStatus,
+      );
+
+      setStatusMap((current) => {
+        const next = { ...current };
+        if (saved) {
+          next[getPracticeProblemKey(saved.noteId, saved.problemId)] = saved;
+        } else {
+          delete next[currentProblem.practiceKey];
+        }
+        return next;
+      });
+      toast.success(nextMarked ? "已加入三刷收集" : "已取消标记");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "未知错误";
+      toast.error(`标记保存失败：${message}`);
+    } finally {
+      setMarkingProblemKey(null);
+    }
+  };
+
   const handleResetCurrent = async () => {
     if (!currentProblem || recordingResult || !canRecord) return;
 
     setRecordingResult("skipped");
     try {
-      await problemPracticeApi.reset(currentProblem.sourceNoteId, currentProblem.id);
+      const saved = await problemPracticeApi.reset(currentProblem.sourceNoteId, currentProblem.id, currentStatus);
       setStatusMap((current) => {
         const next = { ...current };
-        delete next[currentProblem.practiceKey];
+        if (saved) {
+          next[getPracticeProblemKey(saved.noteId, saved.problemId)] = saved;
+        } else {
+          delete next[currentProblem.practiceKey];
+        }
         return next;
       });
-      toast.success("已重置这道题的刷题状态");
+      toast.success(currentStatus?.isMarked ? "已重置刷题状态，三刷标记已保留" : "已重置这道题的刷题状态");
     } catch (error) {
       const message = error instanceof Error ? error.message : "未知错误";
       toast.error(`重置失败：${message}`);
@@ -295,6 +336,11 @@ export function PracticeSession({
             {stats.total > 0 && (
               <span className="tag-chip px-2.5 py-1 text-xs">
                 已刷 {stats.practiced}/{stats.total} · {practicedPercent}%
+              </span>
+            )}
+            {stats.marked > 0 && (
+              <span className="tag-chip px-2.5 py-1 text-xs text-amber-700">
+                三刷标记 {stats.marked}
               </span>
             )}
             {problems.length > 0 && (
@@ -332,6 +378,7 @@ export function PracticeSession({
                 <SessionStat label="总题数" value={stats.total} />
                 <SessionStat label="已刷" value={stats.practiced} tone="text-primary" />
                 <SessionStat label="待回看" value={stats.review} tone="text-red-600" />
+                <SessionStat label="已标记" value={stats.marked} tone="text-amber-600" />
                 <SessionStat label="已掌握" value={stats.mastered} tone="text-green-600" />
               </div>
               <div className="mt-3">
@@ -463,8 +510,8 @@ export function PracticeSession({
                           index === activeIndex
                             ? "bg-primary text-on-primary"
                             : getStatusTone(status)
-                        }`}
-                        title={`队列第 ${originalIndex + 1} 题 · ${getRoundLabel(status?.round ?? 0)}`}
+                        } ${status?.isMarked ? "ring-2 ring-amber-400/50" : ""}`}
+                        title={`队列第 ${originalIndex + 1} 题 · ${getRoundLabel(status?.round ?? 0)}${status?.isMarked ? " · 已标记" : ""}`}
                       >
                         {originalIndex + 1}
                       </button>
@@ -483,7 +530,7 @@ export function PracticeSession({
           {!authLoading && !canRecord && (
             <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-700">
               <LockKeyhole className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-              <span>登录管理员后可以记录答对、答错和重置状态。</span>
+              <span>登录管理员后可以记录答对、答错、重置状态和标记题目。</span>
             </div>
           )}
         </aside>
@@ -510,8 +557,12 @@ export function PracticeSession({
               status={currentStatus}
               showAnswer={showAnswer}
               recordingResult={recordingResult}
+              marked={Boolean(currentStatus?.isMarked)}
+              marking={markingProblemKey === currentProblem.practiceKey}
               canRecord={canRecord}
+              canMark={canRecord}
               onToggleAnswer={() => setShowAnswer((value) => !value)}
+              onToggleMarked={handleToggleMarked}
               onPrevious={() => moveToProblem(activeIndex - 1)}
               onNext={() => moveToProblem(activeIndex + 1)}
               onRecordResult={handleRecordResult}
@@ -572,8 +623,12 @@ function PracticeProblemView({
   status,
   showAnswer,
   recordingResult,
+  marked,
+  marking,
   canRecord,
+  canMark,
   onToggleAnswer,
+  onToggleMarked,
   onPrevious,
   onNext,
   onRecordResult,
@@ -587,8 +642,12 @@ function PracticeProblemView({
   status?: ProblemPracticeStatus;
   showAnswer: boolean;
   recordingResult: PracticeResult | null;
+  marked: boolean;
+  marking: boolean;
   canRecord: boolean;
+  canMark: boolean;
   onToggleAnswer: () => void;
+  onToggleMarked: () => void;
   onPrevious: () => void;
   onNext: () => void;
   onRecordResult: (result: PracticeResult) => void;
@@ -613,8 +672,32 @@ function PracticeProblemView({
             <span className={`rounded-full px-2.5 py-1 font-medium ${getStatusTone(status)}`}>
               {getRoundLabel(status?.round ?? 0)}
             </span>
+            {marked && (
+              <span className="rounded-full bg-amber-50 px-2.5 py-1 font-medium text-amber-700">
+                已标记
+              </span>
+            )}
           </div>
-          <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center">
+          <div className="grid grid-cols-3 gap-2 sm:flex sm:items-center">
+            <button
+              type="button"
+              onClick={onToggleMarked}
+              disabled={marking || recordingResult !== null || !canMark}
+              aria-pressed={marked}
+              className={`inline-flex h-10 items-center justify-center gap-1 rounded-lg px-3 text-sm transition-colors disabled:opacity-40 ${
+                marked
+                  ? "bg-amber-100 font-semibold text-amber-700 hover:bg-amber-200"
+                  : "bg-surface-container-high text-on-surface-variant hover:bg-surface-container-highest"
+              }`}
+              title={canMark ? (marked ? "取消三刷标记" : "加入三刷收集") : "登录管理员后可以标记题目"}
+            >
+              {marking ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Bookmark className={`h-4 w-4 ${marked ? "fill-current" : ""}`} />
+              )}
+              <span className="hidden sm:inline">{marked ? "已标记" : "标记"}</span>
+            </button>
             <button
               type="button"
               onClick={onPrevious}

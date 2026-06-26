@@ -1,5 +1,5 @@
 -- Asteroid post-migration verification.
--- Read-only: run this after 0001_base_schema.sql and 0002_rls_policies.sql.
+-- Read-only: run this after all files under supabase/migrations have finished.
 
 with expected_tables(schema_name, table_name) as (
   values
@@ -21,6 +21,23 @@ table_checks as (
     ) then 'pass' else 'fail' end as status,
     schema_name || '.' || table_name as details
   from expected_tables
+),
+expected_columns(schema_name, table_name, column_name) as (
+  values
+    ('public', 'problem_practice_statuses', 'is_marked')
+),
+column_checks as (
+  select
+    'column_exists:' || schema_name || '.' || table_name || '.' || column_name as check_name,
+    case when exists (
+      select 1
+      from information_schema.columns
+      where table_schema = expected_columns.schema_name
+        and table_name = expected_columns.table_name
+        and column_name = expected_columns.column_name
+    ) then 'pass' else 'fail' end as status,
+    schema_name || '.' || table_name || '.' || column_name as details
+  from expected_columns
 ),
 rls_checks as (
   select
@@ -103,6 +120,8 @@ admin_email_summary as (
 ),
 all_checks as (
   select check_name, status, details from table_checks
+  union all
+  select check_name, status, details from column_checks
   union all
   select check_name, status, details from rls_checks
   union all

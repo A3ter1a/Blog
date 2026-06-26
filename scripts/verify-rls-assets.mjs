@@ -36,9 +36,10 @@ let failed = 0;
 
 const schemaSql = readRequired("supabase/migrations/0001_base_schema.sql");
 const rlsSql = readRequired("supabase/migrations/0002_rls_policies.sql");
+const practiceMarkedSql = readRequired("supabase/migrations/0003_problem_practice_marked.sql");
 const verificationSql = readRequired("supabase/verification.sql");
 const legacySql = readRequired("supabase-init.sql");
-const combinedSql = `${schemaSql}\n${rlsSql}\n${legacySql}`;
+const combinedSql = `${schemaSql}\n${rlsSql}\n${practiceMarkedSql}\n${legacySql}`;
 const docsSqlExamples = [
   readRequired("README.md"),
   readRequired("supabase/README.md"),
@@ -122,6 +123,18 @@ check(
 );
 
 check(
+  "problem_practice_statuses 有三刷标记字段迁移",
+  /alter\s+table\s+public\.problem_practice_statuses[\s\S]*add\s+column\s+if\s+not\s+exists\s+is_marked\s+boolean/i.test(practiceMarkedSql),
+  "题集标记功能依赖 is_marked 字段；缺少迁移会导致线上点击标记失败。",
+);
+
+check(
+  "problem_practice_statuses 已标记筛选有索引",
+  practiceMarkedSql.includes("idx_problem_practice_statuses_user_marked_updated_at"),
+  "已标记题目变多后，缺少索引会拖慢三刷收集列表。",
+);
+
+check(
   "迁移文件不直接 ALTER storage.objects",
   !/alter\s+table\s+storage\.objects\b/i.test(rlsSql),
   "Supabase 托管项目中的 storage.objects 通常由 Supabase 内部角色拥有，直接 ALTER 会在 SQL Editor 报 must be owner。",
@@ -155,6 +168,12 @@ check(
   "迁移后核验 SQL 检查 admin_users 与 auth.users 邮箱匹配",
   verificationSql.includes("public.admin_users") && verificationSql.includes("auth.users") && verificationSql.includes("lower(u.email) = lower(au.email)"),
   "管理员邮箱写错时，Next.js 鉴权和 Supabase RLS 会出现一边放行、一边拒绝的混乱状态。",
+);
+
+check(
+  "迁移后核验 SQL 检查三刷标记字段",
+  verificationSql.includes("'problem_practice_statuses', 'is_marked'"),
+  "如果核验脚本不检查 is_marked，可能漏掉数据库还没执行第三个迁移的问题。",
 );
 
 check(

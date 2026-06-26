@@ -36,6 +36,7 @@ export type ProblemPracticeStatusRow = {
   wrong_count?: number | null;
   last_result?: PracticeResult | null;
   is_mastered?: boolean | null;
+  is_marked?: boolean | null;
   last_practiced_at?: string | null;
   created_at?: string | null;
   updated_at?: string | null;

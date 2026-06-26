@@ -1,10 +1,11 @@
 import type { PracticeResult, ProblemPracticeStatus } from "./types";
 import { getPracticeProblemKey } from "./math3-practice";
 
-export type PracticeFilter = "all" | "review" | "wrong" | "unpracticed" | "unmastered" | "mastered";
+export type PracticeFilter = "all" | "marked" | "review" | "wrong" | "unpracticed" | "unmastered" | "mastered";
 
 export const PRACTICE_FILTERS: Array<{ value: PracticeFilter; label: string }> = [
   { value: "all", label: "全部" },
+  { value: "marked", label: "已标记" },
   { value: "review", label: "待回看" },
   { value: "wrong", label: "答错" },
   { value: "unpracticed", label: "未刷" },
@@ -45,6 +46,7 @@ export function matchesPracticeFilter(
   filter: PracticeFilter,
 ): boolean {
   if (filter === "all") return true;
+  if (filter === "marked") return Boolean(status?.isMarked);
   if (filter === "review") return isReviewStatus(status);
   if (filter === "wrong") return status?.lastResult === "wrong";
   if (filter === "unpracticed") return !isPracticed(status);

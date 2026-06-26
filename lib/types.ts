@@ -192,6 +192,7 @@ export interface ProblemPracticeStatus {
   wrongCount: number;
   lastResult?: PracticeResult;
   isMastered: boolean;
+  isMarked: boolean;
   lastPracticedAt?: Date;
   createdAt: Date;
   updatedAt: Date;

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   AlertCircle,
+  Bookmark,
   BookOpen,
   Check,
   ChevronLeft,
@@ -164,6 +165,7 @@ export function ReviewCenter() {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [showAnswer, setShowAnswer] = useState(false);
   const [recordingResult, setRecordingResult] = useState<PracticeResult | null>(null);
+  const [markingProblemKey, setMarkingProblemKey] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -215,12 +217,14 @@ export function ReviewCenter() {
     let review = 0;
     let wrong = 0;
     let mastered = 0;
+    let marked = 0;
 
     for (const item of reviewItems) {
       if (isPracticed(item.status)) practiced += 1;
       if (isReviewStatus(item.status)) review += 1;
       if (item.status?.lastResult === "wrong") wrong += 1;
       if (item.status?.isMastered) mastered += 1;
+      if (item.status?.isMarked) marked += 1;
     }
 
     return {
@@ -229,12 +233,14 @@ export function ReviewCenter() {
       review,
       wrong,
       mastered,
+      marked,
       unpracticed: reviewItems.length - practiced,
     };
   }, [reviewItems]);
 
   const filterCounts = useMemo<Record<PracticeFilter, number>>(() => ({
     all: stats.total,
+    marked: stats.marked,
     review: stats.review,
     wrong: stats.wrong,
     unpracticed: stats.unpracticed,
@@ -318,19 +324,55 @@ export function ReviewCenter() {
     }
   };
 
+  const handleToggleMarked = async () => {
+    if (!currentProblem || markingProblemKey || recordingResult) return;
+
+    const nextMarked = !currentProblem.status?.isMarked;
+    setMarkingProblemKey(currentProblem.practiceKey);
+
+    try {
+      const saved = await problemPracticeApi.setMarked(
+        currentProblem.sourceNoteId,
+        currentProblem.id,
+        nextMarked,
+        currentProblem.status,
+      );
+
+      setStatusMap((current) => {
+        const next = { ...current };
+        if (saved) {
+          next[getPracticeProblemKey(saved.noteId, saved.problemId)] = saved;
+        } else {
+          delete next[currentProblem.practiceKey];
+        }
+        return next;
+      });
+      toast.success(nextMarked ? "已加入三刷收集" : "已取消标记");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "未知错误";
+      toast.error(`标记保存失败：${message}`);
+    } finally {
+      setMarkingProblemKey(null);
+    }
+  };
+
   const handleResetCurrent = async () => {
     if (!currentProblem || recordingResult || !currentProblem.status) return;
 
     setRecordingResult("skipped");
     try {
-      await problemPracticeApi.reset(currentProblem.sourceNoteId, currentProblem.id);
+      const saved = await problemPracticeApi.reset(currentProblem.sourceNoteId, currentProblem.id, currentProblem.status);
       setStatusMap((current) => {
         const next = { ...current };
-        delete next[currentProblem.practiceKey];
+        if (saved) {
+          next[getPracticeProblemKey(saved.noteId, saved.problemId)] = saved;
+        } else {
+          delete next[currentProblem.practiceKey];
+        }
         return next;
       });
       setShowAnswer(false);
-      toast.success("已重置这道题的状态");
+      toast.success(currentProblem.status.isMarked ? "已重置刷题状态，三刷标记已保留" : "已重置这道题的状态");
     } catch (error) {
       const message = error instanceof Error ? error.message : "未知错误";
       toast.error(`重置失败：${message}`);
@@ -356,6 +398,7 @@ export function ReviewCenter() {
         stats={[
           { label: "待回看", value: stats.review, tone: "text-red-600" },
           { label: "答错", value: stats.wrong, tone: "text-red-600" },
+          { label: "已标记", value: stats.marked, tone: "text-amber-600" },
           { label: "已掌握", value: stats.mastered, tone: "text-green-600" },
           { label: "掌握率", value: `${masteredPercent}%` },
         ]}
@@ -471,7 +514,9 @@ export function ReviewCenter() {
                 total={visibleProblems.length}
                 showAnswer={showAnswer}
                 recordingResult={recordingResult}
+                marking={markingProblemKey === currentProblem.practiceKey}
                 onToggleAnswer={() => setShowAnswer((value) => !value)}
+                onToggleMarked={handleToggleMarked}
                 onPrevious={() => moveToProblem(activeIndex - 1)}
                 onNext={() => moveToProblem(activeIndex + 1)}
                 onRecordResult={handleRecordResult}
@@ -562,7 +607,9 @@ function ReviewProblemCard({
   total,
   showAnswer,
   recordingResult,
+  marking,
   onToggleAnswer,
+  onToggleMarked,
   onPrevious,
   onNext,
   onRecordResult,
@@ -573,7 +620,9 @@ function ReviewProblemCard({
   total: number;
   showAnswer: boolean;
   recordingResult: PracticeResult | null;
+  marking: boolean;
   onToggleAnswer: () => void;
+  onToggleMarked: () => void;
   onPrevious: () => void;
   onNext: () => void;
   onRecordResult: (result: PracticeResult) => void;
@@ -591,6 +640,11 @@ function ReviewProblemCard({
               <span className={`rounded-full px-2.5 py-1 font-medium ${getStatusTone(problem.status)}`}>
                 {getRoundLabel(problem.status?.round ?? 0)}
               </span>
+              {problem.status?.isMarked && (
+                <span className="rounded-full bg-amber-50 px-2.5 py-1 font-medium text-amber-700">
+                  已标记
+                </span>
+              )}
               <span className="rounded-full bg-surface-container-lowest px-2.5 py-1 text-on-surface-variant">
                 {problemTypeMap[problem.type]}
               </span>
@@ -606,7 +660,26 @@ function ReviewProblemCard({
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center">
+          <div className="grid grid-cols-3 gap-2 sm:flex sm:items-center">
+            <button
+              type="button"
+              onClick={onToggleMarked}
+              disabled={marking || recordingResult !== null}
+              aria-pressed={Boolean(problem.status?.isMarked)}
+              className={`inline-flex h-10 items-center justify-center gap-1 rounded-lg px-3 text-sm transition-colors disabled:opacity-40 ${
+                problem.status?.isMarked
+                  ? "bg-amber-100 font-semibold text-amber-700 hover:bg-amber-200"
+                  : "bg-surface-container-high text-on-surface-variant hover:bg-surface-container-highest"
+              }`}
+              title={problem.status?.isMarked ? "取消三刷标记" : "加入三刷收集"}
+            >
+              {marking ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Bookmark className={`h-4 w-4 ${problem.status?.isMarked ? "fill-current" : ""}`} />
+              )}
+              <span className="hidden sm:inline">{problem.status?.isMarked ? "已标记" : "标记"}</span>
+            </button>
             <button
               type="button"
               onClick={onPrevious}
@@ -791,7 +864,10 @@ function QueuePanel({
               }`}
             >
               <div className="flex items-center justify-between gap-2">
-                <span className="text-xs font-semibold text-primary">#{problem.sourceProblemIndex + 1}</span>
+                <span className="inline-flex items-center gap-1 text-xs font-semibold text-primary">
+                  #{problem.sourceProblemIndex + 1}
+                  {problem.status?.isMarked && <Bookmark className="h-3 w-3 fill-amber-500 text-amber-500" />}
+                </span>
                 <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${getStatusTone(problem.status)}`}>
                   {getResultLabel(problem.status?.lastResult)}
                 </span>

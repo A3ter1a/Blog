@@ -6,7 +6,27 @@ import {
 } from "./supabase";
 import type { PracticeResult, ProblemPracticeStatus } from "./types";
 
-const PRACTICE_STATUS_FIELDS = "id,user_id,note_id,problem_id,round,attempts,correct_count,wrong_count,last_result,is_mastered,last_practiced_at,created_at,updated_at";
+const PRACTICE_STATUS_BASE_FIELDS = "id,user_id,note_id,problem_id,round,attempts,correct_count,wrong_count,last_result,is_mastered,last_practiced_at,created_at,updated_at";
+const PRACTICE_STATUS_FIELDS = `${PRACTICE_STATUS_BASE_FIELDS},is_marked`;
+const MARKED_COLUMN_MIGRATION_HINT = "请先在 Supabase SQL Editor 执行 supabase/migrations/0003_problem_practice_marked.sql";
+
+let canReadMarkedColumn: boolean | null = null;
+
+function isMissingMarkedColumn(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const { message, details, hint } = error as { message?: string; details?: string; hint?: string };
+  return [message, details, hint].some((value) => typeof value === "string" && value.includes("is_marked"));
+}
+
+function hasPracticeProgress(status: ProblemPracticeStatus): boolean {
+  return status.round > 0
+    || status.attempts > 0
+    || status.correctCount > 0
+    || status.wrongCount > 0
+    || Boolean(status.lastResult)
+    || status.isMastered
+    || Boolean(status.lastPracticedAt);
+}
 
 async function getCurrentUserId(): Promise<string | null> {
   const { data } = await getSupabase().auth.getSession();
@@ -27,6 +47,7 @@ function mapPracticeStatusSnakeToCamel(row: ProblemPracticeStatusRow): ProblemPr
     wrongCount: row.wrong_count ?? 0,
     lastResult: row.last_result || undefined,
     isMastered: row.is_mastered ?? false,
+    isMarked: row.is_marked ?? false,
     lastPracticedAt: row.last_practiced_at ? new Date(row.last_practiced_at) : undefined,
     createdAt,
     updatedAt,
@@ -46,14 +67,27 @@ export const problemPracticeApi = {
     if (!userId) return [];
 
     const supabase = getSupabase();
-    const { data, error } = await supabase
-      .from("problem_practice_statuses")
-      .select(PRACTICE_STATUS_FIELDS)
-      .eq("user_id", userId)
-      .in("note_id", uniqueNoteIds);
+    const fields = canReadMarkedColumn === false ? PRACTICE_STATUS_BASE_FIELDS : PRACTICE_STATUS_FIELDS;
+    const queryStatuses = (selectFields: string) =>
+      supabase
+        .from("problem_practice_statuses")
+        .select(selectFields)
+        .eq("user_id", userId)
+        .in("note_id", uniqueNoteIds);
+
+    let { data, error } = await queryStatuses(fields);
+
+    if (error && canReadMarkedColumn !== false && isMissingMarkedColumn(error)) {
+      canReadMarkedColumn = false;
+      const fallback = await queryStatuses(PRACTICE_STATUS_BASE_FIELDS);
+      data = fallback.data;
+      error = fallback.error;
+    } else if (!error) {
+      canReadMarkedColumn = true;
+    }
 
     if (error) throw error;
-    return (data || []).map(mapPracticeStatusSnakeToCamel);
+    return ((data || []) as ProblemPracticeStatusRow[]).map(mapPracticeStatusSnakeToCamel);
   },
 
   async recordResult(
@@ -86,16 +120,120 @@ export const problemPracticeApi = {
     const { data, error } = await supabase
       .from("problem_practice_statuses")
       .upsert(payload, { onConflict: "user_id,note_id,problem_id" })
-      .select(PRACTICE_STATUS_FIELDS)
+      .select(current?.isMarked || canReadMarkedColumn === true ? PRACTICE_STATUS_FIELDS : PRACTICE_STATUS_BASE_FIELDS)
       .single();
 
     if (error) throw error;
-    return mapPracticeStatusSnakeToCamel(data);
+    return mapPracticeStatusSnakeToCamel(data as ProblemPracticeStatusRow);
   },
 
-  async reset(noteId: string, problemId: string): Promise<void> {
+  async setMarked(
+    noteId: string,
+    problemId: string,
+    marked: boolean,
+    current?: ProblemPracticeStatus,
+  ): Promise<ProblemPracticeStatus | null> {
     const userId = await assertAdminWrite();
     const supabase = getSupabase();
+
+    if (!marked && !current) return null;
+
+    if (!marked && current && !hasPracticeProgress(current)) {
+      const { error } = await supabase
+        .from("problem_practice_statuses")
+        .delete()
+        .eq("user_id", userId)
+        .eq("note_id", noteId)
+        .eq("problem_id", problemId);
+
+      if (error) throw error;
+      return null;
+    }
+
+    const now = new Date().toISOString();
+    if (current) {
+      const { data, error } = await supabase
+        .from("problem_practice_statuses")
+        .update({
+          is_marked: marked,
+          updated_at: now,
+        })
+        .eq("user_id", userId)
+        .eq("note_id", noteId)
+        .eq("problem_id", problemId)
+        .select(PRACTICE_STATUS_FIELDS)
+        .single();
+
+      if (error) {
+        if (isMissingMarkedColumn(error)) throw new Error(MARKED_COLUMN_MIGRATION_HINT);
+        throw error;
+      }
+
+      canReadMarkedColumn = true;
+      return mapPracticeStatusSnakeToCamel(data as ProblemPracticeStatusRow);
+    }
+
+    const payload: ProblemPracticeStatusInsert = {
+      user_id: userId,
+      note_id: noteId,
+      problem_id: problemId,
+      round: 0,
+      attempts: 0,
+      correct_count: 0,
+      wrong_count: 0,
+      is_mastered: false,
+      is_marked: marked,
+      created_at: now,
+      updated_at: now,
+    };
+
+    const { data, error } = await supabase
+      .from("problem_practice_statuses")
+      .upsert(payload, { onConflict: "user_id,note_id,problem_id" })
+      .select(PRACTICE_STATUS_FIELDS)
+      .single();
+
+    if (error) {
+      if (isMissingMarkedColumn(error)) throw new Error(MARKED_COLUMN_MIGRATION_HINT);
+      throw error;
+    }
+
+    canReadMarkedColumn = true;
+    return mapPracticeStatusSnakeToCamel(data as ProblemPracticeStatusRow);
+  },
+
+  async reset(
+    noteId: string,
+    problemId: string,
+    current?: ProblemPracticeStatus,
+  ): Promise<ProblemPracticeStatus | null> {
+    const userId = await assertAdminWrite();
+    const supabase = getSupabase();
+
+    if (current?.isMarked) {
+      const { data, error } = await supabase
+        .from("problem_practice_statuses")
+        .update({
+          round: 0,
+          attempts: 0,
+          correct_count: 0,
+          wrong_count: 0,
+          last_result: null,
+          is_mastered: false,
+          is_marked: true,
+          last_practiced_at: null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("user_id", userId)
+        .eq("note_id", noteId)
+        .eq("problem_id", problemId)
+        .select(PRACTICE_STATUS_FIELDS)
+        .single();
+
+      if (error) throw error;
+      return mapPracticeStatusSnakeToCamel(data as ProblemPracticeStatusRow);
+    }
+
     const { error } = await supabase
       .from("problem_practice_statuses")
       .delete()
@@ -104,5 +242,6 @@ export const problemPracticeApi = {
       .eq("problem_id", problemId);
 
     if (error) throw error;
+    return null;
   },
 };
