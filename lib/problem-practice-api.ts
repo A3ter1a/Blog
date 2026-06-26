@@ -90,6 +90,30 @@ export const problemPracticeApi = {
     return ((data || []) as ProblemPracticeStatusRow[]).map(mapPracticeStatusSnakeToCamel);
   },
 
+  async getMarkedByNoteIds(noteIds: string[]): Promise<ProblemPracticeStatus[]> {
+    const uniqueNoteIds = [...new Set(noteIds.filter(Boolean))];
+    if (uniqueNoteIds.length === 0) return [];
+
+    const userId = await getCurrentUserId();
+    if (!userId) return [];
+
+    const { data, error } = await getSupabase()
+      .from("problem_practice_statuses")
+      .select(PRACTICE_STATUS_FIELDS)
+      .eq("user_id", userId)
+      .eq("is_marked", true)
+      .in("note_id", uniqueNoteIds)
+      .order("updated_at", { ascending: false });
+
+    if (error) {
+      if (isMissingMarkedColumn(error)) throw new Error(MARKED_COLUMN_MIGRATION_HINT);
+      throw error;
+    }
+
+    canReadMarkedColumn = true;
+    return ((data || []) as ProblemPracticeStatusRow[]).map(mapPracticeStatusSnakeToCamel);
+  },
+
   async recordResult(
     noteId: string,
     problemId: string,

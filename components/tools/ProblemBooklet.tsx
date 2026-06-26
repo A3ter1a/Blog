@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
+  Bookmark,
   BookOpen,
   CheckSquare,
   FileDown,
@@ -15,9 +16,10 @@ import {
 import { MarkdownContent } from "@/components/ui/MarkdownContent";
 import { PageHeader, PageShell } from "@/components/ui/PageScaffold";
 import { useToast } from "@/components/ui/Toast";
-import { flattenPracticeProblems, type PracticeProblemItem } from "@/lib/math3-practice";
+import { flattenPracticeProblems, getPracticeProblemKey, type PracticeProblemItem } from "@/lib/math3-practice";
+import { problemPracticeApi } from "@/lib/problem-practice-api";
 import { notesApi } from "@/lib/supabase";
-import type { Difficulty, Note, ProblemType, Subject } from "@/lib/types";
+import type { Difficulty, Note, ProblemPracticeStatus, ProblemType, Subject } from "@/lib/types";
 import { difficultyMap, problemTypeMap, subjectMap } from "@/lib/types";
 
 type SubjectFilter = "all" | Subject;
@@ -26,6 +28,16 @@ type DifficultyFilter = "all" | Difficulty;
 type ExportTarget = "questions" | "answers";
 
 const PROBLEM_SET_LIMIT = 200;
+const MARKED_SET_ID = "__asteroid_marked_problem_set__";
+const MARKED_SET_DATE = new Date(0);
+
+type MarkedStatusLoadState = "idle" | "loading" | "ready" | "error";
+
+type BookletSet = Note & {
+  helperText?: string;
+  isMarkedVirtualSet?: boolean;
+  problemCountHint?: number;
+};
 
 const subjectOptions: Array<{ value: SubjectFilter; label: string }> = [
   { value: "all", label: "全部科目" },
@@ -59,6 +71,52 @@ function getSetProblemKeys(set: Note | undefined): string[] {
 
 function getSetProblemCount(set: Note | undefined): number | undefined {
   return set ? set.problems?.length ?? 0 : undefined;
+}
+
+function isMarkedSetId(id: string): boolean {
+  return id === MARKED_SET_ID;
+}
+
+function getMarkedProblemKeys(statuses: ProblemPracticeStatus[]): string[] {
+  return statuses
+    .filter((status) => status.isMarked)
+    .map((status) => getPracticeProblemKey(status.noteId, status.problemId));
+}
+
+function getProblemKeysForSetIds(
+  setIds: string[],
+  loadedSets: Record<string, Note>,
+  markedProblemKeySet: Set<string>,
+): string[] {
+  return unique(setIds.flatMap((id) => (
+    isMarkedSetId(id) ? Array.from(markedProblemKeySet) : getSetProblemKeys(loadedSets[id])
+  )));
+}
+
+function uniqueProblemsByKey(problems: PracticeProblemItem[]): PracticeProblemItem[] {
+  const seen = new Set<string>();
+  return problems.filter((problem) => {
+    if (seen.has(problem.practiceKey)) return false;
+    seen.add(problem.practiceKey);
+    return true;
+  });
+}
+
+function createMarkedSetSummary(count: number, loadState: MarkedStatusLoadState): BookletSet {
+  return {
+    id: MARKED_SET_ID,
+    type: "problem",
+    title: "已标记题目",
+    content: "",
+    tags: ["三刷标记", "已标记", "收藏"],
+    problems: [],
+    createdAt: MARKED_SET_DATE,
+    updatedAt: MARKED_SET_DATE,
+    isPublished: true,
+    helperText: loadState === "loading" ? "正在同步三刷标记" : "三刷收集",
+    isMarkedVirtualSet: true,
+    problemCountHint: loadState === "loading" ? undefined : count,
+  };
 }
 
 function previewText(problem: PracticeProblemItem): string {
@@ -100,6 +158,8 @@ export function ProblemBooklet() {
   const [loadingSummaries, setLoadingSummaries] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [activePrintTarget, setActivePrintTarget] = useState<ExportTarget | null>(null);
+  const [markedStatuses, setMarkedStatuses] = useState<ProblemPracticeStatus[]>([]);
+  const [markedStatusLoadState, setMarkedStatusLoadState] = useState<MarkedStatusLoadState>("idle");
 
   useEffect(() => {
     let cancelled = false;
@@ -133,8 +193,61 @@ export function ProblemBooklet() {
     };
   }, [toast]);
 
+  const selectedSetIdSet = useMemo(() => new Set(selectedSetIds), [selectedSetIds]);
+  const selectedActualSetIds = useMemo(
+    () => selectedSetIds.filter((id) => !isMarkedSetId(id)),
+    [selectedSetIds],
+  );
+  const markedSetSelected = selectedSetIdSet.has(MARKED_SET_ID);
+  const markedProblemKeys = useMemo(() => getMarkedProblemKeys(markedStatuses), [markedStatuses]);
+  const markedProblemKeySet = useMemo(() => new Set(markedProblemKeys), [markedProblemKeys]);
+  const markedSourceNoteIds = useMemo(
+    () => unique(markedStatuses.map((status) => status.noteId)),
+    [markedStatuses],
+  );
+  const requiredSetIds = useMemo(
+    () => unique([
+      ...selectedActualSetIds,
+      ...(markedSetSelected ? markedSourceNoteIds : []),
+    ]),
+    [markedSetSelected, markedSourceNoteIds, selectedActualSetIds],
+  );
+
   useEffect(() => {
-    const missingIds = selectedSetIds.filter((id) => !loadedSets[id]);
+    let cancelled = false;
+
+    async function loadMarkedStatuses() {
+      if (summaries.length === 0) {
+        setMarkedStatuses([]);
+        setMarkedStatusLoadState("ready");
+        return;
+      }
+
+      setMarkedStatusLoadState("loading");
+      try {
+        const statuses = await problemPracticeApi.getMarkedByNoteIds(summaries.map((set) => set.id));
+        if (cancelled) return;
+
+        setMarkedStatuses(statuses.filter((status) => status.isMarked));
+        setMarkedStatusLoadState("ready");
+      } catch (error) {
+        if (cancelled) return;
+
+        const message = error instanceof Error ? error.message : "未知错误";
+        setMarkedStatuses([]);
+        setMarkedStatusLoadState("error");
+        toast.error(`已标记题目加载失败：${message}`);
+      }
+    }
+
+    void loadMarkedStatuses();
+    return () => {
+      cancelled = true;
+    };
+  }, [summaries, toast]);
+
+  useEffect(() => {
+    const missingIds = requiredSetIds.filter((id) => !loadedSets[id]);
     if (missingIds.length === 0) return;
 
     let cancelled = false;
@@ -146,6 +259,7 @@ export function ProblemBooklet() {
 
         const validIds = new Set(validSets.map((set) => set.id));
         const invalidIds = missingIds.filter((id) => !validIds.has(id));
+        const selectedActualIdSet = new Set(selectedActualSetIds);
 
         if (validSets.length > 0) {
           setLoadedSets((current) => {
@@ -155,20 +269,30 @@ export function ProblemBooklet() {
           });
           setSelectedProblemKeys((current) => unique([
             ...current,
-            ...validSets.flatMap((set) => getSetProblemKeys(set)),
+            ...validSets.flatMap((set) => {
+              const problemKeys = getSetProblemKeys(set);
+              return [
+                ...(selectedActualIdSet.has(set.id) ? problemKeys : []),
+                ...(markedSetSelected ? problemKeys.filter((key) => markedProblemKeySet.has(key)) : []),
+              ];
+            }),
           ]));
         }
 
         if (invalidIds.length > 0) {
           const invalidIdSet = new Set(invalidIds);
           setSelectedSetIds((current) => current.filter((id) => !invalidIdSet.has(id)));
+          setMarkedStatuses((current) => current.filter((status) => !invalidIdSet.has(status.noteId)));
           toast.error("部分题集无法读取，已从做题本选择中移除。");
         }
       } catch (error) {
         if (!cancelled) {
           const message = error instanceof Error ? error.message : "未知错误";
           const failedIdSet = new Set(missingIds);
-          setSelectedSetIds((current) => current.filter((id) => !failedIdSet.has(id)));
+          const failedMarkedSource = markedSourceNoteIds.some((id) => failedIdSet.has(id));
+          setSelectedSetIds((current) => current.filter((id) => (
+            !failedIdSet.has(id) && (!failedMarkedSource || !isMarkedSetId(id))
+          )));
           toast.error(`题目加载失败：${message}`);
         }
       }
@@ -178,31 +302,68 @@ export function ProblemBooklet() {
     return () => {
       cancelled = true;
     };
-  }, [loadedSets, selectedSetIds, toast]);
+  }, [loadedSets, markedProblemKeySet, markedSetSelected, markedSourceNoteIds, requiredSetIds, selectedActualSetIds, toast]);
 
   useEffect(() => () => {
     printCleanupRef.current?.();
   }, []);
 
-  const selectedSetIdSet = useMemo(() => new Set(selectedSetIds), [selectedSetIds]);
   const selectedProblemKeySet = useMemo(() => new Set(selectedProblemKeys), [selectedProblemKeys]);
   const normalizedSetQuery = normalizeQuery(setQuery);
   const normalizedProblemQuery = normalizeQuery(problemQuery);
 
-  const visibleSets = useMemo(() => summaries.filter((set) => {
-    const subjectMatches = subject === "all" || set.subject === subject;
-    const queryMatches = !normalizedSetQuery
+  const summaryById = useMemo(() => new Map(summaries.map((set) => [set.id, set])), [summaries]);
+  const markedSetSummary = useMemo(
+    () => createMarkedSetSummary(markedProblemKeys.length, markedStatusLoadState),
+    [markedProblemKeys.length, markedStatusLoadState],
+  );
+
+  const visibleSets = useMemo<BookletSet[]>(() => {
+    const queryMatches = (set: Note) => !normalizedSetQuery
       || set.title.toLowerCase().includes(normalizedSetQuery)
       || set.tags.join(" ").toLowerCase().includes(normalizedSetQuery);
-    return subjectMatches && queryMatches;
-  }), [normalizedSetQuery, subject, summaries]);
+    const subjectMatches = (set: Note) => subject === "all" || set.subject === subject;
 
-  const loadedProblemSets = useMemo(
-    () => selectedSetIds.map((id) => loadedSets[id]).filter((set): set is Note => Boolean(set)),
-    [loadedSets, selectedSetIds],
+    const regularSets = summaries.filter((set) => subjectMatches(set) && queryMatches(set));
+    const shouldShowMarkedSet = markedSetSelected
+      || markedStatusLoadState === "loading"
+      || markedProblemKeys.length > 0;
+    const markedSubjectMatches = subject === "all"
+      || markedStatuses.some((status) => summaryById.get(status.noteId)?.subject === subject);
+
+    if (shouldShowMarkedSet && markedSubjectMatches && queryMatches(markedSetSummary)) {
+      return [markedSetSummary, ...regularSets];
+    }
+
+    return regularSets;
+  }, [
+    markedProblemKeys.length,
+    markedSetSelected,
+    markedSetSummary,
+    markedStatusLoadState,
+    markedStatuses,
+    normalizedSetQuery,
+    subject,
+    summaries,
+    summaryById,
+  ]);
+
+  const selectedActualProblemSets = useMemo(
+    () => selectedActualSetIds.map((id) => loadedSets[id]).filter((set): set is Note => Boolean(set)),
+    [loadedSets, selectedActualSetIds],
   );
-  const loadingSets = selectedSetIds.some((id) => !loadedSets[id]);
-  const loadedProblems = useMemo(() => flattenPracticeProblems(loadedProblemSets), [loadedProblemSets]);
+  const markedProblemSourceSets = useMemo(
+    () => markedSetSelected
+      ? markedSourceNoteIds.map((id) => loadedSets[id]).filter((set): set is Note => Boolean(set))
+      : [],
+    [loadedSets, markedSetSelected, markedSourceNoteIds],
+  );
+  const loadingSets = requiredSetIds.some((id) => !loadedSets[id])
+    || (markedSetSelected && markedStatusLoadState === "loading");
+  const loadedProblems = useMemo(() => uniqueProblemsByKey([
+    ...flattenPracticeProblems(selectedActualProblemSets),
+    ...flattenPracticeProblems(markedProblemSourceSets).filter((problem) => markedProblemKeySet.has(problem.practiceKey)),
+  ]), [markedProblemKeySet, markedProblemSourceSets, selectedActualProblemSets]);
   const visibleProblems = useMemo(() => loadedProblems.filter((problem) => (
     (problemType === "all" || problem.type === problemType)
     && (difficulty === "all" || problem.difficulty === difficulty)
@@ -218,26 +379,41 @@ export function ProblemBooklet() {
   const allVisibleProblemsSelected = visibleProblems.length > 0
     && visibleProblems.every((problem) => selectedProblemKeySet.has(problem.practiceKey));
 
+  const removeSetIdsFromSelection = (idsToRemove: string[]) => {
+    const idSet = new Set(idsToRemove);
+    const remainingSetIds = selectedSetIds.filter((id) => !idSet.has(id));
+    const removedProblemKeys = new Set(getProblemKeysForSetIds(idsToRemove, loadedSets, markedProblemKeySet));
+    const remainingProblemKeys = new Set(getProblemKeysForSetIds(remainingSetIds, loadedSets, markedProblemKeySet));
+
+    setSelectedSetIds(remainingSetIds);
+    setSelectedProblemKeys((current) => current.filter((key) => (
+      !removedProblemKeys.has(key) || remainingProblemKeys.has(key)
+    )));
+  };
+
   const toggleSet = (id: string) => {
     if (selectedSetIdSet.has(id)) {
-      const problemKeys = new Set(getSetProblemKeys(loadedSets[id]));
-      setSelectedSetIds((current) => current.filter((item) => item !== id));
-      setSelectedProblemKeys((current) => current.filter((key) => !problemKeys.has(key)));
+      removeSetIdsFromSelection([id]);
       return;
     }
     setSelectedSetIds((current) => unique([...current, id]));
+    setSelectedProblemKeys((current) => unique([
+      ...current,
+      ...getProblemKeysForSetIds([id], loadedSets, markedProblemKeySet),
+    ]));
   };
 
   const toggleVisibleSets = () => {
     if (visibleSetIds.length === 0) return;
     if (allVisibleSetsSelected) {
-      const ids = new Set(visibleSetIds);
-      const problemKeys = new Set(visibleSetIds.flatMap((id) => getSetProblemKeys(loadedSets[id])));
-      setSelectedSetIds((current) => current.filter((id) => !ids.has(id)));
-      setSelectedProblemKeys((current) => current.filter((key) => !problemKeys.has(key)));
+      removeSetIdsFromSelection(visibleSetIds);
       return;
     }
     setSelectedSetIds((current) => unique([...current, ...visibleSetIds]));
+    setSelectedProblemKeys((current) => unique([
+      ...current,
+      ...getProblemKeysForSetIds(visibleSetIds, loadedSets, markedProblemKeySet),
+    ]));
   };
 
   const toggleProblem = (key: string) => {
@@ -340,8 +516,8 @@ export function ProblemBooklet() {
           description="批量选择题目，导出 iPad 横屏一题一页的题目册；答案册独立导出。"
           stats={[
             { label: "题集", value: summaries.length },
+            { label: "已标记", value: markedStatusLoadState === "loading" ? "..." : markedProblemKeys.length, tone: "text-amber-600" },
             { label: "已选题集", value: selectedSetIds.length },
-            { label: "已载入", value: loadedProblems.length },
             { label: "入册题目", value: selectedProblems.length, tone: "text-primary" },
           ]}
         />
@@ -436,7 +612,7 @@ function SetPanel({
   onToggleSet,
   onToggleVisible,
 }: {
-  sets: Note[];
+  sets: BookletSet[];
   loadedSets: Record<string, Note>;
   selectedIds: Set<string>;
   query: string;
@@ -471,20 +647,27 @@ function SetPanel({
           <p className="py-4 text-sm text-on-surface-variant">没有匹配的题集。</p>
         ) : sets.map((set) => {
           const selected = selectedIds.has(set.id);
-          const count = getSetProblemCount(loadedSets[set.id]);
+          const count = set.problemCountHint ?? getSetProblemCount(loadedSets[set.id]);
+          const idleClass = set.isMarkedVirtualSet
+            ? "border-amber-200/70 bg-amber-50/70 hover:border-amber-300/80 hover:bg-amber-50"
+            : "border-outline-variant/20 bg-surface-container-low/70 hover:border-primary/25 hover:bg-surface-container-lowest";
           return (
             <button
               key={set.id}
               type="button"
               onClick={() => onToggleSet(set.id)}
-              className={`w-full rounded-md border px-3 py-2.5 text-left transition-all ${selected ? "border-primary/40 bg-primary/[0.07] ring-1 ring-primary/15" : "border-outline-variant/20 bg-surface-container-low/70 hover:border-primary/25 hover:bg-surface-container-lowest"}`}
+              className={`w-full rounded-md border px-3 py-2.5 text-left transition-all ${selected ? "border-primary/40 bg-primary/[0.07] ring-1 ring-primary/15" : idleClass}`}
             >
               <div className="flex items-start gap-2">
                 <SelectionIcon selected={selected} />
                 <div className="min-w-0 flex-1">
-                  <div className="line-clamp-2 text-sm font-medium text-on-surface">{set.title || "未命名题集"}</div>
+                  <div className="flex items-center gap-1.5">
+                    {set.isMarkedVirtualSet && <Bookmark className="h-3.5 w-3.5 shrink-0 fill-amber-500 text-amber-500" />}
+                    <div className="line-clamp-2 text-sm font-medium text-on-surface">{set.title || "未命名题集"}</div>
+                  </div>
                   <div className="mt-1 flex flex-wrap gap-1.5 text-xs text-on-surface-variant">
                     {set.subject && <span>{subjectMap[set.subject]}</span>}
+                    {set.helperText && <span>{set.helperText}</span>}
                     {count !== undefined && <span>{count} 题</span>}
                   </div>
                 </div>
