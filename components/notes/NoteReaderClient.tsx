@@ -7,10 +7,12 @@ import { useRouter } from "next/navigation";
 import { ArrowLeft, Calendar, Tag, Edit2, Trash2, ChevronDown, ChevronUp, BookOpen, BookMarked, Loader2, Clock, Layers, SlidersHorizontal } from "lucide-react";
 import { notesApi } from "@/lib/supabase";
 import { chaptersApi } from "@/lib/chapters-api";
-import { subjectMap, typeMap, Note, Chapter, Problem } from "@/lib/types";
+import { subjectMap, typeMap, Note, Chapter, Problem, type ProblemPracticeStatus } from "@/lib/types";
 import { estimateReadingTime, getDescendantIds } from "@/lib/utils";
 import { getRootChapters } from "@/lib/chapter-utils";
-import { getVisibleNoteTags } from "@/lib/math3-practice";
+import { getPracticeProblemKey, getVisibleNoteTags } from "@/lib/math3-practice";
+import { toPracticeStatusMap } from "@/lib/problem-practice";
+import { problemPracticeApi } from "@/lib/problem-practice-api";
 import { getProblemValidationIssues, normalizeProblem } from "@/lib/problem-utils";
 import { Playlist } from "@/components/video/Playlist";
 import { VideoPlayer } from "@/components/video/VideoPlayer";
@@ -33,6 +35,8 @@ type NoteReaderClientProps = {
   initialLoadError?: boolean;
 };
 
+type PracticeStatusLoadState = "idle" | "loading" | "ready" | "error";
+
 export function NoteReaderClient({
   noteId,
   initialNote,
@@ -54,6 +58,9 @@ export function NoteReaderClient({
   const [chapters, setChapters] = useState<Chapter[]>(initialChapters);
   const [selectedChapterId, setSelectedChapterId] = useState<string | undefined>(undefined);
   const [showProblemTools, setShowProblemTools] = useState(false);
+  const [practiceStatusMap, setPracticeStatusMap] = useState<Record<string, ProblemPracticeStatus>>({});
+  const [practiceStatusLoadState, setPracticeStatusLoadState] = useState<PracticeStatusLoadState>("idle");
+  const [markingProblemKey, setMarkingProblemKey] = useState<string | null>(null);
   const skipInitialChapterFetchRef = useRef(initialChaptersLoaded);
   const lastHashScrollRef = useRef("");
 
@@ -65,6 +72,9 @@ export function NoteReaderClient({
       setSelectedChapterId(undefined);
       setIsCoverExpanded(Boolean(initialNote?.coverImage));
       setShowProblemTools(false);
+      setPracticeStatusMap({});
+      setPracticeStatusLoadState("idle");
+      setMarkingProblemKey(null);
       skipInitialChapterFetchRef.current = initialChaptersLoaded;
     }, 0);
 
@@ -154,6 +164,44 @@ export function NoteReaderClient({
     () => allProblems.filter((problem) => !problem.chapterId).length,
     [allProblems],
   );
+  const problemStatusNoteId = isAdmin && note?.type === "problem" ? note.id : "";
+
+  useEffect(() => {
+    if (!problemStatusNoteId || allProblems.length === 0) {
+      const timer = window.setTimeout(() => {
+        setPracticeStatusMap({});
+        setPracticeStatusLoadState("idle");
+        setMarkingProblemKey(null);
+      }, 0);
+
+      return () => window.clearTimeout(timer);
+    }
+
+    let cancelled = false;
+
+    const loadingTimer = window.setTimeout(() => {
+      if (!cancelled) setPracticeStatusLoadState("loading");
+    }, 0);
+
+    problemPracticeApi.getByNoteId(problemStatusNoteId)
+      .then((statuses) => {
+        if (cancelled) return;
+        setPracticeStatusMap(toPracticeStatusMap(statuses));
+        setPracticeStatusLoadState("ready");
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        const message = error instanceof Error ? error.message : "未知错误";
+        setPracticeStatusMap({});
+        setPracticeStatusLoadState("error");
+        toast.error(`题目标记状态加载失败：${message}`);
+      });
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(loadingTimer);
+    };
+  }, [allProblems.length, problemStatusNoteId, toast]);
 
   useEffect(() => {
     if (!note?.id) return;
@@ -241,6 +289,40 @@ export function NoteReaderClient({
     }
   };
 
+  const handleToggleProblemMarked = async (problem: Problem) => {
+    if (!isAdmin || practiceStatusLoadState !== "ready" || !note?.id || markingProblemKey) return;
+
+    const statusKey = getPracticeProblemKey(note.id, problem.id);
+    const currentStatus = practiceStatusMap[statusKey];
+    const nextMarked = !currentStatus?.isMarked;
+    setMarkingProblemKey(statusKey);
+
+    try {
+      const saved = await problemPracticeApi.setMarked(
+        note.id,
+        problem.id,
+        nextMarked,
+        currentStatus,
+      );
+
+      setPracticeStatusMap((current) => {
+        const next = { ...current };
+        if (saved) {
+          next[getPracticeProblemKey(saved.noteId, saved.problemId)] = saved;
+        } else {
+          delete next[statusKey];
+        }
+        return next;
+      });
+      toast.success(nextMarked ? "已加入三刷收集" : "已取消标记");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "未知错误";
+      toast.error(`标记保存失败：${message}`);
+    } finally {
+      setMarkingProblemKey((current) => current === statusKey ? null : current);
+    }
+  };
+
   if (loading) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-surface px-4 pb-20 pt-24 sm:px-6">
@@ -272,6 +354,22 @@ export function NoteReaderClient({
   const isEssay = note.type === "essay";
   const showReaderSidebar = isProblem ? showProblemTools : preferences.tocPosition !== "hidden";
   const contentColumnClass = showReaderSidebar ? "min-w-0 lg:col-span-9" : "min-w-0 lg:col-span-12";
+  const markDisabledTitle = practiceStatusLoadState === "loading"
+    ? "正在加载题目标记状态"
+    : practiceStatusLoadState === "error"
+      ? "题目标记状态加载失败，刷新后重试"
+      : "登录管理员后可以标记题目";
+  const getProblemPracticeProps = (problem: Problem) => {
+    const statusKey = getPracticeProblemKey(note.id, problem.id);
+
+    return {
+      practiceStatus: practiceStatusMap[statusKey],
+      isMarking: markingProblemKey === statusKey,
+      canMark: isAdmin && practiceStatusLoadState === "ready",
+      markDisabledTitle,
+      onToggleMarked: isAdmin ? () => handleToggleProblemMarked(problem) : undefined,
+    };
+  };
 
   return (
     <main className="min-h-screen pb-20 pt-20">
@@ -512,6 +610,7 @@ export function NoteReaderClient({
                               index={allProblems.indexOf(problem)}
                               noteId={note?.id}
                               onUpdate={isAdmin ? handleUpdateProblem : undefined}
+                              {...getProblemPracticeProps(problem)}
                             />
                           ))}
                         </div>
@@ -528,6 +627,7 @@ export function NoteReaderClient({
                           index={allProblems.indexOf(problem)}
                           noteId={note?.id}
                           onUpdate={isAdmin ? handleUpdateProblem : undefined}
+                          {...getProblemPracticeProps(problem)}
                         />
                       ))}
                     </div>
@@ -587,7 +687,11 @@ export function NoteReaderClient({
                       selectedId={selectedChapterId}
                       onSelect={setSelectedChapterId}
                     />
-                    <ProblemList problems={filteredProblems} />
+                    <ProblemList
+                      problems={filteredProblems}
+                      noteId={note.id}
+                      statusMap={practiceStatusMap}
+                    />
                   </div>
                 ) : (
                   <>
@@ -709,7 +813,14 @@ export function NoteReaderClient({
                       </div>
                     )}
                     {filteredProblems.map((problem) => (
-                      <ProblemCard key={problem.id} problem={problem} index={allProblems.indexOf(problem)} noteId={note?.id} onUpdate={isAdmin ? handleUpdateProblem : undefined} />
+                      <ProblemCard
+                        key={problem.id}
+                        problem={problem}
+                        index={allProblems.indexOf(problem)}
+                        noteId={note?.id}
+                        onUpdate={isAdmin ? handleUpdateProblem : undefined}
+                        {...getProblemPracticeProps(problem)}
+                      />
                     ))}
                   </div>
                 ) : (

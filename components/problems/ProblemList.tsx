@@ -1,12 +1,16 @@
 "use client";
 
-import { Problem, difficultyMap } from "@/lib/types";
+import { Bookmark } from "lucide-react";
+import { difficultyMap, type Problem, type ProblemPracticeStatus } from "@/lib/types";
+import { getPracticeProblemKey } from "@/lib/math3-practice";
 
 interface ProblemListProps {
   problems: Problem[];
+  noteId?: string;
+  statusMap?: Record<string, ProblemPracticeStatus>;
 }
 
-export function ProblemList({ problems }: ProblemListProps) {
+export function ProblemList({ problems, noteId, statusMap = {} }: ProblemListProps) {
   const scrollToProblem = (problemId: string) => {
     const element = document.getElementById(`problem-${problemId}`);
     if (element) {
@@ -25,6 +29,7 @@ export function ProblemList({ problems }: ProblemListProps) {
       </div>
       <div className="grid grid-cols-3 gap-2">
         {problems.map((problem, index) => {
+          const status = noteId ? statusMap[getPracticeProblemKey(noteId, problem.id)] : undefined;
           const difficultyColors: Record<string, string> = {
             easy: "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-200",
             medium: "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200",
@@ -35,10 +40,13 @@ export function ProblemList({ problems }: ProblemListProps) {
             <button
               key={problem.id}
               onClick={() => scrollToProblem(problem.id)}
-              className={`flex flex-col items-center justify-center p-3 rounded-lg transition-all duration-200 group ${
+              className={`group relative flex flex-col items-center justify-center rounded-lg p-3 transition-all duration-200 ${
                 difficultyColors[problem.difficulty] || "bg-surface-container-high text-on-surface-variant"
-              }`}
+              } ${status?.isMarked ? "ring-2 ring-amber-400/60" : ""}`}
             >
+              {status?.isMarked && (
+                <Bookmark className="absolute right-1.5 top-1.5 h-3 w-3 fill-amber-500 text-amber-500" />
+              )}
               <span className="text-lg font-bold mb-1">
                 {index + 1}
               </span>

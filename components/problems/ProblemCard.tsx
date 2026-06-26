@@ -2,8 +2,8 @@
 
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { Check, Eye, EyeOff, Loader2, Pencil, Plus, Trash2, X } from "lucide-react";
-import type { Difficulty, Problem, ProblemOption, ProblemType } from "@/lib/types";
+import { Bookmark, Check, Eye, EyeOff, Loader2, Pencil, Plus, Trash2, X } from "lucide-react";
+import type { Difficulty, Problem, ProblemOption, ProblemPracticeStatus, ProblemType } from "@/lib/types";
 import { difficultyColorMap, difficultyMap, problemTypeMap } from "@/lib/types";
 import { MarkdownContent } from "@/components/ui/MarkdownContent";
 import { ensureChoiceOptions, normalizeProblemOptions } from "@/lib/problem-utils";
@@ -15,6 +15,11 @@ interface ProblemCardProps {
   noteId?: string;
   onUpdate?: (updated: Problem) => void | Promise<void>;
   anchorPrefix?: string;
+  practiceStatus?: ProblemPracticeStatus;
+  isMarking?: boolean;
+  canMark?: boolean;
+  markDisabledTitle?: string;
+  onToggleMarked?: () => void;
 }
 
 type ProblemEditData = {
@@ -44,7 +49,17 @@ function problemOptionsForSave(editData: ProblemEditData): ProblemOption[] | und
   return normalizeProblemOptions(editData.options);
 }
 
-export function ProblemCard({ problem, index, onUpdate, anchorPrefix = "problem" }: ProblemCardProps) {
+export function ProblemCard({
+  problem,
+  index,
+  onUpdate,
+  anchorPrefix = "problem",
+  practiceStatus,
+  isMarking = false,
+  canMark = false,
+  markDisabledTitle = "登录管理员后可以标记题目",
+  onToggleMarked,
+}: ProblemCardProps) {
   const [showAnswer, setShowAnswer] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -53,6 +68,8 @@ export function ProblemCard({ problem, index, onUpdate, anchorPrefix = "problem"
 
   const problemAnchorId = problem.id || String(index);
   const hasOptions = problem.type === "choice" && Array.isArray(problem.options) && problem.options.length > 0;
+  const isMarked = Boolean(practiceStatus?.isMarked);
+  const showMarkControl = Boolean(onToggleMarked);
   const fieldBaseClass = "w-full rounded-lg border border-outline-variant/15 bg-surface-container-low px-3 py-2 text-sm text-on-surface outline-none transition-colors placeholder:text-on-surface-variant/40 focus:border-primary/35 focus:bg-surface-container-lowest";
   const textareaClass = `${fieldBaseClass} resize-y leading-6`;
   const inputClass = `${fieldBaseClass} h-10`;
@@ -127,17 +144,47 @@ export function ProblemCard({ problem, index, onUpdate, anchorPrefix = "problem"
             <span className={`rounded px-2 py-0.5 text-xs font-medium ${difficultyColorMap[problem.difficulty]}`}>
               {difficultyMap[problem.difficulty]}
             </span>
+            {isMarked && (
+              <span className="inline-flex items-center gap-1 rounded-md border border-amber-200/70 bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700">
+                <Bookmark className="h-3 w-3 fill-current" />
+                已标记
+              </span>
+            )}
           </div>
         </div>
 
-        {onUpdate && !isEditing && (
-          <button
-            onClick={handleStartEdit}
-            className="rounded-lg p-1.5 text-on-surface-variant/40 transition-colors hover:bg-surface-container-highest hover:text-primary"
-            title="编辑题目"
-          >
-            <Pencil className="h-4 w-4" />
-          </button>
+        {(showMarkControl || onUpdate) && !isEditing && (
+          <div className="flex flex-shrink-0 items-center gap-1.5">
+            {showMarkControl && (
+              <button
+                type="button"
+                onClick={onToggleMarked}
+                disabled={isMarking || !canMark}
+                aria-pressed={isMarked}
+                className={`rounded-lg p-1.5 transition-colors disabled:cursor-not-allowed disabled:opacity-45 ${
+                  isMarked
+                    ? "bg-amber-100 text-amber-700 hover:bg-amber-200"
+                    : "text-on-surface-variant/45 hover:bg-surface-container-highest hover:text-amber-700"
+                }`}
+                title={canMark ? (isMarked ? "取消三刷标记" : "加入三刷收集") : markDisabledTitle}
+              >
+                {isMarking ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Bookmark className={`h-4 w-4 ${isMarked ? "fill-current" : ""}`} />
+                )}
+              </button>
+            )}
+            {onUpdate && (
+              <button
+                onClick={handleStartEdit}
+                className="rounded-lg p-1.5 text-on-surface-variant/40 transition-colors hover:bg-surface-container-highest hover:text-primary"
+                title="编辑题目"
+              >
+                <Pencil className="h-4 w-4" />
+              </button>
+            )}
+          </div>
         )}
       </div>
 
