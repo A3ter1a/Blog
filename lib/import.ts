@@ -249,7 +249,7 @@ export function importFromObsidian(content: string): ParsedNote {
  * Convert Obsidian wiki-links to standard Markdown links
  */
 export function convertObsidianLinks(content: string): string {
-  return content.replace(/\[\[([^\]]+)\]\]/g, (match, text) => {
+  return content.replace(/\[\[([^\]]+)\]\]/g, (_match, text) => {
     // Check for display text: [[Target|Display]]
     const parts = text.split('|');
     if (parts.length === 2) {
