@@ -217,18 +217,12 @@ export function ProblemBooklet() {
     let cancelled = false;
 
     async function loadMarkedStatuses() {
-      if (summaries.length === 0) {
-        setMarkedStatuses([]);
-        setMarkedStatusLoadState("ready");
-        return;
-      }
-
       setMarkedStatusLoadState("loading");
       try {
-        const statuses = await problemPracticeApi.getMarkedByNoteIds(summaries.map((set) => set.id));
+        const statuses = await problemPracticeApi.getMarked();
         if (cancelled) return;
 
-        setMarkedStatuses(statuses.filter((status) => status.isMarked));
+        setMarkedStatuses(statuses);
         setMarkedStatusLoadState("ready");
       } catch (error) {
         if (cancelled) return;
@@ -244,7 +238,7 @@ export function ProblemBooklet() {
     return () => {
       cancelled = true;
     };
-  }, [summaries, toast]);
+  }, [toast]);
 
   useEffect(() => {
     const missingIds = requiredSetIds.filter((id) => !loadedSets[id]);
@@ -312,7 +306,6 @@ export function ProblemBooklet() {
   const normalizedSetQuery = normalizeQuery(setQuery);
   const normalizedProblemQuery = normalizeQuery(problemQuery);
 
-  const summaryById = useMemo(() => new Map(summaries.map((set) => [set.id, set])), [summaries]);
   const markedSetSummary = useMemo(
     () => createMarkedSetSummary(markedProblemKeys.length, markedStatusLoadState),
     [markedProblemKeys.length, markedStatusLoadState],
@@ -328,10 +321,8 @@ export function ProblemBooklet() {
     const shouldShowMarkedSet = markedSetSelected
       || markedStatusLoadState === "loading"
       || markedProblemKeys.length > 0;
-    const markedSubjectMatches = subject === "all"
-      || markedStatuses.some((status) => summaryById.get(status.noteId)?.subject === subject);
 
-    if (shouldShowMarkedSet && markedSubjectMatches && queryMatches(markedSetSummary)) {
+    if (shouldShowMarkedSet && queryMatches(markedSetSummary)) {
       return [markedSetSummary, ...regularSets];
     }
 
@@ -341,11 +332,9 @@ export function ProblemBooklet() {
     markedSetSelected,
     markedSetSummary,
     markedStatusLoadState,
-    markedStatuses,
     normalizedSetQuery,
     subject,
     summaries,
-    summaryById,
   ]);
 
   const selectedActualProblemSets = useMemo(

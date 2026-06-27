@@ -33,6 +33,35 @@ async function getCurrentUserId(): Promise<string | null> {
   return data.session?.user.id ?? null;
 }
 
+async function queryMarkedStatuses(noteIds?: string[]): Promise<ProblemPracticeStatus[]> {
+  const uniqueNoteIds = noteIds ? [...new Set(noteIds.filter(Boolean))] : undefined;
+  if (noteIds && uniqueNoteIds?.length === 0) return [];
+
+  const userId = await getCurrentUserId();
+  if (!userId) return [];
+
+  let query = getSupabase()
+    .from("problem_practice_statuses")
+    .select(PRACTICE_STATUS_FIELDS)
+    .eq("user_id", userId)
+    .eq("is_marked", true)
+    .order("updated_at", { ascending: false });
+
+  if (uniqueNoteIds) {
+    query = query.in("note_id", uniqueNoteIds);
+  }
+
+  const { data, error } = await query;
+
+  if (error) {
+    if (isMissingMarkedColumn(error)) throw new Error(MARKED_COLUMN_MIGRATION_HINT);
+    throw error;
+  }
+
+  canReadMarkedColumn = true;
+  return ((data || []) as ProblemPracticeStatusRow[]).map(mapPracticeStatusSnakeToCamel);
+}
+
 function mapPracticeStatusSnakeToCamel(row: ProblemPracticeStatusRow): ProblemPracticeStatus {
   const createdAt = row.created_at ? new Date(row.created_at) : new Date();
   const updatedAt = row.updated_at ? new Date(row.updated_at) : createdAt;
@@ -91,27 +120,11 @@ export const problemPracticeApi = {
   },
 
   async getMarkedByNoteIds(noteIds: string[]): Promise<ProblemPracticeStatus[]> {
-    const uniqueNoteIds = [...new Set(noteIds.filter(Boolean))];
-    if (uniqueNoteIds.length === 0) return [];
+    return queryMarkedStatuses(noteIds);
+  },
 
-    const userId = await getCurrentUserId();
-    if (!userId) return [];
-
-    const { data, error } = await getSupabase()
-      .from("problem_practice_statuses")
-      .select(PRACTICE_STATUS_FIELDS)
-      .eq("user_id", userId)
-      .eq("is_marked", true)
-      .in("note_id", uniqueNoteIds)
-      .order("updated_at", { ascending: false });
-
-    if (error) {
-      if (isMissingMarkedColumn(error)) throw new Error(MARKED_COLUMN_MIGRATION_HINT);
-      throw error;
-    }
-
-    canReadMarkedColumn = true;
-    return ((data || []) as ProblemPracticeStatusRow[]).map(mapPracticeStatusSnakeToCamel);
+  async getMarked(): Promise<ProblemPracticeStatus[]> {
+    return queryMarkedStatuses();
   },
 
   async recordResult(
