@@ -96,7 +96,7 @@ export default function StudyTimeline() {
   }, [selectedMonth, completed]);
 
   const selectMonth = (monthId: string) => {
-    setActiveMonthId(monthId);
+    setActiveMonthId(null);
     setSelectedMonthId(monthId);
 
     window.requestAnimationFrame(() => {
@@ -208,7 +208,7 @@ export default function StudyTimeline() {
                         {subject.label}
                       </p>
                     ) : null}
-                    <div className="flex flex-wrap gap-2">
+                    <div className="flex gap-2 overflow-x-auto pb-1">
                       {subject.tasks.map((task) => {
                         const done = Boolean(completed[task.id]);
 
@@ -219,7 +219,7 @@ export default function StudyTimeline() {
                             aria-pressed={done}
                             aria-label={`${task.title}，${brushStageLabels[task.stage]}，${done ? "已完成" : "未完成"}`}
                             onClick={() => toggleTask(task.id)}
-                            className={`rounded-full px-3 py-1.5 text-xs font-bold text-white transition-all duration-300 ease-out hover:-translate-y-0.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/40 sm:text-sm ${
+                            className={`shrink-0 whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-bold text-white transition-all duration-300 ease-out hover:-translate-y-0.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/40 sm:text-sm ${
                               stageStyles[task.stage].pill
                             } ${done ? "order-last opacity-40 saturate-75 hover:opacity-65" : "opacity-100"}`}
                           >
@@ -239,7 +239,7 @@ export default function StudyTimeline() {
       {selectedMonth ? (
         <div
           ref={detailRef}
-          className="mx-auto w-full max-w-5xl scroll-mt-24 rounded-2xl border border-primary/10 bg-surface-container-lowest/50 p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.55),0_18px_48px_-34px_rgba(15,23,42,0.58)] backdrop-blur-sm transition-all duration-300 ease-out sm:p-6"
+          className="mx-auto w-full max-w-6xl scroll-mt-24 rounded-2xl border border-primary/10 bg-surface-container-lowest/50 p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.55),0_18px_48px_-34px_rgba(15,23,42,0.58)] backdrop-blur-sm transition-all duration-300 ease-out sm:p-6"
         >
           <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
             <div>
@@ -261,50 +261,55 @@ export default function StudyTimeline() {
           </div>
 
           <div className="space-y-5">
-            {selectedSubjectGroups.map((subject) => (
-              <section key={subject.id} className="rounded-xl border border-primary/10 bg-surface/40 p-4">
-                <h3 className="mb-4 font-headline text-lg font-bold text-primary">
-                  {subject.label}
-                </h3>
-                <div className="grid gap-4 md:grid-cols-4">
-                  {Object.entries(brushStageLabels).map(([stage, label]) => {
-                    const stageTasks = subject.tasks.filter((task) => task.stage === stage);
+            {selectedSubjectGroups.map((subject) => {
+              const stageGroups = buildStageGroups(subject.tasks);
 
-                    if (stageTasks.length === 0) {
-                      return null;
-                    }
+              return (
+                <section key={subject.id} className="rounded-xl border border-primary/10 bg-surface/40 p-4">
+                  <h3 className="mb-4 font-headline text-lg font-bold text-primary">
+                    {subject.label}
+                  </h3>
+                  <div className="overflow-x-auto pb-1">
+                    <div
+                      className="grid min-w-[42rem] gap-4"
+                      style={{
+                        gridTemplateColumns: stageGroups
+                          .map((group) => `minmax(${group.minWidth}rem, ${group.weight}fr)`)
+                          .join(" "),
+                      }}
+                    >
+                      {stageGroups.map(({ stage, label, tasks }) => (
+                        <div key={stage} className="min-w-0">
+                          <p className="mb-2 text-xs font-bold text-on-surface-variant">
+                            {label}
+                          </p>
+                          <div className="flex gap-2 overflow-x-auto pb-1">
+                            {tasks.map((task) => {
+                              const done = Boolean(completed[task.id]);
 
-                    return (
-                      <div key={stage} className="min-w-0">
-                        <p className="mb-2 text-xs font-bold text-on-surface-variant">
-                          {label}
-                        </p>
-                        <div className="flex flex-wrap gap-2">
-                          {stageTasks.map((task) => {
-                            const done = Boolean(completed[task.id]);
-
-                            return (
-                              <button
-                                key={task.id}
-                                type="button"
-                                aria-pressed={done}
-                                aria-label={`${task.title}，${brushStageLabels[task.stage]}，${done ? "已完成" : "未完成"}`}
-                                onClick={() => toggleTask(task.id)}
-                                className={`rounded-full px-3 py-1.5 text-xs font-bold text-white transition-all duration-300 ease-out hover:-translate-y-0.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/25 sm:text-sm ${
-                                  stageStyles[task.stage].pill
-                                } ${done ? "order-last opacity-40 saturate-75 hover:opacity-65" : "opacity-100"}`}
-                              >
-                                {task.title}
-                              </button>
-                            );
-                          })}
+                              return (
+                                <button
+                                  key={task.id}
+                                  type="button"
+                                  aria-pressed={done}
+                                  aria-label={`${task.title}，${brushStageLabels[task.stage]}，${done ? "已完成" : "未完成"}`}
+                                  onClick={() => toggleTask(task.id)}
+                                  className={`shrink-0 whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-bold text-white transition-all duration-300 ease-out hover:-translate-y-0.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/25 sm:text-sm ${
+                                    stageStyles[task.stage].pill
+                                  } ${done ? "order-last opacity-40 saturate-75 hover:opacity-65" : "opacity-100"}`}
+                                >
+                                  {task.title}
+                                </button>
+                              );
+                            })}
+                          </div>
                         </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </section>
-            ))}
+                      ))}
+                    </div>
+                  </div>
+                </section>
+              );
+            })}
           </div>
         </div>
       ) : null}
@@ -370,6 +375,23 @@ function sortTasksByCompletion(tasks: StudyTimelineTask[], completed: Completion
       return left.index - right.index;
     })
     .map(({ task }) => task);
+}
+
+function buildStageGroups(tasks: StudyTimelineTask[]) {
+  return (Object.entries(brushStageLabels) as Array<[BrushStage, string]>)
+    .map(([stage, label]) => {
+      const stageTasks = tasks.filter((task) => task.stage === stage);
+      const textWeight = stageTasks.reduce((total, task) => total + task.title.length, 0);
+
+      return {
+        stage,
+        label,
+        tasks: stageTasks,
+        minWidth: Math.min(24, Math.max(9, textWeight * 0.75 + stageTasks.length * 1.6)),
+        weight: Math.max(1, textWeight + stageTasks.length * 4),
+      };
+    })
+    .filter((group) => group.tasks.length > 0);
 }
 
 function readStoredCompletion(): CompletionMap {
