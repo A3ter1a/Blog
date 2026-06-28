@@ -86,7 +86,7 @@ export const studyTimelines: StudySubjectTimeline[] = [
         id: "math-11",
         label: "11月",
         tasks: [
-          { id: "math-11-first-lilin-current-six", title: "今年李林六套卷", stage: "first" },
+          { id: "math-11-first-lilin-current-six", title: "2027李林六套卷", stage: "first" },
           { id: "math-11-first-hgd-chaoyue", title: "合工大超越卷", stage: "first" },
           { id: "math-11-second-past-2021-2026", title: "2021-2026真题", stage: "second" },
           { id: "math-11-second-jiang-150", title: "姜晓千150题", stage: "second" },
@@ -97,7 +97,7 @@ export const studyTimelines: StudySubjectTimeline[] = [
         id: "math-12",
         label: "12月",
         tasks: [
-          { id: "math-12-first-lilin-current-four", title: "今年李林四套卷", stage: "first" },
+          { id: "math-12-first-lilin-current-four", title: "2027李林四套卷", stage: "first" },
           { id: "math-12-third-past-2014-2020", title: "2014-2020真题", stage: "third" },
           { id: "math-12-third-past-2021-2026", title: "2021-2026真题", stage: "third" },
         ],
