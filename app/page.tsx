@@ -33,7 +33,7 @@ export default function Home() {
 
         <a
           href="#study-timeline"
-          aria-label="进入导学时间轴"
+          aria-label="进入时间轴"
           className="absolute bottom-7 left-1/2 z-10 flex h-10 w-10 -translate-x-1/2 items-center justify-center rounded-full border border-primary/15 bg-surface-container-lowest/62 text-primary shadow-ambient backdrop-blur-md transition-colors hover:bg-surface-container-lowest focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
         >
           <ArrowDown className="h-5 w-5" />
@@ -42,7 +42,7 @@ export default function Home() {
 
       <section
         id="study-timeline"
-        className="border-t border-outline-variant/20 bg-surface-container-low/58 py-14 [contain-intrinsic-size:760px] [content-visibility:auto] sm:py-20"
+        className="py-14 [contain-intrinsic-size:360px] [content-visibility:auto] sm:py-20"
       >
         <div className="mx-auto w-full max-w-6xl px-4 sm:px-6 lg:px-8">
           <StudyTimelineDeferred />

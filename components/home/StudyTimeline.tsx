@@ -5,6 +5,7 @@ import {
   brushStageLabels,
   studyTimelines,
   type BrushStage,
+  type StudySubjectTimeline,
   type StudyTimelineTask,
 } from "@/components/home/studyTimelineData";
 
@@ -25,39 +26,56 @@ const stageStyles: Record<BrushStage, { dot: string; pill: string }> = {
   },
 };
 
+const monthToneStyles = {
+  blue: {
+    button: "text-sky-700 hover:text-sky-900 focus-visible:ring-sky-500/35",
+    marker: "border-sky-500/60 bg-sky-500 shadow-[0_0_0_6px_rgba(14,165,233,0.12),0_10px_24px_-12px_rgba(2,132,199,0.95)]",
+    active: "text-sky-950",
+  },
+  orange: {
+    button: "text-orange-700 hover:text-orange-950 focus-visible:ring-orange-500/35",
+    marker: "border-orange-500/60 bg-orange-500 shadow-[0_0_0_6px_rgba(249,115,22,0.13),0_10px_24px_-12px_rgba(234,88,12,0.95)]",
+    active: "text-orange-950",
+  },
+  red: {
+    button: "text-rose-700 hover:text-rose-950 focus-visible:ring-rose-500/35",
+    marker: "border-rose-500/60 bg-rose-600 shadow-[0_0_0_6px_rgba(225,29,72,0.13),0_10px_24px_-12px_rgba(190,18,60,0.95)]",
+    active: "text-rose-950",
+  },
+} as const;
+
 type CompletionMap = Record<string, true>;
+
+type TimelineMonthSlot = {
+  id: string;
+  label: string;
+  subjects: Array<{
+    id: string;
+    label: string;
+    tasks: StudyTimelineTask[];
+  }>;
+};
 
 export default function StudyTimeline() {
   const subjects = studyTimelines;
-  const [activeSubjectId, setActiveSubjectId] = useState(subjects[0]?.id ?? "math");
-  const activeSubject = subjects.find((subject) => subject.id === activeSubjectId) ?? subjects[0];
-  const [activeMonthId, setActiveMonthId] = useState(activeSubject?.months[0]?.id ?? "");
-  const activeMonth =
-    activeSubject?.months.find((month) => month.id === activeMonthId) ?? activeSubject?.months[0];
+  const months = useMemo(() => buildTimelineMonths(subjects), [subjects]);
+  const [activeMonthId, setActiveMonthId] = useState<string | null>(null);
+  const activeMonth = activeMonthId
+    ? months.find((month) => month.id === activeMonthId) ?? null
+    : null;
+  const activeMonthIndex = activeMonth
+    ? months.findIndex((month) => month.id === activeMonth.id)
+    : -1;
   const [completed, setCompleted] = useState<CompletionMap>(() => readStoredCompletion());
 
-  const subjectTasks = useMemo(
-    () => activeSubject?.months.flatMap((month) => month.tasks) ?? [],
-    [activeSubject],
-  );
-
-  const completedCount = subjectTasks.filter((task) => completed[task.id]).length;
-  const completionRate = subjectTasks.length > 0 ? Math.round((completedCount / subjectTasks.length) * 100) : 0;
-
-  const visibleTasks = useMemo(() => {
-    return sortTasksByCompletion(activeMonth?.tasks ?? [], completed);
+  const activeSubjectGroups = useMemo(() => {
+    return (activeMonth?.subjects ?? [])
+      .map((subject) => ({
+        ...subject,
+        tasks: sortTasksByCompletion(subject.tasks, completed),
+      }))
+      .filter((subject) => subject.tasks.length > 0);
   }, [activeMonth, completed]);
-
-  const switchSubject = (subjectId: typeof activeSubjectId) => {
-    const nextSubject = subjects.find((subject) => subject.id === subjectId);
-
-    if (!nextSubject) {
-      return;
-    }
-
-    setActiveSubjectId(subjectId);
-    setActiveMonthId(nextSubject.months[0]?.id ?? "");
-  };
 
   const toggleTask = (taskId: string) => {
     setCompleted((current) => {
@@ -74,125 +92,164 @@ export default function StudyTimeline() {
     });
   };
 
-  if (!activeSubject || !activeMonth) {
+  if (months.length === 0) {
     return null;
   }
 
+  const cardLeft = activeMonthIndex >= 0
+    ? `${((activeMonthIndex + 0.5) / months.length) * 100}%`
+    : "50%";
+  const cardAlign =
+    activeMonthIndex <= 0
+      ? "translate-x-0"
+      : activeMonthIndex >= months.length - 1
+        ? "-translate-x-full"
+        : "-translate-x-1/2";
+  const showSubjectLabels = activeSubjectGroups.length > 1;
+
   return (
-    <div className="surface-panel overflow-hidden p-5 sm:p-6">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-        <div>
-          <span className="tag-chip tag-chip-primary px-3 py-1 text-xs font-bold">
-            导学时间轴
-          </span>
-          <h2 className="mt-3 font-headline text-2xl font-bold leading-tight text-on-surface sm:text-3xl">
-            {activeSubject.label}
-          </h2>
-        </div>
+    <div
+      className="relative mx-auto w-full py-8 sm:py-10"
+      onMouseLeave={() => setActiveMonthId(null)}
+    >
+      <div className="relative mx-auto w-full max-w-6xl pb-36 sm:pb-40">
+        <div className="absolute left-[8.333%] right-[8.333%] top-6 h-2 rounded-full bg-[linear-gradient(90deg,#0284c7_0%,#0ea5e9_28%,#f59e0b_45%,#f97316_80%,#e11d48_100%)] shadow-[0_10px_30px_-18px_rgba(15,23,42,0.85)]" />
 
-        <div className="flex flex-wrap items-center gap-3">
-          {Object.entries(brushStageLabels).map(([stage, label]) => (
-            <span key={stage} className="inline-flex items-center gap-2 text-xs font-semibold text-on-surface-variant">
-              <span className={`h-2.5 w-2.5 rounded-full ${stageStyles[stage as BrushStage].dot}`} />
-              {label}
-            </span>
-          ))}
-        </div>
-      </div>
-
-      {subjects.length > 1 ? (
-        <div className="mt-5 flex flex-wrap gap-2">
-          {subjects.map((subject) => (
-            <button
-              key={subject.id}
-              type="button"
-              onClick={() => switchSubject(subject.id)}
-              className={`rounded-lg px-3 py-2 text-sm font-semibold transition-all duration-300 ease-out focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 ${
-                subject.id === activeSubject.id
-                  ? "bg-primary text-on-primary shadow-ambient"
-                  : "bg-surface-container-low text-on-surface-variant hover:bg-surface-container-high hover:text-primary"
-              }`}
-            >
-              {subject.label}
-            </button>
-          ))}
-        </div>
-      ) : null}
-
-      <div className="mt-6">
-        <div className="flex items-center justify-between gap-4 text-xs font-semibold text-on-surface-variant">
-          <span>{completedCount}/{subjectTasks.length}</span>
-          <span>{completionRate}%</span>
-        </div>
-        <div className="mt-2 h-2 overflow-hidden rounded-full bg-surface-container-high">
-          <div
-            className="h-full rounded-full bg-primary transition-all duration-500 ease-out"
-            style={{ width: `${completionRate}%` }}
-          />
-        </div>
-      </div>
-
-      <div className="mt-6 grid grid-cols-3 gap-2 sm:grid-cols-6">
-        {activeSubject.months.map((month) => {
-          const monthTotal = month.tasks.length;
-          const monthDone = month.tasks.filter((task) => completed[task.id]).length;
-          const isActive = month.id === activeMonth.id;
-
-          return (
-            <button
-              key={month.id}
-              type="button"
-              onClick={() => setActiveMonthId(month.id)}
-              onFocus={() => setActiveMonthId(month.id)}
-              onMouseEnter={() => setActiveMonthId(month.id)}
-              className={`group rounded-xl border px-3 py-3 text-left transition-all duration-300 ease-out focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 ${
-                isActive
-                  ? "border-primary/35 bg-primary text-on-primary shadow-ambient"
-                  : "border-outline-variant/28 bg-surface-container-lowest text-on-surface hover:-translate-y-0.5 hover:border-primary/25 hover:text-primary hover:shadow-ambient"
-              }`}
-            >
-              <span className="block font-headline text-lg font-bold leading-none">{month.label}</span>
-              <span className={`mt-2 block text-xs font-semibold ${isActive ? "text-on-primary/75" : "text-on-surface-variant"}`}>
-                {monthDone}/{monthTotal}
-              </span>
-            </button>
-          );
-        })}
-      </div>
-
-      <section className="mt-6 rounded-2xl border border-outline-variant/25 bg-surface-container-low p-4 sm:p-5">
-        <div className="flex items-center justify-between gap-4">
-          <h3 className="font-headline text-xl font-bold text-on-surface">
-            {activeMonth.label}
-          </h3>
-          <span className="text-xs font-semibold text-on-surface-variant">
-            {activeMonth.tasks.filter((task) => completed[task.id]).length}/{activeMonth.tasks.length}
-          </span>
-        </div>
-
-        <div className="mt-4 flex flex-wrap gap-2">
-          {visibleTasks.map((task) => {
-            const done = Boolean(completed[task.id]);
+        <div className="relative grid grid-cols-6">
+          {months.map((month) => {
+            const tone = getMonthTone(month.label);
+            const toneStyle = monthToneStyles[tone];
+            const isActive = month.id === activeMonth?.id;
 
             return (
-              <button
-                key={task.id}
-                type="button"
-                aria-pressed={done}
-                aria-label={`${task.title}，${brushStageLabels[task.stage]}，${done ? "已完成" : "未完成"}`}
-                onClick={() => toggleTask(task.id)}
-                className={`rounded-full px-4 py-2 text-sm font-bold text-white transition-all duration-300 ease-out hover:-translate-y-0.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 ${
-                  stageStyles[task.stage].pill
-                } ${done ? "order-last opacity-50 saturate-75 hover:opacity-75" : "opacity-100"}`}
-              >
-                {task.title}
-              </button>
+              <div key={month.id} className="relative flex justify-center">
+                <button
+                  type="button"
+                  onClick={() => setActiveMonthId(month.id)}
+                  onFocus={() => setActiveMonthId(month.id)}
+                  onMouseEnter={() => setActiveMonthId(month.id)}
+                  className={`group flex min-w-0 flex-col items-center gap-3 rounded-lg px-2 pb-1 pt-0 text-center transition-all duration-300 ease-out focus:outline-none focus-visible:ring-2 ${toneStyle.button} ${
+                    isActive ? toneStyle.active : ""
+                  }`}
+                  aria-expanded={isActive}
+                >
+                  <span
+                    className={`relative flex h-8 w-8 items-center justify-center rounded-full border-4 border-surface transition-all duration-300 ease-out group-hover:scale-110 ${
+                      toneStyle.marker
+                    } ${isActive ? "scale-110" : ""}`}
+                  >
+                    <span className="h-2.5 w-2.5 rounded-full bg-white/95" />
+                  </span>
+                  <span className="font-headline text-base font-bold leading-none sm:text-lg">
+                    {month.label}
+                  </span>
+                </button>
+              </div>
             );
           })}
         </div>
-      </section>
+
+        {activeMonth ? (
+          <div
+            className={`absolute top-20 z-20 w-[min(22rem,calc(100vw-2rem))] ${cardAlign}`}
+            style={{ left: cardLeft }}
+          >
+            <div className="rounded-xl border border-white/10 bg-[#14263a]/95 p-4 text-white shadow-[0_18px_50px_-24px_rgba(15,23,42,0.95)] backdrop-blur-md transition-all duration-300 ease-out">
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                <span className="font-headline text-lg font-bold leading-none">
+                  {activeMonth.label}
+                </span>
+                <div className="flex flex-wrap items-center gap-3">
+                  {Object.entries(brushStageLabels).map(([stage, label]) => (
+                    <span key={stage} className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-white/76">
+                      <span className={`h-2 w-2 rounded-full ${stageStyles[stage as BrushStage].dot}`} />
+                      {label}
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                {activeSubjectGroups.map((subject) => (
+                  <div key={subject.id}>
+                    {showSubjectLabels ? (
+                      <p className="mb-2 text-xs font-semibold text-white/58">
+                        {subject.label}
+                      </p>
+                    ) : null}
+                    <div className="flex flex-wrap gap-2">
+                      {subject.tasks.map((task) => {
+                        const done = Boolean(completed[task.id]);
+
+                        return (
+                          <button
+                            key={task.id}
+                            type="button"
+                            aria-pressed={done}
+                            aria-label={`${task.title}，${brushStageLabels[task.stage]}，${done ? "已完成" : "未完成"}`}
+                            onClick={() => toggleTask(task.id)}
+                            className={`rounded-full px-3 py-1.5 text-xs font-bold text-white transition-all duration-300 ease-out hover:-translate-y-0.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/40 sm:text-sm ${
+                              stageStyles[task.stage].pill
+                            } ${done ? "order-last opacity-40 saturate-75 hover:opacity-65" : "opacity-100"}`}
+                          >
+                            {task.title}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        ) : null}
+      </div>
     </div>
   );
+}
+
+function buildTimelineMonths(subjects: StudySubjectTimeline[]) {
+  const monthMap = new Map<string, TimelineMonthSlot>();
+
+  subjects.forEach((subject) => {
+    subject.months.forEach((month) => {
+      const slot = monthMap.get(month.label) ?? {
+        id: month.label,
+        label: month.label,
+        subjects: [],
+      };
+
+      slot.subjects.push({
+        id: subject.id,
+        label: subject.label,
+        tasks: month.tasks,
+      });
+      monthMap.set(month.label, slot);
+    });
+  });
+
+  return Array.from(monthMap.values()).sort((left, right) => {
+    return getMonthOrder(left.label) - getMonthOrder(right.label);
+  });
+}
+
+function getMonthOrder(label: string) {
+  const match = label.match(/\d+/);
+  return match ? Number(match[0]) : Number.MAX_SAFE_INTEGER;
+}
+
+function getMonthTone(label: string): keyof typeof monthToneStyles {
+  const order = getMonthOrder(label);
+
+  if (order <= 8) {
+    return "blue";
+  }
+
+  if (order >= 12) {
+    return "red";
+  }
+
+  return "orange";
 }
 
 function sortTasksByCompletion(tasks: StudyTimelineTask[], completed: CompletionMap) {

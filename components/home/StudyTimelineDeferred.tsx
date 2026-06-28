@@ -42,28 +42,16 @@ export function StudyTimelineDeferred() {
 
 function StudyTimelineSkeleton() {
   return (
-    <div className="surface-panel overflow-hidden p-5 sm:p-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <div className="h-3 w-20 rounded-full bg-surface-container-high" />
-          <div className="mt-4 h-8 w-48 rounded-lg bg-surface-container-high" />
-        </div>
-        <div className="h-3 w-28 rounded-full bg-surface-container-high" />
-      </div>
-      <div className="mt-6 h-2 overflow-hidden rounded-full bg-surface-container-high">
-        <div className="h-full w-1/3 rounded-full bg-primary/20" />
-      </div>
-      <div className="mt-6 grid grid-cols-3 gap-2 sm:grid-cols-6">
-        {Array.from({ length: 6 }).map((_, index) => (
-          <div key={index} className="h-14 rounded-xl bg-surface-container-low" />
-        ))}
-      </div>
-      <div className="mt-6 rounded-2xl border border-outline-variant/25 bg-surface-container-low p-4">
-        <div className="h-5 w-24 rounded-lg bg-surface-container-high" />
-        <div className="mt-4 flex flex-wrap gap-2">
-          <div className="h-9 w-32 rounded-full bg-surface-container-high" />
-          <div className="h-9 w-20 rounded-full bg-surface-container-high" />
-          <div className="h-9 w-24 rounded-full bg-surface-container-high" />
+    <div className="relative mx-auto w-full py-8 sm:py-10">
+      <div className="relative mx-auto w-full max-w-6xl pb-36 sm:pb-40">
+        <div className="absolute left-[8.333%] right-[8.333%] top-6 h-2 animate-pulse rounded-full bg-[linear-gradient(90deg,rgba(14,165,233,0.35)_0%,rgba(14,165,233,0.35)_28%,rgba(249,115,22,0.35)_58%,rgba(225,29,72,0.35)_100%)]" />
+        <div className="relative grid grid-cols-6">
+          {Array.from({ length: 6 }).map((_, index) => (
+            <div key={index} className="flex flex-col items-center gap-3 px-2">
+              <div className="h-8 w-8 animate-pulse rounded-full border-4 border-surface bg-surface-container-high" />
+              <div className="h-4 w-8 animate-pulse rounded-md bg-surface-container-high/70" />
+            </div>
+          ))}
         </div>
       </div>
     </div>
