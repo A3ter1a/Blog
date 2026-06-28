@@ -44,11 +44,11 @@ function StudyTimelineSkeleton() {
   return (
     <div className="relative mx-auto w-full py-8 sm:py-10">
       <div className="relative mx-auto w-full max-w-6xl pb-36 sm:pb-40">
-        <div className="absolute left-[8.333%] right-[8.333%] top-6 h-2 animate-pulse rounded-full bg-[linear-gradient(90deg,rgba(14,165,233,0.35)_0%,rgba(14,165,233,0.35)_28%,rgba(249,115,22,0.35)_58%,rgba(225,29,72,0.35)_100%)]" />
-        <div className="relative grid grid-cols-6">
+        <div className="absolute left-[8.333%] right-[8.333%] top-2.5 h-4 animate-pulse rounded-full bg-[linear-gradient(90deg,rgba(14,165,233,0.35)_0%,rgba(14,165,233,0.35)_28%,rgba(249,115,22,0.35)_58%,rgba(225,29,72,0.35)_100%)]" />
+        <div className="relative z-10 grid grid-cols-6">
           {Array.from({ length: 6 }).map((_, index) => (
             <div key={index} className="flex flex-col items-center gap-3 px-2">
-              <div className="h-8 w-8 animate-pulse rounded-full border-4 border-surface bg-surface-container-high" />
+              <div className="h-9 w-9 animate-pulse rounded-full border-[5px] border-surface bg-surface-container-high" />
               <div className="h-4 w-8 animate-pulse rounded-md bg-surface-container-high/70" />
             </div>
           ))}

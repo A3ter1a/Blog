@@ -113,9 +113,9 @@ export default function StudyTimeline() {
       onMouseLeave={() => setActiveMonthId(null)}
     >
       <div className="relative mx-auto w-full max-w-6xl pb-36 sm:pb-40">
-        <div className="absolute left-[8.333%] right-[8.333%] top-6 h-2 rounded-full bg-[linear-gradient(90deg,#0284c7_0%,#0ea5e9_28%,#f59e0b_45%,#f97316_80%,#e11d48_100%)] shadow-[0_10px_30px_-18px_rgba(15,23,42,0.85)]" />
+        <div className="absolute left-[8.333%] right-[8.333%] top-2.5 z-0 h-4 rounded-full bg-[linear-gradient(90deg,#0284c7_0%,#0ea5e9_28%,#f59e0b_45%,#f97316_80%,#e11d48_100%)] shadow-[inset_0_1px_0_rgba(255,255,255,0.38),0_14px_34px_-20px_rgba(15,23,42,0.9)]" />
 
-        <div className="relative grid grid-cols-6">
+        <div className="relative z-10 grid grid-cols-6">
           {months.map((month) => {
             const tone = getMonthTone(month.label);
             const toneStyle = monthToneStyles[tone];
@@ -134,7 +134,7 @@ export default function StudyTimeline() {
                   aria-expanded={isActive}
                 >
                   <span
-                    className={`relative flex h-8 w-8 items-center justify-center rounded-full border-4 border-surface transition-all duration-300 ease-out group-hover:scale-110 ${
+                    className={`relative flex h-9 w-9 items-center justify-center rounded-full border-[5px] border-surface transition-all duration-300 ease-out group-hover:scale-110 ${
                       toneStyle.marker
                     } ${isActive ? "scale-110" : ""}`}
                   >
