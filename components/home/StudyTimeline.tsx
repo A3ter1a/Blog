@@ -241,7 +241,7 @@ export default function StudyTimeline() {
       {selectedMonth ? (
         <div
           ref={detailRef}
-          className="mx-auto w-[min(96vw,104rem)] scroll-mt-24 rounded-2xl border border-primary/10 bg-surface-container-lowest/50 p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.55),0_18px_48px_-34px_rgba(15,23,42,0.58)] backdrop-blur-sm transition-all duration-300 ease-out sm:p-6"
+          className="relative left-1/2 w-[min(96vw,104rem)] -translate-x-1/2 scroll-mt-24 rounded-2xl border border-primary/10 bg-surface-container-lowest/50 p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.55),0_18px_48px_-34px_rgba(15,23,42,0.58)] backdrop-blur-sm transition-all duration-300 ease-out sm:p-6"
         >
           <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
             <div>
