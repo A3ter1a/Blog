@@ -171,4 +171,66 @@ export const studyTimelines: StudySubjectTimeline[] = [
       },
     ],
   },
+  {
+    id: "politics",
+    label: studySubjectLabels.politics,
+    months: [
+      {
+        id: "politics-07",
+        label: "7月",
+        tasks: [
+          { id: "politics-07-first-xiao1000-marx", title: "肖1000马原", stage: "first" },
+          { id: "politics-07-course-marx", title: "马原强化", stage: "course" },
+        ],
+      },
+      {
+        id: "politics-08",
+        label: "8月",
+        tasks: [
+          { id: "politics-08-first-xiao1000-history-mao", title: "肖1000史纲/毛中特", stage: "first" },
+          { id: "politics-08-second-xiao1000-marx", title: "肖1000马原", stage: "second" },
+          { id: "politics-08-course-history-mao", title: "史纲/毛中特强化", stage: "course" },
+        ],
+      },
+      {
+        id: "politics-09",
+        label: "9月",
+        tasks: [
+          { id: "politics-09-first-xiao1000-morality-current", title: "肖1000思修/时政", stage: "first" },
+          { id: "politics-09-second-xiao1000-history-mao", title: "肖1000史纲/毛中特", stage: "second" },
+          { id: "politics-09-third-xiao1000-marx", title: "肖1000马原", stage: "third" },
+          { id: "politics-09-course-choice", title: "选择题技巧", stage: "course" },
+        ],
+      },
+      {
+        id: "politics-10",
+        label: "10月",
+        tasks: [
+          { id: "politics-10-second-xiao1000-morality-current", title: "肖1000思修/时政", stage: "second" },
+          { id: "politics-10-third-xiao1000-marked", title: "肖1000标记题", stage: "third" },
+          { id: "politics-10-course-current-choice", title: "时政/选择题技巧", stage: "course" },
+        ],
+      },
+      {
+        id: "politics-11",
+        label: "11月",
+        tasks: [
+          { id: "politics-11-first-xiao8", title: "肖八", stage: "first" },
+          { id: "politics-11-second-xiao1000-marked", title: "肖1000标记题", stage: "second" },
+          { id: "politics-11-third-xiao8-choice", title: "肖八选择题", stage: "third" },
+          { id: "politics-11-course-xiao8", title: "肖八解析", stage: "course" },
+        ],
+      },
+      {
+        id: "politics-12",
+        label: "12月",
+        tasks: [
+          { id: "politics-12-first-xiao4", title: "肖四", stage: "first" },
+          { id: "politics-12-third-xiao8-choice", title: "肖八选择题", stage: "third" },
+          { id: "politics-12-third-xiao4-choice", title: "肖四选择题", stage: "third" },
+          { id: "politics-12-course-xiao4-subjective", title: "肖四主观题", stage: "course" },
+        ],
+      },
+    ],
+  },
 ];
