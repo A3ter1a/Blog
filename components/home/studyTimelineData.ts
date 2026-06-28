@@ -233,4 +233,65 @@ export const studyTimelines: StudySubjectTimeline[] = [
       },
     ],
   },
+  {
+    id: "professional",
+    label: studySubjectLabels.professional,
+    months: [
+      {
+        id: "professional-07",
+        label: "7月",
+        tasks: [
+          { id: "professional-07-first-pindyck-micro-10-18", title: "平狄克微观10-18章", stage: "first" },
+          { id: "professional-07-course-micro-basic", title: "微观基础课", stage: "course" },
+        ],
+      },
+      {
+        id: "professional-08",
+        label: "8月",
+        tasks: [
+          { id: "professional-08-first-macro", title: "宏观一刷", stage: "first" },
+          { id: "professional-08-second-pindyck-key", title: "平狄克重点章", stage: "second" },
+          { id: "professional-08-course-macro-basic", title: "宏观基础课", stage: "course" },
+        ],
+      },
+      {
+        id: "professional-09",
+        label: "9月",
+        tasks: [
+          { id: "professional-09-first-past-early", title: "专业课真题早年卷", stage: "first" },
+          { id: "professional-09-second-micro-macro-key", title: "微宏重点章", stage: "second" },
+          { id: "professional-09-course-topic", title: "微观计算/宏观专题", stage: "course" },
+        ],
+      },
+      {
+        id: "professional-10",
+        label: "10月",
+        tasks: [
+          { id: "professional-10-first-past-recent", title: "专业课真题近年卷", stage: "first" },
+          { id: "professional-10-second-past-topic", title: "真题高频专题", stage: "second" },
+          { id: "professional-10-third-pindyck-marked", title: "平狄克标记题", stage: "third" },
+          { id: "professional-10-course-answer-format", title: "答题规范课", stage: "course" },
+        ],
+      },
+      {
+        id: "professional-11",
+        label: "11月",
+        tasks: [
+          { id: "professional-11-first-simulation", title: "专业课模拟题", stage: "first" },
+          { id: "professional-11-second-past", title: "真题二刷", stage: "second" },
+          { id: "professional-11-third-frequent-errors", title: "微宏高频错题", stage: "third" },
+          { id: "professional-11-course-sprint", title: "冲刺课", stage: "course" },
+        ],
+      },
+      {
+        id: "professional-12",
+        label: "12月",
+        tasks: [
+          { id: "professional-12-third-past-errors", title: "真题错题", stage: "third" },
+          { id: "professional-12-third-answer-template", title: "答题模板", stage: "third" },
+          { id: "professional-12-course-final-framework", title: "考前框架课", stage: "course" },
+        ],
+      },
+    ],
+  },
 ];
