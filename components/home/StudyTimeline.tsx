@@ -24,6 +24,10 @@ const stageStyles: Record<BrushStage, { dot: string; pill: string }> = {
     dot: "bg-rose-600",
     pill: "bg-rose-600 shadow-[0_8px_18px_-10px_rgba(225,29,72,0.85)]",
   },
+  course: {
+    dot: "bg-emerald-500",
+    pill: "bg-emerald-600 shadow-[0_8px_18px_-10px_rgba(5,150,105,0.85)]",
+  },
 };
 
 const monthToneStyles = {
@@ -262,7 +266,7 @@ export default function StudyTimeline() {
                 <h3 className="mb-4 font-headline text-lg font-bold text-primary">
                   {subject.label}
                 </h3>
-                <div className="grid gap-4 md:grid-cols-3">
+                <div className="grid gap-4 md:grid-cols-4">
                   {Object.entries(brushStageLabels).map(([stage, label]) => {
                     const stageTasks = subject.tasks.filter((task) => task.stage === stage);
 
