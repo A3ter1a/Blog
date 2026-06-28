@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import {
   brushStageLabels,
   studyTimelines,
@@ -59,9 +59,14 @@ type TimelineMonthSlot = {
 export default function StudyTimeline() {
   const subjects = studyTimelines;
   const months = useMemo(() => buildTimelineMonths(subjects), [subjects]);
+  const detailRef = useRef<HTMLDivElement | null>(null);
   const [activeMonthId, setActiveMonthId] = useState<string | null>(null);
+  const [selectedMonthId, setSelectedMonthId] = useState<string | null>(null);
   const activeMonth = activeMonthId
     ? months.find((month) => month.id === activeMonthId) ?? null
+    : null;
+  const selectedMonth = selectedMonthId
+    ? months.find((month) => month.id === selectedMonthId) ?? null
     : null;
   const activeMonthIndex = activeMonth
     ? months.findIndex((month) => month.id === activeMonth.id)
@@ -76,6 +81,27 @@ export default function StudyTimeline() {
       }))
       .filter((subject) => subject.tasks.length > 0);
   }, [activeMonth, completed]);
+
+  const selectedSubjectGroups = useMemo(() => {
+    return (selectedMonth?.subjects ?? [])
+      .map((subject) => ({
+        ...subject,
+        tasks: sortTasksByCompletion(subject.tasks, completed),
+      }))
+      .filter((subject) => subject.tasks.length > 0);
+  }, [selectedMonth, completed]);
+
+  const selectMonth = (monthId: string) => {
+    setActiveMonthId(monthId);
+    setSelectedMonthId(monthId);
+
+    window.requestAnimationFrame(() => {
+      detailRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    });
+  };
 
   const toggleTask = (taskId: string) => {
     setCompleted((current) => {
@@ -120,12 +146,13 @@ export default function StudyTimeline() {
             const tone = getMonthTone(month.label);
             const toneStyle = monthToneStyles[tone];
             const isActive = month.id === activeMonth?.id;
+            const isSelected = month.id === selectedMonth?.id;
 
             return (
               <div key={month.id} className="relative flex justify-center">
                 <button
                   type="button"
-                  onClick={() => setActiveMonthId(month.id)}
+                  onClick={() => selectMonth(month.id)}
                   onFocus={() => setActiveMonthId(month.id)}
                   onMouseEnter={() => setActiveMonthId(month.id)}
                   className={`group flex min-w-0 flex-col items-center gap-3 rounded-lg px-2 pb-1 pt-0 text-center transition-all duration-300 ease-out focus:outline-none focus-visible:ring-2 ${toneStyle.button} ${
@@ -136,7 +163,7 @@ export default function StudyTimeline() {
                   <span
                     className={`relative flex h-9 w-9 items-center justify-center rounded-full border-[5px] border-surface transition-all duration-300 ease-out group-hover:scale-110 ${
                       toneStyle.marker
-                    } ${isActive ? "scale-110" : ""}`}
+                    } ${isActive || isSelected ? "scale-110" : ""}`}
                   >
                     <span className="h-2.5 w-2.5 rounded-full bg-white/95" />
                   </span>
@@ -204,6 +231,79 @@ export default function StudyTimeline() {
           </div>
         ) : null}
       </div>
+
+      {selectedMonth ? (
+        <div
+          ref={detailRef}
+          className="mx-auto w-full max-w-5xl scroll-mt-24 rounded-2xl border border-primary/10 bg-surface-container-lowest/50 p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.55),0_18px_48px_-34px_rgba(15,23,42,0.58)] backdrop-blur-sm transition-all duration-300 ease-out sm:p-6"
+        >
+          <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="font-headline text-2xl font-bold leading-none text-primary">
+                {selectedMonth.label}
+              </p>
+              <p className="mt-2 text-sm font-semibold text-on-surface-variant">
+                本月重心
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-3">
+              {Object.entries(brushStageLabels).map(([stage, label]) => (
+                <span key={stage} className="inline-flex items-center gap-1.5 text-xs font-bold text-on-surface-variant">
+                  <span className={`h-2.5 w-2.5 rounded-full ${stageStyles[stage as BrushStage].dot}`} />
+                  {label}
+                </span>
+              ))}
+            </div>
+          </div>
+
+          <div className="space-y-5">
+            {selectedSubjectGroups.map((subject) => (
+              <section key={subject.id} className="rounded-xl border border-primary/10 bg-surface/40 p-4">
+                <h3 className="mb-4 font-headline text-lg font-bold text-primary">
+                  {subject.label}
+                </h3>
+                <div className="grid gap-4 md:grid-cols-3">
+                  {Object.entries(brushStageLabels).map(([stage, label]) => {
+                    const stageTasks = subject.tasks.filter((task) => task.stage === stage);
+
+                    if (stageTasks.length === 0) {
+                      return null;
+                    }
+
+                    return (
+                      <div key={stage} className="min-w-0">
+                        <p className="mb-2 text-xs font-bold text-on-surface-variant">
+                          {label}
+                        </p>
+                        <div className="flex flex-wrap gap-2">
+                          {stageTasks.map((task) => {
+                            const done = Boolean(completed[task.id]);
+
+                            return (
+                              <button
+                                key={task.id}
+                                type="button"
+                                aria-pressed={done}
+                                aria-label={`${task.title}，${brushStageLabels[task.stage]}，${done ? "已完成" : "未完成"}`}
+                                onClick={() => toggleTask(task.id)}
+                                className={`rounded-full px-3 py-1.5 text-xs font-bold text-white transition-all duration-300 ease-out hover:-translate-y-0.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/25 sm:text-sm ${
+                                  stageStyles[task.stage].pill
+                                } ${done ? "order-last opacity-40 saturate-75 hover:opacity-65" : "opacity-100"}`}
+                              >
+                                {task.title}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
+            ))}
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
