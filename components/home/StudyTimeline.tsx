@@ -48,7 +48,7 @@ const monthToneStyles = {
   },
 } as const;
 
-const detailStageColumns = "minmax(15rem,1.1fr) minmax(17rem,1.25fr) minmax(14rem,1fr) minmax(20rem,1.45fr)";
+const detailStageColumns = "minmax(22rem,1.35fr) minmax(20rem,1.2fr) minmax(16rem,1fr) minmax(24rem,1.45fr)";
 
 type CompletionMap = Record<string, true>;
 
@@ -241,7 +241,7 @@ export default function StudyTimeline() {
       {selectedMonth ? (
         <div
           ref={detailRef}
-          className="mx-auto w-[min(96vw,88rem)] scroll-mt-24 rounded-2xl border border-primary/10 bg-surface-container-lowest/50 p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.55),0_18px_48px_-34px_rgba(15,23,42,0.58)] backdrop-blur-sm transition-all duration-300 ease-out sm:p-6"
+          className="mx-auto w-[min(96vw,104rem)] scroll-mt-24 rounded-2xl border border-primary/10 bg-surface-container-lowest/50 p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.55),0_18px_48px_-34px_rgba(15,23,42,0.58)] backdrop-blur-sm transition-all duration-300 ease-out sm:p-6"
         >
           <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
             <div>
@@ -273,7 +273,7 @@ export default function StudyTimeline() {
                   </h3>
                   <div className="overflow-x-auto pb-1">
                     <div
-                      className="grid min-w-[72rem] gap-4"
+                      className="grid min-w-[88rem] gap-4"
                       style={{
                         gridTemplateColumns: detailStageColumns,
                       }}
