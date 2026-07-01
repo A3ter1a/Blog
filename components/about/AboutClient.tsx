@@ -4,6 +4,7 @@ import Image from "next/image";
 import { motion } from "framer-motion";
 import { ChevronRight } from "lucide-react";
 import type { Profile } from "@/lib/types";
+import { surfaceMotion, uiMotion } from "@/lib/motion";
 
 const iconMap: Record<string, string> = {
   mail: "/icons/email.svg",
@@ -21,9 +22,10 @@ export function AboutClient({ profile }: { profile: Profile }) {
     <main className="flex min-h-screen flex-col items-center bg-surface px-4 pb-16 pt-24 sm:px-6">
       {/* Profile Header */}
       <motion.section
-        initial={{ opacity: 0, y: 30 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.6 }}
+        variants={surfaceMotion}
+        initial="initial"
+        animate="animate"
+        transition={{ duration: uiMotion.duration.page, ease: uiMotion.ease.emphasized }}
         className="mb-12 flex w-full max-w-2xl flex-col items-center text-center"
       >
         {/* Avatar */}
@@ -42,9 +44,10 @@ export function AboutClient({ profile }: { profile: Profile }) {
 
         {/* Name */}
         <motion.h1
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2, duration: 0.5 }}
+          variants={surfaceMotion}
+          initial="initial"
+          animate="animate"
+          transition={{ delay: 0.04, duration: uiMotion.duration.page, ease: uiMotion.ease.emphasized }}
           className="mb-4 font-headline text-4xl font-bold text-primary md:text-5xl"
         >
           {profile.name}
@@ -52,9 +55,10 @@ export function AboutClient({ profile }: { profile: Profile }) {
 
         {/* Tagline */}
         <motion.p
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3, duration: 0.5 }}
+          variants={surfaceMotion}
+          initial="initial"
+          animate="animate"
+          transition={{ delay: 0.08, duration: uiMotion.duration.page, ease: uiMotion.ease.emphasized }}
           className="max-w-md font-headline text-lg italic leading-relaxed text-on-surface-variant md:text-xl"
         >
           {profile.tagline}
@@ -62,9 +66,10 @@ export function AboutClient({ profile }: { profile: Profile }) {
 
         {/* Badges */}
         <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.4, duration: 0.5 }}
+          variants={surfaceMotion}
+          initial="initial"
+          animate="animate"
+          transition={{ delay: 0.12, duration: uiMotion.duration.page, ease: uiMotion.ease.emphasized }}
           className="mt-6 flex flex-wrap justify-center gap-2"
         >
           {profile.badges.map((badge, i) => (
@@ -80,9 +85,10 @@ export function AboutClient({ profile }: { profile: Profile }) {
 
       {/* Links - Apple Card Style */}
       <motion.section
-        initial={{ opacity: 0, y: 30 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.5, duration: 0.6 }}
+        variants={surfaceMotion}
+        initial="initial"
+        animate="animate"
+        transition={{ delay: 0.14, duration: uiMotion.duration.page, ease: uiMotion.ease.emphasized }}
         className="w-full max-w-md"
       >
         <div className="surface-panel overflow-hidden divide-y divide-outline-variant/10">
@@ -104,7 +110,7 @@ export function AboutClient({ profile }: { profile: Profile }) {
                   </div>
                 </div>
                 {isLink && (
-                  <ChevronRight className="h-5 w-5 text-outline-variant transition-transform duration-300 ease-out group-hover:translate-x-1" />
+                  <ChevronRight className="motion-icon-shift h-5 w-5 text-outline-variant group-hover:translate-x-1" />
                 )}
               </>
             );
@@ -116,7 +122,7 @@ export function AboutClient({ profile }: { profile: Profile }) {
                   href={link.href}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="group flex items-center justify-between p-4 text-on-surface transition-all duration-300 ease-out hover:bg-surface-container-low"
+                  className="motion-ui group flex items-center justify-between p-4 text-on-surface hover:bg-surface-container-low"
                 >
                   {content}
                 </a>
@@ -137,9 +143,9 @@ export function AboutClient({ profile }: { profile: Profile }) {
 
       {/* Footer */}
       <motion.footer
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 0.8, duration: 0.5 }}
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.18, duration: uiMotion.duration.page, ease: uiMotion.ease.emphasized }}
         className="mt-16 text-center"
       >
         <p className="font-headline text-sm italic text-on-surface-variant">

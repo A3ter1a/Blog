@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { useToast } from "@/components/ui/Toast";
 import { notesApi, type NoteCreateInput } from "@/lib/supabase";
 import { useState } from "react";
+import { overlayMotion, uiMotion } from "@/lib/motion";
 
 interface ImportPreviewProps {
   isOpen: boolean;
@@ -91,9 +92,11 @@ export function ImportPreview({ isOpen, onClose, parsedNotes, onImported }: Impo
         <>
           {/* Backdrop */}
           <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
+            variants={overlayMotion}
+            initial="initial"
+            animate="animate"
+            exit="exit"
+            transition={{ duration: uiMotion.duration.fast, ease: uiMotion.ease.standard }}
             className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm"
             onClick={onClose}
           />
@@ -103,7 +106,7 @@ export function ImportPreview({ isOpen, onClose, parsedNotes, onImported }: Impo
             initial={{ x: "100%" }}
             animate={{ x: 0 }}
             exit={{ x: "100%" }}
-            transition={{ type: "spring", damping: 25, stiffness: 200 }}
+            transition={uiMotion.spring.panel}
             className="fixed right-0 top-0 h-full w-full max-w-lg z-50 bg-surface-container-lowest shadow-elevated flex flex-col"
           >
             {/* Header */}
@@ -111,7 +114,7 @@ export function ImportPreview({ isOpen, onClose, parsedNotes, onImported }: Impo
               <h2 className="text-xl font-bold text-on-surface font-headline">导入预览</h2>
               <button
                 onClick={onClose}
-                className="p-2 rounded-full hover:bg-surface-container-high transition-colors"
+                className="motion-ui motion-interactive p-2 rounded-full hover:bg-surface-container-high"
               >
                 <X className="w-5 h-5 text-on-surface-variant" />
               </button>
@@ -150,7 +153,7 @@ export function ImportPreview({ isOpen, onClose, parsedNotes, onImported }: Impo
             <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-outline-variant/10 bg-surface-container-low flex-shrink-0">
               <button
                 onClick={onClose}
-                className="px-4 py-2 rounded-lg bg-surface-container-high text-on-surface-variant text-sm font-medium hover:bg-surface-container-highest transition-colors"
+                className="motion-ui motion-interactive px-4 py-2 rounded-lg bg-surface-container-high text-on-surface-variant text-sm font-medium hover:bg-surface-container-highest"
               >
                 取消
               </button>
@@ -158,7 +161,7 @@ export function ImportPreview({ isOpen, onClose, parsedNotes, onImported }: Impo
                 <button
                   onClick={() => handleEdit(0)}
                   disabled={isSaving}
-                  className="px-4 py-2 rounded-lg editorial-gradient text-on-primary text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-40 flex items-center gap-2"
+                  className="motion-ui motion-interactive px-4 py-2 rounded-lg editorial-gradient text-on-primary text-sm font-medium hover:opacity-90 disabled:opacity-40 flex items-center gap-2"
                 >
                   去编辑
                 </button>
@@ -167,7 +170,7 @@ export function ImportPreview({ isOpen, onClose, parsedNotes, onImported }: Impo
                 <button
                   onClick={handleSaveAll}
                   disabled={isSaving}
-                  className="px-4 py-2 rounded-lg editorial-gradient text-on-primary text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2"
+                  className="motion-ui motion-interactive px-4 py-2 rounded-lg editorial-gradient text-on-primary text-sm font-medium hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2"
                 >
                   {isSaving && <Loader2 className="w-4 h-4 animate-spin" />}
                   {isSaving ? "保存中" : `保存全部 (${parsedNotes.length})`}

@@ -19,6 +19,7 @@ import { ProblemReferencePicker } from "@/components/problems/ProblemReferencePi
 import { useCoverUpload } from "@/hooks/useCoverUpload";
 import { useNoteSave } from "@/hooks/useNoteSave";
 import { type ImportDraft, type NoteEditorDraft, useNoteEditorRoute } from "@/hooks/useNoteEditorRoute";
+import { collapsibleMotion, surfaceMotion, uiMotion } from "@/lib/motion";
 
 const ProblemEditor = dynamic(
   () => import("@/components/problems/ProblemEditor").then((module) => module.ProblemEditor),
@@ -335,8 +336,10 @@ function CreateEditorPage() {
       <div className="mx-auto w-full max-w-7xl px-4 sm:px-6">
         {/* Header */}
         <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
+          variants={surfaceMotion}
+          initial="initial"
+          animate="animate"
+          transition={{ duration: uiMotion.duration.page, ease: uiMotion.ease.emphasized }}
           className="command-bar sticky top-20 z-30 mb-5 p-3"
         >
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -371,9 +374,10 @@ function CreateEditorPage() {
 
         {/* Type Selector */}
         <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
+          variants={surfaceMotion}
+          initial="initial"
+          animate="animate"
+          transition={{ delay: 0.04, duration: uiMotion.duration.page, ease: uiMotion.ease.emphasized }}
           className="surface-toolbar mb-4 p-2"
         >
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -396,9 +400,10 @@ function CreateEditorPage() {
 
         {/* Title Input */}
         <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.15 }}
+          variants={surfaceMotion}
+          initial="initial"
+          animate="animate"
+          transition={{ delay: 0.06, duration: uiMotion.duration.page, ease: uiMotion.ease.emphasized }}
           className="mb-4"
         >
           <label className="mb-2 block text-sm font-medium text-on-surface-variant">
@@ -415,9 +420,10 @@ function CreateEditorPage() {
 
         {/* Metadata & Cover */}
         <motion.section
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.16 }}
+          variants={surfaceMotion}
+          initial="initial"
+          animate="animate"
+          transition={{ delay: 0.08, duration: uiMotion.duration.page, ease: uiMotion.ease.emphasized }}
           className="foldout-panel mb-6 p-2"
         >
           <button
@@ -540,9 +546,10 @@ function CreateEditorPage() {
 
         {/* Content Editor / Problem Editor */}
         <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.25 }}
+          variants={surfaceMotion}
+          initial="initial"
+          animate="animate"
+          transition={{ delay: 0.1, duration: uiMotion.duration.page, ease: uiMotion.ease.emphasized }}
           className="mb-8"
         >
           {isProblem ? (
@@ -588,7 +595,7 @@ function CreateEditorPage() {
                   <div className="grid w-full grid-cols-3 overflow-hidden rounded-lg border border-outline-variant/20 sm:flex sm:w-auto">
                     <button
                       onClick={() => setViewMode("split")}
-                      className={`px-2.5 py-1.5 text-xs font-medium transition-colors flex items-center gap-1 ${
+                      className={`motion-ui motion-interactive px-2.5 py-1.5 text-xs font-medium flex items-center gap-1 ${
                         viewMode === "split"
                           ? "bg-primary/10 text-primary"
                           : "text-on-surface-variant hover:bg-surface-container-high"
@@ -599,7 +606,7 @@ function CreateEditorPage() {
                     </button>
                     <button
                       onClick={() => setViewMode("editor")}
-                      className={`px-2.5 py-1.5 text-xs font-medium transition-colors flex items-center gap-1 ${
+                      className={`motion-ui motion-interactive px-2.5 py-1.5 text-xs font-medium flex items-center gap-1 ${
                         viewMode === "editor"
                           ? "bg-primary/10 text-primary"
                           : "text-on-surface-variant hover:bg-surface-container-high"
@@ -610,7 +617,7 @@ function CreateEditorPage() {
                     </button>
                     <button
                       onClick={() => setViewMode("preview")}
-                      className={`px-2.5 py-1.5 text-xs font-medium transition-colors flex items-center gap-1 ${
+                      className={`motion-ui motion-interactive px-2.5 py-1.5 text-xs font-medium flex items-center gap-1 ${
                         viewMode === "preview"
                           ? "bg-primary/10 text-primary"
                           : "text-on-surface-variant hover:bg-surface-container-high"
@@ -752,9 +759,10 @@ function CreateEditorPage() {
         {/* Video Section (hidden for essay) */}
         {!isEssay && (
           <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.28 }}
+            variants={surfaceMotion}
+            initial="initial"
+            animate="animate"
+            transition={{ delay: 0.12, duration: uiMotion.duration.page, ease: uiMotion.ease.emphasized }}
             className="foldout-panel mb-8 p-2"
           >
             <button
@@ -774,8 +782,10 @@ function CreateEditorPage() {
 
             {showVideoSection && (
               <motion.div
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: "auto" }}
+                variants={collapsibleMotion}
+                initial="initial"
+                animate="animate"
+                transition={{ duration: uiMotion.duration.reveal, ease: uiMotion.ease.emphasized }}
                 className="mt-2 border-t border-outline-variant/10 p-3 overscroll-contain"
               >
                 <Playlist

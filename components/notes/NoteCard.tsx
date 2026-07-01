@@ -6,6 +6,7 @@ import { subjectMap, typeMap, type Note } from "@/lib/types";
 import { FileText, BookOpen, Calendar, Check, Clock } from "lucide-react";
 import { estimateReadingTime } from "@/lib/utils";
 import { getVisibleNoteTags } from "@/lib/math3-practice";
+import { getListItemTransition, surfaceMotion, uiMotion } from "@/lib/motion";
 
 interface NoteCardProps {
   note: Note;
@@ -20,7 +21,6 @@ export function NoteCard({ note, index, isSelected = false, onToggleSelect, sele
   const isEssay = note.type === "essay";
   const createdAt = note.createdAt instanceof Date ? note.createdAt : new Date(String(note.createdAt));
   const updatedAt = note.updatedAt instanceof Date ? note.updatedAt : new Date(String(note.updatedAt));
-  const animationDelay = Math.min(index * 0.04, 0.32);
   const visibleTags = getVisibleNoteTags(note.tags);
   const hasReadableContent = !isProblem && Boolean(note.content?.trim());
 
@@ -33,12 +33,13 @@ export function NoteCard({ note, index, isSelected = false, onToggleSelect, sele
 
   return (
     <motion.article
-      initial={{ opacity: 0, y: 16 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: animationDelay, duration: 0.25 }}
-      whileHover={{ y: -4, transition: { duration: 0.3, ease: "easeOut" } }}
+      variants={surfaceMotion}
+      initial="initial"
+      animate="animate"
+      transition={getListItemTransition(index)}
+      whileHover={{ y: -4, transition: { duration: uiMotion.duration.standard, ease: uiMotion.ease.emphasized } }}
       onClick={handleClick}
-      className={`surface-card group h-full cursor-pointer overflow-hidden transition-all duration-300 ease-out ${
+      className={`surface-card motion-card-lift group h-full cursor-pointer overflow-hidden ${
         selectMode
           ? isSelected
             ? "border-primary/50 bg-primary/5 ring-2 ring-primary/15"
@@ -58,7 +59,7 @@ export function NoteCard({ note, index, isSelected = false, onToggleSelect, sele
                 alt={note.title}
                 loading={index < 3 ? "eager" : "lazy"}
                 decoding="async"
-                className="h-full w-full object-cover object-center transition-transform duration-300 ease-out group-hover:scale-[1.03]"
+                className="motion-ui h-full w-full object-cover object-center group-hover:scale-[1.03]"
               />
             </>
           ) : (
@@ -86,7 +87,7 @@ export function NoteCard({ note, index, isSelected = false, onToggleSelect, sele
                   e.stopPropagation();
                   onToggleSelect?.(note.id);
                 }}
-                className={`w-6 h-6 rounded-full flex items-center justify-center transition-all duration-200 ${
+                className={`motion-ui flex w-6 h-6 rounded-full items-center justify-center ${
                   isSelected
                     ? "bg-primary text-on-primary"
                     : "bg-surface-container-lowest/80 backdrop-blur-sm border-2 border-outline-variant"
@@ -101,12 +102,12 @@ export function NoteCard({ note, index, isSelected = false, onToggleSelect, sele
           {!selectMode && (
             <div className="absolute left-3 top-3">
               <span
-                className={`rounded-lg border px-2.5 py-1 text-xs font-medium ${
+                className={`inline-flex items-center rounded-lg border px-2.5 py-1.5 text-[13px] font-bold leading-none shadow-[0_8px_18px_-14px_rgba(15,23,42,0.65)] ${
                   isProblem
-                    ? "border-primary/20 bg-primary text-on-primary"
+                    ? "border-primary bg-primary text-on-primary"
                     : isEssay
-                    ? "border-amber-200 bg-amber-50 text-amber-800"
-                    : "text-on-surface"
+                    ? "border-amber-300 bg-amber-50 text-amber-950"
+                    : "border-primary/45 bg-surface-container-lowest text-primary-container"
                 }`}
               >
                 {typeMap[note.type]}
@@ -116,7 +117,7 @@ export function NoteCard({ note, index, isSelected = false, onToggleSelect, sele
           {/* Subject Badge */}
           {!isEssay && note.subject && (
             <div className="absolute right-3 top-3">
-              <span className="tag-chip bg-surface-container-lowest/85 px-2.5 py-1 text-xs font-medium backdrop-blur-sm">
+              <span className="inline-flex items-center rounded-lg border border-primary/35 bg-surface-container-lowest px-2.5 py-1.5 text-[13px] font-bold leading-none text-primary-container shadow-[0_8px_18px_-14px_rgba(15,23,42,0.65)]">
                 {subjectMap[note.subject]}
               </span>
             </div>
@@ -125,7 +126,7 @@ export function NoteCard({ note, index, isSelected = false, onToggleSelect, sele
 
         {/* Card Content */}
         <div className="flex flex-1 flex-col p-5">
-          <h3 className="line-clamp-2 font-headline text-lg font-bold leading-snug text-on-surface transition-colors duration-300 ease-out group-hover:text-primary">
+          <h3 className="motion-ui line-clamp-2 font-headline text-lg font-bold leading-snug text-on-surface group-hover:text-primary">
             {note.title}
           </h3>
 

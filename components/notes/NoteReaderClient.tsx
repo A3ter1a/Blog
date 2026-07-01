@@ -26,6 +26,7 @@ import { ReadingProgress } from "@/components/ui/ReadingProgress";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { useAdminAuth } from "@/hooks/useAdminAuth";
 import { useToast } from "@/components/ui/Toast";
+import { overlayMotion, surfaceMotion, uiMotion } from "@/lib/motion";
 
 type NoteReaderClientProps = {
   noteId: string;
@@ -439,7 +440,7 @@ export function NoteReaderClient({
           <motion.div
             initial={false}
             animate={{ height: isCoverExpanded ? "auto" : 0 }}
-            transition={{ duration: 0.5, ease: "easeInOut" }}
+            transition={{ duration: uiMotion.duration.reveal, ease: uiMotion.ease.emphasized }}
             className="overflow-hidden"
           >
             <div className="overflow-hidden rounded-2xl shadow-elevated">
@@ -453,7 +454,7 @@ export function NoteReaderClient({
           </motion.div>
           <button
             onClick={() => setIsCoverExpanded(!isCoverExpanded)}
-            className="mt-2 flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-on-surface-variant transition-all duration-300 ease-out hover:bg-primary/10 hover:text-primary"
+            className="motion-ui motion-interactive mt-2 flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-on-surface-variant hover:bg-primary/10 hover:text-primary"
           >
             {isCoverExpanded ? (
               <>
@@ -476,9 +477,10 @@ export function NoteReaderClient({
         <div className={contentColumnClass}>
           {/* Article Header */}
           <motion.header
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5 }}
+            variants={surfaceMotion}
+            initial="initial"
+            animate="animate"
+            transition={{ duration: uiMotion.duration.page, ease: uiMotion.ease.emphasized }}
             className={`surface-panel p-6 sm:p-8 ${isProblem ? "" : "mx-auto max-w-4xl"}`}
           >
             <div className="mb-4 flex flex-wrap items-center gap-2">
@@ -556,10 +558,11 @@ export function NoteReaderClient({
           <AnimatePresence>
             {inlineVideoIndex !== null && note.videos && note.videos[inlineVideoIndex] && (
               <motion.section
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -20 }}
-                transition={{ duration: 0.3 }}
+                variants={surfaceMotion}
+                initial="initial"
+                animate="animate"
+                exit="exit"
+                transition={{ duration: uiMotion.duration.page, ease: uiMotion.ease.emphasized }}
                 className="mb-8"
               >
                 <VideoPlayer 
@@ -574,9 +577,10 @@ export function NoteReaderClient({
 
           {/* Article Content */}
           <motion.article
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2, duration: 0.5 }}
+            variants={surfaceMotion}
+            initial="initial"
+            animate="animate"
+            transition={{ delay: 0.06, duration: uiMotion.duration.page, ease: uiMotion.ease.emphasized }}
             className={`py-8 ${isProblem ? "" : "mx-auto max-w-4xl"}`}
           >
             {isProblem && allProblems.length > 0 ? (
@@ -656,10 +660,11 @@ export function NoteReaderClient({
             <AnimatePresence>
               {note.videos && note.videos.length > 0 && (
                 <motion.section
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -20 }}
-                  transition={{ delay: 0.3, duration: 0.5 }}
+                  variants={surfaceMotion}
+                  initial="initial"
+                  animate="animate"
+                  exit="exit"
+                  transition={{ delay: 0.08, duration: uiMotion.duration.page, ease: uiMotion.ease.emphasized }}
                   className="surface-panel p-4 overscroll-contain lg:sticky lg:top-28"
                 >
                   <Playlist 
@@ -674,10 +679,11 @@ export function NoteReaderClient({
             {/* Table of Contents for notes/essays, or Problem Stats for problems */}
             <AnimatePresence>
               <motion.section
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -20 }}
-                transition={{ delay: 0.35, duration: 0.5 }}
+                variants={surfaceMotion}
+                initial="initial"
+                animate="animate"
+                exit="exit"
+                transition={{ delay: 0.1, duration: uiMotion.duration.page, ease: uiMotion.ease.emphasized }}
                 className="surface-panel p-4 lg:sticky lg:top-28 lg:flex lg:max-h-[calc(100vh-8rem)] lg:flex-col"
               >
                 {isProblem && allProblems.length > 0 ? (
@@ -714,24 +720,26 @@ export function NoteReaderClient({
       <AnimatePresence>
         {isImmersiveMode && (
           <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.4 }}
+            variants={overlayMotion}
+            initial="initial"
+            animate="animate"
+            exit="exit"
+            transition={{ duration: uiMotion.duration.page, ease: uiMotion.ease.standard }}
             className="fixed inset-0 z-[100] bg-surface-container-lowest overflow-y-auto"
             onClick={() => setIsImmersiveMode(false)}
           >
             {/* Immersive Header */}
             <motion.div
-              initial={{ opacity: 0, y: -20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.2, duration: 0.4 }}
+              variants={surfaceMotion}
+              initial="initial"
+              animate="animate"
+              transition={{ duration: uiMotion.duration.page, ease: uiMotion.ease.emphasized }}
               className="sticky top-0 bg-surface-container-lowest/80 backdrop-blur-xl border-b border-outline-variant/10 z-10"
             >
               <div className="max-w-3xl mx-auto px-6 py-4 flex items-center justify-between">
                 <button
                   onClick={() => setIsImmersiveMode(false)}
-                  className="inline-flex items-center gap-2 text-on-surface-variant hover:text-primary transition-colors duration-300"
+                  className="motion-ui inline-flex items-center gap-2 text-on-surface-variant hover:text-primary"
                 >
                   <ArrowLeft className="w-4 h-4" />
                   退出沉浸模式
@@ -749,17 +757,19 @@ export function NoteReaderClient({
 
             {/* Immersive Content */}
             <motion.div
-              initial={{ opacity: 0, y: 40 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.3, duration: 0.5, ease: "easeOut" }}
+              variants={surfaceMotion}
+              initial="initial"
+              animate="animate"
+              transition={{ delay: 0.06, duration: uiMotion.duration.page, ease: uiMotion.ease.emphasized }}
               className="max-w-3xl mx-auto px-6 py-12"
               onClick={(e) => e.stopPropagation()}
             >
               {/* Title */}
               <motion.h1
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.4, duration: 0.5 }}
+                variants={surfaceMotion}
+                initial="initial"
+                animate="animate"
+                transition={{ delay: 0.1, duration: uiMotion.duration.page, ease: uiMotion.ease.emphasized }}
                 className="text-4xl md:text-5xl font-bold text-on-surface mb-8 font-headline leading-tight"
               >
                 {note.title}
@@ -767,9 +777,9 @@ export function NoteReaderClient({
 
               {/* Meta Info */}
               <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: 0.5, duration: 0.4 }}
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.12, duration: uiMotion.duration.page, ease: uiMotion.ease.emphasized }}
                 className="flex items-center gap-4 text-sm text-on-surface-variant mb-12 pb-8 border-b border-outline-variant/10"
               >
                 <span className="flex items-center gap-2">
@@ -800,7 +810,7 @@ export function NoteReaderClient({
               <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
-                transition={{ delay: 0.6, duration: 0.6 }}
+                transition={{ delay: 0.14, duration: uiMotion.duration.page, ease: uiMotion.ease.standard }}
                 className="prose prose-lg max-w-none"
               >
                 {isProblem && allProblems.length > 0 ? (

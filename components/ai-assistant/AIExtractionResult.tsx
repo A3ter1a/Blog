@@ -6,6 +6,7 @@ import { Check, RefreshCw, ChevronDown, ChevronUp, CheckCircle2 } from 'lucide-r
 import type { Problem, ProblemType } from '@/lib/types';
 import { problemTypeMap, difficultyMap } from '@/lib/types';
 import { MarkdownContent } from '@/components/ui/MarkdownContent';
+import { collapsibleMotion, uiMotion } from '@/lib/motion';
 
 interface AIExtractionResultProps {
   extractedProblems: Partial<Problem>[];
@@ -68,14 +69,14 @@ export function AIExtractionResult({ extractedProblems, onAcceptAll, onAcceptOne
         <button
           onClick={() => onAcceptAll(acceptedIndices)}
           disabled={allAccepted || extractedProblems.length === 0}
-          className="flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl editorial-gradient text-on-primary text-sm font-medium hover:opacity-90 transition-all disabled:opacity-40"
+          className="motion-ui motion-interactive flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl editorial-gradient text-on-primary text-sm font-medium hover:opacity-90 disabled:opacity-40"
         >
           <Check className="w-4 h-4" />
           全部采纳
         </button>
         <button
           onClick={onRetry}
-          className="px-3 py-2.5 rounded-xl bg-surface-container-low text-on-surface-variant text-sm hover:bg-surface-container-high transition-colors"
+          className="motion-ui motion-interactive px-3 py-2.5 rounded-xl bg-surface-container-low text-on-surface-variant text-sm hover:bg-surface-container-high"
           title="重新扫描"
         >
           <RefreshCw className="w-4 h-4" />
@@ -104,7 +105,7 @@ function ProblemCard({
   const confidencePct = Math.round(confidence * 100);
 
   return (
-    <div className={`rounded-xl border overflow-hidden transition-colors ${
+    <div className={`motion-ui rounded-xl border overflow-hidden ${
       isAccepted
         ? 'border-green-200/40 bg-green-50/30'
         : 'border-outline-variant/10 bg-surface-container-lowest'
@@ -112,7 +113,7 @@ function ProblemCard({
       {/* Card header */}
       <button
         onClick={onToggle}
-        className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-surface-container-low/50 transition-colors text-left"
+        className="motion-ui w-full flex items-center gap-3 px-3 py-2.5 hover:bg-surface-container-low/50 text-left"
       >
         {/* Number badge */}
         <span className="w-7 h-7 rounded-full editorial-gradient text-on-primary text-xs font-bold flex items-center justify-center shrink-0">
@@ -149,7 +150,7 @@ function ProblemCard({
           <div className="w-12">
             <div className="h-1.5 bg-surface-container-highest rounded-full overflow-hidden">
               <div
-                className={`h-full rounded-full transition-all ${
+                className={`motion-ui h-full rounded-full ${
                   confidence >= 0.8 ? 'bg-green-400' :
                   confidence >= 0.5 ? 'bg-amber-400' :
                   'bg-red-400'
@@ -167,9 +168,11 @@ function ProblemCard({
       <AnimatePresence>
         {isExpanded && (
           <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
+            variants={collapsibleMotion}
+            initial="initial"
+            animate="animate"
+            exit="exit"
+            transition={{ duration: uiMotion.duration.reveal, ease: uiMotion.ease.emphasized }}
             className="overflow-hidden"
           >
             <div className="px-3 pb-3 space-y-2 border-t border-outline-variant/5 pt-2">
@@ -200,7 +203,7 @@ function ProblemCard({
               {!isAccepted && (
                 <button
                   onClick={(e) => { e.stopPropagation(); onAccept(); }}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary/10 text-primary text-xs font-medium hover:bg-primary/20 transition-colors"
+                  className="motion-ui motion-interactive flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary/10 text-primary text-xs font-medium hover:bg-primary/20"
                 >
                   <Check className="w-3.5 h-3.5" />
                   采纳此题

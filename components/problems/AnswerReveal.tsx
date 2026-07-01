@@ -2,6 +2,7 @@
 
 import type { ReactNode } from "react";
 import { AnimatePresence, motion } from "framer-motion";
+import { collapsibleMotion, uiMotion } from "@/lib/motion";
 
 export function AnswerReveal({
   open,
@@ -14,10 +15,11 @@ export function AnswerReveal({
     <AnimatePresence initial={false}>
       {open && (
         <motion.div
-          initial={{ height: 0, opacity: 0 }}
-          animate={{ height: "auto", opacity: 1 }}
-          exit={{ height: 0, opacity: 0 }}
-          transition={{ duration: 0.5, ease: "easeInOut" }}
+          variants={collapsibleMotion}
+          initial="initial"
+          animate="animate"
+          exit="exit"
+          transition={{ duration: uiMotion.duration.reveal, ease: uiMotion.ease.emphasized }}
           className="overflow-hidden"
         >
           {children}

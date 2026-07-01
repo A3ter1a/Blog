@@ -34,7 +34,7 @@ export default function Home() {
         <a
           href="#study-timeline"
           aria-label="进入时间轴"
-          className="absolute bottom-7 left-1/2 z-10 flex h-10 w-10 -translate-x-1/2 items-center justify-center rounded-full border border-primary/15 bg-surface-container-lowest/62 text-primary shadow-ambient backdrop-blur-md transition-colors hover:bg-surface-container-lowest focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+          className="motion-ui motion-interactive absolute bottom-7 left-1/2 z-10 flex h-10 w-10 -translate-x-1/2 items-center justify-center rounded-full border border-primary/15 bg-surface-container-lowest/62 text-primary shadow-ambient backdrop-blur-md hover:bg-surface-container-lowest focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
         >
           <ArrowDown className="h-5 w-5" />
         </a>

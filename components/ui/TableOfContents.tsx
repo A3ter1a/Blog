@@ -46,7 +46,7 @@ export function TableOfContents({ content, className = "" }: TableOfContentsProp
         <button
           key={item.id}
           onClick={() => scrollToHeading(item.id)}
-          className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-all duration-200 hover:bg-surface-container-high group ${
+          className={`motion-ui group w-full text-left px-3 py-2 rounded-lg text-sm hover:bg-surface-container-high ${
             item.level === 1
               ? "font-semibold text-on-surface"
               : item.level === 2
@@ -55,7 +55,7 @@ export function TableOfContents({ content, className = "" }: TableOfContentsProp
           }`}
         >
           <div className="flex items-center gap-2">
-            <ChevronRight className="w-3 h-3 opacity-0 -ml-4 group-hover:opacity-100 transition-opacity" />
+            <ChevronRight className="motion-icon-shift w-3 h-3 opacity-0 -ml-4 group-hover:opacity-100 group-hover:translate-x-0.5" />
             <span dangerouslySetInnerHTML={{ __html: renderInlineMath(item.title) }} />
           </div>
         </button>

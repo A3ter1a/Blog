@@ -2,6 +2,7 @@
 
 import { motion, AnimatePresence } from "framer-motion";
 import { usePathname } from "next/navigation";
+import { pageMotion, uiMotion } from "@/lib/motion";
 
 export function PageTransition({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -10,10 +11,11 @@ export function PageTransition({ children }: { children: React.ReactNode }) {
     <AnimatePresence mode="popLayout" initial={false}>
       <motion.div
         key={pathname}
-        initial={{ opacity: 0, y: 12 }}
-        animate={{ opacity: 1, y: 0 }}
-        exit={{ opacity: 0, y: -12 }}
-        transition={{ duration: 0.3, ease: "easeOut" }}
+        variants={pageMotion}
+        initial="initial"
+        animate="animate"
+        exit="exit"
+        transition={{ duration: uiMotion.duration.page, ease: uiMotion.ease.emphasized }}
         className="flex-1"
       >
         {children}

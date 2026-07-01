@@ -6,6 +6,7 @@ import { Plus, Trash2, Play, Video as VideoIcon } from "lucide-react";
 import { VideoPlayer } from "./VideoPlayer";
 import type { Video, VideoPlatform } from "@/lib/types";
 import { platformMap } from "@/lib/types";
+import { getListItemTransition, surfaceMotion } from "@/lib/motion";
 
 // Cached regex patterns for video URL parsing
 const BV_PATTERN = /(BV[\w]+)/;
@@ -121,10 +122,12 @@ export function Playlist({ videos, onChange, editable = false, onPlay }: Playlis
           {videos.map((video, index) => (
             <motion.div
               key={video.id}
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: 20 }}
-              className={`flex items-center gap-3 p-3 rounded-xl transition-all duration-200 ${
+              variants={surfaceMotion}
+              initial="initial"
+              animate="animate"
+              exit="exit"
+              transition={getListItemTransition(index, 0.12)}
+              className={`motion-ui flex items-center gap-3 p-3 rounded-xl ${
                 index === currentIndex
                   ? "bg-primary/10 border border-primary/20"
                   : "bg-surface-container-low hover:bg-surface-container-high"
@@ -151,7 +154,7 @@ export function Playlist({ videos, onChange, editable = false, onPlay }: Playlis
                     e.stopPropagation();
                     handleRemoveVideo(index);
                   }}
-                  className="flex-shrink-0 p-1.5 rounded-lg hover:bg-white/10 transition-colors duration-200"
+                  className="motion-ui motion-interactive flex-shrink-0 p-1.5 rounded-lg hover:bg-white/10"
                 >
                   <Trash2 className="w-4 h-4" />
                 </button>
@@ -161,7 +164,7 @@ export function Playlist({ videos, onChange, editable = false, onPlay }: Playlis
                     e.stopPropagation();
                     onPlay(index);
                   }}
-                  className="flex-shrink-0 p-2 rounded-lg bg-primary hover:bg-primary/90 text-on-primary transition-colors duration-200"
+                  className="motion-ui motion-interactive flex-shrink-0 p-2 rounded-lg bg-primary hover:bg-primary/90 text-on-primary"
                   title="播放"
                 >
                   <Play className="w-4 h-4" />
@@ -181,8 +184,9 @@ export function Playlist({ videos, onChange, editable = false, onPlay }: Playlis
       {/* Add Video Form (Editable Mode) */}
       {editable && (
         <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
+          variants={surfaceMotion}
+          initial="initial"
+          animate="animate"
           className="p-4 bg-surface-container-low rounded-xl space-y-3"
         >
           <h4 className="text-sm font-medium text-on-surface-variant">添加视频</h4>
@@ -191,7 +195,7 @@ export function Playlist({ videos, onChange, editable = false, onPlay }: Playlis
           <div className="flex gap-2">
             <button
               onClick={() => setNewPlatform("bilibili")}
-              className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-colors duration-200 ${
+              className={`motion-ui motion-interactive flex-1 px-3 py-2 rounded-lg text-sm font-medium ${
                 newPlatform === "bilibili"
                   ? "bg-primary text-on-primary"
                   : "bg-surface-container-highest text-on-surface-variant hover:bg-surface-container"
@@ -201,7 +205,7 @@ export function Playlist({ videos, onChange, editable = false, onPlay }: Playlis
             </button>
             <button
               onClick={() => setNewPlatform("youtube")}
-              className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-colors duration-200 ${
+              className={`motion-ui motion-interactive flex-1 px-3 py-2 rounded-lg text-sm font-medium ${
                 newPlatform === "youtube"
                   ? "bg-red-600 text-white"
                   : "bg-surface-container-highest text-on-surface-variant hover:bg-surface-container"
@@ -227,7 +231,7 @@ export function Playlist({ videos, onChange, editable = false, onPlay }: Playlis
             <button
               onClick={handleAddVideo}
               disabled={!newVideoInput.trim()}
-              className="px-4 py-2 rounded-lg editorial-gradient text-on-primary text-sm font-medium hover:opacity-90 active:scale-[0.98] transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5"
+              className="motion-ui motion-interactive px-4 py-2 rounded-lg editorial-gradient text-on-primary text-sm font-medium hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5"
             >
               <Plus className="w-4 h-4" />
               添加

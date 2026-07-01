@@ -15,6 +15,7 @@ import { ProfileEditor } from "@/components/settings/ProfileEditor";
 import { AISettings } from "@/components/settings/AISettings";
 import { useAdminAuth } from "@/hooks/useAdminAuth";
 import { useToast } from "@/components/ui/Toast";
+import { collapsibleMotion, overlayMotion, uiMotion } from "@/lib/motion";
 
 interface SettingsPanelProps {
   isOpen: boolean;
@@ -110,9 +111,11 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
         <>
           {/* Backdrop */}
           <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
+            variants={overlayMotion}
+            initial="initial"
+            animate="animate"
+            exit="exit"
+            transition={{ duration: uiMotion.duration.fast, ease: uiMotion.ease.standard }}
             className="fixed inset-0 z-[100] bg-black/40 backdrop-blur-sm"
             onClick={onClose}
           />
@@ -122,7 +125,7 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
             initial={{ x: "100%" }}
             animate={{ x: 0 }}
             exit={{ x: "100%" }}
-            transition={{ type: "spring", damping: 25, stiffness: 200 }}
+            transition={uiMotion.spring.panel}
             className="fixed inset-y-0 right-0 z-[110] flex h-dvh w-full max-w-md flex-col bg-surface-container-lowest shadow-elevated"
           >
             {/* Header */}
@@ -130,7 +133,7 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
               <h2 className="text-xl font-bold text-on-surface font-headline">设置</h2>
               <button
                 onClick={onClose}
-                className="p-2 rounded-full hover:bg-surface-container-high transition-colors"
+                className="motion-ui motion-interactive p-2 rounded-full hover:bg-surface-container-high"
               >
                 <X className="w-5 h-5 text-on-surface-variant" />
               </button>
@@ -158,7 +161,7 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
                     <div className="flex items-center gap-3">
                       <button
                         onClick={() => updatePreference("fontSize", Math.max(14, preferences.fontSize - 1))}
-                        className="w-8 h-8 rounded-lg bg-surface-container-high text-on-surface-variant hover:bg-primary/10 hover:text-primary transition-colors flex items-center justify-center"
+                        className="motion-ui motion-interactive w-8 h-8 rounded-lg bg-surface-container-high text-on-surface-variant hover:bg-primary/10 hover:text-primary flex items-center justify-center"
                       >
                         A-
                       </button>
@@ -173,7 +176,7 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
                       />
                       <button
                         onClick={() => updatePreference("fontSize", Math.min(20, preferences.fontSize + 1))}
-                        className="w-8 h-8 rounded-lg bg-surface-container-high text-on-surface-variant hover:bg-primary/10 hover:text-primary transition-colors flex items-center justify-center"
+                        className="motion-ui motion-interactive w-8 h-8 rounded-lg bg-surface-container-high text-on-surface-variant hover:bg-primary/10 hover:text-primary flex items-center justify-center"
                       >
                         A+
                       </button>
@@ -194,7 +197,7 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
                         <button
                           key={option.value}
                           onClick={() => updatePreference("tocPosition", option.value)}
-                          className={`px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
+                          className={`motion-ui motion-interactive px-3 py-2 rounded-lg text-sm font-medium ${
                             preferences.tocPosition === option.value
                               ? "bg-primary text-on-primary"
                               : "bg-surface-container-high text-on-surface-variant hover:bg-surface-container-highest"
@@ -214,7 +217,7 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
                     </div>
                     <button
                       onClick={() => updatePreference("showProgressBar", !preferences.showProgressBar)}
-                      className={`w-full flex items-center justify-between px-4 py-3 rounded-xl transition-all duration-200 ${
+                      className={`motion-ui motion-interactive w-full flex items-center justify-between px-4 py-3 rounded-xl ${
                         preferences.showProgressBar
                           ? "bg-primary/10 text-primary"
                           : "bg-surface-container-high text-on-surface-variant"
@@ -224,12 +227,12 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
                         {preferences.showProgressBar ? "已开启" : "已关闭"}
                       </span>
                       <div
-                        className={`w-10 h-6 rounded-full transition-all duration-200 flex items-center ${
+                        className={`motion-ui w-10 h-6 rounded-full flex items-center ${
                           preferences.showProgressBar ? "bg-primary" : "bg-surface-container-highest"
                         }`}
                       >
                         <div
-                          className={`w-4 h-4 rounded-full bg-on-primary mx-1 transition-all duration-200 ${
+                          className={`motion-ui w-4 h-4 rounded-full bg-on-primary mx-1 ${
                             preferences.showProgressBar ? "ml-5" : "ml-1"
                           }`}
                         />
@@ -276,7 +279,7 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
 
                 <div className="space-y-3">
                   {/* Import */}
-                  <label className="w-full flex items-center justify-between px-4 py-3 rounded-xl bg-surface-container-low text-on-surface hover:bg-surface-container-high transition-all duration-200 cursor-pointer">
+                  <label className="motion-ui motion-interactive w-full flex items-center justify-between px-4 py-3 rounded-xl bg-surface-container-low text-on-surface hover:bg-surface-container-high cursor-pointer">
                     <div className="flex items-center gap-3">
                       <Upload className="w-5 h-5 text-primary" />
                       <div className="text-left">
@@ -296,9 +299,11 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
                   <AnimatePresence>
                     {importError && (
                       <motion.div
-                        initial={{ opacity: 0, height: 0 }}
-                        animate={{ opacity: 1, height: 'auto' }}
-                        exit={{ opacity: 0, height: 0 }}
+                        variants={collapsibleMotion}
+                        initial="initial"
+                        animate="animate"
+                        exit="exit"
+                        transition={{ duration: uiMotion.duration.reveal, ease: uiMotion.ease.emphasized }}
                         className="flex items-center gap-2 text-sm text-red-600 px-4 py-2 rounded-xl bg-red-50"
                       >
                         <XCircle className="w-4 h-4" />

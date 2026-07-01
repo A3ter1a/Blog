@@ -161,13 +161,13 @@ export default function StudyTimeline() {
                   onClick={() => selectMonth(month.id)}
                   onFocus={() => setActiveMonthId(month.id)}
                   onMouseEnter={() => setActiveMonthId(month.id)}
-                  className={`group flex min-w-0 flex-col items-center gap-3 rounded-lg px-2 pb-1 pt-0 text-center transition-all duration-300 ease-out focus:outline-none focus-visible:ring-2 ${toneStyle.button} ${
+                  className={`motion-ui group flex min-w-0 flex-col items-center gap-3 rounded-lg px-2 pb-1 pt-0 text-center focus:outline-none focus-visible:ring-2 ${toneStyle.button} ${
                     isActive ? toneStyle.active : ""
                   }`}
                   aria-expanded={isActive}
                 >
                   <span
-                    className={`relative flex h-9 w-9 items-center justify-center rounded-full border-[5px] border-surface transition-all duration-300 ease-out group-hover:scale-110 ${
+                    className={`motion-ui relative flex h-9 w-9 items-center justify-center rounded-full border-[5px] border-surface group-hover:scale-110 ${
                       toneStyle.marker
                     } ${isActive || isSelected ? "scale-110" : ""}`}
                   >
@@ -187,7 +187,7 @@ export default function StudyTimeline() {
             className={`absolute top-20 z-20 w-[min(22rem,calc(100vw-2rem))] ${cardAlign}`}
             style={{ left: cardLeft }}
           >
-            <div className="rounded-xl border border-white/10 bg-[#14263a]/95 p-4 text-white shadow-[0_18px_50px_-24px_rgba(15,23,42,0.95)] backdrop-blur-md transition-all duration-300 ease-out">
+            <div className="motion-ui rounded-xl border border-white/10 bg-[#14263a]/95 p-4 text-white shadow-[0_18px_50px_-24px_rgba(15,23,42,0.95)] backdrop-blur-md">
               <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
                 <span className="font-headline text-lg font-bold leading-none">
                   {activeMonth.label}
@@ -221,7 +221,7 @@ export default function StudyTimeline() {
                             aria-pressed={done}
                             aria-label={`${task.title}，${brushStageLabels[task.stage]}，${done ? "已完成" : "未完成"}`}
                             onClick={() => toggleTask(task.id)}
-                            className={`shrink-0 whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-bold text-white transition-all duration-300 ease-out hover:-translate-y-0.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/40 sm:text-sm ${
+                            className={`motion-ui motion-interactive shrink-0 whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-bold text-white hover:-translate-y-0.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/40 sm:text-sm ${
                               stageStyles[task.stage].pill
                             } ${done ? "order-last opacity-40 saturate-75 hover:opacity-65" : "opacity-100"}`}
                           >
@@ -241,7 +241,7 @@ export default function StudyTimeline() {
       {selectedMonth ? (
         <div
           ref={detailRef}
-          className="relative left-1/2 w-[min(96vw,104rem)] -translate-x-1/2 scroll-mt-24 rounded-2xl border border-primary/10 bg-surface-container-lowest/50 p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.55),0_18px_48px_-34px_rgba(15,23,42,0.58)] backdrop-blur-sm transition-all duration-300 ease-out sm:p-6"
+          className="motion-ui relative left-1/2 w-[min(96vw,104rem)] -translate-x-1/2 scroll-mt-24 rounded-2xl border border-primary/10 bg-surface-container-lowest/50 p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.55),0_18px_48px_-34px_rgba(15,23,42,0.58)] backdrop-blur-sm sm:p-6"
         >
           <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
             <div>
@@ -294,7 +294,7 @@ export default function StudyTimeline() {
                                   aria-pressed={done}
                                   aria-label={`${task.title}，${brushStageLabels[task.stage]}，${done ? "已完成" : "未完成"}`}
                                   onClick={() => toggleTask(task.id)}
-                                  className={`shrink-0 whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-bold text-white transition-all duration-300 ease-out hover:-translate-y-0.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/25 sm:text-sm ${
+                                  className={`motion-ui motion-interactive shrink-0 whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-bold text-white hover:-translate-y-0.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/25 sm:text-sm ${
                                     stageStyles[task.stage].pill
                                   } ${done ? "order-last opacity-40 saturate-75 hover:opacity-65" : "opacity-100"}`}
                                 >

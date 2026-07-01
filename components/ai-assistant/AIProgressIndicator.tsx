@@ -3,6 +3,7 @@
 import { motion } from 'framer-motion';
 import { Upload, Scan, Brain, Check, X, Loader, type LucideIcon } from 'lucide-react';
 import type { ScanStage } from '@/hooks/useAIScan';
+import { uiMotion } from '@/lib/motion';
 
 interface AIProgressIndicatorProps {
   stage: ScanStage;
@@ -30,7 +31,7 @@ export function AIProgressIndicator({ stage, progress }: AIProgressIndicatorProp
           className="h-full editorial-gradient rounded-full"
           initial={{ width: 0 }}
           animate={{ width: `${progress}%` }}
-          transition={{ duration: 0.3 }}
+          transition={{ duration: uiMotion.duration.standard, ease: uiMotion.ease.standard }}
         />
       </div>
 
@@ -43,7 +44,7 @@ export function AIProgressIndicator({ stage, progress }: AIProgressIndicatorProp
 
           return (
             <div key={s.key} className="flex flex-col items-center gap-1">
-              <div className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${
+              <div className={`motion-ui w-8 h-8 rounded-full flex items-center justify-center ${
                 isError ? 'bg-red-100 text-red-600' :
                 isActive ? 'editorial-gradient text-on-primary' :
                 'bg-surface-container-high text-on-surface-variant/30'

@@ -4,6 +4,7 @@ import { useId, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ChevronDown } from "lucide-react";
 import { useClickOutside } from "@/hooks/useClickOutside";
+import { dropdownMotion, uiMotion } from "@/lib/motion";
 
 interface SelectOption {
   value: string;
@@ -69,14 +70,14 @@ export function CustomSelect({ options, value, onChange, placeholder = "请选�
         aria-haspopup="listbox"
         onClick={() => setIsOpen(!isOpen)}
         onKeyDown={handleKeyDown}
-        className="w-full px-3 py-2 bg-surface-container-highest rounded-lg text-on-surface text-sm text-left flex items-center justify-between hover:bg-surface-container-highest/80 transition-colors duration-200"
+        className="motion-ui motion-interactive w-full px-3 py-2 bg-surface-container-highest rounded-lg text-on-surface text-sm text-left flex items-center justify-between hover:bg-surface-container-highest/80"
       >
         <span className={selectedOption ? "text-on-surface" : "text-on-surface-variant/40"}>
           {selectedOption?.label || placeholder}
         </span>
         <motion.div
           animate={{ rotate: isOpen ? 180 : 0 }}
-          transition={{ duration: 0.2 }}
+          transition={{ duration: uiMotion.duration.fast, ease: uiMotion.ease.standard }}
         >
           <ChevronDown className="w-4 h-4 text-on-surface-variant" />
         </motion.div>
@@ -86,10 +87,11 @@ export function CustomSelect({ options, value, onChange, placeholder = "请选�
       <AnimatePresence>
         {isOpen && (
           <motion.div
-            initial={{ opacity: 0, y: -4, scale: 0.98 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -4, scale: 0.98 }}
-            transition={{ duration: 0.15 }}
+            variants={dropdownMotion}
+            initial="initial"
+            animate="animate"
+            exit="exit"
+            transition={{ duration: uiMotion.duration.fast, ease: uiMotion.ease.emphasized }}
             id={listboxId}
             role="listbox"
             className="absolute top-full left-0 right-0 mt-1 bg-surface-container-low rounded-lg shadow-elevated border border-outline-variant/10 overflow-hidden z-50"
@@ -105,7 +107,7 @@ export function CustomSelect({ options, value, onChange, placeholder = "请选�
                     onChange(option.value);
                     setIsOpen(false);
                   }}
-                  className={`w-full px-3 py-2 text-left text-sm transition-colors duration-150 ${
+                  className={`motion-ui w-full px-3 py-2 text-left text-sm ${
                     index === focusedIndex
                       ? "bg-surface-container-high"
                       : ""

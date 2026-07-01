@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useState } from "react";
 import { NoteType, Subject, subjectMap } from "@/lib/types";
 import { ChevronDown, ChevronUp, ArrowUpDown } from "lucide-react";
+import { collapsibleMotion, uiMotion } from "@/lib/motion";
 
 interface TagFilterProps {
   selectedType: NoteType | "all";
@@ -73,10 +74,11 @@ export function TagFilter({
       <AnimatePresence>
         {isAdvancedOpen && (
           <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: "auto", opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.2 }}
+            variants={collapsibleMotion}
+            initial="initial"
+            animate="animate"
+            exit="exit"
+            transition={{ duration: uiMotion.duration.reveal, ease: uiMotion.ease.emphasized }}
             className="overflow-hidden"
           >
             <div className="space-y-3 pt-1">

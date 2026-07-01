@@ -25,6 +25,7 @@ import {
 } from "@/lib/problem-utils";
 import { useToast } from "@/components/ui/Toast";
 import { scheduleDeferredClientWork } from "@/lib/deferred-client-work";
+import { collapsibleMotion, dialogMotion, uiMotion } from "@/lib/motion";
 
 interface ProblemEditorProps {
   problems: Problem[];
@@ -366,10 +367,11 @@ export function ProblemEditor({
       <AnimatePresence>
         {showOrganizeTools && problems.length > 0 && (
           <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: "auto" }}
-            exit={{ opacity: 0, height: 0 }}
-            transition={{ duration: 0.18 }}
+            variants={collapsibleMotion}
+            initial="initial"
+            animate="animate"
+            exit="exit"
+            transition={{ duration: uiMotion.duration.reveal, ease: uiMotion.ease.emphasized }}
             className="overflow-hidden"
           >
             <ProblemOrganizerPanel
@@ -430,9 +432,11 @@ export function ProblemEditor({
       <AnimatePresence>
         {showAddForm && (
           <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: "auto" }}
-            exit={{ opacity: 0, height: 0 }}
+            variants={collapsibleMotion}
+            initial="initial"
+            animate="animate"
+            exit="exit"
+            transition={{ duration: uiMotion.duration.reveal, ease: uiMotion.ease.emphasized }}
             className="surface-panel space-y-3 overflow-hidden p-4"
           >
             {/* Chapter Selector */}
@@ -818,10 +822,11 @@ function BulkProblemActionBar({
     <AnimatePresence>
       {isOpen && (
         <motion.div
-          initial={{ opacity: 0, y: 24, scale: 0.98 }}
-          animate={{ opacity: 1, y: 0, scale: 1 }}
-          exit={{ opacity: 0, y: 24, scale: 0.98 }}
-          transition={{ duration: 0.18 }}
+          variants={dialogMotion}
+          initial="initial"
+          animate="animate"
+          exit="exit"
+          transition={uiMotion.spring.gentle}
           className="fixed inset-x-0 bottom-4 z-50 px-3 sm:px-6 pointer-events-none"
         >
           <div className="command-bar pointer-events-auto mx-auto max-w-5xl p-2.5">
@@ -865,10 +870,11 @@ function BulkProblemActionBar({
             <AnimatePresence>
               {showBulkDetails && (
                 <motion.div
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: "auto" }}
-                  exit={{ opacity: 0, height: 0 }}
-                  transition={{ duration: 0.16 }}
+                  variants={collapsibleMotion}
+                  initial="initial"
+                  animate="animate"
+                  exit="exit"
+                  transition={{ duration: uiMotion.duration.reveal, ease: uiMotion.ease.emphasized }}
                   className="overflow-hidden"
                 >
                   <div className="mt-2 grid gap-2">
@@ -1082,9 +1088,11 @@ function ProblemCard({
       <AnimatePresence>
         {expanded && (
           <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: "auto" }}
-            exit={{ opacity: 0, height: 0 }}
+            variants={collapsibleMotion}
+            initial="initial"
+            animate="animate"
+            exit="exit"
+            transition={{ duration: uiMotion.duration.reveal, ease: uiMotion.ease.emphasized }}
             className="px-4 pb-4 space-y-2 overflow-hidden"
           >
             <div className="grid gap-3 pt-2 md:grid-cols-[1fr_220px]">

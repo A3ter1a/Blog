@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
+import { uiMotion } from "@/lib/motion";
 
 export function ReadingProgress() {
   const [progress, setProgress] = useState(0);
@@ -22,7 +23,7 @@ export function ReadingProgress() {
     <motion.div
       initial={{ scaleX: 0 }}
       animate={{ scaleX: progress / 100 }}
-      transition={{ duration: 0.1 }}
+      transition={{ duration: uiMotion.duration.micro, ease: uiMotion.ease.standard }}
       className="fixed top-0 left-0 right-0 h-1 bg-primary origin-left z-50"
     />
   );

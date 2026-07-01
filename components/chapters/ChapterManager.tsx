@@ -8,6 +8,7 @@ import { chaptersApi } from '@/lib/chapters-api';
 import { getChildChapters, getRootChapters, hasSiblingChapterName, normalizeChapterName } from '@/lib/chapter-utils';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { scheduleDeferredClientWork } from '@/lib/deferred-client-work';
+import { dialogMotion, overlayMotion, uiMotion } from '@/lib/motion';
 
 const ROOT_CHAPTER_KEY = '__root__';
 
@@ -166,19 +167,22 @@ export function ChapterManager({ isOpen, onClose, noteId, selectedChapterId, onS
   return (
     <AnimatePresence>
       <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
+        variants={overlayMotion}
+        initial="initial"
+        animate="animate"
+        exit="exit"
+        transition={{ duration: uiMotion.duration.fast, ease: uiMotion.ease.standard }}
         className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm"
         onClick={() => {
           if (!isMutating) onClose();
         }}
       >
         <motion.div
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: 1, scale: 1 }}
-          exit={{ opacity: 0, scale: 0.95 }}
-          transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+          variants={dialogMotion}
+          initial="initial"
+          animate="animate"
+          exit="exit"
+          transition={uiMotion.spring.gentle}
           className="absolute inset-4 md:inset-auto md:top-1/2 md:left-1/2 md:-translate-x-1/2 md:-translate-y-1/2 md:w-full md:max-w-md md:h-auto max-h-[85vh] bg-surface-container-lowest rounded-2xl shadow-elevated flex flex-col overflow-hidden"
           onClick={e => e.stopPropagation()}
         >
@@ -188,11 +192,11 @@ export function ChapterManager({ isOpen, onClose, noteId, selectedChapterId, onS
               <Layers className="w-5 h-5 text-primary" />
               章节管理
             </h2>
-            <button
-              onClick={onClose}
-              disabled={isMutating}
-              className="p-2 rounded-full hover:bg-surface-container-high transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-            >
+              <button
+                onClick={onClose}
+                disabled={isMutating}
+                className="motion-ui motion-interactive p-2 rounded-full hover:bg-surface-container-high disabled:opacity-40 disabled:cursor-not-allowed"
+              >
               <X className="w-5 h-5 text-on-surface-variant" />
             </button>
           </div>
@@ -289,7 +293,7 @@ export function ChapterManager({ isOpen, onClose, noteId, selectedChapterId, onS
               <button
                 onClick={() => startAddChapter(ROOT_CHAPTER_KEY)}
                 disabled={isMutating}
-                className="w-full px-4 py-3 rounded-xl border-2 border-dashed border-outline-variant/30 text-on-surface-variant hover:border-primary/50 hover:text-primary transition-all flex items-center justify-center gap-2 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                className="motion-ui motion-interactive w-full px-4 py-3 rounded-xl border-2 border-dashed border-outline-variant/30 text-on-surface-variant hover:border-primary/50 hover:text-primary flex items-center justify-center gap-2 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <Plus className="w-4 h-4" />
               添加章节

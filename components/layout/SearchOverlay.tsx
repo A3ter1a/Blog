@@ -7,6 +7,7 @@ import Link from "next/link";
 import { notesApi } from "@/lib/supabase";
 import { subjectMap, typeMap } from "@/lib/types";
 import type { Note } from "@/lib/types";
+import { dialogMotion, overlayMotion, uiMotion } from "@/lib/motion";
 
 interface SearchOverlayProps {
   isOpen: boolean;
@@ -92,19 +93,22 @@ export function SearchOverlay({ isOpen, onClose }: SearchOverlayProps) {
         <>
           {/* Backdrop */}
           <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
+            variants={overlayMotion}
+            initial="initial"
+            animate="animate"
+            exit="exit"
+            transition={{ duration: uiMotion.duration.fast, ease: uiMotion.ease.standard }}
             className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm"
             onClick={onClose}
           />
 
           {/* Search Bar */}
           <motion.div
-            initial={{ opacity: 0, y: -20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -20 }}
-            transition={{ type: "spring", damping: 25, stiffness: 200 }}
+            variants={dialogMotion}
+            initial="initial"
+            animate="animate"
+            exit="exit"
+            transition={uiMotion.spring.panel}
             className="fixed top-20 left-1/2 -translate-x-1/2 z-50 w-full max-w-2xl px-4"
           >
             <div className="bg-surface-container-lowest rounded-2xl shadow-elevated overflow-hidden">
@@ -122,7 +126,7 @@ export function SearchOverlay({ isOpen, onClose }: SearchOverlayProps) {
                 {query && (
                   <button
                     onClick={() => setQuery("")}
-                    className="p-1 rounded-full hover:bg-surface-container-high transition-colors"
+                    className="motion-ui motion-interactive p-1 rounded-full hover:bg-surface-container-high"
                   >
                     <X className="w-4 h-4 text-on-surface-variant" />
                   </button>
@@ -147,7 +151,7 @@ export function SearchOverlay({ isOpen, onClose }: SearchOverlayProps) {
                           key={note.id}
                           href={`/notes/${note.id}`}
                           onClick={onClose}
-                          className="flex items-center justify-between px-6 py-3 hover:bg-surface-container-high transition-colors group"
+                          className="motion-ui group flex items-center justify-between px-6 py-3 hover:bg-surface-container-high"
                         >
                           <div className="flex-1 min-w-0">
                             <p className="text-sm font-medium text-on-surface truncate">
@@ -164,7 +168,7 @@ export function SearchOverlay({ isOpen, onClose }: SearchOverlayProps) {
                               )}
                             </div>
                           </div>
-                          <ArrowRight className="w-4 h-4 text-on-surface-variant/30 group-hover:text-primary transition-colors flex-shrink-0 ml-4" />
+                          <ArrowRight className="motion-icon-shift w-4 h-4 text-on-surface-variant/30 group-hover:translate-x-1 group-hover:text-primary flex-shrink-0 ml-4" />
                         </Link>
                       ))}
                     </div>

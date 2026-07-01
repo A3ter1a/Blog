@@ -16,6 +16,7 @@ import { PageHeader, PageShell } from "@/components/ui/PageScaffold";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { getNotesCacheKey, readNotesCache, writeNotesCache } from "@/lib/notes-list-cache";
 import { NOTES_PAGE_SIZE, NOTES_SEARCH_RESULT_LIMIT } from "@/lib/notes-query";
+import { collapsibleMotion, surfaceMotion, uiMotion } from "@/lib/motion";
 
 interface NotesClientProps {
   initialNotes?: Note[];
@@ -371,14 +372,16 @@ export function NotesClient({
         {/* Batch Actions Bar (visible in select mode) */}
         {isAdmin && selectMode && (
           <motion.div
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
+            variants={surfaceMotion}
+            initial="initial"
+            animate="animate"
+            transition={{ duration: uiMotion.duration.standard, ease: uiMotion.ease.emphasized }}
             className="command-bar mb-4 flex flex-col gap-3 p-3 sm:flex-row sm:items-center sm:justify-between"
           >
             <div className="flex items-center gap-4">
               <button
                 onClick={handleSelectAll}
-                className="flex items-center gap-2 text-sm text-on-surface-variant hover:text-primary transition-colors"
+                className="motion-ui flex items-center gap-2 text-sm text-on-surface-variant hover:text-primary"
               >
                 {selectedNoteIds.size === filteredNotes.length ? (
                   <>
@@ -433,14 +436,15 @@ export function NotesClient({
 
         {/* Search & Filter Section */}
         <motion.section
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2, duration: 0.5 }}
+          variants={surfaceMotion}
+          initial="initial"
+          animate="animate"
+          transition={{ duration: uiMotion.duration.page, ease: uiMotion.ease.emphasized }}
           className="surface-panel mb-6 p-5"
         >
-          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start">
+          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
             <SearchBar value={searchQuery} onChange={setSearchQuery} />
-            <div className="flex items-center justify-between gap-3 text-xs text-on-surface-variant lg:justify-end">
+            <div className="flex items-center justify-between gap-3 text-xs text-on-surface-variant lg:self-center lg:justify-end">
               <span>
                 {isRefreshingNotes ? "正在同步最新数据" : `共 ${filteredNotes.length} 条结果`}
               </span>
@@ -457,7 +461,7 @@ export function NotesClient({
                 <button
                   type="button"
                   onClick={handleResetFilters}
-                  className="rounded-lg px-2 py-1 text-primary transition-all duration-300 ease-out hover:bg-primary/10"
+                  className="motion-ui motion-interactive rounded-lg px-2 py-1 text-primary hover:bg-primary/10"
                 >
                   清除筛选
                 </button>
@@ -467,10 +471,11 @@ export function NotesClient({
           <AnimatePresence initial={false}>
             {shouldShowLibraryTools && (
               <motion.div
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: "auto" }}
-                exit={{ opacity: 0, height: 0 }}
-                transition={{ duration: 0.16 }}
+                variants={collapsibleMotion}
+                initial="initial"
+                animate="animate"
+                exit="exit"
+                transition={{ duration: uiMotion.duration.reveal, ease: uiMotion.ease.emphasized }}
                 className="overflow-hidden"
               >
                 <div className="mt-4 border-t border-outline-variant/10 pt-4">

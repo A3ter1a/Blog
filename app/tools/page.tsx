@@ -102,16 +102,16 @@ function ToolCard({
   return (
     <Link
       href={tool.href}
-      className="surface-card group flex min-h-40 flex-col p-5 transition-all duration-300 ease-out hover:-translate-y-1 hover:shadow-float"
+      className="surface-card motion-card-lift group flex min-h-40 flex-col p-5"
     >
       <div className="flex flex-1 flex-col gap-6">
         <div className="flex min-w-0 items-start gap-4">
-          <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border transition-all duration-300 ease-out group-hover:scale-[1.03] ${tool.tone}`}>
+          <div className={`motion-ui flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border group-hover:scale-[1.03] ${tool.tone}`}>
             <Icon className="h-5 w-5" />
           </div>
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <h3 className="font-headline text-lg font-bold text-on-surface transition-colors duration-300 ease-out group-hover:text-primary">
+              <h3 className="motion-ui font-headline text-lg font-bold text-on-surface group-hover:text-primary">
                 {tool.title}
               </h3>
               <span className="tag-chip px-2 py-0.5 text-xs font-medium">
@@ -126,7 +126,7 @@ function ToolCard({
 
         <div className="mt-auto flex shrink-0 items-center justify-end gap-2 text-sm font-medium text-primary">
           <span>进入</span>
-          <ChevronRight className="h-4 w-4 transition-transform duration-300 ease-out group-hover:translate-x-1" />
+          <ChevronRight className="motion-icon-shift h-4 w-4 group-hover:translate-x-1" />
         </div>
       </div>
     </Link>

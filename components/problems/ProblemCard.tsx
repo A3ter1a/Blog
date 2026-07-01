@@ -8,6 +8,7 @@ import { difficultyColorMap, difficultyMap, problemTypeMap } from "@/lib/types";
 import { MarkdownContent } from "@/components/ui/MarkdownContent";
 import { ensureChoiceOptions, normalizeProblemOptions } from "@/lib/problem-utils";
 import { AnswerReveal } from "@/components/problems/AnswerReveal";
+import { dialogMotion, getListItemTransition, overlayMotion, surfaceMotion, uiMotion } from "@/lib/motion";
 
 interface ProblemCardProps {
   problem: Problem;
@@ -127,9 +128,10 @@ export function ProblemCard({
   return (
     <motion.div
       id={`${anchorPrefix}-${problemAnchorId}`}
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: Math.min(index * 0.04, 0.24) }}
+      variants={surfaceMotion}
+      initial="initial"
+      animate="animate"
+      transition={getListItemTransition(index, 0.16)}
       className="scroll-mt-24 overflow-hidden rounded-lg border border-outline-variant/20 bg-surface-container-lowest"
     >
       <div className="flex items-center justify-between gap-3 px-4 pt-4">
@@ -161,7 +163,7 @@ export function ProblemCard({
                 onClick={onToggleMarked}
                 disabled={isMarking || !canMark}
                 aria-pressed={isMarked}
-                className={`rounded-lg p-1.5 transition-colors disabled:cursor-not-allowed disabled:opacity-45 ${
+                className={`motion-ui motion-interactive rounded-lg p-1.5 disabled:cursor-not-allowed disabled:opacity-45 ${
                   isMarked
                     ? "bg-amber-100 text-amber-700 hover:bg-amber-200"
                     : "text-on-surface-variant/45 hover:bg-surface-container-highest hover:text-amber-700"
@@ -178,7 +180,7 @@ export function ProblemCard({
             {onUpdate && (
               <button
                 onClick={handleStartEdit}
-                className="rounded-lg p-1.5 text-on-surface-variant/40 transition-colors hover:bg-surface-container-highest hover:text-primary"
+                className="motion-ui motion-interactive rounded-lg p-1.5 text-on-surface-variant/40 hover:bg-surface-container-highest hover:text-primary"
                 title="编辑题目"
               >
                 <Pencil className="h-4 w-4" />
@@ -190,17 +192,20 @@ export function ProblemCard({
 
       {isEditing ? (
         <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
+          variants={overlayMotion}
+          initial="initial"
+          animate="animate"
+          exit="exit"
+          transition={{ duration: uiMotion.duration.fast, ease: uiMotion.ease.standard }}
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-3 backdrop-blur-sm sm:p-6"
           onClick={handleCancel}
         >
           <motion.div
-            initial={{ opacity: 0, y: 24, scale: 0.98 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 24, scale: 0.98 }}
-            transition={{ duration: 0.18 }}
+            variants={dialogMotion}
+            initial="initial"
+            animate="animate"
+            exit="exit"
+            transition={uiMotion.spring.panel}
             className="flex max-h-[calc(100vh-2rem)] w-full max-w-6xl flex-col overflow-hidden rounded-xl bg-surface-container-lowest shadow-elevated"
             onClick={(event) => event.stopPropagation()}
           >
@@ -240,7 +245,7 @@ export function ProblemCard({
                 <button
                   onClick={handleCancel}
                   disabled={isSaving}
-                  className="inline-flex h-10 items-center justify-center rounded-lg border border-outline-variant/30 px-3 text-sm font-medium text-on-surface-variant transition-colors hover:border-primary/35 hover:text-primary disabled:opacity-40"
+                  className="motion-ui motion-interactive inline-flex h-10 items-center justify-center rounded-lg border border-outline-variant/30 px-3 text-sm font-medium text-on-surface-variant hover:border-primary/35 hover:text-primary disabled:opacity-40"
                   title="关闭编辑窗口"
                 >
                   <X className="h-4 w-4" />
@@ -272,7 +277,7 @@ export function ProblemCard({
                             ...current,
                             options: [...current.options, createEmptyOption(current.options.length)],
                           }))}
-                          className="inline-flex h-8 items-center gap-1.5 rounded-lg px-2 text-xs font-medium text-primary transition-colors hover:bg-primary/10"
+                          className="motion-ui motion-interactive inline-flex h-8 items-center gap-1.5 rounded-lg px-2 text-xs font-medium text-primary hover:bg-primary/10"
                         >
                           <Plus className="h-3.5 w-3.5" />
                           添加选项
@@ -303,7 +308,7 @@ export function ProblemCard({
                                 ...current,
                                 options: current.options.filter((_, indexValue) => indexValue !== optionIndex),
                               }))}
-                              className="mt-1 inline-flex h-8 w-8 items-center justify-center rounded-lg text-on-surface-variant/45 transition-colors hover:bg-red-50 hover:text-red-500"
+                              className="motion-ui motion-interactive mt-1 inline-flex h-8 w-8 items-center justify-center rounded-lg text-on-surface-variant/45 hover:bg-red-50 hover:text-red-500"
                               title="删除选项"
                             >
                               <Trash2 className="h-3.5 w-3.5" />
@@ -347,14 +352,14 @@ export function ProblemCard({
               <button
                 onClick={handleCancel}
                 disabled={isSaving}
-                className="inline-flex h-10 items-center justify-center gap-1.5 rounded-lg border border-outline-variant/30 px-3 text-sm font-medium text-on-surface-variant transition-colors hover:border-primary/35 hover:text-primary disabled:opacity-40"
+                className="motion-ui motion-interactive inline-flex h-10 items-center justify-center gap-1.5 rounded-lg border border-outline-variant/30 px-3 text-sm font-medium text-on-surface-variant hover:border-primary/35 hover:text-primary disabled:opacity-40"
               >
                 取消
               </button>
               <button
                 onClick={handleSave}
                 disabled={isSaving || !editData.question.trim()}
-                className="inline-flex h-10 items-center justify-center gap-1.5 rounded-lg bg-primary px-4 text-sm font-medium text-on-primary transition-colors hover:bg-primary/90 disabled:opacity-40"
+                className="motion-ui motion-interactive inline-flex h-10 items-center justify-center gap-1.5 rounded-lg bg-primary px-4 text-sm font-medium text-on-primary hover:bg-primary/90 disabled:opacity-40"
               >
                 {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
                 {isSaving ? "保存中" : "保存"}
@@ -391,7 +396,7 @@ export function ProblemCard({
           <div className="flex flex-wrap gap-2 px-4 pb-4">
             <button
               onClick={() => setShowAnswer((current) => !current)}
-              className="inline-flex h-9 items-center gap-2 rounded-lg bg-primary/10 px-3 text-sm font-medium text-primary transition-colors hover:bg-primary/20"
+              className="motion-ui motion-interactive inline-flex h-9 items-center gap-2 rounded-lg bg-primary/10 px-3 text-sm font-medium text-primary hover:bg-primary/20"
             >
               {showAnswer ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
               {showAnswer ? "隐藏答案" : "查看答案"}

@@ -233,7 +233,7 @@ function ToolbarGroup({ label, children }: { label: string; children: React.Reac
 }
 
 function ToolbarBtn({ onClick, tooltip, active, disabled, accent, children }: ToolbarBtnProps) {
-  const baseClass = "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-transparent transition-all duration-200 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30";
+  const baseClass = "motion-ui motion-interactive inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30";
   const stateClass = disabled
     ? "opacity-40 cursor-not-allowed text-on-surface-variant/40"
     : active
@@ -301,7 +301,7 @@ function HighlightColorPicker({ editor }: HighlightColorPickerProps) {
                 editor.chain().focus().unsetHighlight().run();
                 setIsOpen(false);
               }}
-              className={`flex h-10 w-10 cursor-pointer items-center justify-center rounded-lg border-2 bg-surface-container-lowest text-on-surface-variant transition-all hover:scale-110 hover:border-primary/50 ${
+              className={`motion-ui motion-interactive flex h-10 w-10 cursor-pointer items-center justify-center rounded-lg border-2 bg-surface-container-lowest text-on-surface-variant hover:scale-110 hover:border-primary/50 ${
                 !isActive ? "border-primary/50 ring-2 ring-primary/15" : "border-outline-variant/20"
               }`}
               title="无颜色"
@@ -318,7 +318,7 @@ function HighlightColorPicker({ editor }: HighlightColorPickerProps) {
                   editor.chain().focus().setHighlight({ color }).run();
                   setIsOpen(false);
                 }}
-                className={`h-10 w-10 cursor-pointer rounded-lg border-2 transition-all hover:scale-110 hover:border-primary/50 ${
+                className={`motion-ui motion-interactive h-10 w-10 cursor-pointer rounded-lg border-2 hover:scale-110 hover:border-primary/50 ${
                   activeColorValue === color.toLowerCase()
                     ? "border-primary/50 ring-2 ring-primary/15"
                     : "border-outline-variant/20"
@@ -376,7 +376,7 @@ function StepLabelPicker({ editor }: StepLabelPickerProps) {
                   editor.chain().focus().insertContent(label).run();
                   setIsOpen(false);
                 }}
-                className="px-3 py-1.5 rounded-md text-sm text-on-surface hover:bg-surface-container-high text-left transition-colors"
+                className="motion-ui motion-interactive px-3 py-1.5 rounded-md text-sm text-on-surface hover:bg-surface-container-high text-left"
               >
                 {label}
               </button>

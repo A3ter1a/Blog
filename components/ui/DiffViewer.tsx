@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Check, Copy } from "lucide-react";
+import { dialogMotion, overlayMotion, uiMotion } from "@/lib/motion";
 
 interface DiffViewerProps {
   isOpen: boolean;
@@ -78,16 +79,20 @@ export function DiffViewer({ isOpen, onClose, original, polished, onApply }: Dif
   return (
     <AnimatePresence>
       <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
+        variants={overlayMotion}
+        initial="initial"
+        animate="animate"
+        exit="exit"
+        transition={{ duration: uiMotion.duration.fast, ease: uiMotion.ease.standard }}
         className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
         onClick={onClose}
       >
         <motion.div
-          initial={{ scale: 0.95, opacity: 0, y: 20 }}
-          animate={{ scale: 1, opacity: 1, y: 0 }}
-          exit={{ scale: 0.95, opacity: 0, y: 20 }}
+          variants={dialogMotion}
+          initial="initial"
+          animate="animate"
+          exit="exit"
+          transition={uiMotion.spring.panel}
           onClick={(e) => e.stopPropagation()}
           className="bg-surface-container-lowest rounded-2xl shadow-elevated w-full max-w-5xl max-h-[90vh] flex flex-col overflow-hidden"
         >
@@ -111,7 +116,7 @@ export function DiffViewer({ isOpen, onClose, original, polished, onApply }: Dif
               <div className="flex bg-surface-container rounded-lg p-0.5">
                 <button
                   onClick={() => setViewMode("split")}
-                  className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                  className={`motion-ui motion-interactive px-3 py-1.5 rounded-md text-xs font-medium ${
                     viewMode === "split"
                       ? "bg-primary/20 text-primary"
                       : "text-on-surface-variant hover:text-on-surface"
@@ -121,7 +126,7 @@ export function DiffViewer({ isOpen, onClose, original, polished, onApply }: Dif
                 </button>
                 <button
                   onClick={() => setViewMode("unified")}
-                  className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                  className={`motion-ui motion-interactive px-3 py-1.5 rounded-md text-xs font-medium ${
                     viewMode === "unified"
                       ? "bg-primary/20 text-primary"
                       : "text-on-surface-variant hover:text-on-surface"
@@ -132,7 +137,7 @@ export function DiffViewer({ isOpen, onClose, original, polished, onApply }: Dif
               </div>
               <button
                 onClick={onClose}
-                className="p-2 rounded-lg hover:bg-surface-container-high text-on-surface-variant transition-colors"
+                className="motion-ui motion-interactive p-2 rounded-lg hover:bg-surface-container-high text-on-surface-variant"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -239,20 +244,20 @@ export function DiffViewer({ isOpen, onClose, original, polished, onApply }: Dif
           <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-outline-variant/10">
             <button
               onClick={handleCopy}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-surface-container-high text-on-surface-variant hover:bg-surface-container-highest transition-colors text-sm"
+              className="motion-ui motion-interactive flex items-center gap-2 px-4 py-2 rounded-xl bg-surface-container-high text-on-surface-variant hover:bg-surface-container-highest text-sm"
             >
               {copied ? <Check className="w-4 h-4 text-green-400" /> : <Copy className="w-4 h-4" />}
               {copied ? "已复制" : "复制全文"}
             </button>
             <button
               onClick={onClose}
-              className="px-4 py-2 rounded-xl bg-surface-container-high text-on-surface-variant hover:bg-surface-container-highest transition-colors text-sm"
+              className="motion-ui motion-interactive px-4 py-2 rounded-xl bg-surface-container-high text-on-surface-variant hover:bg-surface-container-highest text-sm"
             >
               取消
             </button>
             <button
               onClick={onApply}
-              className="px-6 py-2 rounded-xl editorial-gradient text-on-primary font-medium hover:opacity-90 active:scale-[0.98] transition-all duration-200 text-sm"
+              className="motion-ui motion-interactive px-6 py-2 rounded-xl editorial-gradient text-on-primary font-medium hover:opacity-90 text-sm"
             >
               应用更改
             </button>

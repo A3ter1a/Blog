@@ -4,6 +4,7 @@ import { useId, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import { AlertTriangle, CheckCircle2, Loader2 } from "lucide-react";
+import { dialogMotion, overlayMotion, uiMotion } from "@/lib/motion";
 
 type ConfirmDialogTone = "danger" | "primary";
 
@@ -55,9 +56,11 @@ export function ConfirmDialog({
     <AnimatePresence>
       {isOpen && (
         <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
+          variants={overlayMotion}
+          initial="initial"
+          animate="animate"
+          exit="exit"
+          transition={{ duration: uiMotion.duration.fast, ease: uiMotion.ease.standard }}
           className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm"
           onClick={(event) => {
             event.stopPropagation();
@@ -65,10 +68,11 @@ export function ConfirmDialog({
           }}
         >
           <motion.div
-            initial={{ scale: 0.95, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            exit={{ scale: 0.95, opacity: 0 }}
-            transition={{ duration: 0.18, ease: "easeOut" }}
+            variants={dialogMotion}
+            initial="initial"
+            animate="animate"
+            exit="exit"
+            transition={uiMotion.spring.gentle}
             onClick={(event) => event.stopPropagation()}
             className="w-full max-w-sm rounded-xl border border-outline-variant/15 bg-surface-container-lowest p-6 shadow-elevated"
             role="dialog"
@@ -94,7 +98,7 @@ export function ConfirmDialog({
                 type="button"
                 onClick={handleClose}
                 disabled={isWorking}
-                className="rounded-lg bg-surface-container-high px-4 py-2 text-sm font-medium text-on-surface-variant transition-colors hover:bg-surface-container-highest disabled:cursor-not-allowed disabled:opacity-40"
+                className="motion-ui motion-interactive rounded-lg bg-surface-container-high px-4 py-2 text-sm font-medium text-on-surface-variant hover:bg-surface-container-highest disabled:cursor-not-allowed disabled:opacity-40"
               >
                 {cancelLabel}
               </button>
@@ -102,7 +106,7 @@ export function ConfirmDialog({
                 type="button"
                 onClick={onConfirm}
                 disabled={isWorking}
-                className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${confirmToneClasses[tone]}`}
+                className={`motion-ui motion-interactive flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-40 ${confirmToneClasses[tone]}`}
               >
                 {isWorking && <Loader2 className="h-4 w-4 animate-spin" />}
                 {isWorking ? confirmingLabel : confirmLabel}

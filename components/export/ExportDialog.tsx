@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { X, FileJson, FileText, BookOpen } from "lucide-react";
 import { Note } from "@/lib/types";
 import { exportAsJSON, exportAsMarkdown, exportAsObsidian } from "@/lib/export";
+import { dialogMotion, overlayMotion, uiMotion } from "@/lib/motion";
 
 interface ExportDialogProps {
   isOpen: boolean;
@@ -57,19 +58,22 @@ export function ExportDialog({ isOpen, onClose, notes }: ExportDialogProps) {
         <>
           {/* Backdrop */}
           <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
+            variants={overlayMotion}
+            initial="initial"
+            animate="animate"
+            exit="exit"
+            transition={{ duration: uiMotion.duration.fast, ease: uiMotion.ease.standard }}
             className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm"
             onClick={onClose}
           />
 
           {/* Dialog */}
           <motion.div
-            initial={{ opacity: 0, scale: 0.95, y: 20 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.95, y: 20 }}
-            transition={{ type: "spring", damping: 25, stiffness: 300 }}
+            variants={dialogMotion}
+            initial="initial"
+            animate="animate"
+            exit="exit"
+            transition={uiMotion.spring.gentle}
             className="fixed inset-0 z-50 flex items-center justify-center p-4"
             onClick={onClose}
           >
@@ -82,7 +86,7 @@ export function ExportDialog({ isOpen, onClose, notes }: ExportDialogProps) {
                 <h2 className="text-xl font-bold text-on-surface font-headline">选择导出格式</h2>
                 <button
                   onClick={onClose}
-                  className="p-2 rounded-full hover:bg-surface-container-high transition-colors"
+                  className="motion-ui motion-interactive p-2 rounded-full hover:bg-surface-container-high"
                 >
                   <X className="w-5 h-5 text-on-surface-variant" />
                 </button>
@@ -96,7 +100,7 @@ export function ExportDialog({ isOpen, onClose, notes }: ExportDialogProps) {
                     <button
                       key={format.value}
                       onClick={() => setSelectedFormat(format.value)}
-                      className={`w-full flex items-center gap-4 p-4 rounded-xl transition-all duration-200 ${
+                      className={`motion-ui motion-interactive w-full flex items-center gap-4 p-4 rounded-xl ${
                         selectedFormat === format.value
                           ? "bg-primary/10 ring-2 ring-primary"
                           : "bg-surface-container-low hover:bg-surface-container-high"
@@ -124,13 +128,13 @@ export function ExportDialog({ isOpen, onClose, notes }: ExportDialogProps) {
               <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-outline-variant/10 bg-surface-container-low">
                 <button
                   onClick={onClose}
-                  className="px-4 py-2 rounded-lg bg-surface-container-high text-on-surface-variant text-sm font-medium hover:bg-surface-container-highest transition-colors"
+                  className="motion-ui motion-interactive px-4 py-2 rounded-lg bg-surface-container-high text-on-surface-variant text-sm font-medium hover:bg-surface-container-highest"
                 >
                   取消
                 </button>
                 <button
                   onClick={handleExport}
-                  className="px-4 py-2 rounded-lg editorial-gradient text-on-primary text-sm font-medium hover:opacity-90 transition-opacity"
+                  className="motion-ui motion-interactive px-4 py-2 rounded-lg editorial-gradient text-on-primary text-sm font-medium hover:opacity-90"
                 >
                   导出 {notes.length} 条笔记
                 </button>

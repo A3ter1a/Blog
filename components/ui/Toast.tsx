@@ -3,6 +3,7 @@
 import { createContext, useContext, useState, useCallback, useMemo, ReactNode } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { CheckCircle2, XCircle, AlertCircle, X } from "lucide-react";
+import { uiMotion } from "@/lib/motion";
 
 export type ToastType = "success" | "error" | "info";
 
@@ -66,14 +67,14 @@ export function ToastProvider({ children }: { children: ReactNode }) {
                 initial={{ opacity: 0, x: 100, scale: 0.9 }}
                 animate={{ opacity: 1, x: 0, scale: 1 }}
                 exit={{ opacity: 0, x: 100, scale: 0.9 }}
-                transition={{ type: "spring", damping: 25, stiffness: 300 }}
+                transition={uiMotion.spring.gentle}
                 className={`pointer-events-auto flex items-center gap-3 px-4 py-3 rounded-xl border shadow-lg min-w-[280px] max-w-[400px] ${colorMap[toast.type]}`}
               >
                 <Icon className="w-5 h-5 flex-shrink-0" />
                 <p className="text-sm font-medium flex-1">{toast.message}</p>
                 <button
                   onClick={() => removeToast(toast.id)}
-                  className="p-1 rounded-lg hover:bg-black/10 transition-colors flex-shrink-0"
+                  className="motion-ui motion-interactive p-1 rounded-lg hover:bg-black/10 flex-shrink-0"
                 >
                   <X className="w-4 h-4" />
                 </button>

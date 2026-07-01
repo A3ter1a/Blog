@@ -14,6 +14,7 @@ import {
   type ScanImageProgress,
 } from '@/hooks/useAIScan';
 import type { Problem } from '@/lib/types';
+import { dialogMotion, overlayMotion, uiMotion } from '@/lib/motion';
 
 interface OCRUploaderProps {
   isOpen: boolean;
@@ -254,17 +255,20 @@ export function OCRUploader({ isOpen, onClose, onAccept, chapterContext }: OCRUp
   return (
     <AnimatePresence>
       <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
+        variants={overlayMotion}
+        initial="initial"
+        animate="animate"
+        exit="exit"
+        transition={{ duration: uiMotion.duration.fast, ease: uiMotion.ease.standard }}
         className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm"
         onClick={() => { if (!isBusy) handleClose(); }}
       >
         <motion.div
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: 1, scale: 1 }}
-          exit={{ opacity: 0, scale: 0.95 }}
-          transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+          variants={dialogMotion}
+          initial="initial"
+          animate="animate"
+          exit="exit"
+          transition={uiMotion.spring.gentle}
           className="absolute inset-4 md:inset-auto md:top-1/2 md:left-1/2 md:-translate-x-1/2 md:-translate-y-1/2 md:w-full md:max-w-3xl md:h-auto max-h-[90vh] bg-surface-container-lowest rounded-2xl shadow-elevated flex flex-col overflow-hidden"
           onClick={e => e.stopPropagation()}
         >
@@ -276,7 +280,7 @@ export function OCRUploader({ isOpen, onClose, onAccept, chapterContext }: OCRUp
             </h2>
             <button
               onClick={handleClose}
-              className="p-2 rounded-full hover:bg-surface-container-high transition-colors"
+              className="motion-ui motion-interactive p-2 rounded-full hover:bg-surface-container-high"
               title={isBusy ? '取消导入' : '关闭'}
             >
               <X className="w-5 h-5 text-on-surface-variant" />
@@ -286,7 +290,7 @@ export function OCRUploader({ isOpen, onClose, onAccept, chapterContext }: OCRUp
           <div className="flex-1 overflow-y-auto p-5 space-y-4">
             {/* Upload zone */}
             {scanState.stage === 'idle' && !isPreparing && (
-              <label className="flex flex-col items-center justify-center gap-3 p-8 border-2 border-dashed border-outline-variant/30 rounded-xl hover:border-primary/50 hover:bg-primary/[0.02] transition-all cursor-pointer">
+              <label className="motion-ui motion-interactive flex flex-col items-center justify-center gap-3 p-8 border-2 border-dashed border-outline-variant/30 rounded-xl hover:border-primary/50 hover:bg-primary/[0.02] cursor-pointer">
                 <div className="w-16 h-16 rounded-2xl bg-primary/5 flex items-center justify-center">
                   <Upload className="w-8 h-8 text-primary" />
                 </div>
@@ -320,7 +324,7 @@ export function OCRUploader({ isOpen, onClose, onAccept, chapterContext }: OCRUp
                     </div>
                     <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-surface-container-highest">
                       <div
-                        className="h-full rounded-full editorial-gradient transition-all"
+                        className="motion-ui h-full rounded-full editorial-gradient"
                         style={{ width: `${preparePercent}%` }}
                       />
                     </div>
@@ -421,7 +425,7 @@ export function OCRUploader({ isOpen, onClose, onAccept, chapterContext }: OCRUp
                 <p className="mt-1 text-xs text-on-surface-variant/60">可以换一张更清晰、只包含题目的图片再试。</p>
                 <button
                   onClick={handleRetry}
-                  className="mt-3 inline-flex items-center justify-center gap-1.5 rounded-lg bg-primary/10 px-3 py-2 text-xs font-medium text-primary hover:bg-primary/15 transition-colors"
+                  className="motion-ui motion-interactive mt-3 inline-flex items-center justify-center gap-1.5 rounded-lg bg-primary/10 px-3 py-2 text-xs font-medium text-primary hover:bg-primary/15"
                 >
                   <Upload className="h-3.5 w-3.5" />
                   重新选择图片
