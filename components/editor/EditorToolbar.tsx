@@ -1,11 +1,11 @@
 "use client";
 
-import type { Editor } from "@tiptap/react";
+import { useEditorState, type Editor } from "@tiptap/react";
 import {
   Bold, Italic, Strikethrough, List, ListOrdered, Quote,
   Heading1, Heading2, Heading3, Code, Code2, Link as LinkIcon,
   Minus, Image as ImageIcon, Undo, Redo, Highlighter, FileText, ListChecks, Divide,
-  IndentDecrease, IndentIncrease,
+  IndentDecrease, IndentIncrease, Ban,
 } from "lucide-react";
 import { useState } from "react";
 import { useClickOutside } from "@/hooks/useClickOutside";
@@ -19,6 +19,11 @@ export function EditorToolbar({
   editor,
   onImageUpload,
 }: EditorToolbarProps) {
+  useEditorState({
+    editor,
+    selector: ({ transactionNumber }) => transactionNumber,
+  });
+
   if (!editor) return null;
 
   const isInsideList = editor.isActive("bulletList") || editor.isActive("orderedList");
@@ -273,37 +278,54 @@ function HighlightColorPicker({ editor }: HighlightColorPickerProps) {
   const dropdownRef = useClickOutside<HTMLDivElement>(() => setIsOpen(false), isOpen);
 
   const isActive = editor.isActive("highlight");
+  const activeColor = editor.getAttributes("highlight").color;
+  const activeColorValue = typeof activeColor === "string" ? activeColor.toLowerCase() : null;
 
   return (
     <div className="relative" ref={dropdownRef}>
       <ToolbarBtn
-        onClick={() => {
-          if (isActive) {
-            editor.chain().focus().unsetHighlight().run();
-          } else {
-            setIsOpen(!isOpen);
-          }
-        }}
+        onClick={() => setIsOpen(!isOpen)}
         active={isActive}
-        tooltip="文本高亮"
+        tooltip="文字框色"
       >
         <Highlighter className="w-4 h-4" />
       </ToolbarBtn>
 
       {isOpen && (
-        <div className="absolute top-full left-0 mt-1 p-2 bg-surface-container-lowest rounded-lg shadow-elevated border border-outline-variant/20 z-50">
+        <div className="absolute top-full left-0 z-50 mt-1 rounded-lg border border-outline-variant/20 bg-surface-container-lowest p-2 shadow-elevated">
           <div className="grid grid-cols-4 gap-2">
+            <button
+              type="button"
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => {
+                editor.chain().focus().unsetHighlight().run();
+                setIsOpen(false);
+              }}
+              className={`flex h-10 w-10 cursor-pointer items-center justify-center rounded-lg border-2 bg-surface-container-lowest text-on-surface-variant transition-all hover:scale-110 hover:border-primary/50 ${
+                !isActive ? "border-primary/50 ring-2 ring-primary/15" : "border-outline-variant/20"
+              }`}
+              title="无颜色"
+              aria-label="无颜色"
+            >
+              <Ban className="h-4 w-4" />
+            </button>
             {HIGHLIGHT_COLORS.map(({ color, label }) => (
               <button
                 key={color}
                 type="button"
+                onMouseDown={(event) => event.preventDefault()}
                 onClick={() => {
                   editor.chain().focus().setHighlight({ color }).run();
                   setIsOpen(false);
                 }}
-                className="w-10 h-10 rounded-lg border-2 border-outline-variant/20 hover:border-primary/50 hover:scale-110 transition-all cursor-pointer"
+                className={`h-10 w-10 cursor-pointer rounded-lg border-2 transition-all hover:scale-110 hover:border-primary/50 ${
+                  activeColorValue === color.toLowerCase()
+                    ? "border-primary/50 ring-2 ring-primary/15"
+                    : "border-outline-variant/20"
+                }`}
                 style={{ backgroundColor: color }}
                 title={label}
+                aria-label={label}
               />
             ))}
           </div>

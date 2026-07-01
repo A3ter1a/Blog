@@ -11,6 +11,8 @@ import {
   restoreLatexEscapedControlChars,
   separateCollapsedInlineMathSpans,
 } from "@/lib/utils";
+import { postprocessColoredHighlightAsHtml } from "@/lib/colored-highlight";
+import { normalizeMarkdownImageBlocks } from "@/lib/markdown-format";
 import type { Problem } from "@/lib/types";
 
 const md = markdownit({
@@ -256,7 +258,7 @@ export function repairMarkdown(content: string): string {
     .map((segment) => segment.protected ? segment.text : repairUnprotectedMarkdown(segment.text))
     .join("");
 
-  return repaired
+  return normalizeMarkdownImageBlocks(repaired)
     .replace(/\n{3,}/g, "\n\n")
     .trim();
 }
@@ -280,7 +282,7 @@ export function normalizeMarkdownForRender(content: string): string {
 export function renderMarkdownToHtml(content: string, options: RenderMarkdownOptions = {}): string {
   const protectedMath = protectMathSpansForMarkdown(normalizeMarkdownForRender(content));
   const html = md.render(protectedMath.content);
-  const dashedHtml = postprocessDashedSepAsHtml(html);
+  const dashedHtml = postprocessDashedSepAsHtml(postprocessColoredHighlightAsHtml(html));
   return options.renderMath === false
     ? restoreMathSpanTokens(dashedHtml, protectedMath.values, true)
     : restoreMathSpanTokensAsHtml(dashedHtml, protectedMath.values);

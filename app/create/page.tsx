@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useMemo } from "react";
 import { motion } from "framer-motion";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
@@ -12,6 +12,7 @@ import type { RichTextEditorRef } from "@/components/editor/RichTextEditor";
 import { LazyRichTextEditor } from "@/components/editor/LazyRichTextEditor";
 import { EditorToolbar } from "@/components/editor/EditorToolbar";
 import { uploadImage, generateFileName } from "@/lib/supabase-storage";
+import { getMarkdownTextStats } from "@/lib/markdown-format";
 import { splitMath3PracticeTags } from "@/lib/math3-practice";
 import { AdminGate } from "@/components/auth/AdminGate";
 import { ProblemReferencePicker } from "@/components/problems/ProblemReferencePicker";
@@ -117,6 +118,7 @@ function CreateEditorPage() {
   const editorScrollRef = useRef<HTMLDivElement>(null);
   const previewScrollRef = useRef<HTMLDivElement>(null);
   const isSyncingScroll = useRef(false);
+  const contentStats = useMemo(() => getMarkdownTextStats(content), [content]);
 
   const applyDraft = useCallback((draft: NoteEditorDraft) => {
     setNoteType(draft.noteType);
@@ -228,6 +230,27 @@ function CreateEditorPage() {
   };
 
   // Editor toolbar handlers - only complex operations remain
+  const uploadEditorImage = useCallback(async (file: File): Promise<string> => {
+    const ext = (file.name.includes(".") ? file.name.split(".").pop()?.toLowerCase() : undefined)
+      || file.type.split("/")[1]?.split("+")[0]?.toLowerCase()
+      || "png";
+    const looksLikeImage = file.type.startsWith("image/")
+      || ["png", "jpg", "jpeg", "webp", "gif", "bmp", "svg"].includes(ext);
+
+    if (!looksLikeImage) {
+      throw new Error("请选择图片文件");
+    }
+
+    const path = generateFileName("note", ext);
+    return uploadImage(file, path);
+  }, []);
+
+  const handlePastedEditorImageUpload = useCallback(async (file: File): Promise<string> => {
+    const url = await uploadEditorImage(file);
+    toast.success("粘贴图片已上传并插入");
+    return url;
+  }, [toast, uploadEditorImage]);
+
   const handleEditorImageUpload = async () => {
     const input = document.createElement("input");
     input.type = "file";
@@ -247,9 +270,7 @@ function CreateEditorPage() {
       }
 
       try {
-        const ext = file.name.split(".").pop()?.toLowerCase() || "png";
-        const path = generateFileName("note", ext);
-        const url = await uploadImage(file, path);
+        const url = await uploadEditorImage(file);
         editorRef.current.insertImage(url);
         toast.success("图片已插入");
       } catch (err: unknown) {
@@ -635,6 +656,7 @@ function CreateEditorPage() {
                         ref={editorRef}
                         content={content}
                         onChange={setContent}
+                        onImageUpload={handlePastedEditorImageUpload}
                         onReady={(editor) => {
                           setEditorReady(true);
                           setToolbarEditor(editor);
@@ -644,8 +666,8 @@ function CreateEditorPage() {
                       {/* Character Count */}
                       <div className="flex justify-between items-center px-6 pb-3 text-xs text-on-surface-variant/60">
                         <span>
-                          字数: {content.replace(/\s/g, "").length.toLocaleString()} |
-                          字符: {content.length.toLocaleString()}
+                          字数: {contentStats.wordCount.toLocaleString()} |
+                          字符: {contentStats.characterCount.toLocaleString()}
                         </span>
                         <span>Markdown</span>
                       </div>
@@ -700,6 +722,7 @@ function CreateEditorPage() {
                       ref={editorRef}
                       content={content}
                       onChange={setContent}
+                      onImageUpload={handlePastedEditorImageUpload}
                       onReady={(editor) => {
                         setEditorReady(true);
                         setToolbarEditor(editor);
@@ -708,8 +731,8 @@ function CreateEditorPage() {
                     />
                     <div className="flex justify-between items-center px-6 pb-3 text-xs text-on-surface-variant/60">
                       <span>
-                        字数: {content.replace(/\s/g, "").length.toLocaleString()} |
-                        字符: {content.length.toLocaleString()}
+                        字数: {contentStats.wordCount.toLocaleString()} |
+                        字符: {contentStats.characterCount.toLocaleString()}
                       </span>
                       <span>Markdown</span>
                     </div>

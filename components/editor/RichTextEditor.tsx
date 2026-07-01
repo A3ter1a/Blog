@@ -2,16 +2,18 @@
 
 import { useEditor, EditorContent, type Editor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
-import Image from "@tiptap/extension-image";
 import Placeholder from "@tiptap/extension-placeholder";
 import Link from "@tiptap/extension-link";
 import CharacterCount from "@tiptap/extension-character-count";
-import Highlight from "@tiptap/extension-highlight";
 import { Markdown } from "tiptap-markdown";
 import { useEffect, forwardRef, useImperativeHandle, useRef } from "react";
 import { ProblemBlock, parseProblemMarkers } from "@/lib/problem-block-extension";
 import { DashedSeparator } from "@/lib/dashed-separator-extension";
-import { DOMParser } from "@tiptap/pm/model";
+import { ColoredHighlight } from "@/lib/colored-highlight-extension";
+import { MarkdownImage } from "@/lib/markdown-image-extension";
+import { DOMParser, type Node as ProseMirrorNode } from "@tiptap/pm/model";
+import { TextSelection, type EditorState, type Transaction } from "@tiptap/pm/state";
+import type { EditorView } from "@tiptap/pm/view";
 import { repairMarkdown, renderMarkdownToHtml } from "@/lib/markdown";
 
 type MarkdownStorage = {
@@ -35,8 +37,176 @@ export interface RichTextEditorRef {
   insertMarkdown: (content: string) => void;
 }
 
+const BODY_INDENT_TEXT = "\u3000\u3000";
+const CODE_INDENT_TEXT = "  ";
+const INDENT_CANDIDATES = [BODY_INDENT_TEXT, CODE_INDENT_TEXT] as const;
+const DATA_IMAGE_PATTERN = /<img\b[^>]*\bsrc=["'](data:image\/[^"']+)["'][^>]*>/gi;
+
+type TextBlockInfo = {
+  pos: number;
+  node: ProseMirrorNode;
+};
+
+function getIndentText(node: ProseMirrorNode): string {
+  return node.type.name === "codeBlock" ? CODE_INDENT_TEXT : BODY_INDENT_TEXT;
+}
+
+function getSelectedTextBlocks(state: EditorState): TextBlockInfo[] {
+  const { selection } = state;
+
+  if (selection.empty) {
+    const { $from } = selection;
+    if ($from.depth === 0 || !$from.parent.isTextblock) return [];
+    return [{ pos: $from.before($from.depth), node: $from.parent }];
+  }
+
+  const blocks: TextBlockInfo[] = [];
+  state.doc.nodesBetween(selection.from, selection.to, (node, pos) => {
+    if (!node.isTextblock) return true;
+    blocks.push({ pos, node });
+    return false;
+  });
+  return blocks;
+}
+
+function removeTextBlockIndent(tr: Transaction, block: TextBlockInfo): boolean {
+  const indentText = INDENT_CANDIDATES.find((candidate) => block.node.textContent.startsWith(candidate));
+  if (!indentText) return false;
+
+  const start = tr.mapping.map(block.pos + 1);
+  tr.delete(start, start + indentText.length);
+  return true;
+}
+
+function removeCursorIndent(state: EditorState): Transaction | null {
+  const { $from } = state.selection;
+  if ($from.depth === 0 || !$from.parent.isTextblock) return null;
+
+  const blockStart = $from.start($from.depth);
+
+  for (const indentText of INDENT_CANDIDATES) {
+    const from = Math.max(blockStart, $from.pos - indentText.length);
+    const textBeforeCursor = state.doc.textBetween(from, $from.pos);
+    if (textBeforeCursor === indentText) {
+      return state.tr.delete(from, $from.pos);
+    }
+  }
+
+  const block = { pos: $from.before($from.depth), node: $from.parent };
+  const tr = state.tr;
+  return removeTextBlockIndent(tr, block) ? tr : null;
+}
+
+function handleEditorTab(view: EditorView, event: KeyboardEvent): boolean {
+  if (event.key !== "Tab") return false;
+
+  event.preventDefault();
+  const { state } = view;
+
+  if (state.selection.empty) {
+    if (event.shiftKey) {
+      const tr = removeCursorIndent(state);
+      if (tr?.docChanged) view.dispatch(tr.scrollIntoView());
+      return true;
+    }
+
+    const indentText = getIndentText(state.selection.$from.parent);
+    view.dispatch(state.tr.insertText(indentText, state.selection.from, state.selection.to).scrollIntoView());
+    return true;
+  }
+
+  const blocks = getSelectedTextBlocks(state);
+  if (blocks.length === 0) return true;
+
+  const tr = state.tr;
+  if (event.shiftKey) {
+    blocks.forEach((block) => removeTextBlockIndent(tr, block));
+  } else {
+    blocks.forEach((block) => {
+      const start = tr.mapping.map(block.pos + 1);
+      tr.insertText(getIndentText(block.node), start);
+    });
+  }
+
+  if (tr.docChanged) view.dispatch(tr.scrollIntoView());
+  return true;
+}
+
+function getFileExtension(file: File): string {
+  const nameExtension = file.name.includes(".")
+    ? file.name.split(".").pop()?.toLowerCase()
+    : undefined;
+  if (nameExtension) return nameExtension;
+
+  const mimeExtension = file.type.split("/")[1]?.split("+")[0]?.toLowerCase();
+  return mimeExtension || "png";
+}
+
+async function dataUrlToFile(dataUrl: string, index: number): Promise<File | null> {
+  try {
+    const response = await fetch(dataUrl);
+    const blob = await response.blob();
+    const extension = blob.type.split("/")[1]?.split("+")[0]?.toLowerCase() || "png";
+    return new File([blob], `pasted-image-${Date.now()}-${index}.${extension}`, { type: blob.type || "image/png" });
+  } catch {
+    return null;
+  }
+}
+
+function getClipboardImageFiles(dataTransfer: DataTransfer): File[] {
+  return Array.from(dataTransfer.items)
+    .filter((item) => item.kind === "file" && item.type.startsWith("image/"))
+    .map((item) => item.getAsFile())
+    .filter((file): file is File => Boolean(file));
+}
+
+function getClipboardDataImageSources(dataTransfer: DataTransfer): string[] {
+  const html = dataTransfer.getData("text/html");
+  if (!html.includes("data:image/")) return [];
+
+  return Array.from(html.matchAll(DATA_IMAGE_PATTERN), (match) => match[1])
+    .filter((src): src is string => Boolean(src));
+}
+
+async function insertUploadedImages(
+  view: EditorView,
+  files: File[],
+  uploadImage: (file: File) => Promise<string>,
+) {
+  const selectionBookmark = view.state.selection.getBookmark();
+  const uploadedImages: Array<{ url: string; file: File }> = [];
+
+  for (const file of files) {
+    const url = await uploadImage(file);
+    uploadedImages.push({ url, file });
+  }
+
+  if (uploadedImages.length === 0) return;
+
+  const { schema } = view.state;
+  let tr = view.state.tr.setSelection(selectionBookmark.resolve(view.state.doc));
+
+  uploadedImages.forEach(({ url, file }) => {
+    const imageNode = schema.nodes.image.create({
+      src: url,
+      alt: file.name || `粘贴图片.${getFileExtension(file)}`,
+    });
+
+    tr = tr.replaceSelectionWith(imageNode, false);
+
+    if (schema.nodes.paragraph) {
+      const insertPos = tr.selection.to;
+      tr = tr.insert(insertPos, schema.nodes.paragraph.create());
+      tr = tr.setSelection(TextSelection.create(tr.doc, insertPos + 1));
+    }
+  });
+
+  view.dispatch(tr.scrollIntoView());
+  view.focus();
+}
+
 export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>(
-  ({ content, onChange, placeholder = "在此输入内容，支持 Markdown 语法...", onReady }, ref) => {
+  ({ content, onChange, placeholder = "在此输入内容，支持 Markdown 语法...", onImageUpload, onReady }, ref) => {
     const isFocusedRef = useRef(false);
 
     const editor = useEditor({
@@ -53,7 +223,7 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
             keepAttributes: false,
           },
         }),
-        Image.configure({
+        MarkdownImage.configure({
           inline: false,
           allowBase64: true,
         }),
@@ -69,7 +239,7 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
         CharacterCount.configure({
           limit: null,
         }),
-        Highlight.configure({
+        ColoredHighlight.configure({
           multicolor: true,
         }),
         ProblemBlock,
@@ -90,9 +260,38 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
       },
       immediatelyRender: false,
       editorProps: {
+        handleKeyDown: handleEditorTab,
         handlePaste: (view, event) => {
+          const clipboardData = event.clipboardData;
+          if (!clipboardData) return false;
+
+          const imageFiles = getClipboardImageFiles(clipboardData);
+          if (imageFiles.length > 0) {
+            event.preventDefault();
+            if (onImageUpload) {
+              void insertUploadedImages(view, imageFiles, onImageUpload).catch((error: unknown) => {
+                console.error("Failed to upload pasted image:", error);
+              });
+            }
+            return true;
+          }
+
+          const dataImageSources = getClipboardDataImageSources(clipboardData);
+          if (dataImageSources.length > 0) {
+            event.preventDefault();
+            if (onImageUpload) {
+              void (async () => {
+                const files = await Promise.all(dataImageSources.map(dataUrlToFile));
+                await insertUploadedImages(view, files.filter((file): file is File => Boolean(file)), onImageUpload);
+              })().catch((error: unknown) => {
+                console.error("Failed to upload pasted data image:", error);
+              });
+            }
+            return true;
+          }
+
           // Only handle plain text pastes
-          const text = event.clipboardData?.getData('text/plain');
+          const text = clipboardData.getData('text/plain');
           if (!text || !text.trim()) return false;
 
           // Prevent default paste (which would use HTML from VS Code etc.,
@@ -150,26 +349,6 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
     return (
       <EditorContent
         editor={editor}
-        onKeyDown={(e) => {
-          if (e.key === "Tab") {
-            e.preventDefault();
-            if (e.shiftKey) {
-              // Shift+Tab: 删除光标前的两个空格
-              const { state } = editor;
-              const { $from } = state.selection;
-              const textBefore = state.doc.textBetween(Math.max(0, $from.pos - 2), $from.pos);
-              if (textBefore === "  ") {
-                editor.chain().focus()
-                  .setTextSelection({ from: $from.pos - 2, to: $from.pos })
-                  .deleteSelection()
-                  .run();
-              }
-            } else {
-              // Tab: 插入两个空格作为缩进
-              editor.chain().focus().insertContent("  ").run();
-            }
-          }
-        }}
         className="markdown-surface markdown-compact p-6 min-h-[400px] focus:outline-none
           [&_.ProseMirror]:min-h-[400px] [&_.ProseMirror]:outline-none
           [&_.ProseMirror_p.is-editor-empty:first-child::before]:text-on-surface-variant/40
@@ -178,9 +357,6 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
           [&_.ProseMirror_p.is-editor-empty:first-child::before]:h-0
           [&_.ProseMirror_p.is-editor-empty:first-child::before]:pointer-events-none
           [&_.ProseMirror_img]:max-w-full [&_.ProseMirror_img]:rounded-lg [&_.ProseMirror_img]:my-4
-          [&_.ProseMirror_h1]:text-2xl [&_.ProseMirror_h1]:font-bold [&_.ProseMirror_h1]:mb-4
-          [&_.ProseMirror_h2]:text-xl [&_.ProseMirror_h2]:font-bold [&_.ProseMirror_h2]:mb-3
-          [&_.ProseMirror_h3]:text-lg [&_.ProseMirror_h3]:font-semibold [&_.ProseMirror_h3]:mb-2
           [&_.ProseMirror_ul]:list-disc [&_.ProseMirror_ul]:pl-7 [&_.ProseMirror_ul]:my-3
           [&_.ProseMirror_ol]:list-decimal [&_.ProseMirror_ol]:pl-7 [&_.ProseMirror_ol]:my-3
           [&_.ProseMirror_li]:pl-1 [&_.ProseMirror_li]:my-1.5
@@ -194,7 +370,8 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
           [&_.ProseMirror_a]:text-primary [&_.ProseMirror_a]:underline
           [&_.ProseMirror_hr]:my-4 [&_.ProseMirror_hr]:border-0 [&_.ProseMirror_hr]:border-t [&_.ProseMirror_hr]:border-solid [&_.ProseMirror_hr]:border-black
           [&_.ProseMirror_hr[data-type=dashed]]:my-6 [&_.ProseMirror_hr[data-type=dashed]]:border-0 [&_.ProseMirror_hr[data-type=dashed]]:border-t [&_.ProseMirror_hr[data-type=dashed]]:border-dashed [&_.ProseMirror_hr[data-type=dashed]]:border-black
-          [&_.ProseMirror_mark]:rounded-sm [&_.ProseMirror_mark]:px-1 [&_.ProseMirror_mark]:py-0.5"
+          [&_.ProseMirror_mark]:rounded-md [&_.ProseMirror_mark]:px-1.5 [&_.ProseMirror_mark]:py-0.5
+          [&_.ProseMirror_mark]:box-decoration-clone"
       />
     );
   }

@@ -7,6 +7,7 @@ import {
   mergeVisibleTagsWithMath3Tags,
   splitMath3PracticeTags,
 } from "@/lib/math3-practice";
+import { normalizeMarkdownImageBlocks } from "@/lib/markdown-format";
 import { normalizeProblemReferenceMarkup } from "@/lib/problem-references";
 import { getProblemsValidationIssues, normalizeProblem } from "@/lib/problem-utils";
 import { notesApi } from "@/lib/supabase";
@@ -86,7 +87,7 @@ export function useNoteSave(): UseNoteSaveResult {
       title: draft.title,
       subject: draft.noteType === "essay" ? undefined : draft.subject,
       tags,
-      content: normalizeProblemReferenceMarkup(draft.content),
+      content: normalizeProblemReferenceMarkup(normalizeMarkdownImageBlocks(draft.content)),
       videos: draft.videos,
       problems: normalizedProblems,
       coverImage: draft.coverImage || undefined,
