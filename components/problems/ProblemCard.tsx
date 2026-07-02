@@ -102,9 +102,6 @@ export function ProblemCard({
       difficulty: editData.difficulty,
       question: editData.question,
       answer: editData.answer,
-      explanation: "",
-      tips: undefined,
-      tags: [],
       options: problemOptionsForSave(editData),
     };
 

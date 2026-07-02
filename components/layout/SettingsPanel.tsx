@@ -172,7 +172,7 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
                         step="1"
                         value={preferences.fontSize}
                         onChange={(e) => updatePreference("fontSize", parseInt(e.target.value))}
-                        className="flex-1 accent-bg-primary"
+                        className="flex-1 accent-primary"
                       />
                       <button
                         onClick={() => updatePreference("fontSize", Math.min(22, preferences.fontSize + 1))}
@@ -199,7 +199,7 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
                       step="0.05"
                       value={preferences.lineHeight}
                       onChange={(e) => updatePreference("lineHeight", parseFloat(e.target.value))}
-                      className="w-full accent-bg-primary"
+                      className="w-full accent-primary"
                     />
                   </div>
 
