@@ -13,11 +13,13 @@ import { useClickOutside } from "@/hooks/useClickOutside";
 interface EditorToolbarProps {
   editor: Editor | null;
   onImageUpload: () => void;
+  className?: string;
 }
 
 export function EditorToolbar({
   editor,
   onImageUpload,
+  className = "",
 }: EditorToolbarProps) {
   useEditorState({
     editor,
@@ -42,7 +44,7 @@ export function EditorToolbar({
   };
 
   return (
-    <div className="flex flex-wrap items-center gap-2 px-2 py-2">
+    <div className={`flex flex-wrap items-center gap-2 px-2 py-2 ${className}`}>
       <ToolbarGroup label="历史">
         <ToolbarBtn
           onClick={() => editor.chain().focus().undo().run()}

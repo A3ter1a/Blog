@@ -370,6 +370,15 @@ function CreateEditorPage() {
               </button>
             </div>
           </div>
+          {!isProblem && editorReady && viewMode !== "preview" && (
+            <div className="mt-3 border-t border-outline-variant/15 pt-2">
+              <EditorToolbar
+                editor={toolbarEditor}
+                onImageUpload={handleEditorImageUpload}
+                className="-mx-1"
+              />
+            </div>
+          )}
         </motion.div>
 
         {/* Type Selector */}
@@ -639,17 +648,8 @@ function CreateEditorPage() {
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                   {/* Editor Panel */}
                   <div
-                    className="flex min-h-[420px] flex-col overflow-hidden rounded-lg border border-outline-variant/20 bg-surface-container-low lg:max-h-[calc(100vh-500px)]"
+                    className="flex min-h-[640px] flex-col overflow-hidden rounded-lg border border-outline-variant/20 bg-surface-container-low lg:h-[calc(100vh-260px)] lg:min-h-[560px]"
                   >
-                    {/* Sticky Toolbar */}
-                    {editorReady && (
-                      <div className="sticky top-0 z-10 shrink-0 border-b border-outline-variant/20">
-                        <EditorToolbar
-                          editor={toolbarEditor}
-                          onImageUpload={handleEditorImageUpload}
-                        />
-                      </div>
-                    )}
                     {/* Scrollable Editor */}
                     <div
                       ref={editorScrollRef}
@@ -683,7 +683,7 @@ function CreateEditorPage() {
 
                   {/* Preview Panel */}
                   <div
-                    className="flex min-h-[420px] flex-col overflow-hidden rounded-lg border border-outline-variant/20 bg-surface-container-low lg:max-h-[calc(100vh-500px)]"
+                    className="flex min-h-[640px] flex-col overflow-hidden rounded-lg border border-outline-variant/20 bg-surface-container-low lg:h-[calc(100vh-260px)] lg:min-h-[560px]"
                   >
                     {/* Preview Header */}
                     <div className="shrink-0 border-b border-outline-variant/20 px-4 py-2 flex items-center" style={{ minHeight: '48px' }}>
@@ -708,16 +708,8 @@ function CreateEditorPage() {
 
               {viewMode === "editor" && (
                 <div
-                  className="flex min-h-[520px] flex-col overflow-hidden rounded-lg border border-outline-variant/20 bg-surface-container-low lg:max-h-[calc(100vh-400px)]"
+                  className="flex min-h-[720px] flex-col overflow-hidden rounded-lg border border-outline-variant/20 bg-surface-container-low lg:h-[calc(100vh-260px)] lg:min-h-[600px]"
                 >
-                  {editorReady && (
-                    <div className="sticky top-0 z-10 shrink-0 border-b border-outline-variant/20">
-                      <EditorToolbar
-                        editor={toolbarEditor}
-                        onImageUpload={handleEditorImageUpload}
-                      />
-                    </div>
-                  )}
                   <div
                     ref={editorScrollRef}
                     className="overflow-y-auto flex-1 min-h-0
