@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { motion } from "framer-motion";
+import { createPortal } from "react-dom";
+import { AnimatePresence, motion } from "framer-motion";
 import { Bookmark, Check, Eye, EyeOff, Loader2, Pencil, Plus, Trash2, X } from "lucide-react";
 import type { Difficulty, Problem, ProblemOption, ProblemPracticeStatus, ProblemType } from "@/lib/types";
 import { difficultyColorMap, difficultyMap, problemTypeMap } from "@/lib/types";
@@ -66,6 +67,9 @@ export function ProblemCard({
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [editData, setEditData] = useState<ProblemEditData>(() => createEditData(problem));
+  const [portalRoot] = useState<HTMLElement | null>(() => (
+    typeof document === "undefined" ? null : document.body
+  ));
 
   const problemAnchorId = problem.id || String(index);
   const hasOptions = problem.type === "choice" && Array.isArray(problem.options) && problem.options.length > 0;
@@ -125,79 +129,16 @@ export function ProblemCard({
     });
   };
 
-  return (
-    <motion.div
-      id={`${anchorPrefix}-${problemAnchorId}`}
-      variants={surfaceMotion}
-      initial="initial"
-      animate="animate"
-      transition={getListItemTransition(index, 0.16)}
-      className="scroll-mt-24 overflow-hidden rounded-lg border border-outline-variant/20 bg-surface-container-lowest"
-    >
-      <div className="flex items-center justify-between gap-3 px-4 pt-4">
-        <div className="flex min-w-0 items-center gap-3">
-          <span className="flex h-8 min-w-8 flex-shrink-0 items-center justify-center rounded-md border border-outline-variant/20 bg-surface-container-low px-2 text-xs font-bold text-on-surface">
-            {index + 1}
-          </span>
-          <div className="flex min-w-0 flex-wrap items-center gap-2">
-            <span className="rounded-md bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
-              {problemTypeMap[problem.type]}
-            </span>
-            <span className={`rounded px-2 py-0.5 text-xs font-medium ${difficultyColorMap[problem.difficulty]}`}>
-              {difficultyMap[problem.difficulty]}
-            </span>
-            {isMarked && (
-              <span className="inline-flex items-center gap-1 rounded-md border border-amber-200/70 bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700">
-                <Bookmark className="h-3 w-3 fill-current" />
-                已标记
-              </span>
-            )}
-          </div>
-        </div>
-
-        {(showMarkControl || onUpdate) && !isEditing && (
-          <div className="flex flex-shrink-0 items-center gap-1.5">
-            {showMarkControl && (
-              <button
-                type="button"
-                onClick={onToggleMarked}
-                disabled={isMarking || !canMark}
-                aria-pressed={isMarked}
-                className={`motion-ui motion-interactive rounded-lg p-1.5 disabled:cursor-not-allowed disabled:opacity-45 ${
-                  isMarked
-                    ? "bg-amber-100 text-amber-700 hover:bg-amber-200"
-                    : "text-on-surface-variant/45 hover:bg-surface-container-highest hover:text-amber-700"
-                }`}
-                title={canMark ? (isMarked ? "取消三刷标记" : "加入三刷收集") : markDisabledTitle}
-              >
-                {isMarking ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Bookmark className={`h-4 w-4 ${isMarked ? "fill-current" : ""}`} />
-                )}
-              </button>
-            )}
-            {onUpdate && (
-              <button
-                onClick={handleStartEdit}
-                className="motion-ui motion-interactive rounded-lg p-1.5 text-on-surface-variant/40 hover:bg-surface-container-highest hover:text-primary"
-                title="编辑题目"
-              >
-                <Pencil className="h-4 w-4" />
-              </button>
-            )}
-          </div>
-        )}
-      </div>
-
-      {isEditing ? (
+  const editDialog = (
+    <AnimatePresence>
+      {isEditing && (
         <motion.div
           variants={overlayMotion}
           initial="initial"
           animate="animate"
           exit="exit"
           transition={{ duration: uiMotion.duration.fast, ease: uiMotion.ease.standard }}
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-3 backdrop-blur-sm sm:p-6"
+          className="fixed inset-0 z-[210] flex items-center justify-center bg-black/40 p-3 backdrop-blur-sm sm:p-6"
           onClick={handleCancel}
         >
           <motion.div
@@ -367,7 +308,77 @@ export function ProblemCard({
             </div>
           </motion.div>
         </motion.div>
-      ) : (
+      )}
+    </AnimatePresence>
+  );
+
+  return (
+    <>
+      <motion.div
+        id={`${anchorPrefix}-${problemAnchorId}`}
+        variants={surfaceMotion}
+        initial="initial"
+        animate="animate"
+        transition={getListItemTransition(index, 0.16)}
+        className="scroll-mt-24 overflow-hidden rounded-lg border border-outline-variant/20 bg-surface-container-lowest"
+      >
+      <div className="flex items-center justify-between gap-3 px-4 pt-4">
+        <div className="flex min-w-0 items-center gap-3">
+          <span className="flex h-8 min-w-8 flex-shrink-0 items-center justify-center rounded-md border border-outline-variant/20 bg-surface-container-low px-2 text-xs font-bold text-on-surface">
+            {index + 1}
+          </span>
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <span className="rounded-md bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
+              {problemTypeMap[problem.type]}
+            </span>
+            <span className={`rounded px-2 py-0.5 text-xs font-medium ${difficultyColorMap[problem.difficulty]}`}>
+              {difficultyMap[problem.difficulty]}
+            </span>
+            {isMarked && (
+              <span className="inline-flex items-center gap-1 rounded-md border border-amber-200/70 bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700">
+                <Bookmark className="h-3 w-3 fill-current" />
+                已标记
+              </span>
+            )}
+          </div>
+        </div>
+
+        {(showMarkControl || onUpdate) && !isEditing && (
+          <div className="flex flex-shrink-0 items-center gap-1.5">
+            {showMarkControl && (
+              <button
+                type="button"
+                onClick={onToggleMarked}
+                disabled={isMarking || !canMark}
+                aria-pressed={isMarked}
+                className={`motion-ui motion-interactive rounded-lg p-1.5 disabled:cursor-not-allowed disabled:opacity-45 ${
+                  isMarked
+                    ? "bg-amber-100 text-amber-700 hover:bg-amber-200"
+                    : "text-on-surface-variant/45 hover:bg-surface-container-highest hover:text-amber-700"
+                }`}
+                title={canMark ? (isMarked ? "取消三刷标记" : "加入三刷收集") : markDisabledTitle}
+              >
+                {isMarking ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Bookmark className={`h-4 w-4 ${isMarked ? "fill-current" : ""}`} />
+                )}
+              </button>
+            )}
+            {onUpdate && (
+              <button
+                onClick={handleStartEdit}
+                className="motion-ui motion-interactive rounded-lg p-1.5 text-on-surface-variant/40 hover:bg-surface-container-highest hover:text-primary"
+                title="编辑题目"
+              >
+                <Pencil className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+
+      {!isEditing && (
         <>
           <div className="px-4 pb-4 pt-3">
             <div className="text-[15px] leading-8 text-on-surface sm:text-base">
@@ -415,6 +426,8 @@ export function ProblemCard({
           </AnswerReveal>
         </>
       )}
-    </motion.div>
+      </motion.div>
+      {portalRoot ? createPortal(editDialog, portalRoot) : null}
+    </>
   );
 }
