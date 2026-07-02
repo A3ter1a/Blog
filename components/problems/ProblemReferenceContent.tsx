@@ -127,6 +127,7 @@ export function ProblemReferenceContent({
               key={`markdown-${index}`}
               content={segment.content}
               className="text-inherit"
+              style={style}
             />
           );
         }

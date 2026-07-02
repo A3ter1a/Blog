@@ -354,7 +354,14 @@ export function NoteReaderClient({
   const isProblem = note.type === "problem";
   const isEssay = note.type === "essay";
   const showReaderSidebar = isProblem ? showProblemTools : preferences.tocPosition !== "hidden";
+  const readerWidthClass = preferences.contentWidth === "narrow"
+    ? "mx-auto max-w-3xl"
+    : preferences.contentWidth === "wide"
+      ? "mx-auto max-w-5xl"
+      : "mx-auto max-w-4xl";
   const contentColumnClass = showReaderSidebar ? "min-w-0 lg:col-span-9" : "min-w-0 lg:col-span-12";
+  const contentOrderClass = !isProblem && preferences.tocPosition === "left" ? "lg:order-last" : "";
+  const sidebarOrderClass = !isProblem && preferences.tocPosition === "left" ? "lg:order-first" : "";
   const markDisabledTitle = practiceStatusLoadState === "loading"
     ? "正在加载题目标记状态"
     : practiceStatusLoadState === "error"
@@ -474,14 +481,14 @@ export function NoteReaderClient({
       {/* Main Layout: Content + Sidebar */}
       <div className="mx-auto grid max-w-7xl grid-cols-1 gap-6 px-4 sm:px-6 lg:grid-cols-12 lg:gap-8 lg:px-8">
         {/* Article Content */}
-        <div className={contentColumnClass}>
+        <div className={`${contentColumnClass} ${contentOrderClass}`}>
           {/* Article Header */}
           <motion.header
             variants={surfaceMotion}
             initial="initial"
             animate="animate"
             transition={{ duration: uiMotion.duration.page, ease: uiMotion.ease.emphasized }}
-            className={`surface-panel p-6 sm:p-8 ${isProblem ? "" : "mx-auto max-w-4xl"}`}
+            className={`surface-panel p-6 sm:p-8 ${isProblem ? "" : readerWidthClass}`}
           >
             <div className="mb-4 flex flex-wrap items-center gap-2">
               <span
@@ -581,7 +588,7 @@ export function NoteReaderClient({
             initial="initial"
             animate="animate"
             transition={{ delay: 0.06, duration: uiMotion.duration.page, ease: uiMotion.ease.emphasized }}
-            className={`py-8 ${isProblem ? "" : "mx-auto max-w-4xl"}`}
+            className={`py-8 ${isProblem ? "" : readerWidthClass}`}
           >
             {isProblem && allProblems.length > 0 ? (
               <>
@@ -647,7 +654,10 @@ export function NoteReaderClient({
                 <ProblemReferenceContent
                   content={note.content}
                   className="reader-content text-on-surface"
-                  style={{ fontSize: `${preferences.fontSize}px` }}
+                  style={{
+                    fontSize: `${preferences.fontSize}px`,
+                    lineHeight: preferences.lineHeight,
+                  }}
                 />
               </>
             )}
@@ -656,7 +666,7 @@ export function NoteReaderClient({
 
         {/* Sidebar: Video Player + TOC (hidden when TOC is hidden) */}
         {showReaderSidebar && (
-          <aside className="min-w-[280px] space-y-4 lg:col-span-3">
+          <aside className={`min-w-[280px] space-y-4 lg:col-span-3 ${sidebarOrderClass}`}>
             <AnimatePresence>
               {note.videos && note.videos.length > 0 && (
                 <motion.section
@@ -761,7 +771,7 @@ export function NoteReaderClient({
               initial="initial"
               animate="animate"
               transition={{ delay: 0.06, duration: uiMotion.duration.page, ease: uiMotion.ease.emphasized }}
-              className="max-w-3xl mx-auto px-6 py-12"
+              className={`${readerWidthClass} px-6 py-12`}
               onClick={(e) => e.stopPropagation()}
             >
               {/* Title */}
@@ -836,7 +846,11 @@ export function NoteReaderClient({
                 ) : (
                   <ProblemReferenceContent
                     content={note.content}
-                    className="reader-content text-on-surface text-lg"
+                    className="reader-content text-on-surface"
+                    style={{
+                      fontSize: `${preferences.fontSize}px`,
+                      lineHeight: preferences.lineHeight,
+                    }}
                   />
                 )}
               </motion.div>

@@ -13,13 +13,11 @@ import { useClickOutside } from "@/hooks/useClickOutside";
 interface EditorToolbarProps {
   editor: Editor | null;
   onImageUpload: () => void;
-  className?: string;
 }
 
 export function EditorToolbar({
   editor,
   onImageUpload,
-  className = "",
 }: EditorToolbarProps) {
   useEditorState({
     editor,
@@ -44,7 +42,7 @@ export function EditorToolbar({
   };
 
   return (
-    <div className={`flex flex-wrap items-center gap-2 px-2 py-2 ${className}`}>
+    <div className="flex flex-wrap items-center gap-2 px-2 py-2">
       <ToolbarGroup label="历史">
         <ToolbarBtn
           onClick={() => editor.chain().focus().undo().run()}
@@ -294,8 +292,8 @@ function HighlightColorPicker({ editor }: HighlightColorPickerProps) {
       </ToolbarBtn>
 
       {isOpen && (
-        <div className="absolute top-full left-0 z-50 mt-1 rounded-lg border border-outline-variant/20 bg-surface-container-lowest p-2 shadow-elevated">
-          <div className="grid grid-cols-4 gap-2">
+        <div className="absolute left-1/2 top-full z-50 mt-2 w-[184px] -translate-x-1/2 rounded-xl border border-outline-variant/20 bg-surface-container-lowest p-2.5 shadow-elevated">
+          <div className="grid grid-cols-3 gap-2">
             <button
               type="button"
               onMouseDown={(event) => event.preventDefault()}
@@ -303,13 +301,14 @@ function HighlightColorPicker({ editor }: HighlightColorPickerProps) {
                 editor.chain().focus().unsetHighlight().run();
                 setIsOpen(false);
               }}
-              className={`motion-ui motion-interactive flex h-10 w-10 cursor-pointer items-center justify-center rounded-lg border-2 bg-surface-container-lowest text-on-surface-variant hover:scale-110 hover:border-primary/50 ${
+              className={`motion-ui motion-interactive col-span-3 flex h-9 cursor-pointer items-center justify-center gap-2 rounded-lg border bg-surface-container-low text-xs font-medium text-on-surface-variant hover:border-primary/35 hover:bg-primary/5 hover:text-primary ${
                 !isActive ? "border-primary/50 ring-2 ring-primary/15" : "border-outline-variant/20"
               }`}
               title="无颜色"
               aria-label="无颜色"
             >
-              <Ban className="h-4 w-4" />
+              <Ban className="h-3.5 w-3.5" />
+              无颜色
             </button>
             {HIGHLIGHT_COLORS.map(({ color, label }) => (
               <button
@@ -320,7 +319,7 @@ function HighlightColorPicker({ editor }: HighlightColorPickerProps) {
                   editor.chain().focus().setHighlight({ color }).run();
                   setIsOpen(false);
                 }}
-                className={`motion-ui motion-interactive h-10 w-10 cursor-pointer rounded-lg border-2 hover:scale-110 hover:border-primary/50 ${
+                className={`motion-ui motion-interactive h-9 cursor-pointer rounded-lg border-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] hover:scale-105 hover:border-primary/50 ${
                   activeColorValue === color.toLowerCase()
                     ? "border-primary/50 ring-2 ring-primary/15"
                     : "border-outline-variant/20"

@@ -4,11 +4,11 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Upload, Type, ListTree, Eye, AlignLeft, XCircle } from "lucide-react";
+import { X, Upload, Type, ListTree, Eye, AlignLeft, XCircle, RotateCcw, Columns3 } from "lucide-react";
 import type { Profile } from "@/lib/types";
 import { DEFAULT_PROFILE } from "@/lib/profile";
 import { profileApi } from "@/lib/supabase";
-import { useReadingPreferences, TOCPosition } from "@/lib/useReadingPreferences";
+import { useReadingPreferences, TOCPosition, ContentWidth } from "@/lib/useReadingPreferences";
 import { ParsedNote, detectFormat, importFromJSON, importFromMarkdown, importFromObsidian } from "@/lib/import";
 import { ImportPreview } from "@/components/export/ImportPreview";
 import { ProfileEditor } from "@/components/settings/ProfileEditor";
@@ -23,7 +23,7 @@ interface SettingsPanelProps {
 }
 
 export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
-  const { preferences, updatePreference } = useReadingPreferences();
+  const { preferences, updatePreference, resetPreferences } = useReadingPreferences();
   const { isAdmin } = useAdminAuth();
   const toast = useToast();
   const [portalRoot] = useState<HTMLElement | null>(() => (
@@ -168,18 +168,65 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
                       <input
                         type="range"
                         min="14"
-                        max="20"
+                        max="22"
                         step="1"
                         value={preferences.fontSize}
                         onChange={(e) => updatePreference("fontSize", parseInt(e.target.value))}
                         className="flex-1 accent-bg-primary"
                       />
                       <button
-                        onClick={() => updatePreference("fontSize", Math.min(20, preferences.fontSize + 1))}
+                        onClick={() => updatePreference("fontSize", Math.min(22, preferences.fontSize + 1))}
                         className="motion-ui motion-interactive w-8 h-8 rounded-lg bg-surface-container-high text-on-surface-variant hover:bg-primary/10 hover:text-primary flex items-center justify-center"
                       >
                         A+
                       </button>
+                    </div>
+                  </div>
+
+                  {/* Line Height */}
+                  <div>
+                    <div className="mb-2 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <AlignLeft className="h-4 w-4 text-on-surface-variant" />
+                        <span className="text-sm font-medium text-on-surface">正文行距</span>
+                      </div>
+                      <span className="text-sm font-medium text-primary">{preferences.lineHeight.toFixed(2)}</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="1.5"
+                      max="2"
+                      step="0.05"
+                      value={preferences.lineHeight}
+                      onChange={(e) => updatePreference("lineHeight", parseFloat(e.target.value))}
+                      className="w-full accent-bg-primary"
+                    />
+                  </div>
+
+                  {/* Content Width */}
+                  <div>
+                    <div className="mb-2 flex items-center gap-2">
+                      <Columns3 className="h-4 w-4 text-on-surface-variant" />
+                      <span className="text-sm font-medium text-on-surface">正文宽度</span>
+                    </div>
+                    <div className="grid grid-cols-3 gap-2">
+                      {([
+                        { value: "narrow", label: "紧凑" },
+                        { value: "comfortable", label: "舒适" },
+                        { value: "wide", label: "宽松" },
+                      ] as { value: ContentWidth; label: string }[]).map((option) => (
+                        <button
+                          key={option.value}
+                          onClick={() => updatePreference("contentWidth", option.value)}
+                          className={`motion-ui motion-interactive rounded-lg px-3 py-2 text-sm font-medium ${
+                            preferences.contentWidth === option.value
+                              ? "bg-primary text-on-primary"
+                              : "bg-surface-container-high text-on-surface-variant hover:bg-surface-container-highest"
+                          }`}
+                        >
+                          {option.label}
+                        </button>
+                      ))}
                     </div>
                   </div>
 
@@ -189,9 +236,10 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
                       <ListTree className="w-4 h-4 text-on-surface-variant" />
                       <span className="text-sm font-medium text-on-surface">目录位置</span>
                     </div>
-                    <div className="grid grid-cols-2 gap-2">
+                    <div className="grid grid-cols-3 gap-2">
                       {([
-                        { value: "right", label: "显示" },
+                        { value: "left", label: "左侧" },
+                        { value: "right", label: "右侧" },
                         { value: "hidden", label: "隐藏" },
                       ] as { value: TOCPosition; label: string }[]).map((option) => (
                         <button
@@ -239,6 +287,15 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
                       </div>
                     </button>
                   </div>
+
+                  <button
+                    type="button"
+                    onClick={resetPreferences}
+                    className="motion-ui motion-interactive flex w-full items-center justify-center gap-2 rounded-xl border border-outline-variant/20 bg-surface-container-low px-4 py-3 text-sm font-medium text-on-surface-variant hover:border-primary/20 hover:bg-primary/5 hover:text-primary"
+                  >
+                    <RotateCcw className="h-4 w-4" />
+                    恢复阅读默认值
+                  </button>
                 </div>
               </section>
 
