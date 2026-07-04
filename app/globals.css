@@ -697,6 +697,16 @@ h1, h2, h3, h4, h5, h6 {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.56);
 }
 
+.english-passage-content {
+  line-height: 1.92;
+  font-weight: 400;
+  overflow-wrap: break-word;
+}
+
+.english-passage-content p {
+  margin-bottom: 1rem;
+}
+
 .markdown-compact {
   --markdown-h1-size: 24px;
   --markdown-h2-size: 20px;

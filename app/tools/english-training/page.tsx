@@ -1,5 +1,4 @@
-import { AdminGate } from "@/components/auth/AdminGate";
-import { EnglishTraining } from "@/components/tools/EnglishTraining";
+import { redirect } from "next/navigation";
 import { createNoIndexMetadata } from "@/lib/site-metadata";
 
 export const metadata = createNoIndexMetadata({
@@ -9,9 +8,5 @@ export const metadata = createNoIndexMetadata({
 });
 
 export default function EnglishTrainingPage() {
-  return (
-    <AdminGate>
-      <EnglishTraining />
-    </AdminGate>
-  );
+  redirect("/tools/past-papers");
 }

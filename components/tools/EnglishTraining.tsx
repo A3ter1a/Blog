@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
-  BarChart3,
   BookOpen,
   Check,
   ChevronRight,
@@ -41,6 +40,13 @@ import {
 type YearFilter = "all" | number;
 type SectionFilter = "all" | EnglishSection;
 type StatusFilter = "all" | "unstarted" | "in_progress" | "submitted";
+type EnglishTrainingStats = {
+  total: number;
+  submitted: number;
+  inProgress: number;
+  vocabulary: number;
+  accuracy: number;
+};
 
 const sectionOptions: Array<{ value: SectionFilter; label: string }> = [
   { value: "all", label: "全部题型" },
@@ -95,7 +101,42 @@ function formatScore(attempt?: EnglishAttempt): string {
   return `${attempt.score}/${attempt.maxScore}`;
 }
 
-export function EnglishTraining() {
+function shouldStartDisplayParagraph(current: string, next: string): boolean {
+  const currentText = current.trim();
+  const nextText = next.trim();
+  if (!currentText || !nextText) return false;
+  if (currentText.length < 240) return false;
+  return /[.!?]["')\]]?$/.test(currentText) && /^[A-Z0-9"“]/.test(nextText);
+}
+
+function normalizePassageContentForDisplay(content: string): string {
+  const blocks = content
+    .replace(/\r\n/g, "\n")
+    .split(/\n{2,}/)
+    .map((block) => block.replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+
+  if (blocks.length <= 1) return content.trim();
+
+  const paragraphs: string[] = [];
+  let current = "";
+  for (const block of blocks) {
+    if (!current) {
+      current = block;
+      continue;
+    }
+    if (shouldStartDisplayParagraph(current, block)) {
+      paragraphs.push(current);
+      current = block;
+      continue;
+    }
+    current = `${current} ${block}`;
+  }
+  if (current) paragraphs.push(current);
+  return paragraphs.join("\n\n");
+}
+
+export function EnglishTraining({ embedded = false }: { embedded?: boolean }) {
   const toast = useToast();
   const [data, setData] = useState<EnglishTrainingData>({
     papers: [],
@@ -206,23 +247,6 @@ export function EnglishTraining() {
     };
   }, [data.attempts, data.passages.length, data.vocabulary.length]);
 
-  const sectionStats = useMemo(() => {
-    return (Object.keys(englishSectionLabels) as EnglishSection[]).map((section) => {
-      const passages = data.passages.filter((passage) => passage.section === section);
-      const submitted = passages
-        .map((passage) => attemptsByPassageId.get(passage.id))
-        .filter((attempt): attempt is EnglishAttempt => attempt?.status === "submitted");
-      const score = submitted.reduce((sum, attempt) => sum + attempt.score, 0);
-      const maxScore = submitted.reduce((sum, attempt) => sum + attempt.maxScore, 0);
-      return {
-        section,
-        total: passages.length,
-        submitted: submitted.length,
-        accuracy: maxScore > 0 ? Math.round((score / maxScore) * 100) : 0,
-      };
-    });
-  }, [attemptsByPassageId, data.passages]);
-
   const handleSelectPassage = (passageId: string) => {
     setActivePassageId(passageId);
   };
@@ -300,6 +324,62 @@ export function EnglishTraining() {
     setQuery("");
   };
 
+  const workspace = (
+    <section className="min-w-0 space-y-4">
+      {embedded && <EnglishTrainingOverview stats={stats} />}
+      <PassagePickerPanel
+        query={query}
+        yearFilter={yearFilter}
+        sectionFilter={sectionFilter}
+        statusFilter={statusFilter}
+        passages={visiblePassages}
+        attemptsByPassageId={attemptsByPassageId}
+        vocabulary={data.vocabulary}
+        activePassageId={activePassage?.id ?? null}
+        loading={isLoading}
+        error={loadError}
+        onQueryChange={setQuery}
+        onYearChange={setYearFilter}
+        onSectionChange={setSectionFilter}
+        onStatusChange={setStatusFilter}
+        onReset={resetFilters}
+        onSelect={handleSelectPassage}
+      />
+      <TrainingPanel
+        passage={activePassage}
+        questions={activeQuestions}
+        attempt={activeAttempt}
+        answers={activeAnswers}
+        saving={saving}
+        loading={isLoading}
+        hasAnyPassage={data.passages.length > 0}
+        onAnswerChange={(questionId, answer) => {
+          if (!activePassage) return;
+          setDraftAnswersByPassageId((current) => ({
+            ...current,
+            [activePassage.id]: {
+              ...(current[activePassage.id] ?? buildAnswerMap(activeAttempt)),
+              [questionId]: answer,
+            },
+          }));
+        }}
+        onSave={() => handleSaveAttempt(false)}
+        onSubmit={() => handleSaveAttempt(true)}
+      />
+      <VocabularyPanel
+        passage={activePassage}
+        vocabulary={activeVocabulary}
+        form={vocabForm}
+        saving={vocabSaving}
+        onFormChange={setVocabForm}
+        onSave={handleAddVocabulary}
+        onUpdateMastery={handleUpdateMastery}
+      />
+    </section>
+  );
+
+  if (embedded) return workspace;
+
   return (
     <>
       <PageHeader
@@ -315,102 +395,93 @@ export function EnglishTraining() {
           { label: "生词", value: stats.vocabulary, tone: "text-amber-600" },
         ]}
       />
-
       <PageShell width="workspace" topPadding="content">
-        <section className="grid gap-4 lg:grid-cols-[22rem_minmax(0,1fr)] 2xl:grid-cols-[24rem_minmax(0,1fr)]">
-          <aside className="space-y-4 lg:sticky lg:top-24 lg:self-start">
-            <FilterPanel
-              query={query}
-              yearFilter={yearFilter}
-              sectionFilter={sectionFilter}
-              statusFilter={statusFilter}
-              onQueryChange={setQuery}
-              onYearChange={setYearFilter}
-              onSectionChange={setSectionFilter}
-              onStatusChange={setStatusFilter}
-              onReset={resetFilters}
-            />
-            <PassageList
-              passages={visiblePassages}
-              attemptsByPassageId={attemptsByPassageId}
-              vocabulary={data.vocabulary}
-              activePassageId={activePassage?.id ?? null}
-              loading={isLoading}
-              error={loadError}
-              onSelect={handleSelectPassage}
-            />
-            <StatsPanel stats={sectionStats} />
-          </aside>
-
-          <section className="min-w-0 space-y-4">
-            <TrainingPanel
-              passage={activePassage}
-              questions={activeQuestions}
-              attempt={activeAttempt}
-              answers={activeAnswers}
-              saving={saving}
-              loading={isLoading}
-              hasAnyPassage={data.passages.length > 0}
-              onAnswerChange={(questionId, answer) => {
-                if (!activePassage) return;
-                setDraftAnswersByPassageId((current) => ({
-                  ...current,
-                  [activePassage.id]: {
-                    ...(current[activePassage.id] ?? buildAnswerMap(activeAttempt)),
-                    [questionId]: answer,
-                  },
-                }));
-              }}
-              onSave={() => handleSaveAttempt(false)}
-              onSubmit={() => handleSaveAttempt(true)}
-            />
-            <VocabularyPanel
-              passage={activePassage}
-              vocabulary={activeVocabulary}
-              form={vocabForm}
-              saving={vocabSaving}
-              onFormChange={setVocabForm}
-              onSave={handleAddVocabulary}
-              onUpdateMastery={handleUpdateMastery}
-            />
-          </section>
-        </section>
+        {workspace}
       </PageShell>
     </>
   );
 }
 
-function FilterPanel({
+function EnglishTrainingOverview({ stats }: { stats: EnglishTrainingStats }) {
+  return (
+    <section className="surface-panel p-4 sm:p-5">
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(22rem,34rem)] lg:items-center">
+        <div className="min-w-0">
+          <div className="eyebrow-chip mb-3 px-3 py-1 text-xs">
+            <BookOpen className="h-4 w-4" />
+            英语一
+          </div>
+          <h2 className="font-headline text-2xl font-bold text-on-surface">英语真题训练</h2>
+          <p className="mt-2 text-sm leading-6 text-on-surface-variant">2007-2026 真题阅读、完形、新题型、翻译与写作。</p>
+        </div>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <MiniStat label="篇章" value={stats.total} />
+          <MiniStat label="已提交" value={stats.submitted} tone="text-green-600" />
+          <MiniStat label="正确率" value={`${stats.accuracy}%`} />
+          <MiniStat label="生词" value={stats.vocabulary} tone="text-amber-600" />
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function MiniStat({ label, value, tone = "text-primary" }: { label: string; value: ReactNode; tone?: string }) {
+  return (
+    <div className="rounded-lg bg-surface-container-low px-3 py-2 text-center">
+      <div className={`text-base font-bold ${tone}`}>{value}</div>
+      <div className="mt-0.5 text-[11px] text-on-surface-variant">{label}</div>
+    </div>
+  );
+}
+
+function PassagePickerPanel({
   query,
   yearFilter,
   sectionFilter,
   statusFilter,
+  passages,
+  attemptsByPassageId,
+  vocabulary,
+  activePassageId,
+  loading,
+  error,
   onQueryChange,
   onYearChange,
   onSectionChange,
   onStatusChange,
   onReset,
+  onSelect,
 }: {
   query: string;
   yearFilter: YearFilter;
   sectionFilter: SectionFilter;
   statusFilter: StatusFilter;
+  passages: EnglishPassage[];
+  attemptsByPassageId: Map<string, EnglishAttempt>;
+  vocabulary: EnglishVocabularyEntry[];
+  activePassageId: string | null;
+  loading: boolean;
+  error: string | null;
   onQueryChange: (value: string) => void;
   onYearChange: (value: YearFilter) => void;
   onSectionChange: (value: SectionFilter) => void;
   onStatusChange: (value: StatusFilter) => void;
   onReset: () => void;
+  onSelect: (passageId: string) => void;
 }) {
   return (
-    <section className="surface-panel p-4">
-      <div className="mb-3 flex items-center justify-between gap-3">
-        <h2 className="text-sm font-semibold text-on-surface">筛选</h2>
+    <section className="surface-panel p-4 sm:p-5">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="text-sm font-semibold text-on-surface">选择篇章</h2>
+          <p className="mt-1 text-xs text-on-surface-variant">{passages.length} 个匹配结果</p>
+        </div>
         <button type="button" onClick={onReset} className="control-button h-9 px-2 text-xs" title="恢复默认">
           <RotateCcw className="h-3.5 w-3.5" />
         </button>
       </div>
-      <div className="space-y-3">
-        <div className="relative">
+      <div className="grid gap-3 lg:grid-cols-[minmax(12rem,1fr)_9rem_10rem_9rem]">
+        <div className="relative lg:min-w-[16rem]">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-on-surface-variant/50" />
           <input
             value={query}
@@ -453,40 +524,20 @@ function FilterPanel({
           {statusOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
         </select>
       </div>
-    </section>
-  );
-}
 
-function PassageList({
-  passages,
-  attemptsByPassageId,
-  vocabulary,
-  activePassageId,
-  loading,
-  error,
-  onSelect,
-}: {
-  passages: EnglishPassage[];
-  attemptsByPassageId: Map<string, EnglishAttempt>;
-  vocabulary: EnglishVocabularyEntry[];
-  activePassageId: string | null;
-  loading: boolean;
-  error: string | null;
-  onSelect: (passageId: string) => void;
-}) {
-  return (
-    <section className="surface-panel p-4">
-      <div className="mb-3 flex items-center justify-between gap-3">
-        <h2 className="text-sm font-semibold text-on-surface">真题篇章</h2>
-        <span className="tag-chip px-2 py-0.5 text-xs">{passages.length} 篇</span>
-      </div>
-      <div className="max-h-[38rem] space-y-2 overflow-y-auto pr-1">
+      <div className="mt-4 grid max-h-72 gap-2 overflow-y-auto pr-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
         {loading ? (
-          <InlineState icon={<Loader2 className="h-4 w-4 animate-spin text-primary" />} text="加载英语真题..." />
+          <div className="sm:col-span-2 xl:col-span-3 2xl:col-span-4">
+            <InlineState icon={<Loader2 className="h-4 w-4 animate-spin text-primary" />} text="加载英语真题..." />
+          </div>
         ) : error ? (
-          <InlineState text={error} tone="text-red-600" />
+          <div className="sm:col-span-2 xl:col-span-3 2xl:col-span-4">
+            <InlineState text={error} tone="text-red-600" />
+          </div>
         ) : passages.length === 0 ? (
-          <InlineState text="当前还没有可训练的英语真题篇章。" />
+          <div className="sm:col-span-2 xl:col-span-3 2xl:col-span-4">
+            <InlineState text="当前还没有可训练的英语真题篇章。" />
+          </div>
         ) : passages.map((passage) => {
           const attempt = attemptsByPassageId.get(passage.id);
           const accuracy = getAccuracy(attempt);
@@ -496,7 +547,7 @@ function PassageList({
               key={passage.id}
               type="button"
               onClick={() => onSelect(passage.id)}
-              className={`w-full rounded-md border px-3 py-3 text-left transition-all ${
+              className={`flex min-h-[5.5rem] w-full rounded-md border px-3 py-3 text-left transition-all ${
                 active
                   ? "border-primary/40 bg-primary/[0.07] ring-1 ring-primary/15"
                   : "border-outline-variant/20 bg-surface-container-low/70 hover:border-primary/25 hover:bg-surface-container-lowest"
@@ -593,10 +644,13 @@ function TrainingPanel({
         </div>
       </div>
 
-      <div className="grid gap-0 xl:grid-cols-[minmax(0,1fr)_minmax(22rem,30rem)]">
-        <article className="min-h-[36rem] border-b border-outline-variant/15 bg-surface-container-lowest p-5 xl:border-b-0 xl:border-r sm:p-6">
+      <div className="grid gap-0 2xl:grid-cols-[minmax(0,1fr)_minmax(21rem,27rem)]">
+        <article className="min-h-[36rem] border-b border-outline-variant/15 bg-surface-container-lowest px-5 py-6 2xl:border-b-0 2xl:border-r sm:px-6 lg:px-8">
           {passage.content ? (
-            <MarkdownContent content={passage.content} className="text-[15px] leading-8 text-on-surface sm:text-base" />
+            <MarkdownContent
+              content={normalizePassageContentForDisplay(passage.content)}
+              className="english-passage-content mx-auto max-w-[52rem] text-[15px] text-on-surface sm:text-base"
+            />
           ) : (
             <div className="flex min-h-[28rem] items-center justify-center rounded-lg border border-dashed border-outline-variant/30 text-sm text-on-surface-variant">
               这篇真题原文还未导入。
@@ -793,33 +847,6 @@ function VocabularyPanel({
             >
               {masteryOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
             </select>
-          </div>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-function StatsPanel({ stats }: { stats: Array<{ section: EnglishSection; total: number; submitted: number; accuracy: number }> }) {
-  return (
-    <section className="surface-panel p-4">
-      <div className="mb-3 flex items-center gap-2">
-        <BarChart3 className="h-4 w-4 text-primary" />
-        <h2 className="text-sm font-semibold text-on-surface">统计</h2>
-      </div>
-      <div className="space-y-2">
-        {stats.map((item) => (
-          <div key={item.section} className="rounded-lg bg-surface-container-low px-3 py-2">
-            <div className="flex items-center justify-between gap-3 text-sm">
-              <span className="font-medium text-on-surface">{englishSectionLabels[item.section]}</span>
-              <span className="text-primary">{item.accuracy}%</span>
-            </div>
-            <div className="mt-1 text-xs text-on-surface-variant">
-              已提交 {item.submitted}/{item.total}
-            </div>
-            <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-surface-container-high">
-              <div className="h-full rounded-full bg-primary" style={{ width: `${item.accuracy}%` }} />
-            </div>
           </div>
         ))}
       </div>

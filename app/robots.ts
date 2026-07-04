@@ -13,6 +13,7 @@ export default function robots(): MetadataRoute.Robots {
         "/login",
         "/settings",
         "/tools/english-training",
+        "/tools/past-papers",
         "/tools/math3-self-test",
         "/tools/note-qa",
         "/tools/problem-booklet",

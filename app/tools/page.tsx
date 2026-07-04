@@ -13,9 +13,9 @@ import { createPageMetadata } from "@/lib/site-metadata";
 
 export const metadata = createPageMetadata({
   title: "工具",
-  description: "进入 Asteroid 的学习工具台，管理笔记问答、错题复盘、数学三自测、PDF 做题本和知识目录。",
+  description: "进入 Asteroid 的学习工具台，管理笔记问答、真题中心、错题复盘、数学三自测、PDF 做题本和知识目录。",
   path: "/tools",
-  keywords: ["学习工具", "错题复盘", "数学三自测", "PDF 做题本"],
+  keywords: ["学习工具", "真题中心", "错题复盘", "数学三自测", "PDF 做题本"],
 });
 
 const primaryTools = [
@@ -29,13 +29,13 @@ const primaryTools = [
     metric: "检索",
   },
   {
-    id: "english-training",
-    title: "英语真题训练",
-    description: "按年份、题型和篇章训练英语一真题，记录客观题进度和生词。",
-    href: "/tools/english-training",
+    id: "past-papers",
+    title: "真题中心",
+    description: "集中进入英语真题训练、数学真题训练和真题训练结果。",
+    href: "/tools/past-papers",
     icon: GraduationCap,
     tone: "border-teal-500/20 bg-teal-500/10 text-teal-700",
-    metric: "真题",
+    metric: "训练",
   },
   {
     id: "review-center",
