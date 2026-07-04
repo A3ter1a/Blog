@@ -719,6 +719,10 @@ h1, h2, h3, h4, h5, h6 {
   overflow: hidden;
 }
 
+.english-practice-page {
+  padding-top: 5.25rem;
+}
+
 .english-practice-toolbar {
   display: flex;
   flex-direction: column;
@@ -730,7 +734,7 @@ h1, h2, h3, h4, h5, h6 {
 
 .english-practice-grid {
   display: grid;
-  min-height: calc(100vh - 15rem);
+  min-height: calc(100vh - 11.5rem);
   background: var(--color-surface-container-low);
 }
 
@@ -742,7 +746,7 @@ h1, h2, h3, h4, h5, h6 {
 
 .english-question-pane {
   min-height: 34rem;
-  max-height: calc(100vh - 15rem);
+  max-height: calc(100vh - 11.5rem);
   overflow-y: auto;
   border-top: 1px solid color-mix(in srgb, var(--color-outline-variant) 34%, transparent);
   background: var(--color-surface-container-low);

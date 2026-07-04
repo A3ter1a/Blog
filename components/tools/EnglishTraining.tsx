@@ -510,20 +510,26 @@ export function EnglishTraining() {
 
   return (
     <>
-      <PageHeader
+      {stage !== "practice" && (
+        <PageHeader
+          width="workspace"
+          eyebrow="英语一"
+          icon={<BookOpen className="h-4 w-4" />}
+          title="英语真题训练"
+          description="按阅读、三小门和写作整理 2007-2026 英语一真题。"
+          stats={[
+            { label: "题组", value: stats.total },
+            { label: "已提交", value: stats.submitted, tone: "text-green-600" },
+            { label: "进行中", value: stats.inProgress },
+            { label: "正确率", value: `${stats.accuracy}%` },
+          ]}
+        />
+      )}
+      <PageShell
         width="workspace"
-        eyebrow="英语一"
-        icon={<BookOpen className="h-4 w-4" />}
-        title="英语真题训练"
-        description="按阅读、三小门和写作整理 2007-2026 英语一真题。"
-        stats={[
-          { label: "题组", value: stats.total },
-          { label: "已提交", value: stats.submitted, tone: "text-green-600" },
-          { label: "进行中", value: stats.inProgress },
-          { label: "正确率", value: `${stats.accuracy}%` },
-        ]}
-      />
-      <PageShell width="workspace" topPadding="content">
+        topPadding={stage === "practice" ? "none" : "content"}
+        className={stage === "practice" ? "english-practice-page" : ""}
+      >
         {workspace}
       </PageShell>
     </>
