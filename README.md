@@ -41,7 +41,7 @@ Asteroid 的核心目标是把备考期间分散的学习材料变成一个可�
 
 ### AI 辅助
 
-- OCR 上传识别、笔记分析、文本润色、Note QA 和数学三相关生成接口。
+- OCR 上传识别、笔记分析、文本润色、资料检索和数学三相关生成接口。
 - DeepSeek / Qwen Vision 等配置优先走服务端环境变量。
 - AI 输出统一经过 JSON 解析和错误兜底，降低模型返回格式漂移带来的前端风险。
 
@@ -53,8 +53,11 @@ Asteroid 的核心目标是把备考期间分散的学习材料变成一个可�
 | `/notes` | 笔记列表，支持类型、标签、搜索和卡片浏览 |
 | `/notes/[id]` | 笔记 / 题集详情页，包含正文、目录、题目与阅读偏好 |
 | `/create` | 管理员创建与编辑入口 |
-| `/tools` | 学习工具入口 |
-| `/tools/note-qa` | 基于已发布内容的笔记问答 |
+| `/tools` | 学习工具入口，集中进入真题中心、数学训练和资料检索 |
+| `/tools/past-papers` | 真题中心 |
+| `/tools/math-training` | 数学训练中心 |
+| `/tools/resource-search` | 基于已发布内容的资料检索 |
+| `/tools/note-qa` | 资料检索旧入口，重定向到 `/tools/resource-search` |
 | `/tools/review` | 错题复盘中心 |
 | `/tools/math3-self-test` | 数学三自测 |
 | `/tools/math3-catalog` | 数学三知识目录 |

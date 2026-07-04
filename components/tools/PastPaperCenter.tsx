@@ -6,7 +6,6 @@ import {
   BarChart3,
   BookOpenCheck,
   Calculator,
-  ClipboardCheck,
   type LucideIcon,
 } from "lucide-react";
 import { PageHeader, PageShell } from "@/components/ui/PageScaffold";
@@ -51,10 +50,13 @@ export function PastPaperCenter() {
     <>
       <PageHeader
         width="workspace"
-        eyebrow="训练"
-        icon={<ClipboardCheck className="h-4 w-4" />}
         title="真题中心"
         description="集中管理英语、数学真题训练和训练结果。"
+        actions={(
+          <Link href="/tools" className="control-button h-10 px-3 text-sm">
+            返回工具
+          </Link>
+        )}
       />
 
       <PageShell width="workspace" topPadding="content">

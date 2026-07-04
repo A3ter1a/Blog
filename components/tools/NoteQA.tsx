@@ -215,7 +215,7 @@ export function NoteQA() {
       const data: NoteQAResponse = await res.json().catch(() => ({}));
 
       if (!res.ok || !data.success) {
-        throw new Error(getErrorMessage(data, "笔记问答失败"));
+        throw new Error(getErrorMessage(data, "资料检索失败"));
       }
 
       setAnswer(data.answer ?? "");
@@ -223,7 +223,7 @@ export function NoteQA() {
       setTotalChunks(data.totalChunks ?? 0);
       persistRecent(trimmedQuestion);
     } catch (requestError) {
-      const message = requestError instanceof Error ? requestError.message : "笔记问答失败";
+      const message = requestError instanceof Error ? requestError.message : "资料检索失败";
       setError(message);
       toast.error(message);
     } finally {
@@ -233,7 +233,11 @@ export function NoteQA() {
 
   return (
     <>
-      <PageHeader width="compact" title="笔记问答" />
+      <PageHeader
+        width="compact"
+        title="资料检索"
+        description="在已发布笔记和题集中定位内容。"
+      />
 
       <PageShell width="wide" topPadding="content">
         <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_20rem]">

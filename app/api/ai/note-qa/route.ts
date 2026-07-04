@@ -107,7 +107,7 @@ ${context}`;
       success: true,
     });
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : "笔记问答失败";
+    const message = error instanceof Error ? error.message : "资料检索失败";
     console.error("[NoteQA] Error:", message);
     return NextResponse.json({ error: message, success: false }, { status: 500 });
   }
