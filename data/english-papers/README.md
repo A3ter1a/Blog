@@ -13,10 +13,12 @@ npm.cmd run import:english-papers -- --input data/english-papers/english1-2007-2
 完整 JSON 会被 `.gitignore` 忽略，不要提交真题正文。
 
 ```bash
-python scripts/extract-english-papers-from-pdfs.py --source "C:\Users\phoen\Downloads\Compressed" --output data/english-papers/english1-2007-2026.json --embed-writing-page-images
+python scripts/extract-english-papers-from-pdfs.py --source "C:\Users\phoen\Downloads\Compressed" --output data/english-papers/english1-2007-2026.json
 ```
 
 PDF 中文参考译文的文本层有字体编码问题，脚本不会把乱码作为标准答案导入。翻译和写作不需要标准答案，`standardAnswer` 留空，后续统一走 AI 评分；客观题答案从答案页导入。
+
+不建议把作文页图片用 base64 直接写入数据库。若后续需要保留图表原图，优先上传到 Supabase Storage 后在题组里保存图片 URL。
 
 ## 直接写入 Supabase
 
