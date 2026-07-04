@@ -723,14 +723,14 @@ function PracticeWorkspace({
   return (
     <section className="english-practice-shell">
       <div className="english-practice-toolbar">
-        <div className="min-w-0">
+        <div className="english-practice-titlebar">
           <button type="button" onClick={onBack} className="control-button h-9 px-3 text-sm">
             <ArrowLeft className="h-4 w-4" />
             返回题组
           </button>
-          <h2 className="mt-3 text-xl font-bold leading-tight text-on-surface">{getPassageDisplayTitle(passage)}</h2>
+          <h2 className="english-practice-title">{getPassageDisplayTitle(passage)}</h2>
           {submitted && (
-            <p className="mt-1 text-sm text-on-surface-variant">
+            <p className="english-practice-score">
               得分 {attempt?.score ?? 0}/{attempt?.maxScore ?? 0}
             </p>
           )}
