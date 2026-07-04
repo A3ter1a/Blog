@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   ArrowLeft,
@@ -517,6 +518,12 @@ export function EnglishTraining() {
           icon={<BookOpen className="h-4 w-4" />}
           title="英语真题训练"
           description="按阅读、三小门和写作整理 2007-2026 英语一真题。"
+          actions={(
+            <Link href="/tools/past-papers" className="control-button h-10 px-3 text-sm">
+              <ArrowLeft className="h-4 w-4" />
+              返回真题中心
+            </Link>
+          )}
           stats={[
             { label: "题组", value: stats.total },
             { label: "已提交", value: stats.submitted, tone: "text-green-600" },
