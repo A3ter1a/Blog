@@ -37,9 +37,10 @@ let failed = 0;
 const schemaSql = readRequired("supabase/migrations/0001_base_schema.sql");
 const rlsSql = readRequired("supabase/migrations/0002_rls_policies.sql");
 const practiceMarkedSql = readRequired("supabase/migrations/0003_problem_practice_marked.sql");
+const englishTrainingSql = readRequired("supabase/migrations/0004_english_training.sql");
 const verificationSql = readRequired("supabase/verification.sql");
 const legacySql = readRequired("supabase-init.sql");
-const combinedSql = `${schemaSql}\n${rlsSql}\n${practiceMarkedSql}\n${legacySql}`;
+const combinedSql = `${schemaSql}\n${rlsSql}\n${practiceMarkedSql}\n${englishTrainingSql}\n${legacySql}`;
 const docsSqlExamples = [
   readRequired("README.md"),
   readRequired("supabase/README.md"),
@@ -55,18 +56,24 @@ const requiredTables = [
   "admin_users",
   "problem_practice_statuses",
   "math3_self_tests",
+  "english_papers",
+  "english_passages",
+  "english_questions",
+  "english_attempts",
+  "english_attempt_answers",
+  "english_vocabulary",
 ];
 
 for (const table of requiredTables) {
   check(
     `${table} 表在基础迁移中有定义`,
-    new RegExp(`create\\s+table\\s+if\\s+not\\s+exists\\s+public\\.${table}\\b`, "i").test(schemaSql),
+    new RegExp(`create\\s+table\\s+if\\s+not\\s+exists\\s+public\\.${table}\\b`, "i").test(combinedSql),
     `代码会访问 ${table}，缺少表定义会导致线上功能运行时失败。`,
   );
 
   check(
     `${table} 已启用 RLS`,
-    new RegExp(`alter\\s+table\\s+public\\.${table}\\s+enable\\s+row\\s+level\\s+security`, "i").test(rlsSql),
+    new RegExp(`alter\\s+table\\s+public\\.${table}\\s+enable\\s+row\\s+level\\s+security`, "i").test(combinedSql),
     `没有启用 RLS 时，策略不会成为数据库最后一道安全门。`,
   );
 }
@@ -96,6 +103,30 @@ const requiredPolicyMarkers = [
   "math3_self_tests_owner_insert",
   "math3_self_tests_owner_update",
   "math3_self_tests_owner_delete",
+  "english_papers_admin_select",
+  "english_papers_admin_insert",
+  "english_papers_admin_update",
+  "english_papers_admin_delete",
+  "english_passages_admin_select",
+  "english_passages_admin_insert",
+  "english_passages_admin_update",
+  "english_passages_admin_delete",
+  "english_questions_admin_select",
+  "english_questions_admin_insert",
+  "english_questions_admin_update",
+  "english_questions_admin_delete",
+  "english_attempts_owner_select",
+  "english_attempts_owner_insert",
+  "english_attempts_owner_update",
+  "english_attempts_owner_delete",
+  "english_attempt_answers_owner_select",
+  "english_attempt_answers_owner_insert",
+  "english_attempt_answers_owner_update",
+  "english_attempt_answers_owner_delete",
+  "english_vocabulary_owner_select",
+  "english_vocabulary_owner_insert",
+  "english_vocabulary_owner_update",
+  "english_vocabulary_owner_delete",
   "note_images_admin_select",
   "note_images_admin_insert",
   "note_images_admin_update",
@@ -105,7 +136,7 @@ const requiredPolicyMarkers = [
 for (const marker of requiredPolicyMarkers) {
   check(
     `策略 ${marker} 存在`,
-    rlsSql.includes(marker),
+    combinedSql.includes(marker),
     `策略缺失时，对应读写路径可能没有明确的数据库权限边界。`,
   );
 }
@@ -132,6 +163,12 @@ check(
   "problem_practice_statuses 已标记筛选有索引",
   practiceMarkedSql.includes("idx_problem_practice_statuses_user_marked_updated_at"),
   "已标记题目变多后，缺少索引会拖慢三刷收集列表。",
+);
+
+check(
+  "英语真题训练迁移不包含删除或旧数据覆盖语句",
+  !/\b(drop|truncate)\b|delete\s+from|update\s+notes|alter\s+table\s+public\.notes|notes\.problems/i.test(englishTrainingSql),
+  "英语真题训练是新增模块，迁移不得删除对象、覆盖旧文章或改写旧 problems 数据。",
 );
 
 check(
@@ -174,6 +211,22 @@ check(
   "迁移后核验 SQL 检查三刷标记字段",
   verificationSql.includes("'problem_practice_statuses', 'is_marked'"),
   "如果核验脚本不检查 is_marked，可能漏掉数据库还没执行第三个迁移的问题。",
+);
+
+check(
+  "迁移后核验 SQL 检查英语真题训练表",
+  verificationSql.includes("'public', 'english_papers'")
+    && verificationSql.includes("'public', 'english_attempts'")
+    && verificationSql.includes("'public', 'english_vocabulary'"),
+  "如果核验脚本不检查英语训练表，可能漏掉生产库还没执行第四个迁移的问题。",
+);
+
+check(
+  "迁移后核验 SQL 检查英语真题训练策略",
+  verificationSql.includes("english_papers_admin_select")
+    && verificationSql.includes("english_attempts_owner_select")
+    && verificationSql.includes("english_vocabulary_owner_insert"),
+  "如果核验脚本不检查英语训练 RLS 策略，可能漏掉训练记录权限边界缺失。",
 );
 
 check(

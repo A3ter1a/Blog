@@ -5,6 +5,7 @@ import {
   ChevronRight,
   ClipboardCheck,
   FileDown,
+  GraduationCap,
   RotateCcw,
 } from "lucide-react";
 import { PageHeader, PageShell } from "@/components/ui/PageScaffold";
@@ -26,6 +27,15 @@ const primaryTools = [
     icon: Bot,
     tone: "border-sky-500/20 bg-sky-500/10 text-sky-700",
     metric: "检索",
+  },
+  {
+    id: "english-training",
+    title: "英语真题训练",
+    description: "按年份、题型和篇章训练英语一真题，记录客观题进度和生词。",
+    href: "/tools/english-training",
+    icon: GraduationCap,
+    tone: "border-teal-500/20 bg-teal-500/10 text-teal-700",
+    metric: "真题",
   },
   {
     id: "review-center",

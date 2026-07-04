@@ -12,6 +12,7 @@ export default function robots(): MetadataRoute.Robots {
         "/debug",
         "/login",
         "/settings",
+        "/tools/english-training",
         "/tools/math3-self-test",
         "/tools/note-qa",
         "/tools/problem-booklet",

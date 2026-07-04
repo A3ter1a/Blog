@@ -1,4 +1,13 @@
 import type {
+  EnglishAttemptStatus,
+  EnglishPaperType,
+  EnglishPassageNo,
+  EnglishQuestionOption,
+  EnglishSection,
+  EnglishVocabularyMasteryStatus,
+  EnglishVocabularyPartOfSpeech,
+} from "./english-training";
+import type {
   Math3SelfTestAttempt,
   Math3SelfTestDifficulty,
   Math3SelfTestMode,
@@ -90,6 +99,99 @@ export type Math3SelfTestRow = {
 export type Math3SelfTestInsert = Partial<Math3SelfTestRow>;
 export type Math3SelfTestUpdate = Partial<Math3SelfTestRow>;
 
+export type EnglishPaperRow = {
+  id?: string;
+  year?: number | null;
+  paper_type?: EnglishPaperType | null;
+  title?: string | null;
+  total_score?: number | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+};
+
+export type EnglishPaperInsert = Partial<EnglishPaperRow>;
+export type EnglishPaperUpdate = Partial<EnglishPaperRow>;
+
+export type EnglishPassageRow = {
+  id?: string;
+  paper_id?: string | null;
+  year?: number | null;
+  section?: EnglishSection | null;
+  passage_no?: EnglishPassageNo | null;
+  title?: string | null;
+  content?: string | null;
+  total_score?: number | null;
+  sort_order?: number | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+};
+
+export type EnglishPassageInsert = Partial<EnglishPassageRow>;
+export type EnglishPassageUpdate = Partial<EnglishPassageRow>;
+
+export type EnglishQuestionRow = {
+  id?: string;
+  passage_id?: string | null;
+  question_no?: string | null;
+  stem?: string | null;
+  options?: EnglishQuestionOption[] | null;
+  standard_answer?: string | null;
+  score?: number | null;
+  sort_order?: number | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+};
+
+export type EnglishQuestionInsert = Partial<EnglishQuestionRow>;
+export type EnglishQuestionUpdate = Partial<EnglishQuestionRow>;
+
+export type EnglishAttemptRow = {
+  id?: string;
+  user_id?: string | null;
+  passage_id?: string | null;
+  status?: EnglishAttemptStatus | null;
+  score?: number | null;
+  max_score?: number | null;
+  started_at?: string | null;
+  submitted_at?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+};
+
+export type EnglishAttemptInsert = Partial<EnglishAttemptRow>;
+export type EnglishAttemptUpdate = Partial<EnglishAttemptRow>;
+
+export type EnglishAttemptAnswerRow = {
+  id?: string;
+  attempt_id?: string | null;
+  question_id?: string | null;
+  answer?: string | null;
+  is_correct?: boolean | null;
+  score?: number | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+};
+
+export type EnglishAttemptAnswerInsert = Partial<EnglishAttemptAnswerRow>;
+export type EnglishAttemptAnswerUpdate = Partial<EnglishAttemptAnswerRow>;
+
+export type EnglishVocabularyRow = {
+  id?: string;
+  user_id?: string | null;
+  passage_id?: string | null;
+  word?: string | null;
+  part_of_speech?: EnglishVocabularyPartOfSpeech | null;
+  definition?: string | null;
+  example_sentence?: string | null;
+  mastery_status?: EnglishVocabularyMasteryStatus | null;
+  note?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+};
+
+export type EnglishVocabularyInsert = Partial<EnglishVocabularyRow>;
+export type EnglishVocabularyUpdate = Partial<EnglishVocabularyRow>;
+
 export type Database = {
   public: {
     Tables: {
@@ -121,6 +223,42 @@ export type Database = {
         Row: Math3SelfTestRow;
         Insert: Math3SelfTestInsert;
         Update: Math3SelfTestUpdate;
+        Relationships: [];
+      };
+      english_papers: {
+        Row: EnglishPaperRow;
+        Insert: EnglishPaperInsert;
+        Update: EnglishPaperUpdate;
+        Relationships: [];
+      };
+      english_passages: {
+        Row: EnglishPassageRow;
+        Insert: EnglishPassageInsert;
+        Update: EnglishPassageUpdate;
+        Relationships: [];
+      };
+      english_questions: {
+        Row: EnglishQuestionRow;
+        Insert: EnglishQuestionInsert;
+        Update: EnglishQuestionUpdate;
+        Relationships: [];
+      };
+      english_attempts: {
+        Row: EnglishAttemptRow;
+        Insert: EnglishAttemptInsert;
+        Update: EnglishAttemptUpdate;
+        Relationships: [];
+      };
+      english_attempt_answers: {
+        Row: EnglishAttemptAnswerRow;
+        Insert: EnglishAttemptAnswerInsert;
+        Update: EnglishAttemptAnswerUpdate;
+        Relationships: [];
+      };
+      english_vocabulary: {
+        Row: EnglishVocabularyRow;
+        Insert: EnglishVocabularyInsert;
+        Update: EnglishVocabularyUpdate;
         Relationships: [];
       };
     };

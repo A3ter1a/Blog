@@ -8,7 +8,13 @@ with expected_tables(schema_name, table_name) as (
     ('public', 'site_profile'),
     ('public', 'admin_users'),
     ('public', 'problem_practice_statuses'),
-    ('public', 'math3_self_tests')
+    ('public', 'math3_self_tests'),
+    ('public', 'english_papers'),
+    ('public', 'english_passages'),
+    ('public', 'english_questions'),
+    ('public', 'english_attempts'),
+    ('public', 'english_attempt_answers'),
+    ('public', 'english_vocabulary')
 ),
 table_checks as (
   select
@@ -24,7 +30,13 @@ table_checks as (
 ),
 expected_columns(schema_name, table_name, column_name) as (
   values
-    ('public', 'problem_practice_statuses', 'is_marked')
+    ('public', 'problem_practice_statuses', 'is_marked'),
+    ('public', 'english_papers', 'year'),
+    ('public', 'english_passages', 'content'),
+    ('public', 'english_questions', 'standard_answer'),
+    ('public', 'english_attempts', 'user_id'),
+    ('public', 'english_attempt_answers', 'is_correct'),
+    ('public', 'english_vocabulary', 'part_of_speech')
 ),
 column_checks as (
   select
@@ -74,6 +86,30 @@ expected_policies(schema_name, table_name, policy_name) as (
     ('public', 'math3_self_tests', 'math3_self_tests_owner_insert'),
     ('public', 'math3_self_tests', 'math3_self_tests_owner_update'),
     ('public', 'math3_self_tests', 'math3_self_tests_owner_delete'),
+    ('public', 'english_papers', 'english_papers_admin_select'),
+    ('public', 'english_papers', 'english_papers_admin_insert'),
+    ('public', 'english_papers', 'english_papers_admin_update'),
+    ('public', 'english_papers', 'english_papers_admin_delete'),
+    ('public', 'english_passages', 'english_passages_admin_select'),
+    ('public', 'english_passages', 'english_passages_admin_insert'),
+    ('public', 'english_passages', 'english_passages_admin_update'),
+    ('public', 'english_passages', 'english_passages_admin_delete'),
+    ('public', 'english_questions', 'english_questions_admin_select'),
+    ('public', 'english_questions', 'english_questions_admin_insert'),
+    ('public', 'english_questions', 'english_questions_admin_update'),
+    ('public', 'english_questions', 'english_questions_admin_delete'),
+    ('public', 'english_attempts', 'english_attempts_owner_select'),
+    ('public', 'english_attempts', 'english_attempts_owner_insert'),
+    ('public', 'english_attempts', 'english_attempts_owner_update'),
+    ('public', 'english_attempts', 'english_attempts_owner_delete'),
+    ('public', 'english_attempt_answers', 'english_attempt_answers_owner_select'),
+    ('public', 'english_attempt_answers', 'english_attempt_answers_owner_insert'),
+    ('public', 'english_attempt_answers', 'english_attempt_answers_owner_update'),
+    ('public', 'english_attempt_answers', 'english_attempt_answers_owner_delete'),
+    ('public', 'english_vocabulary', 'english_vocabulary_owner_select'),
+    ('public', 'english_vocabulary', 'english_vocabulary_owner_insert'),
+    ('public', 'english_vocabulary', 'english_vocabulary_owner_update'),
+    ('public', 'english_vocabulary', 'english_vocabulary_owner_delete'),
     ('storage', 'objects', 'note_images_admin_select'),
     ('storage', 'objects', 'note_images_admin_insert'),
     ('storage', 'objects', 'note_images_admin_update'),
