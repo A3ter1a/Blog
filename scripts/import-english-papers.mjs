@@ -499,7 +499,14 @@ function printSummary(summary, warnings) {
 }
 
 function sqlString(value) {
-  return `'${String(value ?? "").replace(/'/g, "''")}'`;
+  const text = String(value ?? "");
+  let tag = "ASTEROID_ENGLISH";
+  let suffix = 0;
+  while (text.includes(`$${tag}$`)) {
+    suffix += 1;
+    tag = `ASTEROID_ENGLISH_${suffix}`;
+  }
+  return `$${tag}$${text}$${tag}$`;
 }
 
 function sqlNumber(value) {
