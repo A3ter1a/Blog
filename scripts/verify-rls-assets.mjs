@@ -39,6 +39,7 @@ const rlsSql = readRequired("supabase/migrations/0002_rls_policies.sql");
 const practiceMarkedSql = readRequired("supabase/migrations/0003_problem_practice_marked.sql");
 const englishTrainingSql = readRequired("supabase/migrations/0004_english_training.sql");
 const verificationSql = readRequired("supabase/verification.sql");
+const englishImportScript = readRequired("scripts/import-english-papers.mjs");
 const legacySql = readRequired("supabase-init.sql");
 const combinedSql = `${schemaSql}\n${rlsSql}\n${practiceMarkedSql}\n${englishTrainingSql}\n${legacySql}`;
 const docsSqlExamples = [
@@ -169,6 +170,18 @@ check(
   "英语真题训练迁移不包含删除或旧数据覆盖语句",
   !/\b(drop|truncate)\b|delete\s+from|update\s+notes|alter\s+table\s+public\.notes|notes\.problems/i.test(englishTrainingSql),
   "英语真题训练是新增模块，迁移不得删除对象、覆盖旧文章或改写旧 problems 数据。",
+);
+
+check(
+  "英语真题导入脚本只写 english 内容表",
+  !/\.from\(\s*["'](?:notes|problem_practice_statuses|math3_self_tests|english_attempts|english_attempt_answers|english_vocabulary)["']\s*\)|notesApi\./.test(englishImportScript),
+  "真题正文导入只能写 english_papers、english_passages、english_questions，不能污染旧题集、作答记录或生词表。",
+);
+
+check(
+  "英语真题正式导入需要目标与年份确认",
+  englishImportScript.includes("--target") && englishImportScript.includes("--confirm-year-range"),
+  "使用 service role 写入时必须显式确认目标环境和年份范围，避免误写生产库。",
 );
 
 check(

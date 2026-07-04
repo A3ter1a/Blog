@@ -46,6 +46,11 @@ replay_pid*.log
 # Windows artifacts
 nul
 
+# local past-paper imports
+/data/english-papers/*.json
+!/data/english-papers/english1-sample.json
+/data/english-papers/*.sql
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts

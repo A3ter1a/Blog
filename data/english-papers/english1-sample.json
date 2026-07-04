@@ -1,0 +1,87 @@
+{
+  "papers": [
+    {
+      "year": 2026,
+      "paperType": "english1",
+      "title": "2026 年考研英语一真题",
+      "totalScore": 100,
+      "passages": [
+        {
+          "section": "reading",
+          "passageNo": "text1",
+          "title": "Text 1",
+          "content": "Sample passage text. Replace this with the real passage after you clean the local source file.",
+          "totalScore": 10,
+          "sortOrder": 20,
+          "questions": [
+            {
+              "questionNo": "21",
+              "stem": "Sample question stem.",
+              "options": [
+                { "label": "A", "content": "Sample option A" },
+                { "label": "B", "content": "Sample option B" },
+                { "label": "C", "content": "Sample option C" },
+                { "label": "D", "content": "Sample option D" }
+              ],
+              "standardAnswer": "A",
+              "score": 2,
+              "sortOrder": 21
+            },
+            {
+              "questionNo": "22",
+              "stem": "Sample question stem.",
+              "options": [
+                { "label": "A", "content": "Sample option A" },
+                { "label": "B", "content": "Sample option B" },
+                { "label": "C", "content": "Sample option C" },
+                { "label": "D", "content": "Sample option D" }
+              ],
+              "standardAnswer": "B",
+              "score": 2,
+              "sortOrder": 22
+            },
+            {
+              "questionNo": "23",
+              "stem": "Sample question stem.",
+              "options": [
+                { "label": "A", "content": "Sample option A" },
+                { "label": "B", "content": "Sample option B" },
+                { "label": "C", "content": "Sample option C" },
+                { "label": "D", "content": "Sample option D" }
+              ],
+              "standardAnswer": "C",
+              "score": 2,
+              "sortOrder": 23
+            },
+            {
+              "questionNo": "24",
+              "stem": "Sample question stem.",
+              "options": [
+                { "label": "A", "content": "Sample option A" },
+                { "label": "B", "content": "Sample option B" },
+                { "label": "C", "content": "Sample option C" },
+                { "label": "D", "content": "Sample option D" }
+              ],
+              "standardAnswer": "D",
+              "score": 2,
+              "sortOrder": 24
+            },
+            {
+              "questionNo": "25",
+              "stem": "Sample question stem.",
+              "options": [
+                { "label": "A", "content": "Sample option A" },
+                { "label": "B", "content": "Sample option B" },
+                { "label": "C", "content": "Sample option C" },
+                { "label": "D", "content": "Sample option D" }
+              ],
+              "standardAnswer": "A",
+              "score": 2,
+              "sortOrder": 25
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
