@@ -699,8 +699,8 @@ h1, h2, h3, h4, h5, h6 {
 
 .english-passage-content {
   font-family: Georgia, 'Times New Roman', Times, serif;
-  font-size: 1.05rem;
-  line-height: 1.95;
+  font-size: 1.16rem;
+  line-height: 2;
   font-weight: 400;
   letter-spacing: 0;
   overflow-wrap: break-word;
@@ -747,6 +747,141 @@ h1, h2, h3, h4, h5, h6 {
   border-top: 1px solid color-mix(in srgb, var(--color-outline-variant) 34%, transparent);
   background: var(--color-surface-container-low);
   padding: 1rem;
+}
+
+.english-year-choice {
+  min-width: 3rem;
+  border: 1px solid color-mix(in srgb, var(--color-outline-variant) 42%, transparent);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-container-lowest);
+  color: var(--color-on-surface);
+  padding: 0.62rem 0.88rem;
+  font-size: 0.98rem;
+  font-weight: 700;
+  line-height: 1.2;
+  text-align: center;
+  transition:
+    border-color var(--motion-duration-fast) var(--motion-ease-standard),
+    background var(--motion-duration-fast) var(--motion-ease-standard),
+    color var(--motion-duration-fast) var(--motion-ease-standard),
+    opacity var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.english-year-choice:hover {
+  border-color: color-mix(in srgb, var(--color-primary) 42%, var(--color-outline-variant));
+  background: color-mix(in srgb, var(--color-primary) 8%, var(--color-surface-container-lowest));
+  color: var(--color-primary);
+}
+
+.english-year-choice-submitted {
+  opacity: 0.52;
+}
+
+.english-question-card {
+  border: 1px solid color-mix(in srgb, var(--color-outline-variant) 28%, transparent);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-container-lowest);
+  padding: 1.1rem;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.55);
+}
+
+.english-question-card-correct {
+  border-color: color-mix(in srgb, #15803d 32%, var(--color-outline-variant));
+}
+
+.english-question-card-wrong {
+  border-color: color-mix(in srgb, var(--color-error) 28%, var(--color-outline-variant));
+}
+
+.english-question-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+  color: var(--color-on-surface-variant);
+  font-size: 0.86rem;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.english-question-stem,
+.english-option-content,
+.english-written-answer {
+  font-family: Georgia, 'Times New Roman', Times, serif;
+  letter-spacing: 0;
+}
+
+.english-question-stem {
+  margin: 0;
+  color: var(--color-on-surface);
+  font-size: 1.08rem;
+  font-weight: 700;
+  line-height: 1.7;
+  overflow-wrap: break-word;
+}
+
+.english-option-button {
+  display: grid;
+  grid-template-columns: 2rem minmax(0, 1fr);
+  align-items: start;
+  gap: 0.8rem;
+  width: 100%;
+  border: 1px solid color-mix(in srgb, var(--color-outline-variant) 22%, transparent);
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--color-surface-container-low) 72%, var(--color-surface-container-lowest));
+  padding: 0.9rem 0.85rem;
+  text-align: left;
+  transition:
+    border-color var(--motion-duration-fast) var(--motion-ease-standard),
+    background var(--motion-duration-fast) var(--motion-ease-standard),
+    box-shadow var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.english-option-button:hover {
+  border-color: color-mix(in srgb, var(--color-primary) 34%, var(--color-outline-variant));
+  background: var(--color-surface-container-lowest);
+}
+
+.english-option-button-selected {
+  border-color: color-mix(in srgb, var(--color-primary) 48%, var(--color-outline-variant));
+  background: color-mix(in srgb, var(--color-primary) 10%, var(--color-surface-container-lowest));
+  box-shadow: inset 3px 0 0 color-mix(in srgb, var(--color-primary) 72%, transparent);
+}
+
+.english-option-label {
+  display: flex;
+  width: 2rem;
+  height: 2rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: var(--color-surface-container-lowest);
+  color: var(--color-primary);
+  font-family: var(--font-label);
+  font-size: 0.82rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.english-option-button-selected .english-option-label {
+  background: var(--color-primary);
+  color: var(--color-on-primary);
+}
+
+.english-option-content {
+  min-width: 0;
+  color: var(--color-on-surface);
+  font-size: 1.02rem;
+  font-weight: 600;
+  line-height: 1.65;
+  overflow-wrap: break-word;
+}
+
+.english-written-answer {
+  font-size: 1rem;
+  line-height: 1.7;
 }
 
 .cloze-blank {

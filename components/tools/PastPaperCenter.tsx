@@ -58,7 +58,7 @@ export function PastPaperCenter() {
       />
 
       <PageShell width="workspace" topPadding="content">
-        <section className="grid gap-4 md:grid-cols-3">
+        <section className="mx-auto grid max-w-4xl gap-3">
           {centerModules.map((module) => (
             <CenterModuleCard key={module.id} module={module} />
           ))}
@@ -81,23 +81,23 @@ function CenterModuleCard({
 }) {
   const Icon = module.icon;
   const content = (
-    <div className={`surface-card flex min-h-56 flex-col justify-between p-5 text-left ${
+    <div className={`surface-card group flex min-h-28 items-center gap-4 p-4 text-left sm:p-5 ${
       module.href ? "group" : "opacity-70"
     }`}>
-      <div>
-        <div className="flex items-start justify-between gap-3">
-          <span className="flex h-11 w-11 items-center justify-center rounded-lg bg-primary/10 text-primary">
-            <Icon className="h-5 w-5" />
-          </span>
+      <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+        <Icon className="h-5 w-5" />
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-2">
+          <h2 className="text-lg font-bold text-on-surface sm:text-xl">{module.title}</h2>
           <span className="rounded-lg bg-surface-container-low px-2.5 py-1 text-xs font-semibold text-on-surface-variant">
             {module.status}
           </span>
         </div>
-        <h2 className="mt-5 text-xl font-bold text-on-surface">{module.title}</h2>
-        <p className="mt-2 text-sm leading-6 text-on-surface-variant">{module.subtitle}</p>
+        <p className="mt-1 text-sm leading-6 text-on-surface-variant">{module.subtitle}</p>
       </div>
-      <div className="mt-6 flex items-center justify-between text-sm font-semibold text-primary">
-        <span>{module.href ? "进入" : "待接入"}</span>
+      <div className="ml-auto flex shrink-0 items-center gap-2 text-sm font-semibold text-primary">
+        <span className="hidden sm:inline">{module.href ? "进入" : "待接入"}</span>
         <ArrowRight className={`h-4 w-4 transition-transform ${module.href ? "group-hover:translate-x-1" : ""}`} />
       </div>
     </div>

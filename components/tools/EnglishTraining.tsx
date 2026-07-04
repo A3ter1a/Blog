@@ -15,31 +15,24 @@ import {
   Save,
   Sparkles,
 } from "lucide-react";
-import { MarkdownContent } from "@/components/ui/MarkdownContent";
 import { PageHeader, PageShell } from "@/components/ui/PageScaffold";
 import { useToast } from "@/components/ui/Toast";
 import { englishTrainingApi, type EnglishAttemptAnswerInput } from "@/lib/english-training-api";
 import {
-  englishPassageLabels,
-  englishSectionLabels,
-  getEnglishPassageTitle,
   isEnglishObjectiveSection,
   type EnglishAttempt,
   type EnglishPassage,
   type EnglishQuestion,
-  type EnglishSection,
   type EnglishTrainingData,
 } from "@/lib/english-training";
 
 type TrainingStage = "types" | "sets" | "practice";
 type TrainingCategoryId = "reading" | "minor" | "writing";
-type StatusFilter = "all" | "unstarted" | "in_progress" | "submitted";
 
 type TrainingCategory = {
   id: TrainingCategoryId;
   title: string;
   subtitle: string;
-  sections: EnglishSection[];
   icon: ReactNode;
 };
 
@@ -54,31 +47,21 @@ const TRAINING_CATEGORIES: TrainingCategory[] = [
   {
     id: "reading",
     title: "阅读",
-    subtitle: "Text 1-4",
-    sections: ["reading"],
+    subtitle: "阅读理解",
     icon: <BookOpen className="h-5 w-5" />,
   },
   {
     id: "minor",
     title: "三小门",
     subtitle: "完形 / 新题型 / 翻译",
-    sections: ["cloze", "new_type", "translation"],
     icon: <FileText className="h-5 w-5" />,
   },
   {
     id: "writing",
     title: "写作",
     subtitle: "小作文 / 大作文",
-    sections: ["writing"],
     icon: <PenLine className="h-5 w-5" />,
   },
-];
-
-const statusOptions: Array<{ value: StatusFilter; label: string }> = [
-  { value: "all", label: "全部" },
-  { value: "unstarted", label: "未开始" },
-  { value: "in_progress", label: "进行中" },
-  { value: "submitted", label: "已提交" },
 ];
 
 function getCategoryForPassage(passage: EnglishPassage): TrainingCategoryId {
@@ -87,25 +70,8 @@ function getCategoryForPassage(passage: EnglishPassage): TrainingCategoryId {
   return "minor";
 }
 
-function getStatusLabel(attempt?: EnglishAttempt): string {
-  if (!attempt) return "未完成";
-  if (attempt.status === "submitted") return "已提交";
-  return "进行中";
-}
-
-function getAttemptStatus(attempt?: EnglishAttempt): StatusFilter {
-  if (!attempt) return "unstarted";
-  return attempt.status;
-}
-
-function getAccuracy(attempt?: EnglishAttempt): number | null {
-  if (!attempt || attempt.status !== "submitted" || attempt.maxScore <= 0) return null;
-  return Math.round((attempt.score / attempt.maxScore) * 100);
-}
-
-function formatScore(attempt?: EnglishAttempt): string {
-  if (!attempt) return "-";
-  return `${attempt.score}/${attempt.maxScore}`;
+function isSubmittedAttempt(attempt?: EnglishAttempt): boolean {
+  return attempt?.status === "submitted";
 }
 
 function buildAnswerMap(attempt?: EnglishAttempt): EnglishAttemptAnswerInput {
@@ -113,12 +79,39 @@ function buildAnswerMap(attempt?: EnglishAttempt): EnglishAttemptAnswerInput {
   return Object.fromEntries(attempt.answers.map((answer) => [answer.questionId, answer.answer]));
 }
 
-function shouldStartDisplayParagraph(current: string, next: string): boolean {
+function shouldMergeDisplayBlock(current: string, next: string): boolean {
   const currentText = current.trim();
   const nextText = next.trim();
   if (!currentText || !nextText) return false;
-  if (currentText.length < 220) return false;
-  return /[.!?]["')\]]?$/.test(currentText) && /^[A-Z0-9"“]/.test(nextText);
+  if (/[,;:—-]$/.test(currentText)) return true;
+  if (/\b(and|or|but|nor|for|so|yet|to|of|in|on|at|by|with|from|as|than|that|which|who|whose|when|where)$/i.test(currentText)) {
+    return true;
+  }
+  if (!/[.!?]["')\]]?$/.test(currentText)) return true;
+  if (/^[a-z,.;:)\]]/.test(nextText)) return true;
+  if (/\b[a-z]\)$/.test(currentText) && countWords(currentText) < 36) return true;
+  return false;
+}
+
+function splitLongParagraph(paragraph: string): string[] {
+  if (paragraph.length < 980) return [paragraph];
+
+  const parts: string[] = [];
+  let current = "";
+  const sentences = paragraph.match(/[^.!?]+[.!?]["')\]]?|[^.!?]+$/g) ?? [paragraph];
+
+  for (const sentence of sentences) {
+    const next = current ? `${current} ${sentence.trim()}` : sentence.trim();
+    if (current && next.length > 760) {
+      parts.push(current);
+      current = sentence.trim();
+      continue;
+    }
+    current = next;
+  }
+
+  if (current) parts.push(current);
+  return parts.length > 0 ? parts : [paragraph];
 }
 
 function normalizePassageParagraphs(content: string): string[] {
@@ -128,7 +121,9 @@ function normalizePassageParagraphs(content: string): string[] {
     .map((block) => block.replace(/\s+/g, " ").trim())
     .filter(Boolean);
 
-  if (blocks.length <= 1) return blocks.length === 0 ? [] : [content.replace(/\s+/g, " ").trim()];
+  if (blocks.length <= 1) {
+    return blocks.length === 0 ? [] : splitLongParagraph(content.replace(/\s+/g, " ").trim());
+  }
 
   const paragraphs: string[] = [];
   let current = "";
@@ -137,15 +132,15 @@ function normalizePassageParagraphs(content: string): string[] {
       current = block;
       continue;
     }
-    if (shouldStartDisplayParagraph(current, block)) {
-      paragraphs.push(current);
-      current = block;
+    if (shouldMergeDisplayBlock(current, block)) {
+      current = `${current} ${block}`;
       continue;
     }
-    current = `${current} ${block}`;
+    paragraphs.push(current);
+    current = block;
   }
   if (current) paragraphs.push(current);
-  return paragraphs;
+  return paragraphs.flatMap(splitLongParagraph);
 }
 
 function countWords(text: string): number {
@@ -153,12 +148,37 @@ function countWords(text: string): number {
 }
 
 function splitParagraphIntoChunks(paragraph: string, targetWords: number): string[] {
-  const words = paragraph.split(/\s+/).filter(Boolean);
-  if (words.length <= targetWords) return [paragraph];
+  if (countWords(paragraph) <= targetWords) return [paragraph];
+  const sentences = paragraph.match(/[^.!?]+[.!?]["')\]]?|[^.!?]+$/g) ?? [paragraph];
   const chunks: string[] = [];
-  for (let index = 0; index < words.length; index += targetWords) {
-    chunks.push(words.slice(index, index + targetWords).join(" "));
+  let current = "";
+  let currentWords = 0;
+
+  for (const sentence of sentences) {
+    const cleanSentence = sentence.trim();
+    const sentenceWords = countWords(cleanSentence);
+    if (sentenceWords > targetWords) {
+      if (current) {
+        chunks.push(current);
+        current = "";
+        currentWords = 0;
+      }
+      const words = cleanSentence.split(/\s+/).filter(Boolean);
+      for (let index = 0; index < words.length; index += targetWords) {
+        chunks.push(words.slice(index, index + targetWords).join(" "));
+      }
+      continue;
+    }
+    if (current && currentWords + sentenceWords > targetWords) {
+      chunks.push(current);
+      current = cleanSentence;
+      currentWords = sentenceWords;
+      continue;
+    }
+    current = current ? `${current} ${cleanSentence}` : cleanSentence;
+    currentWords += sentenceWords;
   }
+  if (current) chunks.push(current);
   return chunks;
 }
 
@@ -246,10 +266,46 @@ function getQuestionTitle(question: EnglishQuestion, passage: EnglishPassage): s
   return question.stem || `第 ${question.questionNo} 题`;
 }
 
+function getPassageDisplayTitle(passage: EnglishPassage): string {
+  if (passage.section === "reading" && passage.passageNo.startsWith("text")) {
+    return `${passage.year} 阅读 ${passage.passageNo.replace("text", "")}`;
+  }
+  if (passage.passageNo === "small_writing") return `${passage.year} 小作文`;
+  if (passage.passageNo === "big_writing") return `${passage.year} 大作文`;
+  if (passage.section === "cloze") return `${passage.year} 完形`;
+  if (passage.section === "new_type") return `${passage.year} 新题型`;
+  if (passage.section === "translation") return `${passage.year} 翻译`;
+  return `${passage.year}`;
+}
+
+function getPassageWindowLabel(passage: EnglishPassage): string {
+  if (passage.section === "reading" && passage.passageNo.startsWith("text")) {
+    return passage.passageNo.replace("text", "");
+  }
+  if (passage.passageNo === "small_writing") return "小作文";
+  if (passage.passageNo === "big_writing") return "大作文";
+  if (passage.section === "cloze") return "完形";
+  if (passage.section === "new_type") return "新题型";
+  if (passage.section === "translation") return "翻译";
+  return "训练";
+}
+
 function sortPassagesOldestFirst(left: EnglishPassage, right: EnglishPassage): number {
   return left.year - right.year
     || left.sortOrder - right.sortOrder
     || left.passageNo.localeCompare(right.passageNo);
+}
+
+function sortPassagesForWindow(
+  passages: EnglishPassage[],
+  attemptsByPassageId: Map<string, EnglishAttempt>,
+): EnglishPassage[] {
+  return [...passages].sort((left, right) => {
+    const leftSubmitted = isSubmittedAttempt(attemptsByPassageId.get(left.id));
+    const rightSubmitted = isSubmittedAttempt(attemptsByPassageId.get(right.id));
+    if (leftSubmitted !== rightSubmitted) return leftSubmitted ? 1 : -1;
+    return sortPassagesOldestFirst(left, right);
+  });
 }
 
 export function EnglishTraining() {
@@ -266,7 +322,6 @@ export function EnglishTraining() {
   const [stage, setStage] = useState<TrainingStage>("types");
   const [activeCategoryId, setActiveCategoryId] = useState<TrainingCategoryId | null>(null);
   const [activePassageId, setActivePassageId] = useState<string | null>(null);
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [draftAnswersByPassageId, setDraftAnswersByPassageId] = useState<Record<string, EnglishAttemptAnswerInput>>({});
   const [saving, setSaving] = useState<"save" | "submit" | null>(null);
   const [articlePage, setArticlePage] = useState(0);
@@ -348,10 +403,6 @@ export function EnglishTraining() {
   );
 
   const categoryPassages = activeCategoryId ? passagesByCategory.get(activeCategoryId) ?? [] : [];
-  const visiblePassages = categoryPassages.filter((passage) => {
-    const status = getAttemptStatus(attemptsByPassageId.get(passage.id));
-    return statusFilter === "all" || status === statusFilter;
-  });
   const activePassage = activePassageId
     ? data.passages.find((passage) => passage.id === activePassageId) ?? null
     : null;
@@ -363,7 +414,6 @@ export function EnglishTraining() {
 
   const handleSelectCategory = (categoryId: TrainingCategoryId) => {
     setActiveCategoryId(categoryId);
-    setStatusFilter("all");
     setStage("sets");
   };
 
@@ -382,7 +432,6 @@ export function EnglishTraining() {
     if (stage === "sets") {
       setStage("types");
       setActiveCategoryId(null);
-      setStatusFilter("all");
     }
   };
 
@@ -417,22 +466,16 @@ export function EnglishTraining() {
           loading={isLoading}
           error={loadError}
           stats={stats}
-          passagesByCategory={passagesByCategory}
-          attemptsByPassageId={attemptsByPassageId}
           onSelect={handleSelectCategory}
         />
       )}
       {stage === "sets" && activeCategory && (
         <TrainingSetList
           category={activeCategory}
-          passages={visiblePassages}
-          allPassageCount={categoryPassages.length}
+          passages={categoryPassages}
           attemptsByPassageId={attemptsByPassageId}
-          questionsByPassageId={questionsByPassageId}
-          statusFilter={statusFilter}
           loading={isLoading}
           error={loadError}
-          onStatusChange={setStatusFilter}
           onBack={handleBack}
           onSelect={handleOpenPassage}
         />
@@ -491,15 +534,11 @@ function TrainingTypeSelect({
   loading,
   error,
   stats,
-  passagesByCategory,
-  attemptsByPassageId,
   onSelect,
 }: {
   loading: boolean;
   error: string | null;
   stats: EnglishTrainingStats;
-  passagesByCategory: Map<TrainingCategoryId, EnglishPassage[]>;
-  attemptsByPassageId: Map<string, EnglishAttempt>;
   onSelect: (categoryId: TrainingCategoryId) => void;
 }) {
   if (loading) {
@@ -516,32 +555,26 @@ function TrainingTypeSelect({
 
   return (
     <section className="space-y-4">
-      <div className="grid gap-4 md:grid-cols-3">
-        {TRAINING_CATEGORIES.map((category) => {
-          const passages = passagesByCategory.get(category.id) ?? [];
-          const submitted = passages.filter((passage) => attemptsByPassageId.get(passage.id)?.status === "submitted").length;
-          return (
-            <button
-              key={category.id}
-              type="button"
-              onClick={() => onSelect(category.id)}
-              className="surface-card group min-h-56 p-5 text-left"
-            >
-              <div className="flex items-start justify-between gap-3">
-                <span className="flex h-11 w-11 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                  {category.icon}
-                </span>
-                <ChevronRight className="h-5 w-5 text-on-surface-variant/60 transition-transform group-hover:translate-x-1" />
-              </div>
-              <h2 className="mt-5 text-xl font-bold text-on-surface">{category.title}</h2>
-              <p className="mt-2 text-sm leading-6 text-on-surface-variant">{category.subtitle}</p>
-              <div className="mt-6 flex flex-wrap gap-2 text-xs text-on-surface-variant">
-                <span className="tag-chip px-2 py-0.5">{passages.length} 组</span>
-                <span className="tag-chip px-2 py-0.5">已提交 {submitted}</span>
-              </div>
-            </button>
-          );
-        })}
+      <div className="mx-auto grid max-w-4xl gap-3">
+        {TRAINING_CATEGORIES.map((category) => (
+          <button
+            key={category.id}
+            type="button"
+            onClick={() => onSelect(category.id)}
+            className="surface-card group flex min-h-28 items-center gap-4 p-4 text-left sm:p-5"
+          >
+            <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+              {category.icon}
+            </span>
+            <div className="min-w-0 flex-1">
+              <h2 className="text-lg font-bold text-on-surface sm:text-xl">{category.title}</h2>
+              <p className="mt-1 text-sm leading-6 text-on-surface-variant">{category.subtitle}</p>
+            </div>
+            <div className="ml-auto flex shrink-0 items-center text-primary">
+              <ChevronRight className="h-5 w-5 transition-transform group-hover:translate-x-1" />
+            </div>
+          </button>
+        ))}
       </div>
     </section>
   );
@@ -550,54 +583,51 @@ function TrainingTypeSelect({
 function TrainingSetList({
   category,
   passages,
-  allPassageCount,
   attemptsByPassageId,
-  questionsByPassageId,
-  statusFilter,
   loading,
   error,
-  onStatusChange,
   onBack,
   onSelect,
 }: {
   category: TrainingCategory;
   passages: EnglishPassage[];
-  allPassageCount: number;
   attemptsByPassageId: Map<string, EnglishAttempt>;
-  questionsByPassageId: Map<string, EnglishQuestion[]>;
-  statusFilter: StatusFilter;
   loading: boolean;
   error: string | null;
-  onStatusChange: (value: StatusFilter) => void;
   onBack: () => void;
   onSelect: (passageId: string) => void;
 }) {
+  const yearGroups = useMemo(() => {
+    const groups = new Map<number, EnglishPassage[]>();
+    for (const passage of passages) {
+      const current = groups.get(passage.year) ?? [];
+      current.push(passage);
+      groups.set(passage.year, current);
+    }
+    return Array.from(groups.entries())
+      .map(([year, groupPassages]) => {
+        const sortedPassages = sortPassagesForWindow(groupPassages, attemptsByPassageId);
+        return {
+          year,
+          passages: sortedPassages,
+          completed: sortedPassages.length > 0 && sortedPassages.every((passage) => isSubmittedAttempt(attemptsByPassageId.get(passage.id))),
+        };
+      })
+      .sort((left, right) => {
+        if (left.completed !== right.completed) return left.completed ? 1 : -1;
+        return left.year - right.year;
+      });
+  }, [attemptsByPassageId, passages]);
+
   return (
     <section className="space-y-4">
       <div className="surface-panel p-4 sm:p-5">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div className="min-w-0">
-            <button type="button" onClick={onBack} className="control-button mb-4 h-9 px-3 text-sm">
-              <ArrowLeft className="h-4 w-4" />
-              返回题型
-            </button>
-            <h2 className="text-2xl font-bold text-on-surface">{category.title}</h2>
-            <p className="mt-2 text-sm text-on-surface-variant">
-              共 {allPassageCount} 个题组，按 2007 到 2026 排列。
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {statusOptions.map((option) => (
-              <button
-                key={option.value}
-                type="button"
-                onClick={() => onStatusChange(option.value)}
-                className={`control-button h-9 min-h-0 px-3 text-sm ${statusFilter === option.value ? "control-button-selected" : ""}`}
-              >
-                {option.label}
-              </button>
-            ))}
-          </div>
+        <div className="min-w-0">
+          <button type="button" onClick={onBack} className="control-button mb-4 h-9 px-3 text-sm">
+            <ArrowLeft className="h-4 w-4" />
+            返回题型
+          </button>
+          <h2 className="text-2xl font-bold text-on-surface">{category.title}</h2>
         </div>
       </div>
 
@@ -606,39 +636,36 @@ function TrainingSetList({
           <InlineState icon={<Loader2 className="h-4 w-4 animate-spin text-primary" />} text="加载题组..." />
         ) : error ? (
           <InlineState text={error} tone="text-red-600" />
-        ) : passages.length === 0 ? (
-          <InlineState text="当前状态下没有题组。" />
+        ) : yearGroups.length === 0 ? (
+          <InlineState text="还没有可用题组。" />
         ) : (
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-            {passages.map((passage) => {
-              const attempt = attemptsByPassageId.get(passage.id);
-              const accuracy = getAccuracy(attempt);
-              const questions = questionsByPassageId.get(passage.id) ?? [];
-              return (
-                <button
-                  key={passage.id}
-                  type="button"
-                  onClick={() => onSelect(passage.id)}
-                  className="rounded-lg border border-outline-variant/20 bg-surface-container-low/70 px-4 py-4 text-left transition-colors hover:border-primary/25 hover:bg-surface-container-lowest"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="text-base font-semibold text-on-surface">
-                        {getEnglishPassageTitle(passage)}
-                      </div>
-                      <div className="mt-2 flex flex-wrap gap-1.5 text-xs text-on-surface-variant">
-                        <span className="tag-chip px-2 py-0.5">{englishSectionLabels[passage.section]}</span>
-                        <span className="tag-chip px-2 py-0.5">{englishPassageLabels[passage.passageNo]}</span>
-                        <span className="tag-chip px-2 py-0.5">{questions.length} 题</span>
-                        <span className="tag-chip px-2 py-0.5">{getStatusLabel(attempt)}</span>
-                        {accuracy !== null && <span className="tag-chip px-2 py-0.5">正确率 {accuracy}%</span>}
-                      </div>
-                    </div>
-                    <ChevronRight className="mt-1 h-4 w-4 shrink-0 text-on-surface-variant/50" />
-                  </div>
-                </button>
-              );
-            })}
+          <div className="grid gap-3">
+            {yearGroups.map((group) => (
+              <div
+                key={group.year}
+                className={`flex flex-col gap-3 rounded-lg border border-outline-variant/15 bg-surface-container-low/70 px-4 py-4 sm:flex-row sm:items-center sm:justify-between ${
+                  group.completed ? "opacity-50" : ""
+                }`}
+              >
+                <div className="text-2xl font-bold tabular-nums text-on-surface">{group.year}</div>
+                <div className="flex flex-wrap gap-2 sm:justify-end">
+                  {group.passages.map((passage) => {
+                    const submitted = isSubmittedAttempt(attemptsByPassageId.get(passage.id));
+                    return (
+                      <button
+                        key={passage.id}
+                        type="button"
+                        onClick={() => onSelect(passage.id)}
+                        aria-label={getPassageDisplayTitle(passage)}
+                        className={`english-year-choice ${submitted ? "english-year-choice-submitted" : ""}`}
+                      >
+                        {getPassageWindowLabel(passage)}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
           </div>
         )}
       </section>
@@ -695,13 +722,12 @@ function PracticeWorkspace({
             <ArrowLeft className="h-4 w-4" />
             返回题组
           </button>
-          <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
-            <span className="tag-chip px-2 py-0.5">{englishSectionLabels[passage.section]}</span>
-            <span className="tag-chip px-2 py-0.5">{englishPassageLabels[passage.passageNo]}</span>
-            <span className="tag-chip px-2 py-0.5">{getStatusLabel(attempt)}</span>
-            {submitted && <span className="tag-chip px-2 py-0.5 text-green-700">{formatScore(attempt)}</span>}
-          </div>
-          <h2 className="mt-2 text-xl font-bold leading-tight text-on-surface">{getEnglishPassageTitle(passage)}</h2>
+          <h2 className="mt-3 text-xl font-bold leading-tight text-on-surface">{getPassageDisplayTitle(passage)}</h2>
+          {submitted && (
+            <p className="mt-1 text-sm text-on-surface-variant">
+              得分 {attempt?.score ?? 0}/{attempt?.maxScore ?? 0}
+            </p>
+          )}
         </div>
         <div className="flex shrink-0 flex-wrap gap-2">
           <button type="button" onClick={onSave} disabled={Boolean(saving) || submitted} className="control-button h-10 px-3 text-sm">
@@ -753,14 +779,10 @@ function PracticeWorkspace({
         </article>
 
         <aside className="english-question-pane">
-          <div className="sticky top-0 z-10 mb-4 flex items-center justify-between gap-3 bg-surface-container-low pb-3">
-            <h3 className="text-sm font-semibold text-on-surface">题目</h3>
-            <span className="tag-chip px-2 py-0.5 text-xs">{questions.length} 题</span>
-          </div>
           {questions.length === 0 ? (
             <InlineState text={passage.section === "writing" ? "写作 AI 评分入口预留中。" : "这篇的题目还未导入。"} />
           ) : (
-            <div className="space-y-4">
+            <div className="grid gap-4">
               {questions.map((question) => {
                 const savedAnswer = attempt?.answers.find((answer) => answer.questionId === question.id);
                 return (
@@ -805,25 +827,24 @@ function QuestionBlock({
   const wrong = submitted && savedAnswer?.isCorrect === false;
   const questionTitle = getQuestionTitle(question, passage);
   const showStem = Boolean(questionTitle.trim());
+  const resultText = correct ? "正确" : wrong ? "错误" : null;
 
   return (
-    <div className="rounded-lg border border-outline-variant/15 bg-surface-container-lowest p-4">
-      <div className="mb-3 flex flex-wrap items-center gap-2 text-xs">
-        <span className="rounded-full bg-primary/10 px-2.5 py-1 font-semibold text-primary">第 {question.questionNo} 题</span>
-        <span className="rounded-full bg-surface-container-high px-2.5 py-1 text-on-surface-variant">{question.score} 分</span>
-        {correct && <span className="rounded-full bg-green-50 px-2.5 py-1 font-medium text-green-700">正确</span>}
-        {wrong && <span className="rounded-full bg-red-50 px-2.5 py-1 font-medium text-red-700">错误</span>}
+    <div className={`english-question-card ${correct ? "english-question-card-correct" : ""} ${wrong ? "english-question-card-wrong" : ""}`}>
+      <div className="english-question-meta">
+        <span>第 {question.questionNo} 题</span>
+        {resultText && (
+          <span className={correct ? "text-green-700" : "text-red-700"}>
+            {resultText} · {savedAnswer?.score ?? 0}/{question.score}
+          </span>
+        )}
       </div>
       {showStem && (
-        <MarkdownContent
-          content={questionTitle}
-          compact
-          className="text-sm font-semibold text-on-surface"
-        />
+        <p className="english-question-stem">{questionTitle}</p>
       )}
 
       {question.options.length > 0 ? (
-        <div className="mt-3 grid gap-2">
+        <div className="mt-4 grid gap-2.5">
           {question.options.map((option) => {
             const selected = value === option.label;
             return (
@@ -831,18 +852,12 @@ function QuestionBlock({
                 key={`${question.id}-${option.label}`}
                 type="button"
                 onClick={() => onChange(option.label)}
-                className={`grid grid-cols-[1.75rem_minmax(0,1fr)] gap-3 rounded-lg border px-3 py-3 text-left text-sm transition-colors ${
-                  selected
-                    ? "border-primary/35 bg-primary/10"
-                    : "border-outline-variant/15 bg-surface-container-low hover:border-primary/25"
-                }`}
+                className={`english-option-button ${selected ? "english-option-button-selected" : ""}`}
               >
-                <span className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-semibold ${
-                  selected ? "bg-primary text-on-primary" : "bg-surface-container-lowest text-primary"
-                }`}>
+                <span className="english-option-label">
                   {option.label}
                 </span>
-                <MarkdownContent content={option.content} compact className="min-w-0 text-on-surface" />
+                <span className="english-option-content">{option.content}</span>
               </button>
             );
           })}
@@ -852,7 +867,7 @@ function QuestionBlock({
           value={value}
           onChange={(event) => onChange(event.target.value)}
           rows={objective ? 2 : 8}
-          className="field-control mt-3 w-full resize-y px-3 py-2 text-sm leading-6"
+          className="field-control english-written-answer mt-3 w-full resize-y px-3 py-2"
           placeholder={objective ? "填写答案" : "记录你的作答"}
         />
       )}
