@@ -698,13 +698,92 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .english-passage-content {
-  line-height: 1.92;
+  font-family: Georgia, 'Times New Roman', Times, serif;
+  font-size: 1.05rem;
+  line-height: 1.95;
   font-weight: 400;
+  letter-spacing: 0;
   overflow-wrap: break-word;
 }
 
 .english-passage-content p {
-  margin-bottom: 1rem;
+  margin-bottom: 1.05rem;
+  text-indent: 2em;
+}
+
+.english-practice-shell {
+  border: 1px solid color-mix(in srgb, var(--color-outline-variant) 62%, transparent);
+  background: var(--color-surface-container-lowest);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-ambient);
+  overflow: hidden;
+}
+
+.english-practice-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--color-outline-variant) 34%, transparent);
+  background: color-mix(in srgb, var(--color-surface-container-low) 86%, var(--color-surface-container-lowest));
+  padding: 1rem;
+}
+
+.english-practice-grid {
+  display: grid;
+  min-height: calc(100vh - 15rem);
+  background: var(--color-surface-container-low);
+}
+
+.english-article-pane {
+  min-height: 34rem;
+  background: var(--color-surface-container-lowest);
+  padding: 1.25rem;
+}
+
+.english-question-pane {
+  min-height: 34rem;
+  max-height: calc(100vh - 15rem);
+  overflow-y: auto;
+  border-top: 1px solid color-mix(in srgb, var(--color-outline-variant) 34%, transparent);
+  background: var(--color-surface-container-low);
+  padding: 1rem;
+}
+
+.cloze-blank {
+  display: inline-flex;
+  min-width: 3.25rem;
+  justify-content: center;
+  margin-inline: 0.2rem;
+  border-bottom: 2px solid color-mix(in srgb, var(--color-primary) 72%, var(--color-outline-variant));
+  color: var(--color-primary);
+  font-family: var(--font-label);
+  font-size: 0.86em;
+  font-weight: 700;
+  line-height: 1.35;
+  text-indent: 0;
+}
+
+@media (min-width: 1024px) {
+  .english-practice-toolbar {
+    flex-direction: row;
+    align-items: flex-start;
+    justify-content: space-between;
+    padding: 1.25rem;
+  }
+
+  .english-practice-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(22rem, 30rem);
+  }
+
+  .english-article-pane {
+    padding: 1.5rem 2rem;
+  }
+
+  .english-question-pane {
+    border-top: 0;
+    border-left: 1px solid color-mix(in srgb, var(--color-outline-variant) 34%, transparent);
+    padding: 1.25rem;
+  }
 }
 
 .markdown-compact {

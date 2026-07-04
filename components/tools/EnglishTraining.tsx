@@ -2,29 +2,26 @@
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
+  ArrowLeft,
+  ArrowRight,
   BookOpen,
   Check,
   ChevronRight,
   Circle,
   ClipboardCheck,
+  FileText,
   Loader2,
-  Plus,
-  RotateCcw,
+  PenLine,
   Save,
-  Search,
   Sparkles,
-  X,
 } from "lucide-react";
 import { MarkdownContent } from "@/components/ui/MarkdownContent";
 import { PageHeader, PageShell } from "@/components/ui/PageScaffold";
 import { useToast } from "@/components/ui/Toast";
 import { englishTrainingApi, type EnglishAttemptAnswerInput } from "@/lib/english-training-api";
 import {
-  ENGLISH_TRAINING_YEARS,
   englishPassageLabels,
   englishSectionLabels,
-  englishVocabularyMasteryLabels,
-  englishVocabularyPartOfSpeechLabels,
   getEnglishPassageTitle,
   isEnglishObjectiveSection,
   type EnglishAttempt,
@@ -32,43 +29,62 @@ import {
   type EnglishQuestion,
   type EnglishSection,
   type EnglishTrainingData,
-  type EnglishVocabularyEntry,
-  type EnglishVocabularyMasteryStatus,
-  type EnglishVocabularyPartOfSpeech,
 } from "@/lib/english-training";
 
-type YearFilter = "all" | number;
-type SectionFilter = "all" | EnglishSection;
+type TrainingStage = "types" | "sets" | "practice";
+type TrainingCategoryId = "reading" | "minor" | "writing";
 type StatusFilter = "all" | "unstarted" | "in_progress" | "submitted";
+
+type TrainingCategory = {
+  id: TrainingCategoryId;
+  title: string;
+  subtitle: string;
+  sections: EnglishSection[];
+  icon: ReactNode;
+};
+
 type EnglishTrainingStats = {
   total: number;
   submitted: number;
   inProgress: number;
-  vocabulary: number;
   accuracy: number;
 };
 
-const sectionOptions: Array<{ value: SectionFilter; label: string }> = [
-  { value: "all", label: "全部题型" },
-  { value: "reading", label: englishSectionLabels.reading },
-  { value: "cloze", label: englishSectionLabels.cloze },
-  { value: "new_type", label: englishSectionLabels.new_type },
-  { value: "translation", label: englishSectionLabels.translation },
-  { value: "writing", label: englishSectionLabels.writing },
+const TRAINING_CATEGORIES: TrainingCategory[] = [
+  {
+    id: "reading",
+    title: "阅读",
+    subtitle: "Text 1-4",
+    sections: ["reading"],
+    icon: <BookOpen className="h-5 w-5" />,
+  },
+  {
+    id: "minor",
+    title: "三小门",
+    subtitle: "完形 / 新题型 / 翻译",
+    sections: ["cloze", "new_type", "translation"],
+    icon: <FileText className="h-5 w-5" />,
+  },
+  {
+    id: "writing",
+    title: "写作",
+    subtitle: "小作文 / 大作文",
+    sections: ["writing"],
+    icon: <PenLine className="h-5 w-5" />,
+  },
 ];
 
 const statusOptions: Array<{ value: StatusFilter; label: string }> = [
-  { value: "all", label: "全部状态" },
+  { value: "all", label: "全部" },
   { value: "unstarted", label: "未开始" },
   { value: "in_progress", label: "进行中" },
   { value: "submitted", label: "已提交" },
 ];
 
-const partOfSpeechOptions = Object.entries(englishVocabularyPartOfSpeechLabels) as Array<[EnglishVocabularyPartOfSpeech, string]>;
-const masteryOptions = Object.entries(englishVocabularyMasteryLabels) as Array<[EnglishVocabularyMasteryStatus, string]>;
-
-function normalizeQuery(value: string): string {
-  return value.trim().toLowerCase();
+function getCategoryForPassage(passage: EnglishPassage): TrainingCategoryId {
+  if (passage.section === "reading") return "reading";
+  if (passage.section === "writing") return "writing";
+  return "minor";
 }
 
 function getStatusLabel(attempt?: EnglishAttempt): string {
@@ -77,23 +93,14 @@ function getStatusLabel(attempt?: EnglishAttempt): string {
   return "进行中";
 }
 
-function getAccuracy(attempt?: EnglishAttempt): number | null {
-  if (!attempt || attempt.status !== "submitted" || attempt.maxScore <= 0) return null;
-  return Math.round((attempt.score / attempt.maxScore) * 100);
-}
-
-function buildAnswerMap(attempt?: EnglishAttempt): EnglishAttemptAnswerInput {
-  if (!attempt) return {};
-  return Object.fromEntries(attempt.answers.map((answer) => [answer.questionId, answer.answer]));
-}
-
-function countPassageVocabulary(vocabulary: EnglishVocabularyEntry[], passageId: string): number {
-  return vocabulary.filter((entry) => entry.passageId === passageId).length;
-}
-
 function getAttemptStatus(attempt?: EnglishAttempt): StatusFilter {
   if (!attempt) return "unstarted";
   return attempt.status;
+}
+
+function getAccuracy(attempt?: EnglishAttempt): number | null {
+  if (!attempt || attempt.status !== "submitted" || attempt.maxScore <= 0) return null;
+  return Math.round((attempt.score / attempt.maxScore) * 100);
 }
 
 function formatScore(attempt?: EnglishAttempt): string {
@@ -101,22 +108,27 @@ function formatScore(attempt?: EnglishAttempt): string {
   return `${attempt.score}/${attempt.maxScore}`;
 }
 
+function buildAnswerMap(attempt?: EnglishAttempt): EnglishAttemptAnswerInput {
+  if (!attempt) return {};
+  return Object.fromEntries(attempt.answers.map((answer) => [answer.questionId, answer.answer]));
+}
+
 function shouldStartDisplayParagraph(current: string, next: string): boolean {
   const currentText = current.trim();
   const nextText = next.trim();
   if (!currentText || !nextText) return false;
-  if (currentText.length < 240) return false;
+  if (currentText.length < 220) return false;
   return /[.!?]["')\]]?$/.test(currentText) && /^[A-Z0-9"“]/.test(nextText);
 }
 
-function normalizePassageContentForDisplay(content: string): string {
+function normalizePassageParagraphs(content: string): string[] {
   const blocks = content
     .replace(/\r\n/g, "\n")
     .split(/\n{2,}/)
     .map((block) => block.replace(/\s+/g, " ").trim())
     .filter(Boolean);
 
-  if (blocks.length <= 1) return content.trim();
+  if (blocks.length <= 1) return blocks.length === 0 ? [] : [content.replace(/\s+/g, " ").trim()];
 
   const paragraphs: string[] = [];
   let current = "";
@@ -133,10 +145,114 @@ function normalizePassageContentForDisplay(content: string): string {
     current = `${current} ${block}`;
   }
   if (current) paragraphs.push(current);
-  return paragraphs.join("\n\n");
+  return paragraphs;
 }
 
-export function EnglishTraining({ embedded = false }: { embedded?: boolean }) {
+function countWords(text: string): number {
+  return text.match(/[A-Za-z]+(?:[-'][A-Za-z]+)?|\d+/g)?.length ?? 0;
+}
+
+function splitParagraphIntoChunks(paragraph: string, targetWords: number): string[] {
+  const words = paragraph.split(/\s+/).filter(Boolean);
+  if (words.length <= targetWords) return [paragraph];
+  const chunks: string[] = [];
+  for (let index = 0; index < words.length; index += targetWords) {
+    chunks.push(words.slice(index, index + targetWords).join(" "));
+  }
+  return chunks;
+}
+
+function paginatePassageContent(content: string, targetWords = 520): string[] {
+  const paragraphs = normalizePassageParagraphs(content);
+  if (paragraphs.length === 0) return [];
+
+  const pages: string[] = [];
+  let current: string[] = [];
+  let currentWords = 0;
+
+  for (const paragraph of paragraphs) {
+    const paragraphWords = countWords(paragraph);
+    const pieces = paragraphWords > targetWords + 120
+      ? splitParagraphIntoChunks(paragraph, targetWords)
+      : [paragraph];
+
+    for (const piece of pieces) {
+      const pieceWords = countWords(piece);
+      if (current.length > 0 && currentWords + pieceWords > targetWords) {
+        pages.push(current.join("\n\n"));
+        current = [];
+        currentWords = 0;
+      }
+      current.push(piece);
+      currentWords += pieceWords;
+    }
+  }
+
+  if (current.length > 0) pages.push(current.join("\n\n"));
+  return pages;
+}
+
+function renderClozeParagraph(content: string): ReactNode[] {
+  const nodes: ReactNode[] = [];
+  const pattern = /(?<!\w)(\d{1,2})(?!\w)/g;
+  let lastIndex = 0;
+
+  for (const match of content.matchAll(pattern)) {
+    const index = match.index ?? 0;
+    const blankNo = match[1];
+    const fullMatch = match[0];
+    const value = Number(blankNo);
+    const nextText = content.slice(index + fullMatch.length).trimStart().toLowerCase();
+    const shouldUnderline = value >= 1 && value <= 20 && !nextText.startsWith("point");
+
+    if (index > lastIndex) {
+      nodes.push(content.slice(lastIndex, index));
+    }
+    nodes.push(shouldUnderline
+      ? <span key={`${index}-${blankNo}`} className="cloze-blank">{blankNo}</span>
+      : fullMatch);
+    lastIndex = index + fullMatch.length;
+  }
+
+  if (lastIndex < content.length) {
+    nodes.push(content.slice(lastIndex));
+  }
+
+  return nodes;
+}
+
+function PassagePageContent({
+  content,
+  cloze,
+}: {
+  content: string;
+  cloze: boolean;
+}) {
+  const paragraphs = content.split(/\n{2,}/).map((paragraph) => paragraph.trim()).filter(Boolean);
+
+  return (
+    <div className="english-passage-content text-on-surface">
+      {paragraphs.map((paragraph, index) => (
+        <p key={`${index}-${paragraph.slice(0, 12)}`}>
+          {cloze ? renderClozeParagraph(paragraph) : paragraph}
+        </p>
+      ))}
+    </div>
+  );
+}
+
+function getQuestionTitle(question: EnglishQuestion, passage: EnglishPassage): string {
+  if (passage.section === "cloze") return `Blank ${question.questionNo}`;
+  return question.stem || `第 ${question.questionNo} 题`;
+}
+
+function sortPassagesOldestFirst(left: EnglishPassage, right: EnglishPassage): number {
+  return left.year - right.year
+    || left.sortOrder - right.sortOrder
+    || left.passageNo.localeCompare(right.passageNo);
+}
+
+export function EnglishTraining() {
   const toast = useToast();
   const [data, setData] = useState<EnglishTrainingData>({
     papers: [],
@@ -147,20 +263,13 @@ export function EnglishTraining({ embedded = false }: { embedded?: boolean }) {
   });
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [yearFilter, setYearFilter] = useState<YearFilter>("all");
-  const [sectionFilter, setSectionFilter] = useState<SectionFilter>("all");
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
-  const [query, setQuery] = useState("");
+  const [stage, setStage] = useState<TrainingStage>("types");
+  const [activeCategoryId, setActiveCategoryId] = useState<TrainingCategoryId | null>(null);
   const [activePassageId, setActivePassageId] = useState<string | null>(null);
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [draftAnswersByPassageId, setDraftAnswersByPassageId] = useState<Record<string, EnglishAttemptAnswerInput>>({});
   const [saving, setSaving] = useState<"save" | "submit" | null>(null);
-  const [vocabSaving, setVocabSaving] = useState(false);
-  const [vocabForm, setVocabForm] = useState({
-    word: "",
-    partOfSpeech: "other" as EnglishVocabularyPartOfSpeech,
-    definition: "",
-    exampleSentence: "",
-  });
+  const [articlePage, setArticlePage] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -172,7 +281,6 @@ export function EnglishTraining({ embedded = false }: { embedded?: boolean }) {
         const trainingData = await englishTrainingApi.getTrainingData();
         if (cancelled) return;
         setData(trainingData);
-        setActivePassageId((current) => current ?? trainingData.passages[0]?.id ?? null);
       } catch (error) {
         if (cancelled) return;
         const message = error instanceof Error ? error.message : "未知错误";
@@ -193,6 +301,7 @@ export function EnglishTraining({ embedded = false }: { embedded?: boolean }) {
     () => new Map(data.attempts.map((attempt) => [attempt.passageId, attempt])),
     [data.attempts],
   );
+
   const questionsByPassageId = useMemo(() => {
     const map = new Map<string, EnglishQuestion[]>();
     for (const question of data.questions) {
@@ -206,49 +315,75 @@ export function EnglishTraining({ embedded = false }: { embedded?: boolean }) {
     return map;
   }, [data.questions]);
 
-  const normalizedQuery = normalizeQuery(query);
-  const visiblePassages = useMemo(() => data.passages.filter((passage) => {
-    const attempt = attemptsByPassageId.get(passage.id);
-    const status = getAttemptStatus(attempt);
-    const matchesQuery = !normalizedQuery
-      || getEnglishPassageTitle(passage).toLowerCase().includes(normalizedQuery)
-      || passage.content.toLowerCase().includes(normalizedQuery);
-
-    return (yearFilter === "all" || passage.year === yearFilter)
-      && (sectionFilter === "all" || passage.section === sectionFilter)
-      && (statusFilter === "all" || status === statusFilter)
-      && matchesQuery;
-  }), [attemptsByPassageId, data.passages, normalizedQuery, sectionFilter, statusFilter, yearFilter]);
-
-  const activePassage = useMemo(
-    () => visiblePassages.find((passage) => passage.id === activePassageId) ?? visiblePassages[0] ?? null,
-    [activePassageId, visiblePassages],
-  );
-  const activeAttempt = activePassage ? attemptsByPassageId.get(activePassage.id) : undefined;
-  const activeQuestions = activePassage ? questionsByPassageId.get(activePassage.id) ?? [] : [];
-  const activeVocabulary = activePassage
-    ? data.vocabulary.filter((entry) => entry.passageId === activePassage.id)
-    : [];
-  const activeAnswers = activePassage
-    ? draftAnswersByPassageId[activePassage.id] ?? buildAnswerMap(activeAttempt)
-    : {};
+  const passagesByCategory = useMemo(() => {
+    const map = new Map<TrainingCategoryId, EnglishPassage[]>();
+    for (const category of TRAINING_CATEGORIES) {
+      map.set(category.id, []);
+    }
+    for (const passage of data.passages) {
+      const categoryId = getCategoryForPassage(passage);
+      map.get(categoryId)?.push(passage);
+    }
+    for (const passages of map.values()) {
+      passages.sort(sortPassagesOldestFirst);
+    }
+    return map;
+  }, [data.passages]);
 
   const stats = useMemo(() => {
     const submitted = data.attempts.filter((attempt) => attempt.status === "submitted");
     const score = submitted.reduce((sum, attempt) => sum + attempt.score, 0);
     const maxScore = submitted.reduce((sum, attempt) => sum + attempt.maxScore, 0);
-    const accuracy = maxScore > 0 ? Math.round((score / maxScore) * 100) : 0;
     return {
       total: data.passages.length,
       submitted: submitted.length,
       inProgress: data.attempts.filter((attempt) => attempt.status === "in_progress").length,
-      vocabulary: data.vocabulary.length,
-      accuracy,
+      accuracy: maxScore > 0 ? Math.round((score / maxScore) * 100) : 0,
     };
-  }, [data.attempts, data.passages.length, data.vocabulary.length]);
+  }, [data.attempts, data.passages.length]);
 
-  const handleSelectPassage = (passageId: string) => {
+  const activeCategory = useMemo(
+    () => TRAINING_CATEGORIES.find((category) => category.id === activeCategoryId) ?? null,
+    [activeCategoryId],
+  );
+
+  const categoryPassages = activeCategoryId ? passagesByCategory.get(activeCategoryId) ?? [] : [];
+  const visiblePassages = categoryPassages.filter((passage) => {
+    const status = getAttemptStatus(attemptsByPassageId.get(passage.id));
+    return statusFilter === "all" || status === statusFilter;
+  });
+  const activePassage = activePassageId
+    ? data.passages.find((passage) => passage.id === activePassageId) ?? null
+    : null;
+  const activeAttempt = activePassage ? attemptsByPassageId.get(activePassage.id) : undefined;
+  const activeQuestions = activePassage ? questionsByPassageId.get(activePassage.id) ?? [] : [];
+  const activeAnswers = activePassage
+    ? draftAnswersByPassageId[activePassage.id] ?? buildAnswerMap(activeAttempt)
+    : {};
+
+  const handleSelectCategory = (categoryId: TrainingCategoryId) => {
+    setActiveCategoryId(categoryId);
+    setStatusFilter("all");
+    setStage("sets");
+  };
+
+  const handleOpenPassage = (passageId: string) => {
     setActivePassageId(passageId);
+    setArticlePage(0);
+    setStage("practice");
+  };
+
+  const handleBack = () => {
+    if (stage === "practice") {
+      setStage("sets");
+      setArticlePage(0);
+      return;
+    }
+    if (stage === "sets") {
+      setStage("types");
+      setActiveCategoryId(null);
+      setStatusFilter("all");
+    }
   };
 
   const handleSaveAttempt = async (submitted: boolean) => {
@@ -275,110 +410,60 @@ export function EnglishTraining({ embedded = false }: { embedded?: boolean }) {
     }
   };
 
-  const handleAddVocabulary = async () => {
-    if (!activePassage || vocabSaving) return;
-    if (!vocabForm.word.trim()) {
-      toast.info("先填写单词");
-      return;
-    }
-    setVocabSaving(true);
-    try {
-      const saved = await englishTrainingApi.addVocabulary({
-        passageId: activePassage.id,
-        word: vocabForm.word,
-        partOfSpeech: vocabForm.partOfSpeech,
-        definition: vocabForm.definition,
-        exampleSentence: vocabForm.exampleSentence,
-      });
-      setData((current) => ({
-        ...current,
-        vocabulary: [saved, ...current.vocabulary],
-      }));
-      setVocabForm({ word: "", partOfSpeech: "other", definition: "", exampleSentence: "" });
-      toast.success("生词已记录");
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "未知错误";
-      toast.error(`生词保存失败：${message}`);
-    } finally {
-      setVocabSaving(false);
-    }
-  };
-
-  const handleUpdateMastery = async (entry: EnglishVocabularyEntry, masteryStatus: EnglishVocabularyMasteryStatus) => {
-    try {
-      const saved = await englishTrainingApi.updateVocabularyMastery(entry.id, masteryStatus);
-      setData((current) => ({
-        ...current,
-        vocabulary: current.vocabulary.map((item) => item.id === saved.id ? saved : item),
-      }));
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "未知错误";
-      toast.error(`生词状态保存失败：${message}`);
-    }
-  };
-
-  const resetFilters = () => {
-    setYearFilter("all");
-    setSectionFilter("all");
-    setStatusFilter("all");
-    setQuery("");
-  };
-
   const workspace = (
-    <section className="min-w-0 space-y-4">
-      {embedded && <EnglishTrainingOverview stats={stats} />}
-      <PassagePickerPanel
-        query={query}
-        yearFilter={yearFilter}
-        sectionFilter={sectionFilter}
-        statusFilter={statusFilter}
-        passages={visiblePassages}
-        attemptsByPassageId={attemptsByPassageId}
-        vocabulary={data.vocabulary}
-        activePassageId={activePassage?.id ?? null}
-        loading={isLoading}
-        error={loadError}
-        onQueryChange={setQuery}
-        onYearChange={setYearFilter}
-        onSectionChange={setSectionFilter}
-        onStatusChange={setStatusFilter}
-        onReset={resetFilters}
-        onSelect={handleSelectPassage}
-      />
-      <TrainingPanel
-        passage={activePassage}
-        questions={activeQuestions}
-        attempt={activeAttempt}
-        answers={activeAnswers}
-        saving={saving}
-        loading={isLoading}
-        hasAnyPassage={data.passages.length > 0}
-        onAnswerChange={(questionId, answer) => {
-          if (!activePassage) return;
-          setDraftAnswersByPassageId((current) => ({
-            ...current,
-            [activePassage.id]: {
-              ...(current[activePassage.id] ?? buildAnswerMap(activeAttempt)),
-              [questionId]: answer,
-            },
-          }));
-        }}
-        onSave={() => handleSaveAttempt(false)}
-        onSubmit={() => handleSaveAttempt(true)}
-      />
-      <VocabularyPanel
-        passage={activePassage}
-        vocabulary={activeVocabulary}
-        form={vocabForm}
-        saving={vocabSaving}
-        onFormChange={setVocabForm}
-        onSave={handleAddVocabulary}
-        onUpdateMastery={handleUpdateMastery}
-      />
+    <section className="min-w-0">
+      {stage === "types" && (
+        <TrainingTypeSelect
+          loading={isLoading}
+          error={loadError}
+          stats={stats}
+          passagesByCategory={passagesByCategory}
+          attemptsByPassageId={attemptsByPassageId}
+          onSelect={handleSelectCategory}
+        />
+      )}
+      {stage === "sets" && activeCategory && (
+        <TrainingSetList
+          category={activeCategory}
+          passages={visiblePassages}
+          allPassageCount={categoryPassages.length}
+          attemptsByPassageId={attemptsByPassageId}
+          questionsByPassageId={questionsByPassageId}
+          statusFilter={statusFilter}
+          loading={isLoading}
+          error={loadError}
+          onStatusChange={setStatusFilter}
+          onBack={handleBack}
+          onSelect={handleOpenPassage}
+        />
+      )}
+      {stage === "practice" && (
+        <PracticeWorkspace
+          passage={activePassage}
+          questions={activeQuestions}
+          attempt={activeAttempt}
+          answers={activeAnswers}
+          saving={saving}
+          loading={isLoading}
+          articlePage={articlePage}
+          onArticlePageChange={setArticlePage}
+          onBack={handleBack}
+          onAnswerChange={(questionId, answer) => {
+            if (!activePassage) return;
+            setDraftAnswersByPassageId((current) => ({
+              ...current,
+              [activePassage.id]: {
+                ...(current[activePassage.id] ?? buildAnswerMap(activeAttempt)),
+                [questionId]: answer,
+              },
+            }));
+          }}
+          onSave={() => handleSaveAttempt(false)}
+          onSubmit={() => handleSaveAttempt(true)}
+        />
+      )}
     </section>
   );
-
-  if (embedded) return workspace;
 
   return (
     <>
@@ -387,12 +472,12 @@ export function EnglishTraining({ embedded = false }: { embedded?: boolean }) {
         eyebrow="英语一"
         icon={<BookOpen className="h-4 w-4" />}
         title="英语真题训练"
-        description="2007-2026 英语一真题训练工作台。"
+        description="按阅读、三小门和写作整理 2007-2026 英语一真题。"
         stats={[
-          { label: "篇章", value: stats.total },
+          { label: "题组", value: stats.total },
           { label: "已提交", value: stats.submitted, tone: "text-green-600" },
+          { label: "进行中", value: stats.inProgress },
           { label: "正确率", value: `${stats.accuracy}%` },
-          { label: "生词", value: stats.vocabulary, tone: "text-amber-600" },
         ]}
       />
       <PageShell width="workspace" topPadding="content">
@@ -402,170 +487,57 @@ export function EnglishTraining({ embedded = false }: { embedded?: boolean }) {
   );
 }
 
-function EnglishTrainingOverview({ stats }: { stats: EnglishTrainingStats }) {
-  return (
-    <section className="surface-panel p-4 sm:p-5">
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(22rem,34rem)] lg:items-center">
-        <div className="min-w-0">
-          <div className="eyebrow-chip mb-3 px-3 py-1 text-xs">
-            <BookOpen className="h-4 w-4" />
-            英语一
-          </div>
-          <h2 className="font-headline text-2xl font-bold text-on-surface">英语真题训练</h2>
-          <p className="mt-2 text-sm leading-6 text-on-surface-variant">2007-2026 真题阅读、完形、新题型、翻译与写作。</p>
-        </div>
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-          <MiniStat label="篇章" value={stats.total} />
-          <MiniStat label="已提交" value={stats.submitted} tone="text-green-600" />
-          <MiniStat label="正确率" value={`${stats.accuracy}%`} />
-          <MiniStat label="生词" value={stats.vocabulary} tone="text-amber-600" />
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function MiniStat({ label, value, tone = "text-primary" }: { label: string; value: ReactNode; tone?: string }) {
-  return (
-    <div className="rounded-lg bg-surface-container-low px-3 py-2 text-center">
-      <div className={`text-base font-bold ${tone}`}>{value}</div>
-      <div className="mt-0.5 text-[11px] text-on-surface-variant">{label}</div>
-    </div>
-  );
-}
-
-function PassagePickerPanel({
-  query,
-  yearFilter,
-  sectionFilter,
-  statusFilter,
-  passages,
-  attemptsByPassageId,
-  vocabulary,
-  activePassageId,
+function TrainingTypeSelect({
   loading,
   error,
-  onQueryChange,
-  onYearChange,
-  onSectionChange,
-  onStatusChange,
-  onReset,
+  stats,
+  passagesByCategory,
+  attemptsByPassageId,
   onSelect,
 }: {
-  query: string;
-  yearFilter: YearFilter;
-  sectionFilter: SectionFilter;
-  statusFilter: StatusFilter;
-  passages: EnglishPassage[];
-  attemptsByPassageId: Map<string, EnglishAttempt>;
-  vocabulary: EnglishVocabularyEntry[];
-  activePassageId: string | null;
   loading: boolean;
   error: string | null;
-  onQueryChange: (value: string) => void;
-  onYearChange: (value: YearFilter) => void;
-  onSectionChange: (value: SectionFilter) => void;
-  onStatusChange: (value: StatusFilter) => void;
-  onReset: () => void;
-  onSelect: (passageId: string) => void;
+  stats: EnglishTrainingStats;
+  passagesByCategory: Map<TrainingCategoryId, EnglishPassage[]>;
+  attemptsByPassageId: Map<string, EnglishAttempt>;
+  onSelect: (categoryId: TrainingCategoryId) => void;
 }) {
-  return (
-    <section className="surface-panel p-4 sm:p-5">
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h2 className="text-sm font-semibold text-on-surface">选择篇章</h2>
-          <p className="mt-1 text-xs text-on-surface-variant">{passages.length} 个匹配结果</p>
-        </div>
-        <button type="button" onClick={onReset} className="control-button h-9 px-2 text-xs" title="恢复默认">
-          <RotateCcw className="h-3.5 w-3.5" />
-        </button>
-      </div>
-      <div className="grid gap-3 lg:grid-cols-[minmax(12rem,1fr)_9rem_10rem_9rem]">
-        <div className="relative lg:min-w-[16rem]">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-on-surface-variant/50" />
-          <input
-            value={query}
-            onChange={(event) => onQueryChange(event.target.value)}
-            placeholder="搜索篇章或原文"
-            className="field-control h-10 w-full px-9 text-sm"
-          />
-          {query && (
-            <button
-              type="button"
-              onClick={() => onQueryChange("")}
-              className="absolute right-2 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full text-on-surface-variant hover:bg-surface-container-high"
-              aria-label="清空搜索"
-              title="清空搜索"
-            >
-              <X className="h-3.5 w-3.5" />
-            </button>
-          )}
-        </div>
-        <select
-          value={yearFilter}
-          onChange={(event) => onYearChange(event.target.value === "all" ? "all" : Number(event.target.value))}
-          className="field-control h-10 w-full px-3 text-sm"
-        >
-          <option value="all">全部年份</option>
-          {ENGLISH_TRAINING_YEARS.map((year) => <option key={year} value={year}>{year}</option>)}
-        </select>
-        <select
-          value={sectionFilter}
-          onChange={(event) => onSectionChange(event.target.value as SectionFilter)}
-          className="field-control h-10 w-full px-3 text-sm"
-        >
-          {sectionOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-        </select>
-        <select
-          value={statusFilter}
-          onChange={(event) => onStatusChange(event.target.value as StatusFilter)}
-          className="field-control h-10 w-full px-3 text-sm"
-        >
-          {statusOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-        </select>
-      </div>
+  if (loading) {
+    return <EmptyWorkspace icon={<Loader2 className="h-6 w-6 animate-spin text-primary" />} text="正在加载英语真题训练。" />;
+  }
 
-      <div className="mt-4 grid max-h-72 gap-2 overflow-y-auto pr-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-        {loading ? (
-          <div className="sm:col-span-2 xl:col-span-3 2xl:col-span-4">
-            <InlineState icon={<Loader2 className="h-4 w-4 animate-spin text-primary" />} text="加载英语真题..." />
-          </div>
-        ) : error ? (
-          <div className="sm:col-span-2 xl:col-span-3 2xl:col-span-4">
-            <InlineState text={error} tone="text-red-600" />
-          </div>
-        ) : passages.length === 0 ? (
-          <div className="sm:col-span-2 xl:col-span-3 2xl:col-span-4">
-            <InlineState text="当前还没有可训练的英语真题篇章。" />
-          </div>
-        ) : passages.map((passage) => {
-          const attempt = attemptsByPassageId.get(passage.id);
-          const accuracy = getAccuracy(attempt);
-          const active = passage.id === activePassageId;
+  if (error) {
+    return <EmptyWorkspace text={error} />;
+  }
+
+  if (stats.total === 0) {
+    return <EmptyWorkspace icon={<Sparkles className="h-8 w-8 text-primary" />} text="英语一真题库还未导入。" />;
+  }
+
+  return (
+    <section className="space-y-4">
+      <div className="grid gap-4 md:grid-cols-3">
+        {TRAINING_CATEGORIES.map((category) => {
+          const passages = passagesByCategory.get(category.id) ?? [];
+          const submitted = passages.filter((passage) => attemptsByPassageId.get(passage.id)?.status === "submitted").length;
           return (
             <button
-              key={passage.id}
+              key={category.id}
               type="button"
-              onClick={() => onSelect(passage.id)}
-              className={`flex min-h-[5.5rem] w-full rounded-md border px-3 py-3 text-left transition-all ${
-                active
-                  ? "border-primary/40 bg-primary/[0.07] ring-1 ring-primary/15"
-                  : "border-outline-variant/20 bg-surface-container-low/70 hover:border-primary/25 hover:bg-surface-container-lowest"
-              }`}
+              onClick={() => onSelect(category.id)}
+              className="surface-card group min-h-56 p-5 text-left"
             >
               <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="line-clamp-2 text-sm font-semibold text-on-surface">
-                    {getEnglishPassageTitle(passage)}
-                  </div>
-                  <div className="mt-1 flex flex-wrap gap-1.5 text-xs text-on-surface-variant">
-                    <span>{passage.totalScore || "-"} 分</span>
-                    <span>{getStatusLabel(attempt)}</span>
-                    <span>生词 {countPassageVocabulary(vocabulary, passage.id)}</span>
-                    {accuracy !== null && <span>正确率 {accuracy}%</span>}
-                  </div>
-                </div>
-                <ChevronRight className="mt-0.5 h-4 w-4 shrink-0 text-on-surface-variant/50" />
+                <span className="flex h-11 w-11 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                  {category.icon}
+                </span>
+                <ChevronRight className="h-5 w-5 text-on-surface-variant/60 transition-transform group-hover:translate-x-1" />
+              </div>
+              <h2 className="mt-5 text-xl font-bold text-on-surface">{category.title}</h2>
+              <p className="mt-2 text-sm leading-6 text-on-surface-variant">{category.subtitle}</p>
+              <div className="mt-6 flex flex-wrap gap-2 text-xs text-on-surface-variant">
+                <span className="tag-chip px-2 py-0.5">{passages.length} 组</span>
+                <span className="tag-chip px-2 py-0.5">已提交 {submitted}</span>
               </div>
             </button>
           );
@@ -575,14 +547,115 @@ function PassagePickerPanel({
   );
 }
 
-function TrainingPanel({
+function TrainingSetList({
+  category,
+  passages,
+  allPassageCount,
+  attemptsByPassageId,
+  questionsByPassageId,
+  statusFilter,
+  loading,
+  error,
+  onStatusChange,
+  onBack,
+  onSelect,
+}: {
+  category: TrainingCategory;
+  passages: EnglishPassage[];
+  allPassageCount: number;
+  attemptsByPassageId: Map<string, EnglishAttempt>;
+  questionsByPassageId: Map<string, EnglishQuestion[]>;
+  statusFilter: StatusFilter;
+  loading: boolean;
+  error: string | null;
+  onStatusChange: (value: StatusFilter) => void;
+  onBack: () => void;
+  onSelect: (passageId: string) => void;
+}) {
+  return (
+    <section className="space-y-4">
+      <div className="surface-panel p-4 sm:p-5">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="min-w-0">
+            <button type="button" onClick={onBack} className="control-button mb-4 h-9 px-3 text-sm">
+              <ArrowLeft className="h-4 w-4" />
+              返回题型
+            </button>
+            <h2 className="text-2xl font-bold text-on-surface">{category.title}</h2>
+            <p className="mt-2 text-sm text-on-surface-variant">
+              共 {allPassageCount} 个题组，按 2007 到 2026 排列。
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {statusOptions.map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                onClick={() => onStatusChange(option.value)}
+                className={`control-button h-9 min-h-0 px-3 text-sm ${statusFilter === option.value ? "control-button-selected" : ""}`}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <section className="surface-panel p-4 sm:p-5">
+        {loading ? (
+          <InlineState icon={<Loader2 className="h-4 w-4 animate-spin text-primary" />} text="加载题组..." />
+        ) : error ? (
+          <InlineState text={error} tone="text-red-600" />
+        ) : passages.length === 0 ? (
+          <InlineState text="当前状态下没有题组。" />
+        ) : (
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {passages.map((passage) => {
+              const attempt = attemptsByPassageId.get(passage.id);
+              const accuracy = getAccuracy(attempt);
+              const questions = questionsByPassageId.get(passage.id) ?? [];
+              return (
+                <button
+                  key={passage.id}
+                  type="button"
+                  onClick={() => onSelect(passage.id)}
+                  className="rounded-lg border border-outline-variant/20 bg-surface-container-low/70 px-4 py-4 text-left transition-colors hover:border-primary/25 hover:bg-surface-container-lowest"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="text-base font-semibold text-on-surface">
+                        {getEnglishPassageTitle(passage)}
+                      </div>
+                      <div className="mt-2 flex flex-wrap gap-1.5 text-xs text-on-surface-variant">
+                        <span className="tag-chip px-2 py-0.5">{englishSectionLabels[passage.section]}</span>
+                        <span className="tag-chip px-2 py-0.5">{englishPassageLabels[passage.passageNo]}</span>
+                        <span className="tag-chip px-2 py-0.5">{questions.length} 题</span>
+                        <span className="tag-chip px-2 py-0.5">{getStatusLabel(attempt)}</span>
+                        {accuracy !== null && <span className="tag-chip px-2 py-0.5">正确率 {accuracy}%</span>}
+                      </div>
+                    </div>
+                    <ChevronRight className="mt-1 h-4 w-4 shrink-0 text-on-surface-variant/50" />
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </section>
+    </section>
+  );
+}
+
+function PracticeWorkspace({
   passage,
   questions,
   attempt,
   answers,
   saving,
   loading,
-  hasAnyPassage,
+  articlePage,
+  onArticlePageChange,
+  onBack,
   onAnswerChange,
   onSave,
   onSubmit,
@@ -593,7 +666,9 @@ function TrainingPanel({
   answers: EnglishAttemptAnswerInput;
   saving: "save" | "submit" | null;
   loading: boolean;
-  hasAnyPassage: boolean;
+  articlePage: number;
+  onArticlePageChange: (page: number) => void;
+  onBack: () => void;
   onAnswerChange: (questionId: string, answer: string) => void;
   onSave: () => void;
   onSubmit: () => void;
@@ -602,68 +677,88 @@ function TrainingPanel({
     return <EmptyWorkspace icon={<Loader2 className="h-6 w-6 animate-spin text-primary" />} text="正在加载英语真题训练。" />;
   }
 
-  if (!hasAnyPassage) {
-    return (
-      <EmptyWorkspace
-        icon={<Sparkles className="h-8 w-8 text-primary" />}
-        text="英语一 2007-2026 真题库还未导入。"
-      />
-    );
-  }
-
   if (!passage) {
-    return <EmptyWorkspace text="当前筛选下没有篇章。" />;
+    return <EmptyWorkspace text="没有找到当前题组。" />;
   }
 
   const submitted = attempt?.status === "submitted";
   const objective = isEnglishObjectiveSection(passage.section);
+  const articlePages = paginatePassageContent(passage.content);
+  const currentPage = Math.min(articlePage, Math.max(articlePages.length - 1, 0));
+  const canSubmit = questions.length > 0 && objective;
 
   return (
-    <section className="surface-panel overflow-hidden">
-      <div className="border-b border-outline-variant/15 bg-surface-container-low px-4 py-4 sm:px-5">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-          <div className="min-w-0">
-            <div className="mb-2 flex flex-wrap items-center gap-2 text-xs">
-              <span className="tag-chip px-2 py-0.5">{englishSectionLabels[passage.section]}</span>
-              <span className="tag-chip px-2 py-0.5">{englishPassageLabels[passage.passageNo]}</span>
-              <span className="tag-chip px-2 py-0.5">{getStatusLabel(attempt)}</span>
-              {submitted && <span className="tag-chip px-2 py-0.5 text-green-700">{formatScore(attempt)}</span>}
-            </div>
-            <h2 className="font-headline text-xl font-bold text-on-surface">{getEnglishPassageTitle(passage)}</h2>
+    <section className="english-practice-shell">
+      <div className="english-practice-toolbar">
+        <div className="min-w-0">
+          <button type="button" onClick={onBack} className="control-button h-9 px-3 text-sm">
+            <ArrowLeft className="h-4 w-4" />
+            返回题组
+          </button>
+          <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+            <span className="tag-chip px-2 py-0.5">{englishSectionLabels[passage.section]}</span>
+            <span className="tag-chip px-2 py-0.5">{englishPassageLabels[passage.passageNo]}</span>
+            <span className="tag-chip px-2 py-0.5">{getStatusLabel(attempt)}</span>
+            {submitted && <span className="tag-chip px-2 py-0.5 text-green-700">{formatScore(attempt)}</span>}
           </div>
-          <div className="flex flex-wrap gap-2">
-            <button type="button" onClick={onSave} disabled={Boolean(saving) || submitted} className="control-button h-10 px-3 text-sm">
-              {saving === "save" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-              保存
-            </button>
-            <button type="button" onClick={onSubmit} disabled={Boolean(saving) || questions.length === 0} className="control-button control-button-primary h-10 px-3 text-sm">
-              {saving === "submit" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
-              提交本篇
-            </button>
-          </div>
+          <h2 className="mt-2 text-xl font-bold leading-tight text-on-surface">{getEnglishPassageTitle(passage)}</h2>
+        </div>
+        <div className="flex shrink-0 flex-wrap gap-2">
+          <button type="button" onClick={onSave} disabled={Boolean(saving) || submitted} className="control-button h-10 px-3 text-sm">
+            {saving === "save" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+            保存
+          </button>
+          <button type="button" onClick={onSubmit} disabled={Boolean(saving) || !canSubmit} className="control-button control-button-primary h-10 px-3 text-sm">
+            {saving === "submit" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+            提交本篇
+          </button>
         </div>
       </div>
 
-      <div className="grid gap-0 2xl:grid-cols-[minmax(0,1fr)_minmax(21rem,27rem)]">
-        <article className="min-h-[36rem] border-b border-outline-variant/15 bg-surface-container-lowest px-5 py-6 2xl:border-b-0 2xl:border-r sm:px-6 lg:px-8">
-          {passage.content ? (
-            <MarkdownContent
-              content={normalizePassageContentForDisplay(passage.content)}
-              className="english-passage-content mx-auto max-w-[52rem] text-[15px] text-on-surface sm:text-base"
-            />
+      <div className="english-practice-grid">
+        <article className="english-article-pane">
+          {articlePages.length > 0 ? (
+            <>
+              <div className="mb-4 flex items-center justify-between gap-3 text-xs text-on-surface-variant">
+                <span>文章 {currentPage + 1} / {articlePages.length}</span>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => onArticlePageChange(Math.max(currentPage - 1, 0))}
+                    disabled={currentPage === 0}
+                    className="control-button h-8 min-h-0 px-2 text-xs"
+                  >
+                    <ArrowLeft className="h-3.5 w-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onArticlePageChange(Math.min(currentPage + 1, articlePages.length - 1))}
+                    disabled={currentPage >= articlePages.length - 1}
+                    className="control-button h-8 min-h-0 px-2 text-xs"
+                  >
+                    <ArrowRight className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              </div>
+              <PassagePageContent
+                content={articlePages[currentPage]}
+                cloze={passage.section === "cloze"}
+              />
+            </>
           ) : (
             <div className="flex min-h-[28rem] items-center justify-center rounded-lg border border-dashed border-outline-variant/30 text-sm text-on-surface-variant">
               这篇真题原文还未导入。
             </div>
           )}
         </article>
-        <aside className="min-h-[36rem] bg-surface-container-low p-4 sm:p-5">
-          <div className="mb-4 flex items-center justify-between gap-3">
+
+        <aside className="english-question-pane">
+          <div className="sticky top-0 z-10 mb-4 flex items-center justify-between gap-3 bg-surface-container-low pb-3">
             <h3 className="text-sm font-semibold text-on-surface">题目</h3>
             <span className="tag-chip px-2 py-0.5 text-xs">{questions.length} 题</span>
           </div>
           {questions.length === 0 ? (
-            <InlineState text="这篇的题目还未导入。" />
+            <InlineState text={passage.section === "writing" ? "写作 AI 评分入口预留中。" : "这篇的题目还未导入。"} />
           ) : (
             <div className="space-y-4">
               {questions.map((question) => {
@@ -671,6 +766,7 @@ function TrainingPanel({
                 return (
                   <QuestionBlock
                     key={question.id}
+                    passage={passage}
                     question={question}
                     value={answers[question.id] ?? ""}
                     savedAnswer={savedAnswer}
@@ -689,6 +785,7 @@ function TrainingPanel({
 }
 
 function QuestionBlock({
+  passage,
   question,
   value,
   savedAnswer,
@@ -696,6 +793,7 @@ function QuestionBlock({
   objective,
   onChange,
 }: {
+  passage: EnglishPassage;
   question: EnglishQuestion;
   value: string;
   savedAnswer?: { isCorrect?: boolean; score: number };
@@ -705,6 +803,8 @@ function QuestionBlock({
 }) {
   const correct = submitted && savedAnswer?.isCorrect === true;
   const wrong = submitted && savedAnswer?.isCorrect === false;
+  const questionTitle = getQuestionTitle(question, passage);
+  const showStem = Boolean(questionTitle.trim());
 
   return (
     <div className="rounded-lg border border-outline-variant/15 bg-surface-container-lowest p-4">
@@ -714,7 +814,13 @@ function QuestionBlock({
         {correct && <span className="rounded-full bg-green-50 px-2.5 py-1 font-medium text-green-700">正确</span>}
         {wrong && <span className="rounded-full bg-red-50 px-2.5 py-1 font-medium text-red-700">错误</span>}
       </div>
-      <MarkdownContent content={question.stem || "题干未导入"} compact className="text-sm text-on-surface" />
+      {showStem && (
+        <MarkdownContent
+          content={questionTitle}
+          compact
+          className="text-sm font-semibold text-on-surface"
+        />
+      )}
 
       {question.options.length > 0 ? (
         <div className="mt-3 grid gap-2">
@@ -725,7 +831,7 @@ function QuestionBlock({
                 key={`${question.id}-${option.label}`}
                 type="button"
                 onClick={() => onChange(option.label)}
-                className={`grid grid-cols-[1.75rem_minmax(0,1fr)] gap-3 rounded-lg border px-3 py-2.5 text-left text-sm transition-colors ${
+                className={`grid grid-cols-[1.75rem_minmax(0,1fr)] gap-3 rounded-lg border px-3 py-3 text-left text-sm transition-colors ${
                   selected
                     ? "border-primary/35 bg-primary/10"
                     : "border-outline-variant/15 bg-surface-container-low hover:border-primary/25"
@@ -745,7 +851,7 @@ function QuestionBlock({
         <textarea
           value={value}
           onChange={(event) => onChange(event.target.value)}
-          rows={objective ? 2 : 6}
+          rows={objective ? 2 : 8}
           className="field-control mt-3 w-full resize-y px-3 py-2 text-sm leading-6"
           placeholder={objective ? "填写答案" : "记录你的作答"}
         />
@@ -761,102 +867,9 @@ function QuestionBlock({
   );
 }
 
-function VocabularyPanel({
-  passage,
-  vocabulary,
-  form,
-  saving,
-  onFormChange,
-  onSave,
-  onUpdateMastery,
-}: {
-  passage: EnglishPassage | null;
-  vocabulary: EnglishVocabularyEntry[];
-  form: {
-    word: string;
-    partOfSpeech: EnglishVocabularyPartOfSpeech;
-    definition: string;
-    exampleSentence: string;
-  };
-  saving: boolean;
-  onFormChange: (form: { word: string; partOfSpeech: EnglishVocabularyPartOfSpeech; definition: string; exampleSentence: string }) => void;
-  onSave: () => void;
-  onUpdateMastery: (entry: EnglishVocabularyEntry, masteryStatus: EnglishVocabularyMasteryStatus) => void;
-}) {
-  return (
-    <section className="surface-panel p-4 sm:p-5">
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <h2 className="flex items-center gap-2 text-sm font-semibold text-on-surface">
-          <BookOpen className="h-4 w-4 text-primary" />
-          生词
-        </h2>
-        <span className="tag-chip px-2 py-0.5 text-xs">{vocabulary.length} 个</span>
-      </div>
-
-      <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_auto]">
-        <input
-          value={form.word}
-          onChange={(event) => onFormChange({ ...form, word: event.target.value })}
-          disabled={!passage}
-          placeholder="单词"
-          className="field-control h-10 px-3 text-sm"
-        />
-        <select
-          value={form.partOfSpeech}
-          onChange={(event) => onFormChange({ ...form, partOfSpeech: event.target.value as EnglishVocabularyPartOfSpeech })}
-          disabled={!passage}
-          className="field-control h-10 px-3 text-sm"
-        >
-          {partOfSpeechOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-        </select>
-        <input
-          value={form.definition}
-          onChange={(event) => onFormChange({ ...form, definition: event.target.value })}
-          disabled={!passage}
-          placeholder="释义"
-          className="field-control h-10 px-3 text-sm xl:col-span-2"
-        />
-        <input
-          value={form.exampleSentence}
-          onChange={(event) => onFormChange({ ...form, exampleSentence: event.target.value })}
-          disabled={!passage}
-          placeholder="原句"
-          className="field-control h-10 px-3 text-sm xl:col-span-2"
-        />
-        <button type="button" onClick={onSave} disabled={!passage || saving} className="control-button control-button-primary h-10 px-3 text-sm xl:col-span-2">
-          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-          记录生词
-        </button>
-      </div>
-
-      <div className="mt-4 grid gap-2 md:grid-cols-2">
-        {vocabulary.length === 0 ? (
-          <p className="py-4 text-sm text-on-surface-variant md:col-span-2">当前篇章还没有生词。</p>
-        ) : vocabulary.map((entry) => (
-          <div key={entry.id} className="rounded-lg border border-outline-variant/15 bg-surface-container-low px-3 py-3">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="font-semibold text-on-surface">{entry.word}</div>
-              <span className="tag-chip px-2 py-0.5 text-xs">{englishVocabularyPartOfSpeechLabels[entry.partOfSpeech]}</span>
-            </div>
-            {entry.definition && <p className="mt-1 text-sm text-on-surface-variant">{entry.definition}</p>}
-            {entry.exampleSentence && <p className="mt-2 line-clamp-2 text-xs leading-5 text-on-surface-variant">{entry.exampleSentence}</p>}
-            <select
-              value={entry.masteryStatus}
-              onChange={(event) => onUpdateMastery(entry, event.target.value as EnglishVocabularyMasteryStatus)}
-              className="field-control mt-3 h-9 w-full px-2 text-xs"
-            >
-              {masteryOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-            </select>
-          </div>
-        ))}
-      </div>
-    </section>
-  );
-}
-
 function EmptyWorkspace({ icon, text }: { icon?: ReactNode; text: string }) {
   return (
-    <section className="surface-panel flex min-h-[36rem] flex-col items-center justify-center gap-3 p-6 text-center text-sm text-on-surface-variant">
+    <section className="surface-panel flex min-h-[32rem] flex-col items-center justify-center gap-3 p-6 text-center text-sm text-on-surface-variant">
       {icon ?? <ClipboardCheck className="h-8 w-8 opacity-50" />}
       <p>{text}</p>
     </section>

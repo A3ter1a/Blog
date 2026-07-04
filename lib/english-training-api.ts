@@ -6,9 +6,6 @@ import type {
   EnglishPassage,
   EnglishQuestion,
   EnglishTrainingData,
-  EnglishVocabularyEntry,
-  EnglishVocabularyMasteryStatus,
-  EnglishVocabularyPartOfSpeech,
 } from "./english-training";
 import type {
   EnglishAttemptAnswerInsert,
@@ -18,8 +15,6 @@ import type {
   EnglishPaperRow,
   EnglishPassageRow,
   EnglishQuestionRow,
-  EnglishVocabularyInsert,
-  EnglishVocabularyRow,
 } from "./supabase-schema";
 import {
   isEnglishObjectiveSection,
@@ -31,18 +26,8 @@ const ENGLISH_PASSAGE_FIELDS = "id,paper_id,year,section,passage_no,title,conten
 const ENGLISH_QUESTION_FIELDS = "id,passage_id,question_no,stem,options,standard_answer,score,sort_order,created_at,updated_at";
 const ENGLISH_ATTEMPT_FIELDS = "id,user_id,passage_id,status,score,max_score,started_at,submitted_at,created_at,updated_at";
 const ENGLISH_ATTEMPT_ANSWER_FIELDS = "id,attempt_id,question_id,answer,is_correct,score,created_at,updated_at";
-const ENGLISH_VOCABULARY_FIELDS = "id,user_id,passage_id,word,part_of_speech,definition,example_sentence,mastery_status,note,created_at,updated_at";
 
 export type EnglishAttemptAnswerInput = Record<string, string>;
-
-export type EnglishVocabularyInput = {
-  passageId: string;
-  word: string;
-  partOfSpeech: EnglishVocabularyPartOfSpeech;
-  definition: string;
-  exampleSentence?: string;
-  note?: string;
-};
 
 function toDate(value: string | null | undefined, fallback = new Date()): Date {
   return value ? new Date(value) : fallback;
@@ -123,23 +108,6 @@ function mapAttempt(row: EnglishAttemptRow, answers: EnglishAttemptAnswer[] = []
     createdAt,
     updatedAt: toDate(row.updated_at, createdAt),
     answers,
-  };
-}
-
-function mapVocabulary(row: EnglishVocabularyRow): EnglishVocabularyEntry {
-  const createdAt = toDate(row.created_at);
-  return {
-    id: row.id ?? "",
-    userId: row.user_id ?? undefined,
-    passageId: row.passage_id ?? "",
-    word: row.word ?? "",
-    partOfSpeech: row.part_of_speech ?? "other",
-    definition: row.definition ?? "",
-    exampleSentence: row.example_sentence ?? "",
-    masteryStatus: row.mastery_status ?? "new",
-    note: row.note ?? "",
-    createdAt,
-    updatedAt: toDate(row.updated_at, createdAt),
   };
 }
 
@@ -233,23 +201,12 @@ export const englishTrainingApi = {
       answersByAttemptId.set(answer.attemptId, current);
     }
 
-    const vocabulary = await supabase
-      .from("english_vocabulary")
-      .select(ENGLISH_VOCABULARY_FIELDS)
-      .eq("user_id", userId)
-      .in("passage_id", passageIds)
-      .order("updated_at", { ascending: false })
-      .then(({ data, error }) => {
-        if (error) throw error;
-        return ((data || []) as EnglishVocabularyRow[]).map(mapVocabulary);
-      });
-
     return {
       papers: ((paperRows || []) as EnglishPaperRow[]).map(mapPaper),
       passages,
       questions,
       attempts: attemptRows.map((attempt) => mapAttempt(attempt, answersByAttemptId.get(attempt.id ?? "") ?? [])),
-      vocabulary,
+      vocabulary: [],
     };
   },
 
@@ -324,48 +281,5 @@ export const englishTrainingApi = {
     }
 
     return attempt;
-  },
-
-  async addVocabulary(input: EnglishVocabularyInput): Promise<EnglishVocabularyEntry> {
-    const userId = await assertAdminWrite();
-    const now = new Date().toISOString();
-    const payload: EnglishVocabularyInsert = {
-      user_id: userId,
-      passage_id: input.passageId,
-      word: input.word.trim(),
-      part_of_speech: input.partOfSpeech,
-      definition: input.definition.trim(),
-      example_sentence: input.exampleSentence?.trim() ?? "",
-      mastery_status: "new",
-      note: input.note?.trim() ?? "",
-      created_at: now,
-      updated_at: now,
-    };
-
-    const { data, error } = await getSupabase()
-      .from("english_vocabulary")
-      .insert([payload])
-      .select(ENGLISH_VOCABULARY_FIELDS)
-      .single();
-    if (error) throw error;
-    return mapVocabulary(data as EnglishVocabularyRow);
-  },
-
-  async updateVocabularyMastery(
-    id: string,
-    masteryStatus: EnglishVocabularyMasteryStatus,
-  ): Promise<EnglishVocabularyEntry> {
-    await assertAdminWrite();
-    const { data, error } = await getSupabase()
-      .from("english_vocabulary")
-      .update({
-        mastery_status: masteryStatus,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", id)
-      .select(ENGLISH_VOCABULARY_FIELDS)
-      .single();
-    if (error) throw error;
-    return mapVocabulary(data as EnglishVocabularyRow);
   },
 };
