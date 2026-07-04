@@ -36,4 +36,12 @@ npm.cmd run import:english-papers -- --input data/english-papers/english1-2007-2
 npm.cmd run import:english-papers -- --input data/english-papers/english1-2007-2026.json --emit-sql data/english-papers/english1-2007-2026.sql --strict-complete
 ```
 
+Supabase SQL Editor 对单次 query 有大小限制。推荐生成按年份拆分的小文件，然后按年份顺序逐个执行：
+
+```bash
+npm.cmd run import:english-papers -- --input data/english-papers/english1-2007-2026.json --emit-sql-dir data/english-papers/sql-chunks --strict-complete
+```
+
+生成后执行 `data/english-papers/sql-chunks/english1-2007.sql` 到 `english1-2026.sql`，每次只粘贴一个文件。
+
 导入器只 upsert `english_papers`、`english_passages`、`english_questions`，不会写入 `notes`、旧 `problems`、`math3_self_tests`、`problem_practice_statuses`、作答记录或生词表。

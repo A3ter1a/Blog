@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { createClient } from "@supabase/supabase-js";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -54,6 +54,7 @@ Usage:
   node scripts/import-english-papers.mjs --input data/english-papers/english1-2007-2026.json
   node scripts/import-english-papers.mjs --input data/english-papers/english1-2007-2026.json --apply --target production --confirm-year-range 2007-2026 --strict-complete
   node scripts/import-english-papers.mjs --input data/english-papers/english1-2007-2026.json --emit-sql data/english-papers/english1-2007-2026.sql --strict-complete
+  node scripts/import-english-papers.mjs --input data/english-papers/english1-2007-2026.json --emit-sql-dir data/english-papers/sql-chunks --strict-complete
 
 Options:
   --input <path>          JSON file. Shape can be { "papers": [...] }, [...], or a single paper object.
@@ -61,6 +62,7 @@ Options:
   --target <name>         Required with --apply. Use local, staging, or production.
   --confirm-year-range    Required with --apply. Must match the JSON year range, for example 2007-2026.
   --emit-sql <path>       Generate additive upsert SQL for Supabase SQL Editor.
+  --emit-sql-dir <path>   Generate one additive upsert SQL file per year.
   --strict-complete       Require English I 2007-2026 with all expected passage groups.
   --allow-empty-content   Permit empty passage content for staged imports.
   --help                  Show this help.
@@ -76,6 +78,7 @@ function parseArgs(argv) {
     target: "",
     confirmYearRange: "",
     emitSql: "",
+    emitSqlDir: "",
     strictComplete: false,
     allowEmptyContent: false,
     help: false,
@@ -96,6 +99,9 @@ function parseArgs(argv) {
       index += 1;
     } else if (arg === "--emit-sql") {
       args.emitSql = argv[index + 1] ?? "";
+      index += 1;
+    } else if (arg === "--emit-sql-dir") {
+      args.emitSqlDir = argv[index + 1] ?? "";
       index += 1;
     } else if (arg === "--strict-complete") {
       args.strictComplete = true;
@@ -679,14 +685,26 @@ async function main() {
     console.log(`已生成 SQL: ${outputPath}`);
   }
 
+  if (args.emitSqlDir) {
+    const outputDir = resolve(rootDir, args.emitSqlDir);
+    mkdirSync(outputDir, { recursive: true });
+    const sortedPapers = [...papers].sort((left, right) => left.year - right.year);
+    console.log("");
+    for (const paper of sortedPapers) {
+      const outputPath = resolve(outputDir, `english1-${paper.year}.sql`);
+      writeFileSync(outputPath, buildSql([paper]), "utf8");
+      console.log(`已生成分块 SQL: ${outputPath}`);
+    }
+  }
+
   if (args.apply) {
     console.log("");
     console.log("开始写入 Supabase english_* 内容表...");
     const result = await upsertToSupabase(papers);
     console.log(`导入完成: papers=${result.papers}, passages=${result.passages}, questions=${result.questions}`);
-  } else if (!args.emitSql) {
+  } else if (!args.emitSql && !args.emitSqlDir) {
     console.log("");
-    console.log("当前是 dry-run，没有写入数据库。正式导入请加 --apply，或加 --emit-sql 生成 SQL。");
+    console.log("当前是 dry-run，没有写入数据库。正式导入请加 --apply，或加 --emit-sql/--emit-sql-dir 生成 SQL。");
   }
 }
 

@@ -53,6 +53,7 @@ scripts/__pycache__/
 /data/english-papers/*.json
 !/data/english-papers/english1-sample.json
 /data/english-papers/*.sql
+/data/english-papers/sql-chunks/
 
 # typescript
 *.tsbuildinfo
