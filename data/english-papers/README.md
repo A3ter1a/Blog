@@ -16,7 +16,7 @@ npm.cmd run import:english-papers -- --input data/english-papers/english1-2007-2
 python scripts/extract-english-papers-from-pdfs.py --source "C:\Users\phoen\Downloads\Compressed" --output data/english-papers/english1-2007-2026.json --embed-writing-page-images
 ```
 
-PDF 中文参考译文的文本层有字体编码问题，脚本不会把乱码作为标准答案导入。翻译和写作的 `standardAnswer` 暂用“主观题暂不自动评分；参考答案待校对后导入。”占位；客观题答案从答案页导入。
+PDF 中文参考译文的文本层有字体编码问题，脚本不会把乱码作为标准答案导入。翻译和写作不需要标准答案，`standardAnswer` 留空，后续统一走 AI 评分；客观题答案从答案页导入。
 
 ## 直接写入 Supabase
 

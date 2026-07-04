@@ -177,8 +177,13 @@ function defaultPassageSortOrder(section, passageNo) {
 function defaultQuestionScore(section) {
   if (section === "cloze") return 0.5;
   if (section === "reading" || section === "new_type") return 2;
-  if (section === "translation" || section === "writing") return 10;
+  if (section === "translation") return 2;
+  if (section === "writing") return 10;
   return 0;
+}
+
+function isObjectiveSection(section) {
+  return section === "reading" || section === "cloze" || section === "new_type";
 }
 
 function pathLabel(...parts) {
@@ -233,10 +238,12 @@ function normalizeQuestion(rawQuestion, section, questionIndex, path, errors) {
 
   if (!questionNo) errors.push(`${path}.questionNo: 不能为空`);
   if (!stem) errors.push(`${path}.stem: 不能为空`);
-  if ((section === "reading" || section === "cloze" || section === "new_type") && options.length === 0) {
+  if (isObjectiveSection(section) && options.length === 0) {
     errors.push(`${path}.options: 客观题必须提供选项`);
   }
-  if (!standardAnswer) errors.push(`${path}.standardAnswer: 不能为空`);
+  if (isObjectiveSection(section) && !standardAnswer) {
+    errors.push(`${path}.standardAnswer: 客观题不能为空；翻译和写作由 AI 评分，可留空`);
+  }
   if (!Number.isFinite(score) || score <= 0) errors.push(`${path}.score: 必须是正数`);
 
   return {

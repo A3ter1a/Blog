@@ -25,7 +25,7 @@ except ImportError as exc:  # pragma: no cover - environment guard
 
 
 VALID_YEARS = list(range(2007, 2027))
-SUBJECTIVE_PLACEHOLDER = "主观题暂不自动评分；参考答案待校对后导入。"
+SUBJECTIVE_STANDARD_ANSWER = ""
 
 
 SMART_REPLACEMENTS = {
@@ -304,7 +304,7 @@ def parse_translation(text: str) -> dict[str, Any]:
                 "questionNo": str(number),
                 "stem": segment or f"Translate segment {number} into Chinese.",
                 "options": [],
-                "standardAnswer": SUBJECTIVE_PLACEHOLDER,
+                "standardAnswer": SUBJECTIVE_STANDARD_ANSWER,
                 "score": 2,
                 "sortOrder": number,
             },
@@ -364,7 +364,7 @@ def parse_writing(text: str, pdf_path: Path, embed_image: bool, image_scale: flo
                     "questionNo": "51",
                     "stem": small,
                     "options": [],
-                    "standardAnswer": SUBJECTIVE_PLACEHOLDER,
+                    "standardAnswer": SUBJECTIVE_STANDARD_ANSWER,
                     "score": 10,
                     "sortOrder": 51,
                 },
@@ -382,7 +382,7 @@ def parse_writing(text: str, pdf_path: Path, embed_image: bool, image_scale: flo
                     "questionNo": "52",
                     "stem": big,
                     "options": [],
-                    "standardAnswer": SUBJECTIVE_PLACEHOLDER,
+                    "standardAnswer": SUBJECTIVE_STANDARD_ANSWER,
                     "score": 20,
                     "sortOrder": 52,
                 },
@@ -434,7 +434,7 @@ def validate_paper(paper: dict[str, Any]) -> list[str]:
         for question in passage["questions"]:
             if not question["stem"]:
                 warnings.append(f"{paper['year']} {passage['passageNo']} {question['questionNo']}: empty stem")
-            if not question["standardAnswer"]:
+            if passage["section"] in {"cloze", "reading", "new_type"} and not question["standardAnswer"]:
                 warnings.append(f"{paper['year']} {passage['passageNo']} {question['questionNo']}: empty answer")
             if passage["section"] in {"cloze", "reading"} and len(question["options"]) != 4:
                 warnings.append(
