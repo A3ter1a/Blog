@@ -22,6 +22,7 @@ import {
   sanitizeAIConfig,
 } from "@/lib/ai-config";
 import { readJsonStorage } from "@/lib/browser-storage";
+import { splitMarkdownForReview } from "@/lib/document-markdown-review";
 import { buildAuthHeaders } from "@/lib/fetch-with-auth";
 import { uploadImage, generateFileName } from "@/lib/supabase-storage";
 import { getMarkdownTextStats } from "@/lib/markdown-format";
@@ -330,31 +331,59 @@ function CreateEditorPage() {
       const aiConfig = sanitizeAIConfig(
         readJsonStorage(AI_CONFIG_STORAGE_KEY, DEFAULT_AI_CONFIG, normalizeAIConfig),
       );
-      const body: { markdown: string; model: string; apiKey?: string } = {
-        markdown: content,
-        model: aiConfig.deepseekModel,
-      };
-      if (ALLOW_CLIENT_AI_KEYS) {
-        body.apiKey = aiConfig.deepseekApiKey;
+      const chunks = splitMarkdownForReview(content);
+      if (chunks.length === 0) {
+        throw new Error("正文为空，无法审查");
       }
 
-      const res = await fetch("/api/ai/document-markdown-review", {
-        method: "POST",
-        headers: await buildAuthHeaders({ "Content-Type": "application/json" }),
-        body: JSON.stringify(body),
-      });
-      const rawData: unknown = await res.json().catch(() => ({}));
-      const data = isRecord(rawData) ? rawData : {};
-
-      if (!res.ok || data.success !== true) {
-        const message = typeof data.error === "string" ? data.error : "Markdown 审查失败";
-        throw new Error(message);
+      if (chunks.length > 1) {
+        toast.info(`正文较长，已自动分成 ${chunks.length} 段审查，可能需要几分钟`);
       }
 
-      const reviewedMarkdown = typeof data.markdown === "string" ? data.markdown : "";
-      if (!reviewedMarkdown.trim()) {
-        throw new Error("DeepSeek 返回了空内容，已中止替换");
+      const reviewedChunks: string[] = [];
+      let lastSummary = "";
+
+      for (let index = 0; index < chunks.length; index += 1) {
+        const body: { markdown: string; model: string; apiKey?: string; chunkIndex: number; chunkCount: number } = {
+          markdown: chunks[index],
+          model: aiConfig.deepseekModel,
+          chunkIndex: index + 1,
+          chunkCount: chunks.length,
+        };
+        if (ALLOW_CLIENT_AI_KEYS) {
+          body.apiKey = aiConfig.deepseekApiKey;
+        }
+
+        const res = await fetch("/api/ai/document-markdown-review", {
+          method: "POST",
+          headers: await buildAuthHeaders({ "Content-Type": "application/json" }),
+          body: JSON.stringify(body),
+        });
+        const rawData: unknown = await res.json().catch(() => ({}));
+        const data = isRecord(rawData) ? rawData : {};
+
+        if (!res.ok || data.success !== true) {
+          const message = typeof data.error === "string" ? data.error : "Markdown 审查失败";
+          throw new Error(chunks.length > 1 ? `第 ${index + 1}/${chunks.length} 段失败：${message}` : message);
+        }
+
+        const chunkMarkdown = typeof data.markdown === "string" ? data.markdown : "";
+        if (!chunkMarkdown.trim()) {
+          throw new Error(`DeepSeek 返回了空内容，已中止替换${chunks.length > 1 ? `（第 ${index + 1}/${chunks.length} 段）` : ""}`);
+        }
+
+        reviewedChunks.push(chunkMarkdown.trim());
+
+        if (typeof data.tokensUsed === "number" && data.tokensUsed > 0) {
+          recordDeepSeekUsage(data.tokensUsed);
+        }
+
+        if (typeof data.summary === "string" && data.summary.trim()) {
+          lastSummary = data.summary.trim();
+        }
       }
+
+      const reviewedMarkdown = reviewedChunks.join("\n\n").replace(/\n{4,}/g, "\n\n\n").trim();
 
       if (editorRef.current?.editor) {
         editorRef.current.setMarkdown(reviewedMarkdown);
@@ -362,12 +391,10 @@ function CreateEditorPage() {
         setContent(reviewedMarkdown);
       }
 
-      if (typeof data.tokensUsed === "number" && data.tokensUsed > 0) {
-        recordDeepSeekUsage(data.tokensUsed);
-      }
-
-      const summary = typeof data.summary === "string" && data.summary.trim()
-        ? data.summary.trim()
+      const summary = chunks.length > 1
+        ? `已分 ${chunks.length} 段审查公式和标题层级`
+        : lastSummary
+        ? lastSummary
         : "已审查公式和标题层级";
       toast.success(summary);
     } catch (error: unknown) {
