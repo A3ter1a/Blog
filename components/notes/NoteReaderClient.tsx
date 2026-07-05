@@ -353,6 +353,8 @@ export function NoteReaderClient({
 
   const isProblem = note.type === "problem";
   const isEssay = note.type === "essay";
+  const enableEconomicsTerms = note.subject === "economics";
+  const enableEconomicsGraphs = note.subject === "economics" && !isProblem;
   const showReaderSidebar = isProblem ? showProblemTools : preferences.tocPosition !== "hidden";
   const readerWidthClass = preferences.contentWidth === "narrow"
     ? "mx-auto max-w-3xl"
@@ -658,6 +660,8 @@ export function NoteReaderClient({
                     fontSize: `${preferences.fontSize}px`,
                     lineHeight: preferences.lineHeight,
                   }}
+                  enableEconomicsTerms={enableEconomicsTerms}
+                  enableEconomicsGraphs={enableEconomicsGraphs}
                 />
               </>
             )}
@@ -851,6 +855,8 @@ export function NoteReaderClient({
                       fontSize: `${preferences.fontSize}px`,
                       lineHeight: preferences.lineHeight,
                     }}
+                    enableEconomicsTerms={enableEconomicsTerms}
+                    enableEconomicsGraphs={enableEconomicsGraphs}
                   />
                 )}
               </motion.div>

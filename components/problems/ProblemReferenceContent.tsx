@@ -18,6 +18,8 @@ interface ProblemReferenceContentProps {
   className?: string;
   style?: React.CSSProperties;
   loadMode?: "published" | "adminAware";
+  enableEconomicsTerms?: boolean;
+  enableEconomicsGraphs?: boolean;
 }
 
 type ProblemSetLoadState = {
@@ -57,6 +59,8 @@ export function ProblemReferenceContent({
   className = "",
   style,
   loadMode = "published",
+  enableEconomicsTerms = false,
+  enableEconomicsGraphs = false,
 }: ProblemReferenceContentProps) {
   const segments = useMemo(() => splitProblemReferenceContent(content), [content]);
   const noteIds = useMemo(() => extractProblemReferenceNoteIds(content), [content]);
@@ -114,7 +118,15 @@ export function ProblemReferenceContent({
   }, [noteIds.length, noteIdsKey, problemSets]);
 
   if (segments.every((segment) => segment.type === "markdown")) {
-    return <MarkdownContent content={content} className={className} style={style} />;
+    return (
+      <MarkdownContent
+        content={content}
+        className={className}
+        style={style}
+        enableEconomicsTerms={enableEconomicsTerms}
+        enableEconomicsGraphs={enableEconomicsGraphs}
+      />
+    );
   }
 
   return (
@@ -128,6 +140,8 @@ export function ProblemReferenceContent({
               content={segment.content}
               className="text-inherit"
               style={style}
+              enableEconomicsTerms={enableEconomicsTerms}
+              enableEconomicsGraphs={enableEconomicsGraphs}
             />
           );
         }

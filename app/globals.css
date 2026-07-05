@@ -697,6 +697,432 @@ h1, h2, h3, h4, h5, h6 {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.56);
 }
 
+.econ-category-chip {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid color-mix(in srgb, #b45309 22%, var(--color-outline-variant));
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, #fef3c7 60%, var(--color-surface-container-lowest));
+  color: #92400e;
+  padding: 0.22rem 0.55rem;
+  font-size: 0.74rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.econ-term-popover {
+  position: relative;
+  display: inline;
+  outline: none;
+}
+
+.econ-term-trigger {
+  border-radius: 0.25rem;
+  background: color-mix(in srgb, #f59e0b 14%, transparent);
+  box-shadow: inset 0 -0.11em 0 color-mix(in srgb, #d97706 42%, transparent);
+  color: color-mix(in srgb, #92400e 78%, var(--color-on-surface));
+  cursor: help;
+  padding-inline: 0.08em;
+}
+
+.econ-term-popover:focus-visible .econ-term-trigger {
+  box-shadow:
+    inset 0 -0.11em 0 color-mix(in srgb, #d97706 55%, transparent),
+    0 0 0 3px color-mix(in srgb, #f59e0b 20%, transparent);
+}
+
+.econ-term-card {
+  position: absolute;
+  bottom: calc(100% + 0.55rem);
+  left: 50%;
+  z-index: 80;
+  display: grid;
+  width: min(21rem, calc(100vw - 2rem));
+  gap: 0.42rem;
+  transform: translate(-50%, 0.35rem);
+  border: 1px solid color-mix(in srgb, #b45309 22%, var(--color-outline-variant));
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-container-lowest);
+  box-shadow: var(--shadow-elevated);
+  color: var(--color-on-surface);
+  opacity: 0;
+  padding: 0.8rem;
+  pointer-events: none;
+  transition:
+    opacity var(--motion-duration-fast) var(--motion-ease-standard),
+    transform var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.econ-term-card::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 100%;
+  height: 0.65rem;
+  width: 0.65rem;
+  transform: translate(-50%, -50%) rotate(45deg);
+  border-bottom: 1px solid color-mix(in srgb, #b45309 22%, var(--color-outline-variant));
+  border-right: 1px solid color-mix(in srgb, #b45309 22%, var(--color-outline-variant));
+  background: var(--color-surface-container-lowest);
+}
+
+.econ-term-popover:hover .econ-term-card,
+.econ-term-popover:focus .econ-term-card,
+.econ-term-popover:focus-within .econ-term-card {
+  transform: translate(-50%, 0);
+  opacity: 1;
+}
+
+.econ-term-card-title,
+.econ-term-card-body,
+.econ-term-card-hint {
+  display: block;
+}
+
+.econ-term-card-title {
+  color: #92400e;
+  font-size: 0.88rem;
+  font-weight: 900;
+  line-height: 1.35;
+}
+
+.econ-term-card-body,
+.econ-term-card-hint {
+  font-size: 0.78rem;
+  line-height: 1.6;
+}
+
+.econ-term-card-body {
+  color: var(--color-on-surface);
+}
+
+.econ-term-card-hint {
+  border-top: 1px solid color-mix(in srgb, var(--color-outline-variant) 28%, transparent);
+  color: var(--color-on-surface-variant);
+  padding-top: 0.42rem;
+}
+
+@media (max-width: 640px) {
+  .econ-term-card {
+    left: 0;
+    width: min(18rem, 84vw);
+    transform: translate(0, 0.35rem);
+  }
+
+  .econ-term-card::after {
+    left: 1.25rem;
+  }
+
+  .econ-term-popover:hover .econ-term-card,
+  .econ-term-popover:focus .econ-term-card,
+  .econ-term-popover:focus-within .econ-term-card {
+    transform: translate(0, 0);
+  }
+}
+
+.econ-graph-block {
+  margin: 1.4em 0;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, #0f766e 24%, var(--color-outline-variant));
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--color-surface-container-lowest) 86%, #ecfeff);
+  box-shadow: var(--shadow-ambient);
+}
+
+.econ-graph-header {
+  display: grid;
+  gap: 0.35rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--color-outline-variant) 42%, transparent);
+  padding: 0.95rem 1rem 0.85rem;
+}
+
+.econ-graph-eyebrow {
+  display: block;
+  color: #0f766e;
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: 0;
+}
+
+.econ-graph-title {
+  margin: 0.12rem 0 0;
+  color: var(--color-on-surface);
+  font-family: var(--font-headline);
+  font-size: 1.12rem;
+  font-weight: 900;
+  line-height: 1.28;
+}
+
+.econ-graph-subtitle {
+  margin: 0;
+  color: var(--color-on-surface-variant);
+  font-size: 0.9rem;
+  line-height: 1.55;
+}
+
+.econ-graph-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(16rem, 0.75fr);
+  min-height: 0;
+}
+
+.econ-graph-figure {
+  min-width: 0;
+  padding: 0.75rem;
+}
+
+.econ-graph-svg {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 10.5;
+  height: auto;
+  min-height: 17rem;
+}
+
+.econ-graph-grid line {
+  stroke: color-mix(in srgb, var(--color-outline-variant) 54%, transparent);
+  stroke-width: 1;
+}
+
+.econ-graph-axes path {
+  fill: var(--color-on-surface);
+  stroke: var(--color-on-surface);
+  stroke-linejoin: round;
+  stroke-width: 2;
+}
+
+.econ-graph-axis-label,
+.econ-graph-svg-label {
+  font-family: var(--font-body);
+  letter-spacing: 0;
+  paint-order: stroke;
+  stroke: color-mix(in srgb, var(--color-surface-container-lowest) 88%, white);
+  stroke-linejoin: round;
+  stroke-width: 4px;
+}
+
+.econ-graph-axis-label {
+  fill: var(--color-on-surface-variant);
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.econ-graph-svg-label {
+  font-size: 13px;
+  font-weight: 900;
+  pointer-events: none;
+}
+
+.econ-graph-element {
+  cursor: pointer;
+  outline: none;
+  transition:
+    filter var(--motion-duration-fast) var(--motion-ease-standard),
+    opacity var(--motion-duration-fast) var(--motion-ease-standard),
+    stroke-width var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.econ-graph-curve,
+.econ-graph-guide {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.econ-graph-curve {
+  stroke-width: 3.4;
+}
+
+.econ-graph-guide {
+  opacity: 0.78;
+  stroke-width: 2;
+}
+
+.econ-graph-area {
+  fill-opacity: 0.18;
+  stroke: none;
+}
+
+.econ-graph-point-dot {
+  stroke: var(--color-surface-container-lowest);
+  stroke-width: 3;
+  vector-effect: non-scaling-stroke;
+}
+
+.econ-graph-element:hover,
+.econ-graph-element:focus-visible,
+.econ-graph-element.is-focus,
+.econ-graph-element.is-active {
+  filter: drop-shadow(0 8px 10px rgba(15, 23, 42, 0.18));
+}
+
+.econ-graph-curve:hover,
+.econ-graph-curve:focus-visible,
+.econ-graph-curve.is-focus,
+.econ-graph-curve.is-active {
+  stroke-width: 5;
+}
+
+.econ-graph-guide:hover,
+.econ-graph-guide:focus-visible,
+.econ-graph-guide.is-active {
+  opacity: 1;
+  stroke-width: 3;
+}
+
+.econ-graph-area:hover,
+.econ-graph-area:focus-visible,
+.econ-graph-area.is-focus,
+.econ-graph-area.is-active {
+  fill-opacity: 0.34;
+}
+
+.econ-graph-point:hover .econ-graph-point-dot,
+.econ-graph-point:focus-visible .econ-graph-point-dot,
+.econ-graph-point.is-focus .econ-graph-point-dot,
+.econ-graph-point.is-active .econ-graph-point-dot {
+  stroke-width: 5;
+}
+
+.econ-graph-panel {
+  display: grid;
+  align-content: start;
+  gap: 0.65rem;
+  border-left: 1px solid color-mix(in srgb, var(--color-outline-variant) 42%, transparent);
+  background: color-mix(in srgb, var(--color-surface-container-low) 78%, var(--color-surface-container-lowest));
+  padding: 0.95rem;
+}
+
+.econ-graph-panel-kind {
+  justify-self: start;
+  border: 1px solid color-mix(in srgb, #0f766e 24%, var(--color-outline-variant));
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, #ccfbf1 48%, var(--color-surface-container-lowest));
+  color: #0f766e;
+  padding: 0.18rem 0.48rem;
+  font-size: 0.72rem;
+  font-weight: 900;
+  line-height: 1.2;
+}
+
+.econ-graph-panel-title {
+  margin: 0;
+  color: var(--color-on-surface);
+  font-size: 1rem;
+  font-weight: 900;
+  line-height: 1.35;
+}
+
+.econ-graph-panel-body,
+.econ-graph-panel-hint {
+  margin: 0;
+  font-size: 0.86rem;
+  line-height: 1.62;
+}
+
+.econ-graph-panel-body {
+  color: var(--color-on-surface);
+}
+
+.econ-graph-panel-hint {
+  border-top: 1px solid color-mix(in srgb, var(--color-outline-variant) 42%, transparent);
+  color: var(--color-on-surface-variant);
+  padding-top: 0.65rem;
+}
+
+.econ-graph-panel-formula {
+  justify-self: start;
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--color-primary) 9%, var(--color-surface-container-lowest));
+  color: var(--color-primary);
+  padding: 0.35rem 0.5rem;
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.econ-graph-selector {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  padding-top: 0.15rem;
+}
+
+.econ-graph-selector-button {
+  border: 1px solid color-mix(in srgb, var(--color-outline-variant) 72%, transparent);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-container-lowest);
+  color: var(--color-on-surface-variant);
+  cursor: pointer;
+  font-size: 0.76rem;
+  font-weight: 800;
+  line-height: 1.2;
+  padding: 0.42rem 0.55rem;
+  transition:
+    background-color var(--motion-duration-fast) var(--motion-ease-standard),
+    border-color var(--motion-duration-fast) var(--motion-ease-standard),
+    color var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.econ-graph-selector-button:hover,
+.econ-graph-selector-button:focus-visible,
+.econ-graph-selector-button.is-active {
+  border-color: color-mix(in srgb, #0f766e 54%, var(--color-outline-variant));
+  background: color-mix(in srgb, #ccfbf1 42%, var(--color-surface-container-lowest));
+  color: #0f766e;
+  outline: none;
+}
+
+.econ-graph-error {
+  display: grid;
+  gap: 0.25rem;
+  margin: 1em 0;
+  border: 1px solid color-mix(in srgb, var(--color-error) 32%, var(--color-outline-variant));
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--color-error-container) 42%, var(--color-surface-container-lowest));
+  padding: 0.85rem 1rem;
+}
+
+.econ-graph-error-title {
+  color: var(--color-error);
+  font-weight: 900;
+}
+
+.econ-graph-error-body {
+  color: var(--color-on-surface-variant);
+  font-size: 0.88rem;
+}
+
+@media (max-width: 820px) {
+  .econ-graph-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .econ-graph-panel {
+    border-left: 0;
+    border-top: 1px solid color-mix(in srgb, var(--color-outline-variant) 42%, transparent);
+  }
+}
+
+@media (max-width: 520px) {
+  .econ-graph-header,
+  .econ-graph-panel {
+    padding: 0.85rem;
+  }
+
+  .econ-graph-figure {
+    padding: 0.45rem;
+  }
+
+  .econ-graph-svg {
+    min-height: 14rem;
+  }
+
+  .econ-graph-svg-label {
+    font-size: 11px;
+  }
+}
+
 .english-passage-content {
   font-family: Georgia, 'Times New Roman', Times, serif;
   font-size: 1.2rem;

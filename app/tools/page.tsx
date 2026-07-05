@@ -1,4 +1,5 @@
 import {
+  BookOpenText,
   Calculator,
   GraduationCap,
   Search,
@@ -30,6 +31,14 @@ const toolHubs: ToolHubCardItem[] = [
     href: "/tools/math-training",
     icon: Calculator,
     tone: "border-emerald-500/20 bg-emerald-500/10 text-emerald-700",
+  },
+  {
+    id: "economics-glossary",
+    title: "经济学术语",
+    description: "按英文原词、中文译名和考研表达整理微观概念。",
+    href: "/tools/economics-glossary",
+    icon: BookOpenText,
+    tone: "border-amber-500/20 bg-amber-500/10 text-amber-700",
   },
   {
     id: "resource-search",
