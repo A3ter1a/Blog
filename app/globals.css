@@ -985,6 +985,12 @@ h1, h2, h3, h4, h5, h6 {
   stroke-width: 5;
 }
 
+.econ-graph-element.is-hidden,
+.econ-graph-svg-label.is-hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
 .econ-graph-panel {
   display: grid;
   align-content: start;
@@ -1071,6 +1077,49 @@ h1, h2, h3, h4, h5, h6 {
   background: color-mix(in srgb, #ccfbf1 42%, var(--color-surface-container-lowest));
   color: #0f766e;
   outline: none;
+}
+
+.econ-graph-visibility {
+  display: grid;
+  gap: 0.48rem;
+  border-top: 1px solid color-mix(in srgb, var(--color-outline-variant) 42%, transparent);
+  padding-top: 0.68rem;
+}
+
+.econ-graph-visibility-title {
+  color: var(--color-on-surface-variant);
+  font-size: 0.74rem;
+  font-weight: 900;
+  line-height: 1.2;
+}
+
+.econ-graph-visibility-controls {
+  display: grid;
+  gap: 0.42rem;
+}
+
+.econ-graph-visibility-control {
+  display: grid;
+  grid-template-columns: 1rem minmax(0, 1fr);
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--color-on-surface);
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-weight: 800;
+  line-height: 1.28;
+}
+
+.econ-graph-visibility-control input {
+  accent-color: #0f766e;
+  height: 1rem;
+  margin: 0;
+  width: 1rem;
+}
+
+.econ-graph-visibility-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .econ-graph-error {

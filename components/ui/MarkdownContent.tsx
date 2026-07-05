@@ -287,6 +287,7 @@ function appendGraphLabel(svg: SVGElement, element: EconomicsGraphElement) {
     y: element.labelY,
     class: "econ-graph-svg-label",
     fill: element.color,
+    "data-econ-graph-label": element.id,
   });
   label.textContent = element.label;
   svg.appendChild(label);
@@ -400,6 +401,20 @@ function createEconomicsGraphNode(spec: EconomicsGraphSpec) {
   panelFormula.hidden = true;
   const selector = document.createElement("div");
   selector.className = "econ-graph-selector";
+  const visibility = document.createElement("div");
+  visibility.className = "econ-graph-visibility";
+  const visibilityTitle = createTextElement("span", "econ-graph-visibility-title", "显示曲线");
+  const visibilityControls = document.createElement("div");
+  visibilityControls.className = "econ-graph-visibility-controls";
+  visibility.append(visibilityTitle, visibilityControls);
+
+  const setElementVisible = (elementId: string, visible: boolean) => {
+    graph.querySelectorAll(
+      `[data-econ-graph-element="${elementId}"], [data-econ-graph-label="${elementId}"]`,
+    ).forEach((node) => {
+      node.classList.toggle("is-hidden", !visible);
+    });
+  };
 
   const selectElement = (elementId: string) => {
     const element = elementById.get(elementId);
@@ -435,7 +450,23 @@ function createEconomicsGraphNode(spec: EconomicsGraphSpec) {
     selector.appendChild(button);
   });
 
-  panel.append(panelKind, panelTitle, panelBody, panelFormula, panelHint, selector);
+  template.elements
+    .filter((element) => element.kind === "curve")
+    .forEach((element) => {
+      const control = document.createElement("label");
+      control.className = "econ-graph-visibility-control";
+
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.checked = true;
+      checkbox.addEventListener("change", () => setElementVisible(element.id, checkbox.checked));
+
+      const name = createTextElement("span", "econ-graph-visibility-name", element.label);
+      control.append(checkbox, name);
+      visibilityControls.appendChild(control);
+    });
+
+  panel.append(panelKind, panelTitle, panelBody, panelFormula, panelHint, selector, visibility);
   figure.appendChild(svg);
   layout.append(figure, panel);
   graph.append(header, layout);
@@ -472,7 +503,7 @@ export function MarkdownContent({
   const containerRef = useRef<HTMLDivElement>(null);
   const htmlContent = useMemo(() => renderMarkdownToHtml(content), [content]);
 
-  useLayoutEffect(() => {
+  const processRenderedContent = () => {
     if (containerRef.current) {
       processContent(containerRef.current);
       if (enableEconomicsGraphs) {
@@ -482,31 +513,23 @@ export function MarkdownContent({
         processEconomicsTerms(containerRef.current);
       }
     }
-  }, [enableEconomicsGraphs, enableEconomicsTerms, htmlContent]);
+  };
+
+  useLayoutEffect(() => {
+    processRenderedContent();
+  });
 
   useEffect(() => {
-    const process = () => {
-      if (containerRef.current) {
-        processContent(containerRef.current);
-        if (enableEconomicsGraphs) {
-          processEconomicsGraphs(containerRef.current);
-        }
-        if (enableEconomicsTerms) {
-          processEconomicsTerms(containerRef.current);
-        }
-      }
-    };
-
-    const frame = requestAnimationFrame(process);
-    const lateFrame = window.setTimeout(process, 120);
-    const animationFrame = window.setTimeout(process, 320);
+    const frame = requestAnimationFrame(processRenderedContent);
+    const lateFrame = window.setTimeout(processRenderedContent, 120);
+    const animationFrame = window.setTimeout(processRenderedContent, 320);
 
     return () => {
       cancelAnimationFrame(frame);
       window.clearTimeout(lateFrame);
       window.clearTimeout(animationFrame);
     };
-  }, [enableEconomicsGraphs, enableEconomicsTerms, htmlContent]);
+  });
 
   return (
     <div
