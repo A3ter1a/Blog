@@ -7,6 +7,7 @@ import { AlertCircle, CheckCircle2, FileScan, FileUp, Link as LinkIcon, Loader2,
 import { MarkdownContent } from "@/components/ui/MarkdownContent";
 import { buildAuthHeaders } from "@/lib/fetch-with-auth";
 import { dialogMotion, overlayMotion, uiMotion } from "@/lib/motion";
+import { deleteOcrDocument, generateFileName, uploadOcrDocument } from "@/lib/supabase-storage";
 
 type SourceMode = "upload" | "url";
 type OcrStage = "idle" | "submitting" | "waiting" | "complete" | "error";
@@ -35,6 +36,7 @@ type StatusResponse = {
 };
 
 const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
+const DIRECT_UPLOAD_LIMIT_BYTES = 4 * 1024 * 1024;
 const FIRST_POLL_DELAY_MS = 5000;
 const POLL_INTERVAL_MS = 6000;
 const MAX_POLLS = 120;
@@ -70,6 +72,14 @@ function normalizeMarkdownForInsert(markdown: string) {
   return `\n\n${markdown.trim()}\n`;
 }
 
+function shouldUseTemporaryLink(file: File) {
+  return file.size > DIRECT_UPLOAD_LIMIT_BYTES;
+}
+
+function isPayloadTooLargeResponse(response: Response) {
+  return response.status === 413 || response.headers.get("x-vercel-error") === "FUNCTION_PAYLOAD_TOO_LARGE";
+}
+
 export function DocumentOcrDialog({ isOpen, onClose, onInsert }: DocumentOcrDialogProps) {
   const [sourceMode, setSourceMode] = useState<SourceMode>("upload");
   const [file, setFile] = useState<File | null>(null);
@@ -83,12 +93,26 @@ export function DocumentOcrDialog({ isOpen, onClose, onInsert }: DocumentOcrDial
   const [pollCount, setPollCount] = useState(0);
   const activeRunRef = useRef(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const temporaryOcrPathRef = useRef<string | null>(null);
 
   const isBusy = stage === "submitting" || stage === "waiting";
   const canSubmit = sourceMode === "upload" ? Boolean(file) : Boolean(fileUrl.trim());
 
+  const cleanupTemporaryOcrFile = async () => {
+    const path = temporaryOcrPathRef.current;
+    if (!path) return;
+
+    temporaryOcrPathRef.current = null;
+    try {
+      await deleteOcrDocument(path);
+    } catch (cleanupError) {
+      console.warn("Failed to clean OCR temporary file:", cleanupError);
+    }
+  };
+
   const reset = () => {
     activeRunRef.current += 1;
+    void cleanupTemporaryOcrFile();
     setStage("idle");
     setTaskId("");
     setMarkdown("");
@@ -173,6 +197,56 @@ export function DocumentOcrDialog({ isOpen, onClose, onInsert }: DocumentOcrDial
     throw new Error("等待时间过长，请稍后重新查询或重新提交");
   };
 
+  const submitUrlSource = async (url: string, submittedFileName: string) => {
+    return fetch("/api/ai/document-ocr", {
+      method: "POST",
+      headers: await buildAuthHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify({
+        fileUrl: url,
+        fileName: submittedFileName,
+      }),
+    });
+  };
+
+  const submitFileDirectly = async (selectedFile: File) => {
+    const formData = new FormData();
+    formData.set("file", selectedFile);
+    formData.set("fileName", selectedFile.name);
+
+    return fetch("/api/ai/document-ocr", {
+      method: "POST",
+      headers: await buildAuthHeaders(),
+      body: formData,
+    });
+  };
+
+  const submitFileByTemporaryLink = async (selectedFile: File, message: string) => {
+    setStatusText(message);
+    const uploaded = await uploadOcrDocument(selectedFile, generateFileName("ocr-temp", "pdf"));
+    temporaryOcrPathRef.current = uploaded.path;
+    setStatusText("临时文件链接已生成，正在提交百度 OCR 任务");
+    return submitUrlSource(uploaded.url, selectedFile.name);
+  };
+
+  const submitUploadedFile = async (selectedFile: File) => {
+    if (shouldUseTemporaryLink(selectedFile)) {
+      return submitFileByTemporaryLink(
+        selectedFile,
+        "文件较大，正在自动创建临时文件链接",
+      );
+    }
+
+    const response = await submitFileDirectly(selectedFile);
+    if (isPayloadTooLargeResponse(response)) {
+      return submitFileByTemporaryLink(
+        selectedFile,
+        "直传被平台限制，正在自动改用临时文件链接",
+      );
+    }
+
+    return response;
+  };
+
   const handleSubmit = async () => {
     if (isBusy || !canSubmit) return;
 
@@ -186,26 +260,14 @@ export function DocumentOcrDialog({ isOpen, onClose, onInsert }: DocumentOcrDial
     setStatusText("正在提交百度 OCR 任务");
 
     try {
+      void cleanupTemporaryOcrFile();
       let response: Response;
+
       if (sourceMode === "upload") {
         if (!file) throw new Error("请选择 PDF 文件");
-        const formData = new FormData();
-        formData.set("file", file);
-        formData.set("fileName", file.name);
-        response = await fetch("/api/ai/document-ocr", {
-          method: "POST",
-          headers: await buildAuthHeaders(),
-          body: formData,
-        });
+        response = await submitUploadedFile(file);
       } else {
-        response = await fetch("/api/ai/document-ocr", {
-          method: "POST",
-          headers: await buildAuthHeaders({ "Content-Type": "application/json" }),
-          body: JSON.stringify({
-            fileUrl: fileUrl.trim(),
-            fileName: fileName.trim() || "lecture.pdf",
-          }),
-        });
+        response = await submitUrlSource(fileUrl.trim(), fileName.trim() || "lecture.pdf");
       }
 
       const payload = await readApiJson<SubmitResponse>(response, "讲义 OCR 任务提交失败");
@@ -217,8 +279,10 @@ export function DocumentOcrDialog({ isOpen, onClose, onInsert }: DocumentOcrDial
       setStage("waiting");
       setStatusText("任务已提交，等待解析");
       await pollTask(nextTaskId, runId);
+      void cleanupTemporaryOcrFile();
     } catch (submitError: unknown) {
       if (activeRunRef.current !== runId) return;
+      void cleanupTemporaryOcrFile();
       setStage("error");
       setError(getErrorMessage(submitError, "讲义 OCR 失败"));
       setStatusText("");
@@ -312,7 +376,7 @@ export function DocumentOcrDialog({ isOpen, onClose, onInsert }: DocumentOcrDial
                   {file ? file.name : "选择 PDF 讲义"}
                 </span>
                 <span className="text-xs text-on-surface-variant/60">
-                  {file ? formatFileSize(file.size) : "单次上传不超过 50MB"}
+                  {file ? formatFileSize(file.size) : "PDF · ≤ 50MB"}
                 </span>
                 <input
                   ref={fileInputRef}

@@ -35,6 +35,7 @@ export function AISettings() {
     deepseekConfigured: boolean;
     qwenConfigured: boolean;
     baiduOcrConfigured: boolean;
+    documentOcrStorageConfigured: boolean;
   } | null>(null);
 
   useEffect(() => {
@@ -64,6 +65,7 @@ export function AISettings() {
             deepseekConfigured: Boolean(data.deepseekConfigured),
             qwenConfigured: Boolean(data.qwenConfigured),
             baiduOcrConfigured: Boolean(data.baiduOcrConfigured),
+            documentOcrStorageConfigured: Boolean(data.documentOcrStorageConfigured),
           });
         }
       } catch {
@@ -109,7 +111,7 @@ export function AISettings() {
           ? 'DeepSeek'
           : provider === 'qwen'
             ? 'Qwen'
-            : '百度 OCR';
+            : '讲义 OCR';
         setTestResult({ success: true, message: `${providerName} 连接成功！` });
         if (provider === 'deepseek' && data.tokensUsed) {
           recordDeepSeekUsage(data.tokensUsed);
@@ -131,6 +133,8 @@ export function AISettings() {
     ? Boolean(config.qwenApiKey)
     : Boolean(serverConfig?.qwenConfigured);
   const baiduOcrConfigured = Boolean(serverConfig?.baiduOcrConfigured);
+  const documentOcrStorageConfigured = Boolean(serverConfig?.documentOcrStorageConfigured);
+  const documentOcrReady = baiduOcrConfigured && documentOcrStorageConfigured;
   const isPresetQwenOcrModel = QWEN_OCR_MODEL_OPTIONS.some((option) => option.value === config.qwenModel);
 
   return (
@@ -188,9 +192,9 @@ export function AISettings() {
             </span>
           </div>
           <div className="flex items-center gap-2">
-            <div className={`w-2 h-2 rounded-full ${baiduOcrConfigured ? 'bg-green-500' : 'bg-outline-variant'}`} />
+            <div className={`w-2 h-2 rounded-full ${documentOcrReady ? 'bg-green-500' : 'bg-outline-variant'}`} />
             <span className="text-sm text-on-surface-variant">
-              百度 Unlimited OCR {baiduOcrConfigured ? '— 服务端已配置' : '— 未配置'}
+              百度 Unlimited OCR {documentOcrReady ? '— 就绪' : '— 未就绪'}
             </span>
           </div>
 
@@ -315,8 +319,14 @@ export function AISettings() {
                   {baiduOcrConfigured ? '服务端密钥已配置' : '服务端密钥未配置'}
                 </span>
               </div>
+              <div className="flex items-center gap-2">
+                <div className={`w-2 h-2 rounded-full ${documentOcrStorageConfigured ? 'bg-green-500' : 'bg-outline-variant'}`} />
+                <span className="text-xs text-on-surface-variant">
+                  {documentOcrStorageConfigured ? 'OCR 临时文件桶可用' : 'OCR 临时文件桶未就绪'}
+                </span>
+              </div>
               <p className="text-[11px] text-on-surface-variant/50">
-                BAIDU_OCR_API_KEY / BAIDU_OCR_SECRET_KEY
+                BAIDU_OCR_API_KEY / BAIDU_OCR_SECRET_KEY · ocr-documents
               </p>
             </div>
             <button
@@ -329,7 +339,7 @@ export function AISettings() {
               ) : (
                 <Plug className="w-3.5 h-3.5" />
               )}
-              检测百度 OCR 密钥
+              检测讲义 OCR 配置
             </button>
           </div>
 

@@ -28,6 +28,11 @@ The email list is not a password; Supabase Auth login and RLS remain required.
 ```text
 supabase/migrations/0001_base_schema.sql
 supabase/migrations/0002_rls_policies.sql
+supabase/migrations/0003_problem_practice_marked.sql
+supabase/migrations/0004_english_training.sql
+supabase/migrations/0005_english_vocabulary_context.sql
+supabase/migrations/0006_english_vocabulary_source_scope.sql
+supabase/migrations/0007_document_ocr_storage.sql
 ```
 
 4. Add the admin email to the `admin_users` table:
@@ -45,7 +50,7 @@ supabase/verification.sql
 ```
 
 The verification SQL checks required tables, RLS state, policy names, the
-`note-images` bucket, and whether each `admin_users.email` matches a Supabase
+`note-images` and `ocr-documents` buckets, and whether each `admin_users.email` matches a Supabase
 Auth user email.
 
 ## Expected behavior after deployment
@@ -54,6 +59,7 @@ Auth user email.
 - Public visitors can read note images from the `note-images` bucket.
 - Public visitors cannot create, edit, delete, import, or call AI APIs.
 - Public visitors cannot upload, overwrite, or delete note images.
+- Public visitors cannot upload or list OCR staging PDFs from the private `ocr-documents` bucket.
 - Storage policies do not directly `ALTER TABLE storage.objects`, because hosted
   Supabase projects own that internal table.
 - `/debug` returns 404 outside development.
@@ -66,8 +72,9 @@ UI hiding is only convenience. Supabase RLS is the real database protection.
 Do not deploy without applying the production RLS policies.
 
 The Storage policies should allow public reads from the current app's
-`note-images` bucket while keeping uploads and deletes admin-only. If you add
-more storage buckets later, add explicit policies for those buckets too.
+`note-images` bucket, keep `ocr-documents` private, and keep uploads/deletes
+admin-only. If you add more storage buckets later, add explicit policies for
+those buckets too.
 
 ## Repeatable verification
 

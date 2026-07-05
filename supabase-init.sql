@@ -7,6 +7,11 @@
 --
 --   1. supabase/migrations/0001_base_schema.sql
 --   2. supabase/migrations/0002_rls_policies.sql
+--   3. supabase/migrations/0003_problem_practice_marked.sql
+--   4. supabase/migrations/0004_english_training.sql
+--   5. supabase/migrations/0005_english_vocabulary_context.sql
+--   6. supabase/migrations/0006_english_vocabulary_source_scope.sql
+--   7. supabase/migrations/0007_document_ocr_storage.sql
 --
 -- Then insert the first admin email in the Supabase SQL Editor:
 --
@@ -14,4 +19,4 @@
 --   values ('your_admin_email@example.com')
 --   on conflict do nothing;
 
-select 'Use supabase/migrations/0001_base_schema.sql, then supabase/migrations/0002_rls_policies.sql.' as asteroid_database_setup;
+select 'Use all files under supabase/migrations/ in numeric order, then run supabase/verification.sql.' as asteroid_database_setup;

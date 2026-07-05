@@ -40,10 +40,11 @@ const practiceMarkedSql = readRequired("supabase/migrations/0003_problem_practic
 const englishTrainingSql = readRequired("supabase/migrations/0004_english_training.sql");
 const englishVocabularyContextSql = readRequired("supabase/migrations/0005_english_vocabulary_context.sql");
 const englishVocabularySourceSql = readRequired("supabase/migrations/0006_english_vocabulary_source_scope.sql");
+const documentOcrStorageSql = readRequired("supabase/migrations/0007_document_ocr_storage.sql");
 const verificationSql = readRequired("supabase/verification.sql");
 const englishImportScript = readRequired("scripts/import-english-papers.mjs");
 const legacySql = readRequired("supabase-init.sql");
-const combinedSql = `${schemaSql}\n${rlsSql}\n${practiceMarkedSql}\n${englishTrainingSql}\n${englishVocabularyContextSql}\n${englishVocabularySourceSql}\n${legacySql}`;
+const combinedSql = `${schemaSql}\n${rlsSql}\n${practiceMarkedSql}\n${englishTrainingSql}\n${englishVocabularyContextSql}\n${englishVocabularySourceSql}\n${documentOcrStorageSql}\n${legacySql}`;
 const docsSqlExamples = [
   readRequired("README.md"),
   readRequired("supabase/README.md"),
@@ -134,6 +135,10 @@ const requiredPolicyMarkers = [
   "note_images_admin_insert",
   "note_images_admin_update",
   "note_images_admin_delete",
+  "ocr_documents_admin_select",
+  "ocr_documents_admin_insert",
+  "ocr_documents_admin_update",
+  "ocr_documents_admin_delete",
 ];
 
 for (const marker of requiredPolicyMarkers) {
@@ -154,6 +159,15 @@ check(
   "Storage bucket note-images 在基础迁移中创建或修正",
   /insert\s+into\s+storage\.buckets/i.test(schemaSql) && schemaSql.includes("'note-images'"),
   "缺少 bucket 定义会导致封面或编辑器图片上传失败。",
+);
+
+check(
+  "Storage bucket ocr-documents 在讲义 OCR 迁移中创建或修正",
+  /insert\s+into\s+storage\.buckets/i.test(documentOcrStorageSql)
+    && documentOcrStorageSql.includes("'ocr-documents'")
+    && documentOcrStorageSql.includes("52428800")
+    && documentOcrStorageSql.includes("'application/pdf'"),
+  "缺少 OCR 临时 PDF bucket 会导致大文件无法自动转成百度可读取的链接。",
 );
 
 check(
@@ -222,14 +236,18 @@ check(
 
 check(
   "迁移后核验 SQL 检查策略存在性",
-  verificationSql.includes("pg_policies") && verificationSql.includes("note_images_admin_insert"),
+  verificationSql.includes("pg_policies")
+    && verificationSql.includes("note_images_admin_insert")
+    && verificationSql.includes("ocr_documents_admin_insert"),
   "如果核验脚本不查 pg_policies，可能漏掉 Storage 或表策略缺失。",
 );
 
 check(
-  "迁移后核验 SQL 检查 note-images bucket",
-  verificationSql.includes("storage.buckets") && verificationSql.includes("'note-images'"),
-  "如果 bucket 没被核验，图片上传和公开图片 URL 可能在生产环境才暴露问题。",
+  "迁移后核验 SQL 检查 Storage buckets",
+  verificationSql.includes("storage.buckets")
+    && verificationSql.includes("'note-images'")
+    && verificationSql.includes("'ocr-documents'"),
+  "如果 bucket 没被核验，图片上传或讲义 OCR 临时文件链接可能在生产环境才暴露问题。",
 );
 
 check(

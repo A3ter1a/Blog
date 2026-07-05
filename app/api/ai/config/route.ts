@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { createClient } from '@supabase/supabase-js';
 import { callDeepSeek } from '@/lib/ai-client';
 import { requireAdminRequest, resolveAIKey } from '@/lib/server-admin-auth';
 import {
@@ -10,6 +11,8 @@ import {
 } from '@/lib/ai-config';
 import { getBaiduAccessToken, hasBaiduOcrCredentials } from '@/lib/baidu-unlimited-ocr';
 
+const OCR_DOCUMENT_BUCKET_NAME = 'ocr-documents';
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
@@ -18,16 +21,55 @@ function getErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback;
 }
 
+function getBearerToken(req: NextRequest): string {
+  const header = req.headers.get('authorization') || '';
+  const match = header.match(/^Bearer\s+(.+)$/i);
+  return match?.[1]?.trim() || '';
+}
+
+async function hasDocumentOcrStorageAccess(req: NextRequest) {
+  const token = getBearerToken(req);
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!token || !supabaseUrl || !supabaseAnonKey) return false;
+
+  const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+    },
+    global: {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    },
+  });
+
+  const { error } = await supabase.storage
+    .from(OCR_DOCUMENT_BUCKET_NAME)
+    .list('ocr-temp', { limit: 1 });
+
+  return !error;
+}
+
+async function assertDocumentOcrStorageAccess(req: NextRequest) {
+  if (await hasDocumentOcrStorageAccess(req)) return;
+  throw new Error('OCR 临时文件桶 ocr-documents 不可用，请确认已执行 supabase/migrations/0007_document_ocr_storage.sql');
+}
+
 // Connection test endpoint — validates API keys for DeepSeek, Qwen, and Baidu OCR.
 export async function GET(req: NextRequest) {
   const adminError = await requireAdminRequest(req);
   if (adminError) return adminError;
+
+  const documentOcrStorageConfigured = await hasDocumentOcrStorageAccess(req);
 
   return NextResponse.json({
     success: true,
     deepseekConfigured: Boolean(process.env.DEEPSEEK_API_KEY),
     qwenConfigured: Boolean(process.env.QWEN_API_KEY),
     baiduOcrConfigured: hasBaiduOcrCredentials(),
+    documentOcrStorageConfigured,
   });
 }
 
@@ -56,6 +98,7 @@ export async function POST(req: NextRequest) {
       }
 
       await getBaiduAccessToken();
+      await assertDocumentOcrStorageAccess(req);
       return NextResponse.json({ success: true });
     }
 

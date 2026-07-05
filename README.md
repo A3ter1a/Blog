@@ -123,8 +123,9 @@ npm run dev
 4. 继续执行 `supabase/migrations/0004_english_training.sql`
 5. 继续执行 `supabase/migrations/0005_english_vocabulary_context.sql`
 6. 继续执行 `supabase/migrations/0006_english_vocabulary_source_scope.sql`
-7. 将 Supabase Auth 管理员邮箱插入 `public.admin_users`
-8. 运行只读脚本 `supabase/verification.sql`，确认表结构、RLS、策略、Storage bucket 和管理员邮箱匹配状态
+7. 继续执行 `supabase/migrations/0007_document_ocr_storage.sql`
+8. 将 Supabase Auth 管理员邮箱插入 `public.admin_users`
+9. 运行只读脚本 `supabase/verification.sql`，确认表结构、RLS、策略、Storage bucket 和管理员邮箱匹配状态
 
 不要在生产环境继续使用旧的 `supabase-init.sql`。当前迁移会把公开阅读、管理员写入、个人练习记录和图片存储权限分开处理。
 

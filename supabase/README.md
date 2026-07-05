@@ -10,7 +10,8 @@ Run the files in order in the Supabase SQL Editor:
 4. `supabase/migrations/0004_english_training.sql`
 5. `supabase/migrations/0005_english_vocabulary_context.sql`
 6. `supabase/migrations/0006_english_vocabulary_source_scope.sql`
-7. `supabase/verification.sql` as a read-only check after all migrations have finished
+7. `supabase/migrations/0007_document_ocr_storage.sql`
+8. `supabase/verification.sql` as a read-only check after all migrations have finished
 
 Do not run `supabase-init.sql` for production setup. It is kept only as a legacy pointer so older notes do not lead someone back to the previous all-open development policy.
 
@@ -25,6 +26,7 @@ Do not run `supabase-init.sql` for production setup. It is kept only as a legacy
 - `english_papers`, `english_passages`, `english_questions`: English I past-paper source content; authenticated admins can read and maintain it.
 - `english_attempts`, `english_attempt_answers`, `english_vocabulary`: authenticated users can only access their own English training rows; vocabulary rows can trace back to passage, question stem, or option sources.
 - `note-images` Storage bucket: public image URLs remain readable because the bucket is public; object metadata reads for upsert plus uploads, overwrites, and deletes require admin access.
+- `ocr-documents` Storage bucket: private PDF staging for Baidu Unlimited OCR; admins can upload/delete, and the app creates short-lived signed URLs for Baidu to fetch large lecture PDFs.
 
 ## Add the first admin
 
@@ -65,7 +67,7 @@ After running all migrations and inserting the admin email, run:
 supabase/verification.sql
 ```
 
-This script only reads metadata and admin email matching state. It should report `pass` for required tables, RLS, policies, the `note-images` bucket, and the admin email row. A `warn` on `admin_email_configured` means no admin email has been inserted yet.
+This script only reads metadata and admin email matching state. It should report `pass` for required tables, RLS, policies, the `note-images` and `ocr-documents` buckets, and the admin email row. A `warn` on `admin_email_configured` means no admin email has been inserted yet.
 
 ## Local asset check
 

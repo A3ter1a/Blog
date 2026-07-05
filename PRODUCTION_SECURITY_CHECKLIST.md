@@ -64,6 +64,11 @@ QWEN_API_KEY=你的 Qwen key
 
 1. `supabase/migrations/0001_base_schema.sql`
 2. `supabase/migrations/0002_rls_policies.sql`
+3. `supabase/migrations/0003_problem_practice_marked.sql`
+4. `supabase/migrations/0004_english_training.sql`
+5. `supabase/migrations/0005_english_vocabulary_context.sql`
+6. `supabase/migrations/0006_english_vocabulary_source_scope.sql`
+7. `supabase/migrations/0007_document_ocr_storage.sql`
 
 执行前可以在本地先跑一次资产检查：
 
@@ -113,7 +118,7 @@ order by au.created_at desc;
 supabase/verification.sql
 ```
 
-这个脚本应至少看到核心表、RLS、policy、`note-images` bucket 为 `pass`。如果 `admin_email_configured` 是 `warn`，说明还没有插入管理员邮箱。
+这个脚本应至少看到核心表、RLS、policy、`note-images` 和 `ocr-documents` bucket 为 `pass`。如果 `admin_email_configured` 是 `warn`，说明还没有插入管理员邮箱。
 
 ## 第五步：运行自动验收脚本
 

@@ -120,7 +120,11 @@ expected_policies(schema_name, table_name, policy_name) as (
     ('storage', 'objects', 'note_images_admin_select'),
     ('storage', 'objects', 'note_images_admin_insert'),
     ('storage', 'objects', 'note_images_admin_update'),
-    ('storage', 'objects', 'note_images_admin_delete')
+    ('storage', 'objects', 'note_images_admin_delete'),
+    ('storage', 'objects', 'ocr_documents_admin_select'),
+    ('storage', 'objects', 'ocr_documents_admin_insert'),
+    ('storage', 'objects', 'ocr_documents_admin_update'),
+    ('storage', 'objects', 'ocr_documents_admin_delete')
 ),
 policy_checks as (
   select
@@ -135,16 +139,22 @@ policy_checks as (
     schema_name || '.' || table_name || '.' || policy_name as details
   from expected_policies
 ),
-bucket_check as (
+expected_buckets(bucket_id, is_public, details) as (
+  values
+    ('note-images', true, 'note-images must exist and stay public for image URLs'),
+    ('ocr-documents', false, 'ocr-documents must exist and stay private for signed OCR PDF URLs')
+),
+bucket_checks as (
   select
-    'storage_bucket:note-images' as check_name,
+    'storage_bucket:' || bucket_id as check_name,
     case when exists (
       select 1
       from storage.buckets
-      where id = 'note-images'
-        and public = true
+      where id = expected_buckets.bucket_id
+        and public = expected_buckets.is_public
     ) then 'pass' else 'fail' end as status,
-    'note-images must exist and stay public for image URLs' as details
+    details
+  from expected_buckets
 ),
 admin_email_rows as (
   select
@@ -170,7 +180,7 @@ all_checks as (
   union all
   select check_name, status, details from policy_checks
   union all
-  select check_name, status, details from bucket_check
+  select check_name, status, details from bucket_checks
   union all
   select check_name, status, details from admin_email_rows
   union all
