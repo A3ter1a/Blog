@@ -4,7 +4,6 @@ import Link from "next/link";
 import { createElement, FormEvent, useEffect, useMemo, useState } from "react";
 import {
   ArrowLeft,
-  BookOpenText,
   Edit3,
   ExternalLink,
   Loader2,
@@ -19,7 +18,6 @@ import {
   englishVocabularyEntryTypeLabels,
   englishVocabularyMasteryLabels,
   englishVocabularyPartOfSpeechLabels,
-  type EnglishQuestion,
   type EnglishVocabularyEntry,
   type EnglishVocabularyEntryType,
   type EnglishVocabularyMasteryStatus,
@@ -59,11 +57,6 @@ const filters: Array<{ value: VocabularyFilter; label: string }> = [
 
 const partOfSpeechOptions: EnglishVocabularyPartOfSpeech[] = ["n", "v", "adj", "adv", "prep", "conj", "phr", "other"];
 const masteryOptions: EnglishVocabularyMasteryStatus[] = ["new", "learning", "mastered"];
-const sourceAreaOptions: Array<{ value: EnglishVocabularySourceArea; label: string }> = [
-  { value: "passage", label: "文章" },
-  { value: "question", label: "题干" },
-  { value: "option", label: "选项" },
-];
 
 function getPassageTitle(passage?: Pick<EnglishResultPassage, "year" | "section" | "passageNo" | "title">): string {
   if (!passage) return "未知篇章";
@@ -105,31 +98,9 @@ function findPassageTrace(
   };
 }
 
-function getTraceLabel(entry: EnglishVocabularyEntry, passage?: EnglishResultPassage): string {
-  if (entry.sourceArea === "passage") return entry.sourceParagraph ? `第 ${entry.sourceParagraph} 段` : "文章";
-  const question = passage?.questions.find((item) => item.id === entry.sourceQuestionId);
-  if (entry.sourceArea === "option") return `第 ${question?.questionNo ?? "?"} 题 ${entry.sourceOptionLabel || "选项"}`;
-  return `第 ${question?.questionNo ?? "?"} 题题干`;
-}
-
 function getReturnHref(entry: EnglishVocabularyEntry): string {
   const params = new URLSearchParams({ passage: entry.passageId, vocab: entry.id });
   return `/tools/english-training?${params.toString()}`;
-}
-
-function getSourcePreview(entry: EnglishVocabularyEntry, passage?: EnglishResultPassage): string {
-  if (entry.sourceExcerpt.trim()) return entry.sourceExcerpt;
-  if (entry.sourceArea === "passage") return passage?.content.slice(0, 180) ?? "";
-  const question = passage?.questions.find((item) => item.id === entry.sourceQuestionId);
-  if (!question) return "";
-  if (entry.sourceArea === "option") {
-    return question.options.find((option) => option.label === entry.sourceOptionLabel)?.content ?? "";
-  }
-  return question.stem;
-}
-
-function getQuestionOptions(question?: EnglishQuestion) {
-  return question?.options.map((option) => ({ value: option.label, label: option.label })) ?? [];
 }
 
 export function EnglishVocabularyLibrary() {
@@ -184,8 +155,6 @@ export function EnglishVocabularyLibrary() {
       return [
         entry.word,
         entry.definition,
-        entry.sourceExcerpt,
-        entry.note,
         getPassageTitle(passage),
       ].some((value) => value.toLowerCase().includes(text));
     });
@@ -211,8 +180,8 @@ export function EnglishVocabularyLibrary() {
 
     const word = editForm.word.trim();
     const sourceExcerpt = editForm.sourceExcerpt.trim();
-    if (!word || !sourceExcerpt) {
-      toast.error("请填写词条和原文片段");
+    if (!word) {
+      toast.error("请填写词条");
       return;
     }
 
@@ -269,7 +238,7 @@ export function EnglishVocabularyLibrary() {
   return (
     <>
       <PageHeader
-        width="workspace"
+        width="compact"
         title="词汇汇总"
         description="英语真题里的生词、固定搭配和熟词生义。"
         actions={(
@@ -286,7 +255,7 @@ export function EnglishVocabularyLibrary() {
         ]}
       />
 
-      <PageShell width="workspace" topPadding="content">
+      <PageShell width="compact" topPadding="content">
         <section className="surface-panel p-4">
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div className="flex flex-wrap gap-2">
@@ -303,7 +272,7 @@ export function EnglishVocabularyLibrary() {
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
                 className="field-control h-10 w-full px-9 text-sm"
-                placeholder="搜索词条、篇章或原文"
+                placeholder="搜索词条、释义或篇章"
               />
             </label>
           </div>
@@ -369,11 +338,6 @@ function VocabularyLibraryCard({
   onSaveEdit: (event: FormEvent<HTMLFormElement>) => void;
   onDelete: () => void;
 }) {
-  const sourcePreview = getSourcePreview(entry, passage);
-  const selectedQuestion = editForm
-    ? passage?.questions.find((question) => question.id === editForm.sourceQuestionId) ?? passage?.questions[0]
-    : undefined;
-
   return (
     <article className="surface-panel p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -407,24 +371,14 @@ function VocabularyLibraryCard({
       </div>
 
       <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-on-surface-variant">
-        <span className="inline-flex items-center gap-1">
-          <BookOpenText className="h-3.5 w-3.5" />
-          {getPassageTitle(passage)}
-        </span>
-        <span>{getTraceLabel(entry, passage)}</span>
+        <span>{getPassageTitle(passage)}</span>
         <span>{englishVocabularyMasteryLabels[entry.masteryStatus]}</span>
       </div>
 
-      {sourcePreview && (
-        <blockquote className="mt-3 border-l-2 border-primary/40 pl-3 font-serif text-sm leading-7 text-on-surface-variant">
-          {sourcePreview}
-        </blockquote>
-      )}
-
-      {editing && editForm && passage && (
+      {editing && editForm && (
         <form onSubmit={onSaveEdit} className="mt-4 rounded-lg border border-outline-variant/20 bg-surface-container-low p-3">
           <div className="grid gap-3 md:grid-cols-2">
-            <LibrarySelect
+            <LibraryChoiceGroup
               label="类型"
               value={editForm.entryType}
               options={filters.filter((item) => item.value !== "all").map((item) => ({
@@ -433,9 +387,10 @@ function VocabularyLibraryCard({
               }))}
               onChange={(value) => onEditFormChange({ ...editForm, entryType: value as EnglishVocabularyEntryType })}
             />
-            <LibrarySelect
+            <LibraryChoiceGroup
               label="词性"
               value={editForm.partOfSpeech}
+              compact
               options={partOfSpeechOptions.map((value) => ({
                 value,
                 label: englishVocabularyPartOfSpeechLabels[value],
@@ -452,43 +407,7 @@ function VocabularyLibraryCard({
               value={editForm.definition}
               onChange={(value) => onEditFormChange({ ...editForm, definition: value })}
             />
-            <LibrarySelect
-              label="来源"
-              value={editForm.sourceArea}
-              options={sourceAreaOptions}
-              onChange={(value) => onEditFormChange({
-                ...editForm,
-                sourceArea: value as EnglishVocabularySourceArea,
-                sourceQuestionId: value === "passage" ? "" : selectedQuestion?.id ?? "",
-                sourceOptionLabel: value === "option" ? selectedQuestion?.options[0]?.label ?? "" : "",
-              })}
-            />
-            {editForm.sourceArea !== "passage" && (
-              <LibrarySelect
-                label="题号"
-                value={editForm.sourceQuestionId || selectedQuestion?.id || ""}
-                options={passage.questions.map((question) => ({
-                  value: question.id,
-                  label: `第 ${question.questionNo} 题`,
-                }))}
-                onChange={(value) => onEditFormChange({
-                  ...editForm,
-                  sourceQuestionId: value,
-                  sourceOptionLabel: editForm.sourceArea === "option"
-                    ? passage.questions.find((question) => question.id === value)?.options[0]?.label ?? ""
-                    : "",
-                })}
-              />
-            )}
-            {editForm.sourceArea === "option" && (
-              <LibrarySelect
-                label="选项"
-                value={editForm.sourceOptionLabel || selectedQuestion?.options[0]?.label || ""}
-                options={getQuestionOptions(selectedQuestion)}
-                onChange={(value) => onEditFormChange({ ...editForm, sourceOptionLabel: value })}
-              />
-            )}
-            <LibrarySelect
+            <LibraryChoiceGroup
               label="掌握"
               value={editForm.masteryStatus}
               options={masteryOptions.map((value) => ({
@@ -497,27 +416,6 @@ function VocabularyLibraryCard({
               }))}
               onChange={(value) => onEditFormChange({ ...editForm, masteryStatus: value as EnglishVocabularyMasteryStatus })}
             />
-          </div>
-          <div className="mt-3 grid gap-3 md:grid-cols-2">
-            <LibraryTextarea
-              label="原文片段"
-              value={editForm.sourceExcerpt}
-              rows={3}
-              onChange={(value) => onEditFormChange({ ...editForm, sourceExcerpt: value })}
-            />
-            <div className="grid gap-3">
-              <LibraryInput
-                label="高亮文本"
-                value={editForm.highlightText}
-                onChange={(value) => onEditFormChange({ ...editForm, highlightText: value })}
-              />
-              <LibraryTextarea
-                label="备注"
-                value={editForm.note}
-                rows={2}
-                onChange={(value) => onEditFormChange({ ...editForm, note: value })}
-              />
-            </div>
           </div>
           <div className="mt-3 flex justify-end gap-2">
             <button type="button" onClick={onCancelEdit} className="control-button h-9 px-3 text-sm">
@@ -572,54 +470,34 @@ function LibraryInput({
   );
 }
 
-function LibraryTextarea({
-  label,
-  value,
-  rows,
-  onChange,
-}: {
-  label: string;
-  value: string;
-  rows: number;
-  onChange: (value: string) => void;
-}) {
-  return (
-    <label className="block">
-      <span className="mb-1.5 block text-xs font-medium text-on-surface-variant">{label}</span>
-      <textarea
-        value={value}
-        rows={rows}
-        onChange={(event) => onChange(event.target.value)}
-        className="field-control w-full resize-y px-3 py-2 text-sm leading-6"
-      />
-    </label>
-  );
-}
-
-function LibrarySelect({
+function LibraryChoiceGroup({
   label,
   value,
   options,
+  compact = false,
   onChange,
 }: {
   label: string;
   value: string;
   options: Array<{ value: string; label: string }>;
+  compact?: boolean;
   onChange: (value: string) => void;
 }) {
   return (
-    <label className="block">
+    <fieldset className="block">
       <span className="mb-1.5 block text-xs font-medium text-on-surface-variant">{label}</span>
-      <select
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        className="field-control h-10 w-full px-3 text-sm"
-      >
-        {options.map((option) => createElement("option", {
-          key: option.value,
-          value: option.value,
-        }, option.label))}
-      </select>
-    </label>
+      <div className={`english-vocab-choice-group ${compact ? "english-vocab-choice-group-compact" : ""}`}>
+        {options.map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            className={option.value === value ? "english-vocab-choice-active" : ""}
+            onClick={() => onChange(option.value)}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+    </fieldset>
   );
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { createElement, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { createElement, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import {
   ArrowLeft,
   ArrowRight,
@@ -58,6 +58,15 @@ type EnglishTrainingStats = {
 
 type VocabularyDialogMode = "manual" | "ai";
 
+type VocabularySelectionDraft = {
+  text: string;
+  sourceArea: EnglishVocabularySourceArea;
+  sourceQuestionId: string;
+  sourceOptionLabel: string;
+  top: number;
+  left: number;
+};
+
 type VocabularyFormState = {
   passageId: string;
   entryType: EnglishVocabularyEntryType;
@@ -91,12 +100,6 @@ const vocabularyTypeOptions: Array<{ value: EnglishVocabularyEntryType; label: s
   { value: "word", label: "生词" },
   { value: "collocation", label: "固定搭配" },
   { value: "familiar_meaning", label: "熟词生义" },
-];
-
-const sourceAreaOptions: Array<{ value: EnglishVocabularySourceArea; label: string }> = [
-  { value: "passage", label: "文章" },
-  { value: "question", label: "题干" },
-  { value: "option", label: "选项" },
 ];
 
 function createVocabularyForm(passageId = ""): VocabularyFormState {
@@ -204,6 +207,40 @@ function findSourcePosition(
     sourceStart,
     sourceEnd: sourceStart + excerpt.length,
     sourceParagraph: before.split(/\n{2,}/).length,
+  };
+}
+
+function isVocabularySourceArea(value: string | undefined): value is EnglishVocabularySourceArea {
+  return value === "passage" || value === "question" || value === "option";
+}
+
+function readVocabularySelection(): VocabularySelectionDraft | null {
+  if (typeof window === "undefined") return null;
+  const selection = window.getSelection();
+  if (!selection || selection.rangeCount === 0 || selection.isCollapsed) return null;
+
+  const text = selection.toString().replace(/\s+/g, " ").trim();
+  if (!text) return null;
+
+  const range = selection.getRangeAt(0);
+  const node = range.commonAncestorContainer;
+  const element = node.nodeType === Node.ELEMENT_NODE
+    ? node as Element
+    : node.parentElement;
+  const sourceElement = element?.closest<HTMLElement>("[data-vocab-source-area]");
+  const sourceArea = sourceElement?.dataset.vocabSourceArea;
+  if (!sourceElement || !isVocabularySourceArea(sourceArea)) return null;
+
+  const rect = range.getBoundingClientRect();
+  if (rect.width === 0 && rect.height === 0) return null;
+
+  return {
+    text: text.slice(0, 180),
+    sourceArea,
+    sourceQuestionId: sourceElement.dataset.vocabQuestionId ?? "",
+    sourceOptionLabel: sourceElement.dataset.vocabOptionLabel ?? "",
+    top: Math.max(12, rect.top - 48),
+    left: Math.min(window.innerWidth - 88, Math.max(88, rect.left + rect.width / 2)),
   };
 }
 
@@ -517,6 +554,8 @@ export function EnglishTraining() {
   const [vocabularyDialogOpen, setVocabularyDialogOpen] = useState(false);
   const [vocabularyDialogMode, setVocabularyDialogMode] = useState<VocabularyDialogMode>("manual");
   const [vocabularyForm, setVocabularyForm] = useState<VocabularyFormState>(createVocabularyForm());
+  const [vocabularyMarking, setVocabularyMarking] = useState(false);
+  const [vocabularySelection, setVocabularySelection] = useState<VocabularySelectionDraft | null>(null);
   const [savingVocabulary, setSavingVocabulary] = useState(false);
   const [recommendingVocabulary, setRecommendingVocabulary] = useState(false);
   const [recommendations, setRecommendations] = useState<EnglishVocabularyRecommendation[]>([]);
@@ -712,11 +751,52 @@ export function EnglishTraining() {
     setVocabularyDialogOpen(true);
   };
 
+  const startVocabularyMarking = () => {
+    if (!activePassage) return;
+    setVocabularyDialogOpen(false);
+    setVocabularyMarking(true);
+    setVocabularySelection(null);
+    window.setTimeout(() => window.getSelection()?.removeAllRanges(), 0);
+    toast.success("选中原文或题目中的词，再点击标记");
+  };
+
+  const cancelVocabularyMarking = () => {
+    setVocabularyMarking(false);
+    setVocabularySelection(null);
+    window.getSelection()?.removeAllRanges();
+  };
+
+  const refreshVocabularySelection = () => {
+    if (!vocabularyMarking) return;
+    window.setTimeout(() => {
+      setVocabularySelection(readVocabularySelection());
+    }, 0);
+  };
+
+  const confirmVocabularySelection = () => {
+    if (!activePassage || !vocabularySelection) return;
+    const selectedText = vocabularySelection.text;
+    setVocabularyForm((current) => ({
+      ...current,
+      passageId: activePassage.id,
+      word: current.word.trim() ? current.word : selectedText,
+      sourceArea: vocabularySelection.sourceArea,
+      sourceQuestionId: vocabularySelection.sourceQuestionId,
+      sourceOptionLabel: vocabularySelection.sourceOptionLabel,
+      sourceExcerpt: selectedText,
+      highlightText: selectedText,
+    }));
+    setVocabularyDialogMode("manual");
+    setVocabularyDialogOpen(true);
+    cancelVocabularyMarking();
+  };
+
   const buildVocabularyInput = (formState: VocabularyFormState): EnglishVocabularyInput | null => {
     if (!activePassage) return null;
     const word = formState.word.trim();
     const sourceExcerpt = formState.sourceExcerpt.trim();
-    if (!word || !sourceExcerpt) return null;
+    if (!word) return null;
+    const hasSource = Boolean(sourceExcerpt);
 
     const input: EnglishVocabularyInput = {
       passageId: activePassage.id,
@@ -724,17 +804,17 @@ export function EnglishTraining() {
       word,
       partOfSpeech: formState.partOfSpeech,
       definition: formState.definition,
-      sourceArea: formState.sourceArea,
-      sourceQuestionId: formState.sourceArea === "passage" ? undefined : formState.sourceQuestionId,
-      sourceOptionLabel: formState.sourceArea === "option" ? formState.sourceOptionLabel : "",
+      sourceArea: hasSource ? formState.sourceArea : "passage",
+      sourceQuestionId: hasSource && formState.sourceArea !== "passage" ? formState.sourceQuestionId : undefined,
+      sourceOptionLabel: hasSource && formState.sourceArea === "option" ? formState.sourceOptionLabel : "",
       sourceExcerpt,
-      highlightText: formState.highlightText.trim() || word,
+      highlightText: formState.highlightText.trim() || sourceExcerpt || word,
       masteryStatus: "new",
       note: formState.note,
-      ...findSourcePosition(activePassage, {
+      ...(hasSource ? findSourcePosition(activePassage, {
         sourceArea: formState.sourceArea,
         sourceExcerpt,
-      }),
+      }) : {}),
     };
     return input;
   };
@@ -749,7 +829,7 @@ export function EnglishTraining() {
   const handleSaveVocabulary = async () => {
     const input = buildVocabularyInput(vocabularyForm);
     if (!input) {
-      toast.error("请填写词条和原文片段");
+      toast.error("请填写词条");
       return;
     }
 
@@ -922,11 +1002,16 @@ export function EnglishTraining() {
           saving={saving}
           savingVocabulary={savingVocabulary}
           recommendingVocabulary={recommendingVocabulary}
+          markingVocabulary={vocabularyMarking}
+          vocabularySelection={vocabularySelection}
           loading={isLoading}
           articlePage={articlePage}
           onArticlePageChange={setArticlePage}
           onBack={handleBack}
           onOpenVocabulary={openVocabularyDialog}
+          onCancelVocabularyMarking={cancelVocabularyMarking}
+          onVocabularySelectionCapture={refreshVocabularySelection}
+          onConfirmVocabularySelection={confirmVocabularySelection}
           onAnswerChange={(questionId, answer) => {
             if (!activePassage) return;
             setDraftAnswersByPassageId((current) => ({
@@ -986,9 +1071,11 @@ export function EnglishTraining() {
           selectedRecommendations={selectedRecommendations}
           saving={savingVocabulary}
           recommending={recommendingVocabulary}
+          marking={vocabularyMarking}
           onClose={() => setVocabularyDialogOpen(false)}
           onModeChange={setVocabularyDialogMode}
           onFormChange={setVocabularyForm}
+          onStartMarking={startVocabularyMarking}
           onSaveManual={handleSaveVocabulary}
           onRecommend={handleRecommendVocabulary}
           onRecommendationToggle={(key, checked) => {
@@ -1154,11 +1241,16 @@ function PracticeWorkspace({
   saving,
   savingVocabulary,
   recommendingVocabulary,
+  markingVocabulary,
+  vocabularySelection,
   loading,
   articlePage,
   onArticlePageChange,
   onBack,
   onOpenVocabulary,
+  onCancelVocabularyMarking,
+  onVocabularySelectionCapture,
+  onConfirmVocabularySelection,
   onAnswerChange,
   onSave,
   onSubmit,
@@ -1172,11 +1264,16 @@ function PracticeWorkspace({
   saving: "save" | "submit" | null;
   savingVocabulary: boolean;
   recommendingVocabulary: boolean;
+  markingVocabulary: boolean;
+  vocabularySelection: VocabularySelectionDraft | null;
   loading: boolean;
   articlePage: number;
   onArticlePageChange: (page: number) => void;
   onBack: () => void;
   onOpenVocabulary: () => void;
+  onCancelVocabularyMarking: () => void;
+  onVocabularySelectionCapture: () => void;
+  onConfirmVocabularySelection: () => void;
   onAnswerChange: (questionId: string, answer: string) => void;
   onSave: () => void;
   onSubmit: () => void;
@@ -1196,7 +1293,12 @@ function PracticeWorkspace({
   const canSubmit = questions.length > 0 && objective;
 
   return (
-    <section className="english-practice-shell">
+    <section
+      className={`english-practice-shell ${markingVocabulary ? "english-practice-shell-marking" : ""}`}
+      onMouseUp={onVocabularySelectionCapture}
+      onKeyUp={onVocabularySelectionCapture}
+      onTouchEnd={onVocabularySelectionCapture}
+    >
       <div className="english-practice-toolbar">
         <div className="english-practice-titlebar">
           <button type="button" onClick={onBack} className="control-button h-9 px-3 text-sm">
@@ -1208,6 +1310,15 @@ function PracticeWorkspace({
             <p className="english-practice-score">
               得分 {attempt?.score ?? 0}/{attempt?.maxScore ?? 0}
             </p>
+          )}
+          {markingVocabulary && (
+            <div className="english-vocab-marking-status">
+              <Highlighter className="h-3.5 w-3.5" />
+              <span>选择文本后标记</span>
+              <button type="button" onClick={onCancelVocabularyMarking} aria-label="取消标记">
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
           )}
         </div>
         <div className="flex shrink-0 flex-wrap gap-2">
@@ -1256,7 +1367,7 @@ function PracticeWorkspace({
                   </button>
                 </div>
               </div>
-              <div className="english-article-page">
+              <div className="english-article-page" data-vocab-source-area="passage">
                 <PassagePageContent
                   content={articlePages[currentPage]}
                   cloze={passage.section === "cloze"}
@@ -1288,6 +1399,7 @@ function PracticeWorkspace({
                     submitted={submitted}
                     objective={objective}
                     vocabulary={vocabulary}
+                    markingVocabulary={markingVocabulary}
                     onChange={(answer) => onAnswerChange(question.id, answer)}
                   />
                 );
@@ -1296,6 +1408,21 @@ function PracticeWorkspace({
           )}
         </aside>
       </div>
+      {markingVocabulary && vocabularySelection && (
+        <button
+          type="button"
+          className="english-vocab-selection-popover"
+          style={{
+            "--vocab-selection-top": `${vocabularySelection.top}px`,
+            "--vocab-selection-left": `${vocabularySelection.left}px`,
+          } as CSSProperties}
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={onConfirmVocabularySelection}
+        >
+          <Highlighter className="h-4 w-4" />
+          标记
+        </button>
+      )}
     </section>
   );
 }
@@ -1308,6 +1435,7 @@ function QuestionBlock({
   submitted,
   objective,
   vocabulary,
+  markingVocabulary,
   onChange,
 }: {
   passage: EnglishPassage;
@@ -1317,6 +1445,7 @@ function QuestionBlock({
   submitted: boolean;
   objective: boolean;
   vocabulary: EnglishVocabularyEntry[];
+  markingVocabulary: boolean;
   onChange: (value: string) => void;
 }) {
   const correct = submitted && savedAnswer?.isCorrect === true;
@@ -1339,7 +1468,11 @@ function QuestionBlock({
         )}
       </div>
       {showStem && (
-        <p className="english-question-stem">
+        <p
+          className="english-question-stem"
+          data-vocab-source-area="question"
+          data-vocab-question-id={question.id}
+        >
           {renderTextWithVocabularyMarks(questionTitle, questionVocabulary)}
         </p>
       )}
@@ -1357,13 +1490,21 @@ function QuestionBlock({
               <button
                 key={`${question.id}-${option.label}`}
                 type="button"
-                onClick={() => onChange(option.label)}
-                className={`english-option-button ${selected ? "english-option-button-selected" : ""}`}
+                onClick={() => {
+                  if (markingVocabulary) return;
+                  onChange(option.label);
+                }}
+                className={`english-option-button ${selected ? "english-option-button-selected" : ""} ${markingVocabulary ? "english-option-button-marking" : ""}`}
               >
                 <span className="english-option-label">
                   {option.label}
                 </span>
-                <span className="english-option-content">
+                <span
+                  className="english-option-content"
+                  data-vocab-source-area="option"
+                  data-vocab-question-id={question.id}
+                  data-vocab-option-label={option.label}
+                >
                   {renderTextWithVocabularyMarks(option.content, optionVocabulary)}
                 </span>
               </button>
@@ -1401,9 +1542,11 @@ function VocabularyDialog({
   selectedRecommendations,
   saving,
   recommending,
+  marking,
   onClose,
   onModeChange,
   onFormChange,
+  onStartMarking,
   onSaveManual,
   onRecommend,
   onRecommendationToggle,
@@ -1419,9 +1562,11 @@ function VocabularyDialog({
   selectedRecommendations: Record<string, boolean>;
   saving: boolean;
   recommending: boolean;
+  marking: boolean;
   onClose: () => void;
   onModeChange: (mode: VocabularyDialogMode) => void;
   onFormChange: (form: VocabularyFormState) => void;
+  onStartMarking: () => void;
   onSaveManual: () => void;
   onRecommend: () => void;
   onRecommendationToggle: (key: string, checked: boolean) => void;
@@ -1465,8 +1610,6 @@ function VocabularyDialog({
 
   if (!open) return null;
 
-  const selectedQuestion = questions.find((question) => question.id === form.sourceQuestionId) ?? questions[0];
-  const sourceQuestions = questions.filter((question) => question.stem || question.options.length > 0);
   const selectedCount = recommendations.filter((item) => selectedRecommendations[getRecommendationKey(item)]).length;
 
   return (
@@ -1501,93 +1644,46 @@ function VocabularyDialog({
 
         {mode === "manual" ? (
           <div className="english-vocab-form">
-            <div className="grid grid-cols-2 gap-2">
-              <VocabularySelect
-                label="类型"
-                value={form.entryType}
-                options={vocabularyTypeOptions}
-                onChange={(value) => onFormChange({ ...form, entryType: value as EnglishVocabularyEntryType })}
+            <VocabularyChoiceGroup
+              label="类型"
+              value={form.entryType}
+              options={vocabularyTypeOptions}
+              onChange={(value) => onFormChange({ ...form, entryType: value as EnglishVocabularyEntryType })}
+            />
+            <VocabularyChoiceGroup
+              label="词性"
+              value={form.partOfSpeech}
+              compact
+              options={partOfSpeechOptions.map((value) => ({
+                value,
+                label: englishVocabularyPartOfSpeechLabels[value],
+              }))}
+              onChange={(value) => onFormChange({ ...form, partOfSpeech: value as EnglishVocabularyPartOfSpeech })}
+            />
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <VocabularyInput
+                label="词条"
+                value={form.word}
+                onChange={(value) => onFormChange({ ...form, word: value })}
               />
-              <VocabularySelect
-                label="词性"
-                value={form.partOfSpeech}
-                options={partOfSpeechOptions.map((value) => ({
-                  value,
-                  label: englishVocabularyPartOfSpeechLabels[value],
-                }))}
-                onChange={(value) => onFormChange({ ...form, partOfSpeech: value as EnglishVocabularyPartOfSpeech })}
+              <VocabularyInput
+                label="释义"
+                value={form.definition}
+                onChange={(value) => onFormChange({ ...form, definition: value })}
               />
             </div>
 
-            <VocabularyInput
-              label="词条"
-              value={form.word}
-              onChange={(value) => onFormChange({ ...form, word: value })}
-            />
-            <VocabularyInput
-              label="释义"
-              value={form.definition}
-              onChange={(value) => onFormChange({ ...form, definition: value })}
-            />
-            <VocabularySelect
-              label="来源"
-              value={form.sourceArea}
-              options={sourceAreaOptions}
-              onChange={(value) => onFormChange({
-                ...form,
-                sourceArea: value as EnglishVocabularySourceArea,
-                sourceQuestionId: value === "passage" ? "" : selectedQuestion?.id ?? "",
-                sourceOptionLabel: value === "option" ? selectedQuestion?.options[0]?.label ?? "" : "",
-              })}
-            />
-
-            {form.sourceArea !== "passage" && sourceQuestions.length > 0 && (
-              <VocabularySelect
-                label="题号"
-                value={form.sourceQuestionId || selectedQuestion?.id || ""}
-                options={sourceQuestions.map((question) => ({
-                  value: question.id,
-                  label: `第 ${question.questionNo} 题`,
-                }))}
-                onChange={(value) => onFormChange({
-                  ...form,
-                  sourceQuestionId: value,
-                  sourceOptionLabel: form.sourceArea === "option"
-                    ? questions.find((question) => question.id === value)?.options[0]?.label ?? ""
-                    : "",
-                })}
-              />
-            )}
-
-            {form.sourceArea === "option" && selectedQuestion && (
-              <VocabularySelect
-                label="选项"
-                value={form.sourceOptionLabel || selectedQuestion.options[0]?.label || ""}
-                options={selectedQuestion.options.map((option) => ({
-                  value: option.label,
-                  label: option.label,
-                }))}
-                onChange={(value) => onFormChange({ ...form, sourceOptionLabel: value })}
-              />
-            )}
-
-            <VocabularyTextarea
-              label="原文片段"
-              value={form.sourceExcerpt}
-              rows={3}
-              onChange={(value) => onFormChange({ ...form, sourceExcerpt: value })}
-            />
-            <VocabularyInput
-              label="高亮文本"
-              value={form.highlightText}
-              onChange={(value) => onFormChange({ ...form, highlightText: value })}
-            />
-            <VocabularyTextarea
-              label="备注"
-              value={form.note}
-              rows={2}
-              onChange={(value) => onFormChange({ ...form, note: value })}
-            />
+            <div className={`english-vocab-marker-row ${form.sourceExcerpt ? "english-vocab-marker-row-active" : ""}`}>
+              <div>
+                <span>{form.sourceExcerpt ? "已标记位置" : "未标记位置"}</span>
+                <small>{form.sourceExcerpt ? "保存后可回到原文高亮" : "可从文章、题干或选项中选择"}</small>
+              </div>
+              <button type="button" onClick={onStartMarking} disabled={marking} className="control-button h-9 px-3 text-sm">
+                <Highlighter className="h-4 w-4" />
+                {form.sourceExcerpt ? "重新标记" : "标记位置"}
+              </button>
+            </div>
 
             <button
               type="button"
@@ -1664,7 +1760,6 @@ function VocabularyRecommendationRow({
       <span className="min-w-0 flex-1">
         <strong>{item.word}</strong>
         <em>{item.definition}</em>
-        <small>{item.sourceExcerpt}</small>
       </span>
     </label>
   );
@@ -1691,55 +1786,35 @@ function VocabularyInput({
   );
 }
 
-function VocabularyTextarea({
-  label,
-  value,
-  rows,
-  onChange,
-}: {
-  label: string;
-  value: string;
-  rows: number;
-  onChange: (value: string) => void;
-}) {
-  return (
-    <label className="block">
-      <span className="mb-1.5 block text-xs font-medium text-on-surface-variant">{label}</span>
-      <textarea
-        value={value}
-        rows={rows}
-        onChange={(event) => onChange(event.target.value)}
-        className="field-control w-full resize-y px-3 py-2 text-sm leading-6"
-      />
-    </label>
-  );
-}
-
-function VocabularySelect({
+function VocabularyChoiceGroup({
   label,
   value,
   options,
+  compact = false,
   onChange,
 }: {
   label: string;
   value: string;
   options: Array<{ value: string; label: string }>;
+  compact?: boolean;
   onChange: (value: string) => void;
 }) {
   return (
-    <label className="block">
+    <fieldset className="block">
       <span className="mb-1.5 block text-xs font-medium text-on-surface-variant">{label}</span>
-      <select
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        className="field-control h-10 w-full px-3 text-sm"
-      >
-        {options.map((option) => createElement("option", {
-          key: option.value,
-          value: option.value,
-        }, option.label))}
-      </select>
-    </label>
+      <div className={`english-vocab-choice-group ${compact ? "english-vocab-choice-group-compact" : ""}`}>
+        {options.map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            className={option.value === value ? "english-vocab-choice-active" : ""}
+            onClick={() => onChange(option.value)}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+    </fieldset>
   );
 }
 
