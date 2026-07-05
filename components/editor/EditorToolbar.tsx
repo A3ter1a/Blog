@@ -5,7 +5,7 @@ import {
   Bold, Italic, Strikethrough, List, ListOrdered, Quote,
   Heading1, Heading2, Heading3, Code, Code2, Link as LinkIcon,
   Minus, Image as ImageIcon, Undo, Redo, Highlighter, FileText, ListChecks, Divide,
-  IndentDecrease, IndentIncrease, Ban, FileScan,
+  IndentDecrease, IndentIncrease, Ban, FileScan, Loader2, Sparkles,
 } from "lucide-react";
 import { useState } from "react";
 import { useClickOutside } from "@/hooks/useClickOutside";
@@ -14,12 +14,16 @@ interface EditorToolbarProps {
   editor: Editor | null;
   onImageUpload: () => void;
   onDocumentOcrOpen?: () => void;
+  onReviewMarkdown?: () => void;
+  isReviewingMarkdown?: boolean;
 }
 
 export function EditorToolbar({
   editor,
   onImageUpload,
   onDocumentOcrOpen,
+  onReviewMarkdown,
+  isReviewingMarkdown = false,
 }: EditorToolbarProps) {
   useEditorState({
     editor,
@@ -210,12 +214,26 @@ export function EditorToolbar({
         <StepLabelPicker editor={editor} />
       </ToolbarGroup>
 
-      {onDocumentOcrOpen && (
+      {(onDocumentOcrOpen || onReviewMarkdown) && (
         <div className="ml-auto">
           <ToolbarGroup label="讲义 OCR">
-            <ToolbarBtn onClick={onDocumentOcrOpen} tooltip="PDF 讲义 OCR" accent>
-              <FileScan className="w-4 h-4" />
-            </ToolbarBtn>
+            {onReviewMarkdown && (
+              <ToolbarBtn
+                onClick={onReviewMarkdown}
+                tooltip="审查公式与标题"
+                disabled={isReviewingMarkdown}
+                accent
+              >
+                {isReviewingMarkdown
+                  ? <Loader2 className="w-4 h-4 animate-spin" />
+                  : <Sparkles className="w-4 h-4" />}
+              </ToolbarBtn>
+            )}
+            {onDocumentOcrOpen && (
+              <ToolbarBtn onClick={onDocumentOcrOpen} tooltip="PDF 讲义 OCR" accent>
+                <FileScan className="w-4 h-4" />
+              </ToolbarBtn>
+            )}
           </ToolbarGroup>
         </div>
       )}

@@ -35,6 +35,7 @@ export interface RichTextEditorRef {
   insertImage: (url: string) => void;
   insertContent: (content: string) => void;
   insertMarkdown: (content: string) => void;
+  setMarkdown: (content: string) => void;
 }
 
 const BODY_INDENT_TEXT = "\u3000\u3000";
@@ -332,6 +333,10 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
         const next = `${current.trimEnd()}${markdown}`;
         onChange(next);
         editor?.commands.setContent(parseProblemMarkers(next));
+      },
+      setMarkdown: (markdown: string) => {
+        onChange(markdown);
+        editor?.commands.setContent(parseProblemMarkers(markdown));
       },
     }), [content, editor, onChange]);
 

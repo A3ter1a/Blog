@@ -1,3 +1,5 @@
+import { normalizeMarkdownImageHtml } from "@/lib/markdown-format";
+
 const BAIDU_TOKEN_URL = "https://aip.baidubce.com/oauth/2.0/token";
 const BAIDU_UNLIMITED_OCR_TASK_URL = "https://aip.baidubce.com/rest/2.0/brain/online/v2/unlimited-ocr-parser/task";
 const BAIDU_UNLIMITED_OCR_QUERY_URL = "https://aip.baidubce.com/rest/2.0/brain/online/v2/unlimited-ocr-parser/task/query";
@@ -136,8 +138,7 @@ function htmlTableToMarkdown(table: string) {
 }
 
 export function normalizeBaiduMarkdown(markdown: string) {
-  return markdown
-    .replace(/\r\n?/g, "\n")
+  return normalizeMarkdownImageHtml(markdown.replace(/\r\n?/g, "\n"))
     .replace(/<table\b[\s\S]*?<\/table>/gi, (table) => htmlTableToMarkdown(table))
     .replace(/[ \t]+\n/g, "\n")
     .replace(/\n{4,}/g, "\n\n\n")

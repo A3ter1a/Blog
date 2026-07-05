@@ -21,6 +21,45 @@ const md = markdownit({
   linkify: true,
 }).use(markdownitMark);
 
+const IMAGE_WIDTH_TITLE_PATTERN = /^width=(\d{1,3}(?:\.\d+)?%|\d{1,4}px)$/i;
+const defaultImageRender = md.renderer.rules.image;
+
+function normalizeImageRenderWidth(title: string | null): string | null {
+  const width = title?.match(IMAGE_WIDTH_TITLE_PATTERN)?.[1];
+  if (!width) return null;
+
+  const percentMatch = width.match(/^(\d{1,3}(?:\.\d+)?)%$/);
+  if (percentMatch) {
+    const percent = Number(percentMatch[1]);
+    return percent > 0 && percent <= 100 ? width : null;
+  }
+
+  const pixelMatch = width.match(/^(\d{1,4})px$/i);
+  if (pixelMatch) {
+    const pixels = Number(pixelMatch[1]);
+    return pixels > 0 && pixels <= 1600 ? width : null;
+  }
+
+  return null;
+}
+
+md.renderer.rules.image = (tokens, idx, options, env, self) => {
+  const token = tokens[idx];
+  const width = normalizeImageRenderWidth(token.attrGet("title"));
+
+  if (width) {
+    token.attrs = token.attrs?.filter(([name]) => name !== "title") ?? null;
+    token.attrSet(
+      "style",
+      `display:block;margin-left:auto;margin-right:auto;width:${width};height:auto;max-width:100%;`,
+    );
+  }
+
+  return defaultImageRender
+    ? defaultImageRender(tokens, idx, options, env, self)
+    : self.renderToken(tokens, idx, options);
+};
+
 export interface TocItem {
   id: string;
   title: string;

@@ -13,6 +13,16 @@ import { LazyRichTextEditor } from "@/components/editor/LazyRichTextEditor";
 import { EditorToolbar } from "@/components/editor/EditorToolbar";
 import { DocumentOcrDialog } from "@/components/editor/DocumentOcrDialog";
 import { EconomicsGraphComposer } from "@/components/editor/EconomicsGraphComposer";
+import { recordDeepSeekUsage } from "@/lib/ai-usage";
+import {
+  AI_CONFIG_STORAGE_KEY,
+  ALLOW_CLIENT_AI_KEYS,
+  DEFAULT_AI_CONFIG,
+  normalizeAIConfig,
+  sanitizeAIConfig,
+} from "@/lib/ai-config";
+import { readJsonStorage } from "@/lib/browser-storage";
+import { buildAuthHeaders } from "@/lib/fetch-with-auth";
 import { uploadImage, generateFileName } from "@/lib/supabase-storage";
 import { getMarkdownTextStats } from "@/lib/markdown-format";
 import { splitMath3PracticeTags } from "@/lib/math3-practice";
@@ -116,6 +126,7 @@ function CreateEditorPage() {
   const [chapterRefreshKey, setChapterRefreshKey] = useState(0);
   const [showProblemReferencePicker, setShowProblemReferencePicker] = useState(false);
   const [showDocumentOcrDialog, setShowDocumentOcrDialog] = useState(false);
+  const [isReviewingMarkdown, setIsReviewingMarkdown] = useState(false);
   const [showEconomicsGraphComposer, setShowEconomicsGraphComposer] = useState(false);
   const [viewMode, setViewMode] = useState<"split" | "editor" | "preview">("editor");
   const editorRef = useRef<RichTextEditorRef>(null);
@@ -304,6 +315,67 @@ function CreateEditorPage() {
     }
     toast.success("讲义 OCR 内容已插入正文");
   }, [toast]);
+
+  const handleReviewMarkdown = useCallback(async () => {
+    if (isReviewingMarkdown) return;
+
+    const currentMarkdown = content.trim();
+    if (!currentMarkdown) {
+      toast.error("正文为空，无法审查");
+      return;
+    }
+
+    setIsReviewingMarkdown(true);
+    try {
+      const aiConfig = sanitizeAIConfig(
+        readJsonStorage(AI_CONFIG_STORAGE_KEY, DEFAULT_AI_CONFIG, normalizeAIConfig),
+      );
+      const body: { markdown: string; model: string; apiKey?: string } = {
+        markdown: content,
+        model: aiConfig.deepseekModel,
+      };
+      if (ALLOW_CLIENT_AI_KEYS) {
+        body.apiKey = aiConfig.deepseekApiKey;
+      }
+
+      const res = await fetch("/api/ai/document-markdown-review", {
+        method: "POST",
+        headers: await buildAuthHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify(body),
+      });
+      const rawData: unknown = await res.json().catch(() => ({}));
+      const data = isRecord(rawData) ? rawData : {};
+
+      if (!res.ok || data.success !== true) {
+        const message = typeof data.error === "string" ? data.error : "Markdown 审查失败";
+        throw new Error(message);
+      }
+
+      const reviewedMarkdown = typeof data.markdown === "string" ? data.markdown : "";
+      if (!reviewedMarkdown.trim()) {
+        throw new Error("DeepSeek 返回了空内容，已中止替换");
+      }
+
+      if (editorRef.current?.editor) {
+        editorRef.current.setMarkdown(reviewedMarkdown);
+      } else {
+        setContent(reviewedMarkdown);
+      }
+
+      if (typeof data.tokensUsed === "number" && data.tokensUsed > 0) {
+        recordDeepSeekUsage(data.tokensUsed);
+      }
+
+      const summary = typeof data.summary === "string" && data.summary.trim()
+        ? data.summary.trim()
+        : "已审查公式和标题层级";
+      toast.success(summary);
+    } catch (error: unknown) {
+      toast.error(`Markdown 审查失败：${error instanceof Error ? error.message : "未知错误"}`);
+    } finally {
+      setIsReviewingMarkdown(false);
+    }
+  }, [content, isReviewingMarkdown, toast]);
 
   const handleInsertEconomicsGraphMarkdown = useCallback((markdown: string) => {
     if (editorRef.current?.editor) {
@@ -684,6 +756,8 @@ function CreateEditorPage() {
                           editor={toolbarEditor}
                           onImageUpload={handleEditorImageUpload}
                           onDocumentOcrOpen={() => setShowDocumentOcrDialog(true)}
+                          onReviewMarkdown={handleReviewMarkdown}
+                          isReviewingMarkdown={isReviewingMarkdown}
                         />
                       </div>
                     )}
@@ -758,6 +832,8 @@ function CreateEditorPage() {
                         editor={toolbarEditor}
                         onImageUpload={handleEditorImageUpload}
                         onDocumentOcrOpen={() => setShowDocumentOcrDialog(true)}
+                        onReviewMarkdown={handleReviewMarkdown}
+                        isReviewingMarkdown={isReviewingMarkdown}
                       />
                     </div>
                   )}
