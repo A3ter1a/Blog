@@ -5,13 +5,14 @@ import { motion } from "framer-motion";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import type { Editor } from "@tiptap/react";
-import { Save, RotateCcw, X, Image as ImageIcon, FolderTree, Columns, Maximize2, Eye, Loader2, ChevronDown, ChevronUp, SlidersHorizontal, Video as VideoIcon, Target } from "lucide-react";
+import { Save, RotateCcw, X, Image as ImageIcon, FolderTree, Columns, Maximize2, Eye, Loader2, ChevronDown, ChevronUp, SlidersHorizontal, Video as VideoIcon, Target, LineChart } from "lucide-react";
 import { Subject, subjectMap, NoteType, typeMap, Video, Problem } from "@/lib/types";
 import { useToast } from "@/components/ui/Toast";
 import type { RichTextEditorRef } from "@/components/editor/RichTextEditor";
 import { LazyRichTextEditor } from "@/components/editor/LazyRichTextEditor";
 import { EditorToolbar } from "@/components/editor/EditorToolbar";
 import { DocumentOcrDialog } from "@/components/editor/DocumentOcrDialog";
+import { EconomicsGraphComposer } from "@/components/editor/EconomicsGraphComposer";
 import { uploadImage, generateFileName } from "@/lib/supabase-storage";
 import { getMarkdownTextStats } from "@/lib/markdown-format";
 import { splitMath3PracticeTags } from "@/lib/math3-practice";
@@ -115,6 +116,7 @@ function CreateEditorPage() {
   const [chapterRefreshKey, setChapterRefreshKey] = useState(0);
   const [showProblemReferencePicker, setShowProblemReferencePicker] = useState(false);
   const [showDocumentOcrDialog, setShowDocumentOcrDialog] = useState(false);
+  const [showEconomicsGraphComposer, setShowEconomicsGraphComposer] = useState(false);
   const [viewMode, setViewMode] = useState<"split" | "editor" | "preview">("editor");
   const editorRef = useRef<RichTextEditorRef>(null);
   const [toolbarEditor, setToolbarEditor] = useState<Editor | null>(null);
@@ -303,8 +305,17 @@ function CreateEditorPage() {
     toast.success("讲义 OCR 内容已插入正文");
   }, [toast]);
 
+  const handleInsertEconomicsGraphMarkdown = useCallback((markdown: string) => {
+    if (editorRef.current?.editor) {
+      editorRef.current.insertMarkdown(markdown);
+    } else {
+      setContent((current) => `${current.trimEnd()}${markdown}`);
+    }
+  }, []);
+
   const isEssay = noteType === "essay";
   const isProblem = noteType === "problem";
+  const isEconomicsNote = !isProblem && !isEssay && subject === "economics";
 
   if (!routeReady || isLoadingExistingNote) {
     return (
@@ -602,6 +613,17 @@ function CreateEditorPage() {
                     题目引用
                     {showProblemReferencePicker ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
                   </button>
+                  {isEconomicsNote && (
+                    <button
+                      type="button"
+                      onClick={() => setShowEconomicsGraphComposer((value) => !value)}
+                      className={`control-button h-9 min-h-0 px-3 text-xs ${showEconomicsGraphComposer ? "control-button-selected" : ""}`}
+                    >
+                      <LineChart className="h-3.5 w-3.5" />
+                      曲线卡片
+                      {showEconomicsGraphComposer ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                    </button>
+                  )}
                   {/* Mode Toggle */}
                   <div className="grid w-full grid-cols-3 overflow-hidden rounded-lg border border-outline-variant/20 sm:flex sm:w-auto">
                     <button
@@ -645,6 +667,10 @@ function CreateEditorPage() {
                 isOpen={showProblemReferencePicker}
                 onInsert={handleInsertProblemReference}
               />
+
+              {isEconomicsNote && showEconomicsGraphComposer && (
+                <EconomicsGraphComposer onInsert={handleInsertEconomicsGraphMarkdown} />
+              )}
 
               {viewMode === "split" && (
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -710,7 +736,12 @@ function CreateEditorPage() {
                         [&::-webkit-scrollbar-thumb]:rounded-full"
                     >
                       <div className="p-6">
-                        <ContentPreview content={content} className="text-on-surface-variant" />
+                        <ContentPreview
+                          content={content}
+                          className="text-on-surface-variant"
+                          enableEconomicsTerms={isEconomicsNote}
+                          enableEconomicsGraphs={isEconomicsNote}
+                        />
                       </div>
                     </div>
                   </div>
@@ -761,7 +792,12 @@ function CreateEditorPage() {
 
               {viewMode === "preview" && (
                 <div className="py-6">
-                  <ContentPreview content={content} className="text-on-surface-variant text-lg leading-relaxed" />
+                  <ContentPreview
+                    content={content}
+                    className="text-on-surface-variant text-lg leading-relaxed"
+                    enableEconomicsTerms={isEconomicsNote}
+                    enableEconomicsGraphs={isEconomicsNote}
+                  />
                 </div>
               )}
             </>
