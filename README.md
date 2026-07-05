@@ -55,6 +55,7 @@ Asteroid 的核心目标是把备考期间分散的学习材料变成一个可�
 | `/create` | 管理员创建与编辑入口 |
 | `/tools` | 学习工具入口，集中进入真题中心、数学训练和资料检索 |
 | `/tools/past-papers` | 真题中心 |
+| `/tools/past-paper-results` | 真题训练结果与英语词句库 |
 | `/tools/math-training` | 数学训练中心 |
 | `/tools/resource-search` | 基于已发布内容的资料检索 |
 | `/tools/note-qa` | 资料检索旧入口，重定向到 `/tools/resource-search` |

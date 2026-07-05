@@ -38,10 +38,11 @@ const schemaSql = readRequired("supabase/migrations/0001_base_schema.sql");
 const rlsSql = readRequired("supabase/migrations/0002_rls_policies.sql");
 const practiceMarkedSql = readRequired("supabase/migrations/0003_problem_practice_marked.sql");
 const englishTrainingSql = readRequired("supabase/migrations/0004_english_training.sql");
+const englishVocabularyContextSql = readRequired("supabase/migrations/0005_english_vocabulary_context.sql");
 const verificationSql = readRequired("supabase/verification.sql");
 const englishImportScript = readRequired("scripts/import-english-papers.mjs");
 const legacySql = readRequired("supabase-init.sql");
-const combinedSql = `${schemaSql}\n${rlsSql}\n${practiceMarkedSql}\n${englishTrainingSql}\n${legacySql}`;
+const combinedSql = `${schemaSql}\n${rlsSql}\n${practiceMarkedSql}\n${englishTrainingSql}\n${englishVocabularyContextSql}\n${legacySql}`;
 const docsSqlExamples = [
   readRequired("README.md"),
   readRequired("supabase/README.md"),
@@ -173,6 +174,14 @@ check(
 );
 
 check(
+  "英语生词追溯迁移只扩展 english_vocabulary",
+  /alter\s+table\s+public\.english_vocabulary[\s\S]*add\s+column\s+if\s+not\s+exists\s+entry_type/i.test(englishVocabularyContextSql)
+    && /add\s+column\s+if\s+not\s+exists\s+source_excerpt/i.test(englishVocabularyContextSql)
+    && !/\b(drop|truncate)\b|delete\s+from|update\s+notes|alter\s+table\s+public\.notes|notes\.problems|alter\s+table\s+public\.(?!english_vocabulary\b)/i.test(englishVocabularyContextSql),
+  "生词和固定搭配追溯只能加字段、加索引，不能触碰旧文章、旧题集或训练记录。",
+);
+
+check(
   "英语真题导入脚本只写 english 内容表",
   !/\.from\(\s*["'](?:notes|problem_practice_statuses|math3_self_tests|english_attempts|english_attempt_answers|english_vocabulary)["']\s*\)|notesApi\./.test(englishImportScript),
   "真题正文导入只能写 english_papers、english_passages、english_questions，不能污染旧题集、作答记录或生词表。",
@@ -232,6 +241,13 @@ check(
     && verificationSql.includes("'public', 'english_attempts'")
     && verificationSql.includes("'public', 'english_vocabulary'"),
   "如果核验脚本不检查英语训练表，可能漏掉生产库还没执行第四个迁移的问题。",
+);
+
+check(
+  "迁移后核验 SQL 检查英语生词追溯字段",
+  verificationSql.includes("'english_vocabulary', 'entry_type'")
+    && verificationSql.includes("'english_vocabulary', 'source_excerpt'"),
+  "如果核验脚本不检查 entry_type/source_excerpt，可能漏掉生词和固定搭配追溯迁移未执行的问题。",
 );
 
 check(

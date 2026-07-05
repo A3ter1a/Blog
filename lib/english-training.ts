@@ -11,6 +11,7 @@ export type EnglishPassageNo =
   | "small_writing"
   | "big_writing";
 export type EnglishAttemptStatus = "in_progress" | "submitted";
+export type EnglishVocabularyEntryType = "word" | "collocation";
 export type EnglishVocabularyPartOfSpeech = "n" | "v" | "adj" | "adv" | "prep" | "conj" | "phr" | "other";
 export type EnglishVocabularyMasteryStatus = "new" | "learning" | "mastered";
 
@@ -85,10 +86,15 @@ export interface EnglishVocabularyEntry {
   id: string;
   userId?: string;
   passageId: string;
+  entryType: EnglishVocabularyEntryType;
   word: string;
   partOfSpeech: EnglishVocabularyPartOfSpeech;
   definition: string;
   exampleSentence: string;
+  sourceExcerpt: string;
+  sourceStart?: number;
+  sourceEnd?: number;
+  sourceParagraph?: number;
   masteryStatus: EnglishVocabularyMasteryStatus;
   note: string;
   createdAt: Date;
@@ -134,6 +140,11 @@ export const englishVocabularyPartOfSpeechLabels: Record<EnglishVocabularyPartOf
   conj: "conj.",
   phr: "phr.",
   other: "其他",
+};
+
+export const englishVocabularyEntryTypeLabels: Record<EnglishVocabularyEntryType, string> = {
+  word: "生词",
+  collocation: "固定搭配",
 };
 
 export const englishVocabularyMasteryLabels: Record<EnglishVocabularyMasteryStatus, string> = {

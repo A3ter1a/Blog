@@ -15,6 +15,7 @@ export default function robots(): MetadataRoute.Robots {
         "/tools/english-training",
         "/tools/math-training",
         "/tools/past-papers",
+        "/tools/past-paper-results",
         "/tools/math3-self-test",
         "/tools/note-qa",
         "/tools/problem-booklet",

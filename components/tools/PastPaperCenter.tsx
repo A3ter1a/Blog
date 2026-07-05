@@ -32,6 +32,7 @@ const centerModules: Array<{
     title: "真题训练结果",
     description: "正确率与得分",
     icon: BarChart3,
+    href: "/tools/past-paper-results",
     tone: "border-sky-500/20 bg-sky-500/10 text-sky-700",
   },
 ];

@@ -4,6 +4,7 @@ import type {
   EnglishPassageNo,
   EnglishQuestionOption,
   EnglishSection,
+  EnglishVocabularyEntryType,
   EnglishVocabularyMasteryStatus,
   EnglishVocabularyPartOfSpeech,
 } from "./english-training";
@@ -179,10 +180,15 @@ export type EnglishVocabularyRow = {
   id?: string;
   user_id?: string | null;
   passage_id?: string | null;
+  entry_type?: EnglishVocabularyEntryType | null;
   word?: string | null;
   part_of_speech?: EnglishVocabularyPartOfSpeech | null;
   definition?: string | null;
   example_sentence?: string | null;
+  source_excerpt?: string | null;
+  source_start?: number | null;
+  source_end?: number | null;
+  source_paragraph?: number | null;
   mastery_status?: EnglishVocabularyMasteryStatus | null;
   note?: string | null;
   created_at?: string | null;

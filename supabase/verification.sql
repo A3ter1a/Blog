@@ -36,7 +36,9 @@ expected_columns(schema_name, table_name, column_name) as (
     ('public', 'english_questions', 'standard_answer'),
     ('public', 'english_attempts', 'user_id'),
     ('public', 'english_attempt_answers', 'is_correct'),
-    ('public', 'english_vocabulary', 'part_of_speech')
+    ('public', 'english_vocabulary', 'part_of_speech'),
+    ('public', 'english_vocabulary', 'entry_type'),
+    ('public', 'english_vocabulary', 'source_excerpt')
 ),
 column_checks as (
   select

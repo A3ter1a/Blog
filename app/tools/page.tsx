@@ -18,7 +18,7 @@ const toolHubs: ToolHubCardItem[] = [
   {
     id: "past-papers",
     title: "真题中心",
-    description: "进入英语真题训练、数学真题训练和真题训练结果。",
+    description: "进入真题训练、训练结果和词句整理。",
     href: "/tools/past-papers",
     icon: GraduationCap,
     tone: "border-teal-500/20 bg-teal-500/10 text-teal-700",
