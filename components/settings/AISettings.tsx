@@ -17,21 +17,24 @@ import {
 import { readJsonStorage, writeJsonStorage } from '@/lib/browser-storage';
 
 type ConfigTestBody = {
-  provider: 'deepseek' | 'qwen';
+  provider: 'deepseek' | 'qwen' | 'baidu-ocr';
   apiKey?: string;
   model?: string;
   endpoint?: string;
 };
 
+type ConfigTestProvider = ConfigTestBody['provider'];
+
 export function AISettings() {
   const [config, setConfig] = useState<AIConfig>(DEFAULT_AI_CONFIG);
   const [isEditing, setIsEditing] = useState(false);
-  const [testing, setTesting] = useState<string | null>(null);
+  const [testing, setTesting] = useState<ConfigTestProvider | null>(null);
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
   const [usage, setUsage] = useState<AIUsageStats>(getUsageStats());
   const [serverConfig, setServerConfig] = useState<{
     deepseekConfigured: boolean;
     qwenConfigured: boolean;
+    baiduOcrConfigured: boolean;
   } | null>(null);
 
   useEffect(() => {
@@ -48,8 +51,6 @@ export function AISettings() {
   }, []);
 
   useEffect(() => {
-    if (ALLOW_CLIENT_AI_KEYS) return;
-
     let mounted = true;
     void (async () => {
       try {
@@ -62,6 +63,7 @@ export function AISettings() {
           setServerConfig({
             deepseekConfigured: Boolean(data.deepseekConfigured),
             qwenConfigured: Boolean(data.qwenConfigured),
+            baiduOcrConfigured: Boolean(data.baiduOcrConfigured),
           });
         }
       } catch {
@@ -81,7 +83,7 @@ export function AISettings() {
     setIsEditing(false);
   };
 
-  const testConnection = async (provider: 'deepseek' | 'qwen') => {
+  const testConnection = async (provider: ConfigTestProvider) => {
     setTesting(provider);
     setTestResult(null);
     try {
@@ -89,7 +91,7 @@ export function AISettings() {
       if (provider === 'deepseek') {
         if (ALLOW_CLIENT_AI_KEYS) body.apiKey = config.deepseekApiKey;
         body.model = config.deepseekModel;
-      } else {
+      } else if (provider === 'qwen') {
         if (ALLOW_CLIENT_AI_KEYS) body.apiKey = config.qwenApiKey;
         body.model = config.qwenModel;
         body.endpoint = config.qwenApiEndpoint;
@@ -103,7 +105,12 @@ export function AISettings() {
 
       const data = await res.json();
       if (data.success) {
-        setTestResult({ success: true, message: `${provider === 'deepseek' ? 'DeepSeek' : 'Qwen'} 连接成功！` });
+        const providerName = provider === 'deepseek'
+          ? 'DeepSeek'
+          : provider === 'qwen'
+            ? 'Qwen'
+            : '百度 OCR';
+        setTestResult({ success: true, message: `${providerName} 连接成功！` });
         if (provider === 'deepseek' && data.tokensUsed) {
           recordDeepSeekUsage(data.tokensUsed);
           setUsage(getUsageStats());
@@ -123,6 +130,7 @@ export function AISettings() {
   const qwenConfigured = ALLOW_CLIENT_AI_KEYS
     ? Boolean(config.qwenApiKey)
     : Boolean(serverConfig?.qwenConfigured);
+  const baiduOcrConfigured = Boolean(serverConfig?.baiduOcrConfigured);
   const isPresetQwenOcrModel = QWEN_OCR_MODEL_OPTIONS.some((option) => option.value === config.qwenModel);
 
   return (
@@ -177,6 +185,12 @@ export function AISettings() {
             <div className={`w-2 h-2 rounded-full ${qwenConfigured ? 'bg-green-500' : 'bg-outline-variant'}`} />
             <span className="text-sm text-on-surface-variant">
               Qwen OCR {qwenConfigured ? `(${config.qwenModel})` : '— 未配置'}
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className={`w-2 h-2 rounded-full ${baiduOcrConfigured ? 'bg-green-500' : 'bg-outline-variant'}`} />
+            <span className="text-sm text-on-surface-variant">
+              百度 Unlimited OCR {baiduOcrConfigured ? '— 服务端已配置' : '— 未配置'}
             </span>
           </div>
 
@@ -288,6 +302,34 @@ export function AISettings() {
                 <Plug className="w-3.5 h-3.5" />
               )}
               测试 Qwen 连接
+            </button>
+          </div>
+
+          {/* Baidu Unlimited OCR Configuration */}
+          <div className="bg-surface-container-low rounded-xl p-4 space-y-3">
+            <p className="text-xs font-medium text-on-surface">百度 Unlimited OCR (PDF 讲义解析)</p>
+            <div className="rounded-lg bg-surface-container-highest px-3 py-2 space-y-1">
+              <div className="flex items-center gap-2">
+                <div className={`w-2 h-2 rounded-full ${baiduOcrConfigured ? 'bg-green-500' : 'bg-outline-variant'}`} />
+                <span className="text-xs text-on-surface-variant">
+                  {baiduOcrConfigured ? '服务端密钥已配置' : '服务端密钥未配置'}
+                </span>
+              </div>
+              <p className="text-[11px] text-on-surface-variant/50">
+                BAIDU_OCR_API_KEY / BAIDU_OCR_SECRET_KEY
+              </p>
+            </div>
+            <button
+              onClick={() => testConnection('baidu-ocr')}
+              disabled={!baiduOcrConfigured || testing !== null}
+              className="flex items-center gap-2 px-3 py-2 rounded-lg bg-primary/10 text-primary text-xs font-medium hover:bg-primary/20 transition-colors disabled:opacity-40"
+            >
+              {testing === 'baidu-ocr' ? (
+                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Plug className="w-3.5 h-3.5" />
+              )}
+              检测百度 OCR 密钥
             </button>
           </div>
 

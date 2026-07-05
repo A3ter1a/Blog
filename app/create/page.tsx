@@ -11,6 +11,7 @@ import { useToast } from "@/components/ui/Toast";
 import type { RichTextEditorRef } from "@/components/editor/RichTextEditor";
 import { LazyRichTextEditor } from "@/components/editor/LazyRichTextEditor";
 import { EditorToolbar } from "@/components/editor/EditorToolbar";
+import { DocumentOcrDialog } from "@/components/editor/DocumentOcrDialog";
 import { uploadImage, generateFileName } from "@/lib/supabase-storage";
 import { getMarkdownTextStats } from "@/lib/markdown-format";
 import { splitMath3PracticeTags } from "@/lib/math3-practice";
@@ -113,6 +114,7 @@ function CreateEditorPage() {
   const [showChapterManager, setShowChapterManager] = useState(false);
   const [chapterRefreshKey, setChapterRefreshKey] = useState(0);
   const [showProblemReferencePicker, setShowProblemReferencePicker] = useState(false);
+  const [showDocumentOcrDialog, setShowDocumentOcrDialog] = useState(false);
   const [viewMode, setViewMode] = useState<"split" | "editor" | "preview">("editor");
   const editorRef = useRef<RichTextEditorRef>(null);
   const [toolbarEditor, setToolbarEditor] = useState<Editor | null>(null);
@@ -290,6 +292,15 @@ function CreateEditorPage() {
       setContent((current) => `${current.trimEnd()}${marker}`);
     }
     toast.success("已插入题目引用");
+  }, [toast]);
+
+  const handleInsertDocumentOcrMarkdown = useCallback((markdown: string) => {
+    if (editorRef.current?.editor) {
+      editorRef.current.insertMarkdown(markdown);
+    } else {
+      setContent((current) => `${current.trimEnd()}${markdown}`);
+    }
+    toast.success("讲义 OCR 内容已插入正文");
   }, [toast]);
 
   const isEssay = noteType === "essay";
@@ -646,6 +657,7 @@ function CreateEditorPage() {
                         <EditorToolbar
                           editor={toolbarEditor}
                           onImageUpload={handleEditorImageUpload}
+                          onDocumentOcrOpen={() => setShowDocumentOcrDialog(true)}
                         />
                       </div>
                     )}
@@ -714,6 +726,7 @@ function CreateEditorPage() {
                       <EditorToolbar
                         editor={toolbarEditor}
                         onImageUpload={handleEditorImageUpload}
+                        onDocumentOcrOpen={() => setShowDocumentOcrDialog(true)}
                       />
                     </div>
                   )}
@@ -808,6 +821,11 @@ function CreateEditorPage() {
           onChapterDeleted={handleChapterDeleted}
         />
       )}
+      <DocumentOcrDialog
+        isOpen={showDocumentOcrDialog}
+        onClose={() => setShowDocumentOcrDialog(false)}
+        onInsert={handleInsertDocumentOcrMarkdown}
+      />
     </main>
   );
 }

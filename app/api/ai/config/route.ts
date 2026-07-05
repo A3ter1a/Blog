@@ -8,6 +8,7 @@ import {
   QWEN_OCR_MODEL_OPTIONS,
   isQwenOcrModel,
 } from '@/lib/ai-config';
+import { getBaiduAccessToken, hasBaiduOcrCredentials } from '@/lib/baidu-unlimited-ocr';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -17,7 +18,7 @@ function getErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback;
 }
 
-// Connection test endpoint — validates API keys for DeepSeek and Qwen
+// Connection test endpoint — validates API keys for DeepSeek, Qwen, and Baidu OCR.
 export async function GET(req: NextRequest) {
   const adminError = await requireAdminRequest(req);
   if (adminError) return adminError;
@@ -26,6 +27,7 @@ export async function GET(req: NextRequest) {
     success: true,
     deepseekConfigured: Boolean(process.env.DEEPSEEK_API_KEY),
     qwenConfigured: Boolean(process.env.QWEN_API_KEY),
+    baiduOcrConfigured: hasBaiduOcrCredentials(),
   });
 }
 
@@ -34,7 +36,32 @@ export async function POST(req: NextRequest) {
     const adminError = await requireAdminRequest(req);
     if (adminError) return adminError;
 
-    const { provider, apiKey: clientApiKey, model: clientModel, endpoint: clientEndpoint } = await req.json();
+    const rawBody: unknown = await req.json().catch(() => ({}));
+    const body = isRecord(rawBody) ? rawBody : {};
+    const provider = typeof body.provider === 'string' ? body.provider : '';
+    const clientApiKey = typeof body.apiKey === 'string' ? body.apiKey : undefined;
+    const clientModel = typeof body.model === 'string' ? body.model : undefined;
+    const clientEndpoint = typeof body.endpoint === 'string' ? body.endpoint : undefined;
+
+    if (!provider) {
+      return NextResponse.json({ error: '缺少必要参数 (provider)' }, { status: 400 });
+    }
+
+    if (provider === 'baidu-ocr') {
+      if (!hasBaiduOcrCredentials()) {
+        return NextResponse.json(
+          { error: '缺少百度 OCR 服务端环境变量 BAIDU_OCR_API_KEY 和 BAIDU_OCR_SECRET_KEY' },
+          { status: 400 }
+        );
+      }
+
+      await getBaiduAccessToken();
+      return NextResponse.json({ success: true });
+    }
+
+    if (provider !== 'deepseek' && provider !== 'qwen') {
+      return NextResponse.json({ error: `未知的 provider: ${provider}` }, { status: 400 });
+    }
 
     // Prefer server-side env vars, fall back to client-provided keys
     const apiKey = provider === 'deepseek'
@@ -47,7 +74,7 @@ export async function POST(req: NextRequest) {
       ? clientEndpoint.trim()
       : DEFAULT_QWEN_ENDPOINT;
 
-    if (!provider || !apiKey) {
+    if (!apiKey) {
       return NextResponse.json({ error: '缺少必要参数 (provider, apiKey)' }, { status: 400 });
     }
 
@@ -98,8 +125,6 @@ export async function POST(req: NextRequest) {
       ]));
       return NextResponse.json({ success: true, modelList: ocrModelList });
     }
-
-    return NextResponse.json({ error: `未知的 provider: ${provider}` }, { status: 400 });
   } catch (error: unknown) {
     const message = getErrorMessage(error, '连接测试失败');
     console.error('[Config Test] Error:', message);
