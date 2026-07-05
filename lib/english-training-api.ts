@@ -6,6 +6,7 @@ import type {
   EnglishPassage,
   EnglishQuestion,
   EnglishTrainingData,
+  EnglishVocabularyEntry,
 } from "./english-training";
 import type {
   EnglishAttemptAnswerInsert,
@@ -15,6 +16,7 @@ import type {
   EnglishPaperRow,
   EnglishPassageRow,
   EnglishQuestionRow,
+  EnglishVocabularyRow,
 } from "./supabase-schema";
 import {
   isEnglishObjectiveSection,
@@ -26,6 +28,7 @@ const ENGLISH_PASSAGE_FIELDS = "id,paper_id,year,section,passage_no,title,conten
 const ENGLISH_QUESTION_FIELDS = "id,passage_id,question_no,stem,options,standard_answer,score,sort_order,created_at,updated_at";
 const ENGLISH_ATTEMPT_FIELDS = "id,user_id,passage_id,status,score,max_score,started_at,submitted_at,created_at,updated_at";
 const ENGLISH_ATTEMPT_ANSWER_FIELDS = "id,attempt_id,question_id,answer,is_correct,score,created_at,updated_at";
+const ENGLISH_VOCABULARY_FIELDS = "id,user_id,passage_id,entry_type,word,part_of_speech,definition,example_sentence,source_area,source_question_id,source_option_label,source_excerpt,highlight_text,source_start,source_end,source_paragraph,ai_generated,mastery_status,note,created_at,updated_at";
 
 export type EnglishAttemptAnswerInput = Record<string, string>;
 
@@ -109,6 +112,66 @@ function mapAttempt(row: EnglishAttemptRow, answers: EnglishAttemptAnswer[] = []
     updatedAt: toDate(row.updated_at, createdAt),
     answers,
   };
+}
+
+function mapVocabulary(row: EnglishVocabularyRow): EnglishVocabularyEntry {
+  const createdAt = toDate(row.created_at);
+  return {
+    id: row.id ?? "",
+    userId: row.user_id ?? undefined,
+    passageId: row.passage_id ?? "",
+    entryType: row.entry_type ?? "word",
+    word: row.word ?? "",
+    partOfSpeech: row.part_of_speech ?? "other",
+    definition: row.definition ?? "",
+    exampleSentence: row.example_sentence ?? "",
+    sourceArea: row.source_area ?? "passage",
+    sourceQuestionId: row.source_question_id ?? undefined,
+    sourceOptionLabel: row.source_option_label ?? "",
+    sourceExcerpt: row.source_excerpt ?? row.example_sentence ?? "",
+    highlightText: row.highlight_text ?? "",
+    sourceStart: row.source_start ?? undefined,
+    sourceEnd: row.source_end ?? undefined,
+    sourceParagraph: row.source_paragraph ?? undefined,
+    aiGenerated: row.ai_generated ?? false,
+    masteryStatus: row.mastery_status ?? "new",
+    note: row.note ?? "",
+    createdAt,
+    updatedAt: toDate(row.updated_at, createdAt),
+  };
+}
+
+function isMissingColumnError(error: unknown): boolean {
+  return Boolean(
+    error
+      && typeof error === "object"
+      && "code" in error
+      && (error as { code?: string }).code === "42703",
+  );
+}
+
+async function fetchVocabulary(userId: string, passageIds: string[]): Promise<EnglishVocabularyEntry[]> {
+  if (passageIds.length === 0) return [];
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from("english_vocabulary")
+    .select(ENGLISH_VOCABULARY_FIELDS)
+    .eq("user_id", userId)
+    .in("passage_id", passageIds)
+    .order("updated_at", { ascending: false });
+
+  if (!error) return ((data || []) as EnglishVocabularyRow[]).map(mapVocabulary);
+  if (!isMissingColumnError(error)) throw error;
+
+  const fallbackFields = "id,user_id,passage_id,word,part_of_speech,definition,example_sentence,mastery_status,note,created_at,updated_at";
+  const fallback = await supabase
+    .from("english_vocabulary")
+    .select(fallbackFields)
+    .eq("user_id", userId)
+    .in("passage_id", passageIds)
+    .order("updated_at", { ascending: false });
+  if (fallback.error) throw fallback.error;
+  return ((fallback.data || []) as EnglishVocabularyRow[]).map(mapVocabulary);
 }
 
 async function getCurrentUserId(): Promise<string | null> {
@@ -206,7 +269,7 @@ export const englishTrainingApi = {
       passages,
       questions,
       attempts: attemptRows.map((attempt) => mapAttempt(attempt, answersByAttemptId.get(attempt.id ?? "") ?? [])),
-      vocabulary: [],
+      vocabulary: await fetchVocabulary(userId, passageIds),
     };
   },
 

@@ -7,6 +7,7 @@ import type {
   EnglishVocabularyEntryType,
   EnglishVocabularyMasteryStatus,
   EnglishVocabularyPartOfSpeech,
+  EnglishVocabularySourceArea,
 } from "./english-training";
 import type {
   Math3SelfTestAttempt,
@@ -185,10 +186,15 @@ export type EnglishVocabularyRow = {
   part_of_speech?: EnglishVocabularyPartOfSpeech | null;
   definition?: string | null;
   example_sentence?: string | null;
+  source_area?: EnglishVocabularySourceArea | null;
+  source_question_id?: string | null;
+  source_option_label?: string | null;
   source_excerpt?: string | null;
+  highlight_text?: string | null;
   source_start?: number | null;
   source_end?: number | null;
   source_paragraph?: number | null;
+  ai_generated?: boolean | null;
   mastery_status?: EnglishVocabularyMasteryStatus | null;
   note?: string | null;
   created_at?: string | null;

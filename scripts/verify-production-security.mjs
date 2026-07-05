@@ -100,6 +100,11 @@ async function runStatusChecks(baseUrl) {
       "/api/ai/math3-self-test/grade-step",
       "如果这里不是 401，未登录访客可能绕过前端限制反复调用 AI 阅卷接口。",
     ),
+    jsonPostCheck(
+      "未登录不能调用英语词汇推荐",
+      "/api/ai/english-vocabulary/recommend",
+      "如果这里不是 401，未登录访客可能消耗 DeepSeek 配额或批量提取真题上下文。",
+    ),
   ];
 
   let failed = 0;

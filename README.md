@@ -55,7 +55,8 @@ Asteroid 的核心目标是把备考期间分散的学习材料变成一个可�
 | `/create` | 管理员创建与编辑入口 |
 | `/tools` | 学习工具入口，集中进入真题中心、数学训练和资料检索 |
 | `/tools/past-papers` | 真题中心 |
-| `/tools/past-paper-results` | 真题训练结果与英语词句库 |
+| `/tools/english-vocabulary` | 英语真题词汇汇总 |
+| `/tools/past-paper-results` | 真题训练结果 |
 | `/tools/math-training` | 数学训练中心 |
 | `/tools/resource-search` | 基于已发布内容的资料检索 |
 | `/tools/note-qa` | 资料检索旧入口，重定向到 `/tools/resource-search` |
@@ -118,8 +119,12 @@ npm run dev
 
 1. 在 Supabase SQL Editor 执行 `supabase/migrations/0001_base_schema.sql`
 2. 继续执行 `supabase/migrations/0002_rls_policies.sql`
-3. 将 Supabase Auth 管理员邮箱插入 `public.admin_users`
-4. 运行只读脚本 `supabase/verification.sql`，确认表结构、RLS、策略、Storage bucket 和管理员邮箱匹配状态
+3. 继续执行 `supabase/migrations/0003_problem_practice_marked.sql`
+4. 继续执行 `supabase/migrations/0004_english_training.sql`
+5. 继续执行 `supabase/migrations/0005_english_vocabulary_context.sql`
+6. 继续执行 `supabase/migrations/0006_english_vocabulary_source_scope.sql`
+7. 将 Supabase Auth 管理员邮箱插入 `public.admin_users`
+8. 运行只读脚本 `supabase/verification.sql`，确认表结构、RLS、策略、Storage bucket 和管理员邮箱匹配状态
 
 不要在生产环境继续使用旧的 `supabase-init.sql`。当前迁移会把公开阅读、管理员写入、个人练习记录和图片存储权限分开处理。
 

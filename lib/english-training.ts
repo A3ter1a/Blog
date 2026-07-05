@@ -11,9 +11,10 @@ export type EnglishPassageNo =
   | "small_writing"
   | "big_writing";
 export type EnglishAttemptStatus = "in_progress" | "submitted";
-export type EnglishVocabularyEntryType = "word" | "collocation";
+export type EnglishVocabularyEntryType = "word" | "collocation" | "familiar_meaning";
 export type EnglishVocabularyPartOfSpeech = "n" | "v" | "adj" | "adv" | "prep" | "conj" | "phr" | "other";
 export type EnglishVocabularyMasteryStatus = "new" | "learning" | "mastered";
+export type EnglishVocabularySourceArea = "passage" | "question" | "option";
 
 export interface EnglishQuestionOption {
   label: string;
@@ -91,10 +92,15 @@ export interface EnglishVocabularyEntry {
   partOfSpeech: EnglishVocabularyPartOfSpeech;
   definition: string;
   exampleSentence: string;
+  sourceArea: EnglishVocabularySourceArea;
+  sourceQuestionId?: string;
+  sourceOptionLabel?: string;
   sourceExcerpt: string;
+  highlightText: string;
   sourceStart?: number;
   sourceEnd?: number;
   sourceParagraph?: number;
+  aiGenerated: boolean;
   masteryStatus: EnglishVocabularyMasteryStatus;
   note: string;
   createdAt: Date;
@@ -145,6 +151,7 @@ export const englishVocabularyPartOfSpeechLabels: Record<EnglishVocabularyPartOf
 export const englishVocabularyEntryTypeLabels: Record<EnglishVocabularyEntryType, string> = {
   word: "生词",
   collocation: "固定搭配",
+  familiar_meaning: "熟词生义",
 };
 
 export const englishVocabularyMasteryLabels: Record<EnglishVocabularyMasteryStatus, string> = {

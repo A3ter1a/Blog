@@ -9,7 +9,8 @@ Run the files in order in the Supabase SQL Editor:
 3. `supabase/migrations/0003_problem_practice_marked.sql`
 4. `supabase/migrations/0004_english_training.sql`
 5. `supabase/migrations/0005_english_vocabulary_context.sql`
-6. `supabase/verification.sql` as a read-only check after all migrations have finished
+6. `supabase/migrations/0006_english_vocabulary_source_scope.sql`
+7. `supabase/verification.sql` as a read-only check after all migrations have finished
 
 Do not run `supabase-init.sql` for production setup. It is kept only as a legacy pointer so older notes do not lead someone back to the previous all-open development policy.
 
@@ -22,7 +23,7 @@ Do not run `supabase-init.sql` for production setup. It is kept only as a legacy
 - `problem_practice_statuses`: authenticated users can only access their own practice rows, including the `is_marked` collection flag for third-pass review.
 - `math3_self_tests`: authenticated users can only access their own self-test rows.
 - `english_papers`, `english_passages`, `english_questions`: English I past-paper source content; authenticated admins can read and maintain it.
-- `english_attempts`, `english_attempt_answers`, `english_vocabulary`: authenticated users can only access their own English training rows.
+- `english_attempts`, `english_attempt_answers`, `english_vocabulary`: authenticated users can only access their own English training rows; vocabulary rows can trace back to passage, question stem, or option sources.
 - `note-images` Storage bucket: public image URLs remain readable because the bucket is public; object metadata reads for upsert plus uploads, overwrites, and deletes require admin access.
 
 ## Add the first admin
