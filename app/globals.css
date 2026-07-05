@@ -1039,12 +1039,20 @@ h1, h2, h3, h4, h5, h6 {
 
 .econ-graph-panel-formula {
   justify-self: start;
+  max-width: 100%;
+  overflow-x: auto;
   border-radius: var(--radius-md);
   background: color-mix(in srgb, var(--color-primary) 9%, var(--color-surface-container-lowest));
   color: var(--color-primary);
-  padding: 0.35rem 0.5rem;
-  font-size: 0.82rem;
+  padding: 0.45rem 0.58rem;
+  font-size: 0.94rem;
   font-weight: 800;
+}
+
+.econ-graph-panel-formula .katex {
+  color: inherit;
+  font-size: 1em;
+  line-height: 1.4;
 }
 
 .econ-graph-selector {

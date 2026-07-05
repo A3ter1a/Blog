@@ -168,7 +168,7 @@ export const economicsGraphTemplates: EconomicsGraphTemplate[] = [
         labelY: 335,
         description: "MR 曲线位于需求曲线下方。垄断者多卖一单位通常需要降低价格，原有销量也会受到降价影响。",
         examHint: "遇到“为什么 MR < P”时，抓住一句话：新增销量带来收入，同时降价损失一部分原有收入。",
-        formula: "MR = P + Q · dP/dQ",
+        formula: "MR = P + Q \\cdot \\frac{dP}{dQ}",
       },
       {
         id: "mc",

@@ -353,6 +353,24 @@ function createEconomicsGraphErrorNode(message: string) {
   return node;
 }
 
+function renderEconomicsGraphFormula(formulaNode: HTMLElement, formula: string | undefined) {
+  if (!formula) {
+    formulaNode.replaceChildren();
+    formulaNode.hidden = true;
+    return;
+  }
+
+  formulaNode.hidden = false;
+  try {
+    formulaNode.innerHTML = katex.renderToString(normalizeLatexForKatex(formula), {
+      displayMode: false,
+      throwOnError: false,
+    });
+  } catch {
+    formulaNode.textContent = formula;
+  }
+}
+
 function createEconomicsGraphNode(spec: EconomicsGraphSpec) {
   const template = getEconomicsGraphTemplate(spec.template);
   if (!template) return createEconomicsGraphErrorNode("暂不支持这个经济学图像模板。");
@@ -396,7 +414,7 @@ function createEconomicsGraphNode(spec: EconomicsGraphSpec) {
   const panelTitle = createTextElement("h4", "econ-graph-panel-title", template.title);
   const panelBody = createTextElement("p", "econ-graph-panel-body", template.overview);
   const panelHint = createTextElement("p", "econ-graph-panel-hint", "先确认坐标轴含义，再读曲线交点和投影。");
-  const panelFormula = document.createElement("code");
+  const panelFormula = document.createElement("div");
   panelFormula.className = "econ-graph-panel-formula";
   panelFormula.hidden = true;
   const selector = document.createElement("div");
@@ -431,8 +449,7 @@ function createEconomicsGraphNode(spec: EconomicsGraphSpec) {
     panelTitle.textContent = element.label;
     panelBody.textContent = element.description;
     panelHint.textContent = element.examHint;
-    panelFormula.textContent = element.formula ?? "";
-    panelFormula.hidden = !element.formula;
+    renderEconomicsGraphFormula(panelFormula, element.formula);
   };
 
   orderedElements.forEach((element) => {
