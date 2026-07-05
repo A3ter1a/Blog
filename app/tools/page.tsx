@@ -1,12 +1,10 @@
-import Link from "next/link";
 import {
   Calculator,
-  ChevronRight,
   GraduationCap,
   Search,
-  type LucideIcon,
 } from "lucide-react";
 import { PageHeader, PageShell } from "@/components/ui/PageScaffold";
+import { ToolHubCard, ToolHubGrid, type ToolHubCardItem } from "@/components/tools/ToolHubCard";
 import { createPageMetadata } from "@/lib/site-metadata";
 
 export const metadata = createPageMetadata({
@@ -16,7 +14,7 @@ export const metadata = createPageMetadata({
   keywords: ["学习工具", "真题中心", "数学训练", "资料检索"],
 });
 
-const toolHubs = [
+const toolHubs: ToolHubCardItem[] = [
   {
     id: "past-papers",
     title: "真题中心",
@@ -53,49 +51,12 @@ export default function ToolsPage() {
       />
 
       <PageShell width="normal" topPadding="content">
-        <section className="mx-auto grid max-w-4xl gap-3">
+        <ToolHubGrid>
           {toolHubs.map((tool) => (
-            <ToolCard key={tool.id} tool={tool} />
+            <ToolHubCard key={tool.href} item={tool} />
           ))}
-        </section>
+        </ToolHubGrid>
       </PageShell>
     </>
-  );
-}
-
-function ToolCard({
-  tool,
-}: {
-  tool: {
-    title: string;
-    description: string;
-    href: string;
-    icon: LucideIcon;
-    tone: string;
-  };
-}) {
-  const Icon = tool.icon;
-
-  return (
-    <Link
-      href={tool.href}
-      className="surface-card motion-card-lift group flex min-h-28 items-center gap-4 p-4 text-left sm:p-5"
-    >
-      <span className={`motion-ui flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border group-hover:scale-[1.03] ${tool.tone}`}>
-        <Icon className="h-5 w-5" />
-      </span>
-      <div className="min-w-0 flex-1">
-        <h2 className="font-headline text-lg font-bold text-on-surface group-hover:text-primary sm:text-xl">
-          {tool.title}
-        </h2>
-        <p className="mt-1 text-sm leading-6 text-on-surface-variant">
-          {tool.description}
-        </p>
-      </div>
-      <div className="ml-auto flex shrink-0 items-center gap-2 text-sm font-medium text-primary">
-        <span className="hidden sm:inline">进入</span>
-        <ChevronRight className="motion-icon-shift h-4 w-4 group-hover:translate-x-1" />
-      </div>
-    </Link>
   );
 }

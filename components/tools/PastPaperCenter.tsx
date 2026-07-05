@@ -1,47 +1,38 @@
-"use client";
-
 import Link from "next/link";
 import {
-  ArrowRight,
   BarChart3,
   BookOpenCheck,
   Calculator,
-  type LucideIcon,
 } from "lucide-react";
 import { PageHeader, PageShell } from "@/components/ui/PageScaffold";
+import { ToolHubCard, ToolHubGrid, type ToolHubCardItem } from "@/components/tools/ToolHubCard";
 
 type CenterModuleId = "english" | "math" | "results";
-type ModuleIcon = LucideIcon;
 
 const centerModules: Array<{
   id: CenterModuleId;
-  title: string;
-  subtitle: string;
-  status: string;
-  icon: ModuleIcon;
-  href?: string;
-}> = [
+} & ToolHubCardItem> = [
   {
     id: "english",
     title: "英语真题训练",
-    subtitle: "英语一 2007-2026",
-    status: "可用",
+    description: "英语一 2007-2026",
     icon: BookOpenCheck,
     href: "/tools/english-training",
+    tone: "border-teal-500/20 bg-teal-500/10 text-teal-700",
   },
   {
     id: "math",
     title: "数学真题训练",
-    subtitle: "数学三真题",
-    status: "待接入",
+    description: "数学三真题",
     icon: Calculator,
+    tone: "border-emerald-500/20 bg-emerald-500/10 text-emerald-700",
   },
   {
     id: "results",
     title: "真题训练结果",
-    subtitle: "正确率与得分",
-    status: "待接入",
+    description: "正确率与得分",
     icon: BarChart3,
+    tone: "border-sky-500/20 bg-sky-500/10 text-sky-700",
   },
 ];
 
@@ -60,52 +51,12 @@ export function PastPaperCenter() {
       />
 
       <PageShell width="workspace" topPadding="content">
-        <section className="mx-auto grid max-w-4xl gap-3">
+        <ToolHubGrid>
           {centerModules.map((module) => (
-            <CenterModuleCard key={module.id} module={module} />
+            <ToolHubCard key={module.id} item={module} />
           ))}
-        </section>
+        </ToolHubGrid>
       </PageShell>
     </>
   );
-}
-
-function CenterModuleCard({
-  module,
-}: {
-  module: {
-    title: string;
-    subtitle: string;
-    status: string;
-    icon: ModuleIcon;
-    href?: string;
-  };
-}) {
-  const Icon = module.icon;
-  const content = (
-    <div className={`surface-card group flex min-h-28 items-center gap-4 p-4 text-left sm:p-5 ${
-      module.href ? "group" : "opacity-70"
-    }`}>
-      <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-        <Icon className="h-5 w-5" />
-      </span>
-      <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-center gap-2">
-          <h2 className="text-lg font-bold text-on-surface sm:text-xl">{module.title}</h2>
-          <span className="rounded-lg bg-surface-container-low px-2.5 py-1 text-xs font-semibold text-on-surface-variant">
-            {module.status}
-          </span>
-        </div>
-        <p className="mt-1 text-sm leading-6 text-on-surface-variant">{module.subtitle}</p>
-      </div>
-      <div className="ml-auto flex shrink-0 items-center gap-2 text-sm font-semibold text-primary">
-        <span className="hidden sm:inline">{module.href ? "进入" : "待接入"}</span>
-        <ArrowRight className={`h-4 w-4 transition-transform ${module.href ? "group-hover:translate-x-1" : ""}`} />
-      </div>
-    </div>
-  );
-
-  if (!module.href) return content;
-
-  return <Link href={module.href}>{content}</Link>;
 }
