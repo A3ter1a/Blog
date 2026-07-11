@@ -1,4 +1,4 @@
-import { assertAdminWrite, getSupabase } from "./supabase";
+import { getSupabase } from "./supabase";
 import {
   englishPassageLabels,
   englishSectionLabels,
@@ -6,46 +6,18 @@ import {
   type EnglishAttemptAnswer,
   type EnglishPassage,
   type EnglishQuestion,
-  type EnglishVocabularyEntry,
-  type EnglishVocabularyEntryType,
-  type EnglishVocabularyMasteryStatus,
-  type EnglishVocabularyPartOfSpeech,
-  type EnglishVocabularySourceArea,
 } from "./english-training";
 import type {
   EnglishAttemptAnswerRow,
   EnglishAttemptRow,
   EnglishPassageRow,
   EnglishQuestionRow,
-  EnglishVocabularyInsert,
-  EnglishVocabularyRow,
 } from "./supabase-schema";
 
 const ENGLISH_PASSAGE_FIELDS = "id,paper_id,year,section,passage_no,title,content,total_score,sort_order,created_at,updated_at";
 const ENGLISH_QUESTION_FIELDS = "id,passage_id,question_no,stem,options,standard_answer,score,sort_order,created_at,updated_at";
 const ENGLISH_ATTEMPT_FIELDS = "id,user_id,passage_id,status,score,max_score,started_at,submitted_at,created_at,updated_at";
 const ENGLISH_ATTEMPT_ANSWER_FIELDS = "id,attempt_id,question_id,answer,is_correct,score,created_at,updated_at";
-const ENGLISH_VOCABULARY_FIELDS = "id,user_id,passage_id,entry_type,word,part_of_speech,definition,example_sentence,source_area,source_question_id,source_option_label,source_excerpt,highlight_text,source_start,source_end,source_paragraph,ai_generated,mastery_status,note,created_at,updated_at";
-
-export type EnglishVocabularyInput = {
-  passageId: string;
-  entryType: EnglishVocabularyEntryType;
-  word: string;
-  partOfSpeech: EnglishVocabularyPartOfSpeech;
-  definition?: string;
-  exampleSentence?: string;
-  sourceArea?: EnglishVocabularySourceArea;
-  sourceQuestionId?: string;
-  sourceOptionLabel?: string;
-  sourceExcerpt?: string;
-  highlightText?: string;
-  sourceStart?: number;
-  sourceEnd?: number;
-  sourceParagraph?: number;
-  aiGenerated?: boolean;
-  masteryStatus?: EnglishVocabularyMasteryStatus;
-  note?: string;
-};
 
 export type EnglishResultPassage = EnglishPassage & {
   displayTitle: string;
@@ -55,7 +27,6 @@ export type EnglishResultPassage = EnglishPassage & {
 
 export type EnglishResultsData = {
   passages: EnglishResultPassage[];
-  vocabulary: EnglishVocabularyEntry[];
 };
 
 function toDate(value: string | null | undefined, fallback = new Date()): Date {
@@ -127,74 +98,14 @@ function mapAttempt(row: EnglishAttemptRow, answers: EnglishAttemptAnswer[] = []
   };
 }
 
-function mapVocabulary(row: EnglishVocabularyRow): EnglishVocabularyEntry {
-  const createdAt = toDate(row.created_at);
-  return {
-    id: row.id ?? "",
-    userId: row.user_id ?? undefined,
-    passageId: row.passage_id ?? "",
-    entryType: row.entry_type ?? "word",
-    word: row.word ?? "",
-    partOfSpeech: row.part_of_speech ?? "other",
-    definition: row.definition ?? "",
-    exampleSentence: row.example_sentence ?? "",
-    sourceArea: row.source_area ?? "passage",
-    sourceQuestionId: row.source_question_id ?? undefined,
-    sourceOptionLabel: row.source_option_label ?? "",
-    sourceExcerpt: row.source_excerpt ?? row.example_sentence ?? "",
-    highlightText: row.highlight_text ?? "",
-    sourceStart: row.source_start ?? undefined,
-    sourceEnd: row.source_end ?? undefined,
-    sourceParagraph: row.source_paragraph ?? undefined,
-    aiGenerated: row.ai_generated ?? false,
-    masteryStatus: row.mastery_status ?? "new",
-    note: row.note ?? "",
-    createdAt,
-    updatedAt: toDate(row.updated_at, createdAt),
-  };
-}
-
 function getDisplayTitle(passage: EnglishPassage): string {
   const label = englishPassageLabels[passage.passageNo] ?? passage.passageNo;
   return `${passage.year} ${englishSectionLabels[passage.section]} ${label}`;
 }
 
-function isMissingColumnError(error: unknown): boolean {
-  return Boolean(
-    error
-      && typeof error === "object"
-      && "code" in error
-      && (error as { code?: string }).code === "42703",
-  );
-}
-
 async function getCurrentUserId(): Promise<string | null> {
   const { data } = await getSupabase().auth.getSession();
   return data.session?.user.id ?? null;
-}
-
-async function fetchVocabulary(userId: string, passageIds: string[]): Promise<EnglishVocabularyEntry[]> {
-  if (passageIds.length === 0) return [];
-  const supabase = getSupabase();
-  const { data, error } = await supabase
-    .from("english_vocabulary")
-    .select(ENGLISH_VOCABULARY_FIELDS)
-    .eq("user_id", userId)
-    .in("passage_id", passageIds)
-    .order("updated_at", { ascending: false });
-
-  if (!error) return ((data || []) as EnglishVocabularyRow[]).map(mapVocabulary);
-  if (!isMissingColumnError(error)) throw error;
-
-  const fallbackFields = "id,user_id,passage_id,word,part_of_speech,definition,example_sentence,mastery_status,note,created_at,updated_at";
-  const fallback = await supabase
-    .from("english_vocabulary")
-    .select(fallbackFields)
-    .eq("user_id", userId)
-    .in("passage_id", passageIds)
-    .order("updated_at", { ascending: false });
-  if (fallback.error) throw fallback.error;
-  return ((fallback.data || []) as EnglishVocabularyRow[]).map(mapVocabulary);
 }
 
 export const englishResultsApi = {
@@ -238,7 +149,6 @@ export const englishResultsApi = {
           displayTitle: getDisplayTitle(passage),
           questions: questionsByPassageId.get(passage.id) ?? [],
         })),
-        vocabulary: [],
       };
     }
 
@@ -284,86 +194,7 @@ export const englishResultsApi = {
         attempt: attemptsByPassageId.get(passage.id),
         questions: questionsByPassageId.get(passage.id) ?? [],
       })),
-      vocabulary: await fetchVocabulary(userId, passageIds),
     };
   },
 
-  async saveVocabulary(input: EnglishVocabularyInput): Promise<EnglishVocabularyEntry> {
-    const userId = await assertAdminWrite();
-    const now = new Date().toISOString();
-    const payload: EnglishVocabularyInsert = {
-      user_id: userId,
-      passage_id: input.passageId,
-      entry_type: input.entryType,
-      word: input.word.trim(),
-      part_of_speech: input.partOfSpeech,
-      definition: input.definition?.trim() ?? "",
-      example_sentence: input.exampleSentence?.trim() ?? "",
-      source_area: input.sourceArea ?? "passage",
-      source_question_id: input.sourceQuestionId || undefined,
-      source_option_label: input.sourceOptionLabel?.trim() ?? "",
-      source_excerpt: input.sourceExcerpt?.trim() ?? "",
-      highlight_text: input.highlightText?.trim() ?? "",
-      source_start: input.sourceStart,
-      source_end: input.sourceEnd,
-      source_paragraph: input.sourceParagraph,
-      ai_generated: input.aiGenerated ?? false,
-      mastery_status: input.masteryStatus ?? "new",
-      note: input.note?.trim() ?? "",
-      created_at: now,
-      updated_at: now,
-    };
-
-    const { data, error } = await getSupabase()
-      .from("english_vocabulary")
-      .insert(payload)
-      .select(ENGLISH_VOCABULARY_FIELDS)
-      .single();
-
-    if (error) throw error;
-    return mapVocabulary(data as EnglishVocabularyRow);
-  },
-
-  async updateVocabulary(id: string, input: EnglishVocabularyInput): Promise<EnglishVocabularyEntry> {
-    await assertAdminWrite();
-    const payload: EnglishVocabularyInsert = {
-      passage_id: input.passageId,
-      entry_type: input.entryType,
-      word: input.word.trim(),
-      part_of_speech: input.partOfSpeech,
-      definition: input.definition?.trim() ?? "",
-      example_sentence: input.exampleSentence?.trim() ?? "",
-      source_area: input.sourceArea ?? "passage",
-      source_question_id: input.sourceQuestionId || null,
-      source_option_label: input.sourceOptionLabel?.trim() ?? "",
-      source_excerpt: input.sourceExcerpt?.trim() ?? "",
-      highlight_text: input.highlightText?.trim() ?? "",
-      source_start: input.sourceStart,
-      source_end: input.sourceEnd,
-      source_paragraph: input.sourceParagraph,
-      ai_generated: input.aiGenerated ?? false,
-      mastery_status: input.masteryStatus ?? "new",
-      note: input.note?.trim() ?? "",
-      updated_at: new Date().toISOString(),
-    };
-
-    const { data, error } = await getSupabase()
-      .from("english_vocabulary")
-      .update(payload)
-      .eq("id", id)
-      .select(ENGLISH_VOCABULARY_FIELDS)
-      .single();
-
-    if (error) throw error;
-    return mapVocabulary(data as EnglishVocabularyRow);
-  },
-
-  async deleteVocabulary(id: string): Promise<void> {
-    await assertAdminWrite();
-    const { error } = await getSupabase()
-      .from("english_vocabulary")
-      .delete()
-      .eq("id", id);
-    if (error) throw error;
-  },
 };

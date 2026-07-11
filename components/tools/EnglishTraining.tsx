@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { createElement, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   ArrowLeft,
   ArrowRight,
@@ -11,32 +11,21 @@ import {
   Circle,
   ClipboardCheck,
   FileText,
-  Highlighter,
   Loader2,
   PenLine,
   Save,
   Sparkles,
-  WandSparkles,
   X,
 } from "lucide-react";
 import { PageHeader, PageShell } from "@/components/ui/PageScaffold";
 import { useToast } from "@/components/ui/Toast";
-import { buildAuthHeaders } from "@/lib/fetch-with-auth";
-import { recordDeepSeekUsage } from "@/lib/ai-usage";
-import { englishResultsApi, type EnglishVocabularyInput } from "@/lib/english-results-api";
 import { englishTrainingApi, type EnglishAttemptAnswerInput } from "@/lib/english-training-api";
 import {
-  englishVocabularyEntryTypeLabels,
-  englishVocabularyPartOfSpeechLabels,
   isEnglishObjectiveSection,
   type EnglishAttempt,
   type EnglishPassage,
   type EnglishQuestion,
   type EnglishTrainingData,
-  type EnglishVocabularyEntry,
-  type EnglishVocabularyEntryType,
-  type EnglishVocabularyPartOfSpeech,
-  type EnglishVocabularySourceArea,
 } from "@/lib/english-training";
 
 type TrainingStage = "types" | "sets" | "practice";
@@ -55,68 +44,6 @@ type EnglishTrainingStats = {
   inProgress: number;
   accuracy: number;
 };
-
-type VocabularyDialogMode = "manual" | "ai";
-
-type VocabularySelectionDraft = {
-  text: string;
-  sourceArea: EnglishVocabularySourceArea;
-  sourceQuestionId: string;
-  sourceOptionLabel: string;
-  top: number;
-  left: number;
-};
-
-type VocabularyFormState = {
-  passageId: string;
-  entryType: EnglishVocabularyEntryType;
-  word: string;
-  partOfSpeech: EnglishVocabularyPartOfSpeech;
-  definition: string;
-  sourceArea: EnglishVocabularySourceArea;
-  sourceQuestionId: string;
-  sourceOptionLabel: string;
-  sourceExcerpt: string;
-  highlightText: string;
-  note: string;
-};
-
-type EnglishVocabularyRecommendation = {
-  entryType: EnglishVocabularyEntryType;
-  word: string;
-  partOfSpeech: EnglishVocabularyPartOfSpeech;
-  definition: string;
-  sourceArea: EnglishVocabularySourceArea;
-  questionNo: string;
-  optionLabel: string;
-  sourceExcerpt: string;
-  highlightText: string;
-  note: string;
-};
-
-const partOfSpeechOptions: EnglishVocabularyPartOfSpeech[] = ["n", "v", "adj", "adv", "prep", "conj", "phr", "other"];
-
-const vocabularyTypeOptions: Array<{ value: EnglishVocabularyEntryType; label: string }> = [
-  { value: "word", label: "生词" },
-  { value: "collocation", label: "固定搭配" },
-  { value: "familiar_meaning", label: "熟词生义" },
-];
-
-function createVocabularyForm(passageId = ""): VocabularyFormState {
-  return {
-    passageId,
-    entryType: "word",
-    word: "",
-    partOfSpeech: "other",
-    definition: "",
-    sourceArea: "passage",
-    sourceQuestionId: "",
-    sourceOptionLabel: "",
-    sourceExcerpt: "",
-    highlightText: "",
-    note: "",
-  };
-}
 
 const TRAINING_CATEGORIES: TrainingCategory[] = [
   {
@@ -152,155 +79,6 @@ function isSubmittedAttempt(attempt?: EnglishAttempt): boolean {
 function buildAnswerMap(attempt?: EnglishAttempt): EnglishAttemptAnswerInput {
   if (!attempt) return {};
   return Object.fromEntries(attempt.answers.map((answer) => [answer.questionId, answer.answer]));
-}
-
-function normalizeVocabularyKey(value: string): string {
-  return value.trim().replace(/\s+/g, " ").toLowerCase();
-}
-
-function getRecommendationKey(item: Pick<EnglishVocabularyRecommendation, "entryType" | "word" | "sourceExcerpt">): string {
-  return `${item.entryType}:${normalizeVocabularyKey(item.word)}:${normalizeVocabularyKey(item.sourceExcerpt).slice(0, 60)}`;
-}
-
-function normalizeQuestionNoKey(value: string): string {
-  const digits = value.replace(/\D/g, "");
-  return digits || value.trim().toLowerCase();
-}
-
-function findQuestionForRecommendation(
-  item: EnglishVocabularyRecommendation,
-  questions: EnglishQuestion[],
-): EnglishQuestion | undefined {
-  const target = normalizeQuestionNoKey(item.questionNo);
-  if (!target) return undefined;
-  return questions.find((question) => normalizeQuestionNoKey(question.questionNo) === target);
-}
-
-function isSameVocabularyEntry(
-  entry: Pick<EnglishVocabularyEntry, "passageId" | "entryType" | "word">,
-  input: Pick<EnglishVocabularyInput, "passageId" | "entryType" | "word">,
-): boolean {
-  return entry.passageId === input.passageId
-    && entry.entryType === input.entryType
-    && normalizeVocabularyKey(entry.word) === normalizeVocabularyKey(input.word);
-}
-
-function getVocabularyHighlightText(entry: Pick<EnglishVocabularyEntry, "highlightText" | "sourceExcerpt" | "word">): string {
-  return (entry.highlightText || entry.sourceExcerpt || entry.word).trim();
-}
-
-function getVocabularyMarkClass(entryType: EnglishVocabularyEntryType): string {
-  return `english-vocab-mark english-vocab-mark-${entryType.replace("_", "-")}`;
-}
-
-function findSourcePosition(
-  passage: EnglishPassage,
-  input: Pick<EnglishVocabularyInput, "sourceArea" | "sourceExcerpt">,
-): Pick<EnglishVocabularyInput, "sourceStart" | "sourceEnd" | "sourceParagraph"> {
-  if (input.sourceArea && input.sourceArea !== "passage") return {};
-  const excerpt = input.sourceExcerpt?.trim();
-  if (!excerpt) return {};
-  const sourceStart = passage.content.indexOf(excerpt);
-  if (sourceStart < 0) return {};
-  const before = passage.content.slice(0, sourceStart);
-  return {
-    sourceStart,
-    sourceEnd: sourceStart + excerpt.length,
-    sourceParagraph: before.split(/\n{2,}/).length,
-  };
-}
-
-function isVocabularySourceArea(value: string | undefined): value is EnglishVocabularySourceArea {
-  return value === "passage" || value === "question" || value === "option";
-}
-
-function readVocabularySelection(): VocabularySelectionDraft | null {
-  if (typeof window === "undefined") return null;
-  const selection = window.getSelection();
-  if (!selection || selection.rangeCount === 0 || selection.isCollapsed) return null;
-
-  const text = selection.toString().replace(/\s+/g, " ").trim();
-  if (!text) return null;
-
-  const range = selection.getRangeAt(0);
-  const node = range.commonAncestorContainer;
-  const element = node.nodeType === Node.ELEMENT_NODE
-    ? node as Element
-    : node.parentElement;
-  const sourceElement = element?.closest<HTMLElement>("[data-vocab-source-area]");
-  const sourceArea = sourceElement?.dataset.vocabSourceArea;
-  if (!sourceElement || !isVocabularySourceArea(sourceArea)) return null;
-
-  const rect = range.getBoundingClientRect();
-  if (rect.width === 0 && rect.height === 0) return null;
-
-  return {
-    text: text.slice(0, 180),
-    sourceArea,
-    sourceQuestionId: sourceElement.dataset.vocabQuestionId ?? "",
-    sourceOptionLabel: sourceElement.dataset.vocabOptionLabel ?? "",
-    top: Math.max(12, rect.top - 48),
-    left: Math.min(window.innerWidth - 88, Math.max(88, rect.left + rect.width / 2)),
-  };
-}
-
-function renderTextWithVocabularyMarks(
-  text: string,
-  entries: EnglishVocabularyEntry[],
-  cloze = false,
-): ReactNode[] {
-  if (entries.length === 0) return cloze ? renderClozeParagraph(text) : [text];
-
-  const matches = entries
-    .map((entry) => {
-      const target = getVocabularyHighlightText(entry);
-      if (!target) return null;
-      const start = text.indexOf(target);
-      if (start < 0) return null;
-      return {
-        entry,
-        target,
-        start,
-        end: start + target.length,
-      };
-    })
-    .filter((item): item is { entry: EnglishVocabularyEntry; target: string; start: number; end: number } => Boolean(item))
-    .sort((left, right) => left.start - right.start || right.end - left.end);
-
-  const cleanMatches: typeof matches = [];
-  let cursor = 0;
-  for (const match of matches) {
-    if (match.start < cursor) continue;
-    cleanMatches.push(match);
-    cursor = match.end;
-  }
-
-  if (cleanMatches.length === 0) return cloze ? renderClozeParagraph(text) : [text];
-
-  const nodes: ReactNode[] = [];
-  let lastIndex = 0;
-  cleanMatches.forEach((match) => {
-    if (match.start > lastIndex) {
-      const plain = text.slice(lastIndex, match.start);
-      nodes.push(...(cloze ? renderClozeParagraph(plain) : [plain]));
-    }
-    nodes.push(
-      <mark
-        className={getVocabularyMarkClass(match.entry.entryType)}
-        title={`${englishVocabularyEntryTypeLabels[match.entry.entryType]}：${match.entry.word}`}
-      >
-        {match.target}
-      </mark>,
-    );
-    lastIndex = match.end;
-  });
-
-  if (lastIndex < text.length) {
-    const rest = text.slice(lastIndex);
-    nodes.push(...(cloze ? renderClozeParagraph(rest) : [rest]));
-  }
-
-  return nodes;
 }
 
 function shouldMergeDisplayBlock(current: string, next: string): boolean {
@@ -468,11 +246,9 @@ function renderClozeParagraph(content: string): ReactNode[] {
 function PassagePageContent({
   content,
   cloze,
-  vocabulary,
 }: {
   content: string;
   cloze: boolean;
-  vocabulary: EnglishVocabularyEntry[];
 }) {
   const paragraphs = content.split(/\n{2,}/).map((paragraph) => paragraph.trim()).filter(Boolean);
 
@@ -480,7 +256,7 @@ function PassagePageContent({
     <div className="english-passage-content text-on-surface">
       {paragraphs.map((paragraph, index) => (
         <p key={`${index}-${paragraph.slice(0, 12)}`}>
-          {renderTextWithVocabularyMarks(paragraph, vocabulary, cloze)}
+          {cloze ? renderClozeParagraph(paragraph) : paragraph}
         </p>
       ))}
     </div>
@@ -541,7 +317,6 @@ export function EnglishTraining() {
     passages: [],
     questions: [],
     attempts: [],
-    vocabulary: [],
   });
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -552,15 +327,6 @@ export function EnglishTraining() {
   const [editingSubmittedPassageId, setEditingSubmittedPassageId] = useState<string | null>(null);
   const [saving, setSaving] = useState<"save" | "submit" | null>(null);
   const [articlePage, setArticlePage] = useState(0);
-  const [vocabularyDialogOpen, setVocabularyDialogOpen] = useState(false);
-  const [vocabularyDialogMode, setVocabularyDialogMode] = useState<VocabularyDialogMode>("manual");
-  const [vocabularyForm, setVocabularyForm] = useState<VocabularyFormState>(createVocabularyForm());
-  const [vocabularyMarking, setVocabularyMarking] = useState(false);
-  const [vocabularySelection, setVocabularySelection] = useState<VocabularySelectionDraft | null>(null);
-  const [savingVocabulary, setSavingVocabulary] = useState(false);
-  const [recommendingVocabulary, setRecommendingVocabulary] = useState(false);
-  const [recommendations, setRecommendations] = useState<EnglishVocabularyRecommendation[]>([]);
-  const [selectedRecommendations, setSelectedRecommendations] = useState<Record<string, boolean>>({});
   const [routeApplied, setRouteApplied] = useState(false);
 
   useEffect(() => {
@@ -648,10 +414,6 @@ export function EnglishTraining() {
   const activeAnswers = activePassage
     ? draftAnswersByPassageId[activePassage.id] ?? buildAnswerMap(activeAttempt)
     : {};
-  const activeVocabulary = activePassage
-    ? data.vocabulary.filter((entry) => entry.passageId === activePassage.id)
-    : [];
-  const activePassageVocabulary = activeVocabulary.filter((entry) => entry.sourceArea === "passage");
 
   useEffect(() => {
     if (routeApplied || isLoading || data.passages.length === 0 || typeof window === "undefined") return;
@@ -673,23 +435,13 @@ export function EnglishTraining() {
       setActivePassageId(passage.id);
       setEditingSubmittedPassageId(params.get("edit") === "1" ? passage.id : null);
       setStage("practice");
-
-      const vocabularyId = params.get("vocab");
-      const entry = vocabularyId ? data.vocabulary.find((item) => item.id === vocabularyId) : undefined;
-      const target = entry ? getVocabularyHighlightText(entry) : "";
-      if (target) {
-        const pages = paginatePassageContent(passage.content);
-        const pageIndex = pages.findIndex((page) => page.includes(target));
-        setArticlePage(pageIndex >= 0 ? pageIndex : 0);
-      } else {
-        setArticlePage(0);
-      }
+      setArticlePage(0);
 
       setRouteApplied(true);
     }, 0);
 
     return () => window.clearTimeout(timeout);
-  }, [data.passages, data.vocabulary, isLoading, routeApplied]);
+  }, [data.passages, isLoading, routeApplied]);
 
   const handleSelectCategory = (categoryId: TrainingCategoryId) => {
     setActiveCategoryId(categoryId);
@@ -700,10 +452,6 @@ export function EnglishTraining() {
     setActivePassageId(passageId);
     setEditingSubmittedPassageId(null);
     setArticlePage(0);
-    setVocabularyForm(createVocabularyForm(passageId));
-    setRecommendations([]);
-    setSelectedRecommendations({});
-    setVocabularyDialogMode("manual");
     setStage("practice");
   };
 
@@ -770,236 +518,6 @@ export function EnglishTraining() {
     setEditingSubmittedPassageId(null);
   };
 
-  const openVocabularyDialog = () => {
-    if (!activePassage) return;
-    setVocabularyForm((current) => ({
-      ...createVocabularyForm(activePassage.id),
-      entryType: current.entryType,
-      sourceArea: current.sourceArea,
-    }));
-    setVocabularyDialogMode("manual");
-    setVocabularyDialogOpen(true);
-  };
-
-  const startVocabularyMarking = () => {
-    if (!activePassage) return;
-    setVocabularyDialogOpen(false);
-    setVocabularyMarking(true);
-    setVocabularySelection(null);
-    window.setTimeout(() => window.getSelection()?.removeAllRanges(), 0);
-    toast.success("选中原文或题目中的词，再点击标记");
-  };
-
-  const cancelVocabularyMarking = () => {
-    setVocabularyMarking(false);
-    setVocabularySelection(null);
-    window.getSelection()?.removeAllRanges();
-  };
-
-  const refreshVocabularySelection = () => {
-    if (!vocabularyMarking) return;
-    window.setTimeout(() => {
-      setVocabularySelection(readVocabularySelection());
-    }, 0);
-  };
-
-  const confirmVocabularySelection = () => {
-    if (!activePassage || !vocabularySelection) return;
-    const selectedText = vocabularySelection.text;
-    setVocabularyForm((current) => ({
-      ...current,
-      passageId: activePassage.id,
-      word: current.word.trim() ? current.word : selectedText,
-      sourceArea: vocabularySelection.sourceArea,
-      sourceQuestionId: vocabularySelection.sourceQuestionId,
-      sourceOptionLabel: vocabularySelection.sourceOptionLabel,
-      sourceExcerpt: selectedText,
-      highlightText: selectedText,
-    }));
-    setVocabularyDialogMode("manual");
-    setVocabularyDialogOpen(true);
-    cancelVocabularyMarking();
-  };
-
-  const buildVocabularyInput = (formState: VocabularyFormState): EnglishVocabularyInput | null => {
-    if (!activePassage) return null;
-    const word = formState.word.trim();
-    const sourceExcerpt = formState.sourceExcerpt.trim();
-    if (!word) return null;
-    const hasSource = Boolean(sourceExcerpt);
-
-    const input: EnglishVocabularyInput = {
-      passageId: activePassage.id,
-      entryType: formState.entryType,
-      word,
-      partOfSpeech: formState.partOfSpeech,
-      definition: formState.definition,
-      sourceArea: hasSource ? formState.sourceArea : "passage",
-      sourceQuestionId: hasSource && formState.sourceArea !== "passage" ? formState.sourceQuestionId : undefined,
-      sourceOptionLabel: hasSource && formState.sourceArea === "option" ? formState.sourceOptionLabel : "",
-      sourceExcerpt,
-      highlightText: formState.highlightText.trim() || sourceExcerpt || word,
-      masteryStatus: "new",
-      note: formState.note,
-      ...(hasSource ? findSourcePosition(activePassage, {
-        sourceArea: formState.sourceArea,
-        sourceExcerpt,
-      }) : {}),
-    };
-    return input;
-  };
-
-  const saveVocabularyInput = async (input: EnglishVocabularyInput): Promise<EnglishVocabularyEntry | null> => {
-    if (data.vocabulary.some((entry) => isSameVocabularyEntry(entry, input))) {
-      return null;
-    }
-    return englishResultsApi.saveVocabulary(input);
-  };
-
-  const handleSaveVocabulary = async () => {
-    const input = buildVocabularyInput(vocabularyForm);
-    if (!input) {
-      toast.error("请填写词条");
-      return;
-    }
-
-    setSavingVocabulary(true);
-    try {
-      const saved = await saveVocabularyInput(input);
-      if (!saved) {
-        toast.error("这篇里已经记录过这个词条");
-        return;
-      }
-      setData((current) => ({
-        ...current,
-        vocabulary: [saved, ...current.vocabulary],
-      }));
-      setVocabularyForm(createVocabularyForm(input.passageId));
-      toast.success("已保存词条");
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "未知错误";
-      toast.error(`保存词条失败：${message}`);
-    } finally {
-      setSavingVocabulary(false);
-    }
-  };
-
-  const handleRecommendVocabulary = async () => {
-    if (!activePassage || !isSubmittedAttempt(activeAttempt) || recommendingVocabulary) return;
-    setRecommendingVocabulary(true);
-    try {
-      const response = await fetch("/api/ai/english-vocabulary/recommend", {
-        method: "POST",
-        headers: await buildAuthHeaders({ "Content-Type": "application/json" }),
-        body: JSON.stringify({
-          submitted: true,
-          passage: {
-            year: activePassage.year,
-            section: activePassage.section,
-            passageNo: activePassage.passageNo,
-            content: activePassage.content,
-          },
-          questions: activeQuestions.map((question) => {
-            const savedAnswer = activeAttempt?.answers.find((answer) => answer.questionId === question.id);
-            return {
-              questionNo: question.questionNo,
-              stem: question.stem,
-              options: question.options,
-              standardAnswer: question.standardAnswer,
-              userAnswer: activeAnswers[question.id] ?? savedAnswer?.answer ?? "",
-              isCorrect: savedAnswer?.isCorrect,
-            };
-          }),
-        }),
-      });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok || !Array.isArray(payload.items)) {
-        throw new Error(typeof payload.error === "string" ? payload.error : "AI 推荐失败");
-      }
-      if (typeof payload.tokensUsed === "number") recordDeepSeekUsage(payload.tokensUsed);
-      const items = payload.items as EnglishVocabularyRecommendation[];
-      setRecommendations(items);
-      setSelectedRecommendations(Object.fromEntries(items.map((item) => [getRecommendationKey(item), true])));
-      setVocabularyDialogMode("ai");
-      toast.success(`已生成 ${items.length} 条候选`);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "未知错误";
-      toast.error(message);
-    } finally {
-      setRecommendingVocabulary(false);
-    }
-  };
-
-  const handleSaveRecommendations = async () => {
-    if (!activePassage) return;
-    const selectedItems = recommendations.filter((item) => selectedRecommendations[getRecommendationKey(item)]);
-    if (selectedItems.length === 0) {
-      toast.error("请先选择要保存的候选");
-      return;
-    }
-
-    setSavingVocabulary(true);
-    try {
-      const savedItems: EnglishVocabularyEntry[] = [];
-      let skipped = 0;
-      for (const item of selectedItems) {
-        const question = item.sourceArea === "passage"
-          ? undefined
-          : findQuestionForRecommendation(item, activeQuestions);
-        if (item.sourceArea !== "passage" && !question) {
-          skipped += 1;
-          continue;
-        }
-        const option = item.sourceArea === "option"
-          ? question?.options.find((current) => current.label === item.optionLabel)
-            ?? question?.options.find((current) => (
-              current.content.includes(item.sourceExcerpt) || current.content.includes(item.highlightText)
-            ))
-          : undefined;
-        if (item.sourceArea === "option" && !option) {
-          skipped += 1;
-          continue;
-        }
-        const input: EnglishVocabularyInput = {
-          passageId: activePassage.id,
-          entryType: item.entryType,
-          word: item.word,
-          partOfSpeech: item.partOfSpeech,
-          definition: item.definition,
-          sourceArea: item.sourceArea,
-          sourceQuestionId: item.sourceArea === "passage" ? undefined : question?.id,
-          sourceOptionLabel: item.sourceArea === "option" ? option?.label ?? "" : "",
-          sourceExcerpt: item.sourceExcerpt,
-          highlightText: item.highlightText || item.word,
-          aiGenerated: true,
-          masteryStatus: "new",
-          note: item.note,
-          ...findSourcePosition(activePassage, {
-            sourceArea: item.sourceArea,
-            sourceExcerpt: item.sourceExcerpt,
-          }),
-        };
-        const saved = await saveVocabularyInput(input);
-        if (saved) savedItems.push(saved);
-      }
-
-      if (savedItems.length > 0) {
-        setData((current) => ({
-          ...current,
-          vocabulary: [...savedItems, ...current.vocabulary],
-        }));
-      }
-      toast.success(savedItems.length > 0
-        ? `已保存 ${savedItems.length} 条词句${skipped > 0 ? `，跳过 ${skipped} 条` : ""}`
-        : skipped > 0 ? "选中的候选缺少可追溯位置" : "选中的候选都已存在");
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "未知错误";
-      toast.error(`保存推荐失败：${message}`);
-    } finally {
-      setSavingVocabulary(false);
-    }
-  };
-
   const workspace = (
     <section className="min-w-0">
       {stage === "types" && (
@@ -1028,21 +546,11 @@ export function EnglishTraining() {
           attempt={activeAttempt}
           editingSubmitted={editingSubmittedPassageId === activePassage?.id}
           answers={activeAnswers}
-          vocabulary={activeVocabulary}
-          passageVocabulary={activePassageVocabulary}
           saving={saving}
-          savingVocabulary={savingVocabulary}
-          recommendingVocabulary={recommendingVocabulary}
-          markingVocabulary={vocabularyMarking}
-          vocabularySelection={vocabularySelection}
           loading={isLoading}
           articlePage={articlePage}
           onArticlePageChange={setArticlePage}
           onBack={handleBack}
-          onOpenVocabulary={openVocabularyDialog}
-          onCancelVocabularyMarking={cancelVocabularyMarking}
-          onVocabularySelectionCapture={refreshVocabularySelection}
-          onConfirmVocabularySelection={confirmVocabularySelection}
           onAnswerChange={(questionId, answer) => {
             if (!activePassage) return;
             setDraftAnswersByPassageId((current) => ({
@@ -1092,30 +600,6 @@ export function EnglishTraining() {
       >
         {workspace}
       </PageShell>
-      {activePassage && (
-        <VocabularyDialog
-          open={vocabularyDialogOpen}
-          mode={vocabularyDialogMode}
-          passage={activePassage}
-          submitted={isSubmittedAttempt(activeAttempt)}
-          form={vocabularyForm}
-          recommendations={recommendations}
-          selectedRecommendations={selectedRecommendations}
-          saving={savingVocabulary}
-          recommending={recommendingVocabulary}
-          marking={vocabularyMarking}
-          onClose={() => setVocabularyDialogOpen(false)}
-          onModeChange={setVocabularyDialogMode}
-          onFormChange={setVocabularyForm}
-          onStartMarking={startVocabularyMarking}
-          onSaveManual={handleSaveVocabulary}
-          onRecommend={handleRecommendVocabulary}
-          onRecommendationToggle={(key, checked) => {
-            setSelectedRecommendations((current) => ({ ...current, [key]: checked }));
-          }}
-          onSaveRecommendations={handleSaveRecommendations}
-        />
-      )}
     </>
   );
 }
@@ -1269,21 +753,11 @@ function PracticeWorkspace({
   attempt,
   editingSubmitted,
   answers,
-  vocabulary,
-  passageVocabulary,
   saving,
-  savingVocabulary,
-  recommendingVocabulary,
-  markingVocabulary,
-  vocabularySelection,
   loading,
   articlePage,
   onArticlePageChange,
   onBack,
-  onOpenVocabulary,
-  onCancelVocabularyMarking,
-  onVocabularySelectionCapture,
-  onConfirmVocabularySelection,
   onAnswerChange,
   onStartEditingSubmitted,
   onCancelEditingSubmitted,
@@ -1295,21 +769,11 @@ function PracticeWorkspace({
   attempt?: EnglishAttempt;
   editingSubmitted: boolean;
   answers: EnglishAttemptAnswerInput;
-  vocabulary: EnglishVocabularyEntry[];
-  passageVocabulary: EnglishVocabularyEntry[];
   saving: "save" | "submit" | null;
-  savingVocabulary: boolean;
-  recommendingVocabulary: boolean;
-  markingVocabulary: boolean;
-  vocabularySelection: VocabularySelectionDraft | null;
   loading: boolean;
   articlePage: number;
   onArticlePageChange: (page: number) => void;
   onBack: () => void;
-  onOpenVocabulary: () => void;
-  onCancelVocabularyMarking: () => void;
-  onVocabularySelectionCapture: () => void;
-  onConfirmVocabularySelection: () => void;
   onAnswerChange: (questionId: string, answer: string) => void;
   onStartEditingSubmitted: () => void;
   onCancelEditingSubmitted: () => void;
@@ -1332,12 +796,7 @@ function PracticeWorkspace({
   const canSubmit = questions.length > 0 && objective;
 
   return (
-    <section
-      className={`english-practice-shell ${markingVocabulary ? "english-practice-shell-marking" : ""}`}
-      onMouseUp={onVocabularySelectionCapture}
-      onKeyUp={onVocabularySelectionCapture}
-      onTouchEnd={onVocabularySelectionCapture}
-    >
+    <section className="english-practice-shell">
       <div className="english-practice-toolbar">
         <div className="english-practice-titlebar">
           <button type="button" onClick={onBack} className="control-button h-9 px-3 text-sm">
@@ -1350,26 +809,8 @@ function PracticeWorkspace({
               {editingSubmitted ? "正在修改 · 原得分" : "得分"} {attempt?.score ?? 0}/{attempt?.maxScore ?? 0}
             </p>
           )}
-          {markingVocabulary && (
-            <div className="english-vocab-marking-status">
-              <Highlighter className="h-3.5 w-3.5" />
-              <span>选择文本后标记</span>
-              <button type="button" onClick={onCancelVocabularyMarking} aria-label="取消标记">
-                <X className="h-3.5 w-3.5" />
-              </button>
-            </div>
-          )}
         </div>
         <div className="flex shrink-0 flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={onOpenVocabulary}
-            disabled={savingVocabulary || recommendingVocabulary}
-            className="control-button h-10 px-3 text-sm"
-          >
-            {savingVocabulary || recommendingVocabulary ? <Loader2 className="h-4 w-4 animate-spin" /> : <Highlighter className="h-4 w-4" />}
-            生词
-          </button>
           {submitted ? (
             editingSubmitted ? (
               <>
@@ -1428,11 +869,10 @@ function PracticeWorkspace({
                   </button>
                 </div>
               </div>
-              <div className="english-article-page" data-vocab-source-area="passage">
+              <div className="english-article-page">
                 <PassagePageContent
                   content={articlePages[currentPage]}
                   cloze={passage.section === "cloze"}
-                  vocabulary={passageVocabulary}
                 />
               </div>
             </>
@@ -1460,8 +900,6 @@ function PracticeWorkspace({
                     submitted={showSubmittedResult}
                     readOnly={submitted && !editingSubmitted}
                     objective={objective}
-                    vocabulary={vocabulary}
-                    markingVocabulary={markingVocabulary}
                     onChange={(answer) => onAnswerChange(question.id, answer)}
                   />
                 );
@@ -1470,21 +908,6 @@ function PracticeWorkspace({
           )}
         </aside>
       </div>
-      {markingVocabulary && vocabularySelection && (
-        <button
-          type="button"
-          className="english-vocab-selection-popover"
-          style={{
-            "--vocab-selection-top": `${vocabularySelection.top}px`,
-            "--vocab-selection-left": `${vocabularySelection.left}px`,
-          } as CSSProperties}
-          onMouseDown={(event) => event.preventDefault()}
-          onClick={onConfirmVocabularySelection}
-        >
-          <Highlighter className="h-4 w-4" />
-          标记
-        </button>
-      )}
     </section>
   );
 }
@@ -1497,8 +920,6 @@ function QuestionBlock({
   submitted,
   readOnly,
   objective,
-  vocabulary,
-  markingVocabulary,
   onChange,
 }: {
   passage: EnglishPassage;
@@ -1508,8 +929,6 @@ function QuestionBlock({
   submitted: boolean;
   readOnly: boolean;
   objective: boolean;
-  vocabulary: EnglishVocabularyEntry[];
-  markingVocabulary: boolean;
   onChange: (value: string) => void;
 }) {
   const correct = submitted && savedAnswer?.isCorrect === true;
@@ -1517,9 +936,6 @@ function QuestionBlock({
   const questionTitle = getQuestionTitle(question, passage);
   const showStem = Boolean(questionTitle.trim());
   const resultText = correct ? "正确" : wrong ? "错误" : null;
-  const questionVocabulary = vocabulary.filter((entry) => (
-    entry.sourceQuestionId === question.id && entry.sourceArea === "question"
-  ));
 
   return (
     <div className={`english-question-card ${correct ? "english-question-card-correct" : ""} ${wrong ? "english-question-card-wrong" : ""}`}>
@@ -1532,46 +948,28 @@ function QuestionBlock({
         )}
       </div>
       {showStem && (
-        <p
-          className="english-question-stem"
-          data-vocab-source-area="question"
-          data-vocab-question-id={question.id}
-        >
-          {renderTextWithVocabularyMarks(questionTitle, questionVocabulary)}
-        </p>
+        <p className="english-question-stem">{questionTitle}</p>
       )}
 
       {question.options.length > 0 ? (
         <div className="mt-4 grid gap-2.5">
           {question.options.map((option) => {
             const selected = value === option.label;
-            const optionVocabulary = vocabulary.filter((entry) => (
-              entry.sourceQuestionId === question.id
-              && entry.sourceArea === "option"
-              && entry.sourceOptionLabel === option.label
-            ));
             return (
               <button
                 key={`${question.id}-${option.label}`}
                 type="button"
                 onClick={() => {
-                  if (markingVocabulary || readOnly) return;
+                  if (readOnly) return;
                   onChange(option.label);
                 }}
                 aria-disabled={readOnly}
-                className={`english-option-button ${selected ? "english-option-button-selected" : ""} ${readOnly ? "english-option-button-readonly" : ""} ${markingVocabulary ? "english-option-button-marking" : ""}`}
+                className={`english-option-button ${selected ? "english-option-button-selected" : ""} ${readOnly ? "english-option-button-readonly" : ""}`}
               >
                 <span className="english-option-label">
                   {option.label}
                 </span>
-                <span
-                  className="english-option-content"
-                  data-vocab-source-area="option"
-                  data-vocab-question-id={question.id}
-                  data-vocab-option-label={option.label}
-                >
-                  {renderTextWithVocabularyMarks(option.content, optionVocabulary)}
-                </span>
+                <span className="english-option-content">{option.content}</span>
               </button>
             );
           })}
@@ -1594,291 +992,6 @@ function QuestionBlock({
         </div>
       )}
     </div>
-  );
-}
-
-function VocabularyDialog({
-  open,
-  mode,
-  passage,
-  submitted,
-  form,
-  recommendations,
-  selectedRecommendations,
-  saving,
-  recommending,
-  marking,
-  onClose,
-  onModeChange,
-  onFormChange,
-  onStartMarking,
-  onSaveManual,
-  onRecommend,
-  onRecommendationToggle,
-  onSaveRecommendations,
-}: {
-  open: boolean;
-  mode: VocabularyDialogMode;
-  passage: EnglishPassage;
-  submitted: boolean;
-  form: VocabularyFormState;
-  recommendations: EnglishVocabularyRecommendation[];
-  selectedRecommendations: Record<string, boolean>;
-  saving: boolean;
-  recommending: boolean;
-  marking: boolean;
-  onClose: () => void;
-  onModeChange: (mode: VocabularyDialogMode) => void;
-  onFormChange: (form: VocabularyFormState) => void;
-  onStartMarking: () => void;
-  onSaveManual: () => void;
-  onRecommend: () => void;
-  onRecommendationToggle: (key: string, checked: boolean) => void;
-  onSaveRecommendations: () => void;
-}) {
-  const dialogRef = useRef<HTMLElement>(null);
-  const closeButtonRef = useRef<HTMLButtonElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    closeButtonRef.current?.focus();
-
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        onClose();
-        return;
-      }
-
-      if (event.key !== "Tab") return;
-      const focusable = Array.from(
-        dialogRef.current?.querySelectorAll<HTMLElement>(
-          'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
-        ) ?? [],
-      );
-      if (focusable.length === 0) return;
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
-      }
-    }
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [onClose, open]);
-
-  if (!open) return null;
-
-  const selectedCount = recommendations.filter((item) => selectedRecommendations[getRecommendationKey(item)]).length;
-
-  return (
-    <div className="english-vocab-dialog-backdrop" role="dialog" aria-modal="true" aria-label="生词">
-      <section ref={dialogRef} className="english-vocab-dialog">
-        <header className="english-vocab-dialog-header">
-          <div>
-            <h2>生词</h2>
-            <p>{getPassageDisplayTitle(passage)}</p>
-          </div>
-          <button ref={closeButtonRef} type="button" onClick={onClose} className="english-vocab-icon-button" aria-label="关闭">
-            <X className="h-4 w-4" />
-          </button>
-        </header>
-
-        <div className="english-vocab-dialog-tabs">
-          <button
-            type="button"
-            onClick={() => onModeChange("manual")}
-            className={mode === "manual" ? "english-vocab-dialog-tab-active" : ""}
-          >
-            手动添加
-          </button>
-          <button
-            type="button"
-            onClick={() => onModeChange("ai")}
-            className={mode === "ai" ? "english-vocab-dialog-tab-active" : ""}
-          >
-            AI 推荐
-          </button>
-        </div>
-
-        {mode === "manual" ? (
-          <div className="english-vocab-form">
-            <VocabularyChoiceGroup
-              label="类型"
-              value={form.entryType}
-              options={vocabularyTypeOptions}
-              onChange={(value) => onFormChange({ ...form, entryType: value as EnglishVocabularyEntryType })}
-            />
-            <VocabularyChoiceGroup
-              label="词性"
-              value={form.partOfSpeech}
-              compact
-              options={partOfSpeechOptions.map((value) => ({
-                value,
-                label: englishVocabularyPartOfSpeechLabels[value],
-              }))}
-              onChange={(value) => onFormChange({ ...form, partOfSpeech: value as EnglishVocabularyPartOfSpeech })}
-            />
-
-            <div className="grid gap-3 sm:grid-cols-2">
-              <VocabularyInput
-                label="词条"
-                value={form.word}
-                onChange={(value) => onFormChange({ ...form, word: value })}
-              />
-              <VocabularyInput
-                label="释义"
-                value={form.definition}
-                onChange={(value) => onFormChange({ ...form, definition: value })}
-              />
-            </div>
-
-            <div className={`english-vocab-marker-row ${form.sourceExcerpt ? "english-vocab-marker-row-active" : ""}`}>
-              <div>
-                <span>{form.sourceExcerpt ? "已标记位置" : "未标记位置"}</span>
-                <small>{form.sourceExcerpt ? "保存后可回到原文高亮" : "可从文章、题干或选项中选择"}</small>
-              </div>
-              <button type="button" onClick={onStartMarking} disabled={marking} className="control-button h-9 px-3 text-sm">
-                <Highlighter className="h-4 w-4" />
-                {form.sourceExcerpt ? "重新标记" : "标记位置"}
-              </button>
-            </div>
-
-            <button
-              type="button"
-              onClick={onSaveManual}
-              disabled={saving}
-              className="control-button control-button-primary h-10 w-full px-4 text-sm"
-            >
-              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-              保存词条
-            </button>
-          </div>
-        ) : (
-          <div className="english-vocab-ai">
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={onRecommend}
-                disabled={!submitted || recommending}
-                className="control-button h-10 px-3 text-sm"
-              >
-                {recommending ? <Loader2 className="h-4 w-4 animate-spin" /> : <WandSparkles className="h-4 w-4" />}
-                生成推荐
-              </button>
-              <button
-                type="button"
-                onClick={onSaveRecommendations}
-                disabled={saving || selectedCount === 0}
-                className="control-button control-button-primary h-10 px-3 text-sm"
-              >
-                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                保存选中
-              </button>
-            </div>
-            {!submitted && (
-              <p className="text-sm text-on-surface-variant">提交本篇后可用。</p>
-            )}
-            <div className="english-vocab-recommendations">
-              {recommendations.length === 0 ? (
-                <div className="english-vocab-empty">暂无推荐。</div>
-              ) : recommendations.map((item) => createElement(VocabularyRecommendationRow, {
-                key: getRecommendationKey(item),
-                item,
-                selected: Boolean(selectedRecommendations[getRecommendationKey(item)]),
-                onToggle: onRecommendationToggle,
-              }))}
-            </div>
-          </div>
-        )}
-      </section>
-    </div>
-  );
-}
-
-function VocabularyRecommendationRow({
-  item,
-  selected,
-  onToggle,
-}: {
-  item: EnglishVocabularyRecommendation;
-  selected: boolean;
-  onToggle: (key: string, checked: boolean) => void;
-}) {
-  const key = getRecommendationKey(item);
-  return (
-    <label className="english-vocab-recommendation">
-      <input
-        type="checkbox"
-        checked={selected}
-        onChange={(event) => onToggle(key, event.target.checked)}
-      />
-      <span className={getVocabularyMarkClass(item.entryType)}>
-        {englishVocabularyEntryTypeLabels[item.entryType]}
-      </span>
-      <span className="min-w-0 flex-1">
-        <strong>{item.word}</strong>
-        <em>{item.definition}</em>
-      </span>
-    </label>
-  );
-}
-
-function VocabularyInput({
-  label,
-  value,
-  onChange,
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-}) {
-  return (
-    <label className="block">
-      <span className="mb-1.5 block text-xs font-medium text-on-surface-variant">{label}</span>
-      <input
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        className="field-control h-10 w-full px-3 text-sm"
-      />
-    </label>
-  );
-}
-
-function VocabularyChoiceGroup({
-  label,
-  value,
-  options,
-  compact = false,
-  onChange,
-}: {
-  label: string;
-  value: string;
-  options: Array<{ value: string; label: string }>;
-  compact?: boolean;
-  onChange: (value: string) => void;
-}) {
-  return (
-    <fieldset className="block">
-      <span className="mb-1.5 block text-xs font-medium text-on-surface-variant">{label}</span>
-      <div className={`english-vocab-choice-group ${compact ? "english-vocab-choice-group-compact" : ""}`}>
-        {options.map((option) => (
-          <button
-            key={option.value}
-            type="button"
-            className={option.value === value ? "english-vocab-choice-active" : ""}
-            onClick={() => onChange(option.value)}
-          >
-            {option.label}
-          </button>
-        ))}
-      </div>
-    </fieldset>
   );
 }
 

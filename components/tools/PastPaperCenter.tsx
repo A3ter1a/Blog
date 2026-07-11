@@ -3,12 +3,11 @@ import {
   BarChart3,
   BookOpenCheck,
   Calculator,
-  Library,
 } from "lucide-react";
 import { PageHeader, PageShell } from "@/components/ui/PageScaffold";
 import { ToolHubCard, ToolHubGrid, type ToolHubCardItem } from "@/components/tools/ToolHubCard";
 
-type CenterModuleId = "english" | "vocabulary" | "math" | "results";
+type CenterModuleId = "english" | "math" | "results";
 
 const centerModules: Array<{
   id: CenterModuleId;
@@ -20,14 +19,6 @@ const centerModules: Array<{
     icon: BookOpenCheck,
     href: "/tools/english-training",
     tone: "border-teal-500/20 bg-teal-500/10 text-teal-700",
-  },
-  {
-    id: "vocabulary",
-    title: "词汇汇总",
-    description: "生词 / 固定搭配 / 熟词生义",
-    icon: Library,
-    href: "/tools/english-vocabulary",
-    tone: "border-amber-500/20 bg-amber-500/10 text-amber-700",
   },
   {
     id: "math",

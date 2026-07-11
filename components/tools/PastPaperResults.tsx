@@ -38,7 +38,7 @@ function formatScore(value: number): string {
 
 export function PastPaperResults() {
   const toast = useToast();
-  const [data, setData] = useState<EnglishResultsData>({ passages: [], vocabulary: [] });
+  const [data, setData] = useState<EnglishResultsData>({ passages: [] });
   const [activeTab, setActiveTab] = useState<ResultTab>("english");
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);

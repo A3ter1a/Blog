@@ -4,10 +4,6 @@ import type {
   EnglishPassageNo,
   EnglishQuestionOption,
   EnglishSection,
-  EnglishVocabularyEntryType,
-  EnglishVocabularyMasteryStatus,
-  EnglishVocabularyPartOfSpeech,
-  EnglishVocabularySourceArea,
 } from "./english-training";
 import type {
   Math3SelfTestAttempt,
@@ -17,6 +13,11 @@ import type {
   Math3SelfTestStatus,
 } from "./math3-self-test";
 import type { NoteType, PracticeResult, Problem, Profile, Subject, Video } from "./types";
+
+type EnglishVocabularyEntryType = "word" | "collocation" | "familiar_meaning";
+type EnglishVocabularyPartOfSpeech = "n" | "v" | "adj" | "adv" | "prep" | "conj" | "phr" | "other";
+type EnglishVocabularyMasteryStatus = "new" | "learning" | "mastered";
+type EnglishVocabularySourceArea = "passage" | "question" | "option";
 
 export type NoteRow = {
   id?: string;

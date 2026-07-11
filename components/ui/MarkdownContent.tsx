@@ -182,7 +182,7 @@ function processEconomicsTerms(container: HTMLElement) {
         if (!parent) return NodeFilter.FILTER_REJECT;
         if (
           parent.closest(
-            "a, button, code, pre, script, style, .katex, .katex-display, .katex-html, .econ-term-popover, .econ-graph-block, .english-vocab-mark",
+            "a, button, code, pre, script, style, .katex, .katex-display, .katex-html, .econ-term-popover, .econ-graph-block",
           )
         ) {
           return NodeFilter.FILTER_REJECT;
