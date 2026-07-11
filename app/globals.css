@@ -1433,6 +1433,20 @@ h1, h2, h3, h4, h5, h6 {
   color: var(--color-on-primary);
 }
 
+.english-option-button-readonly {
+  cursor: default;
+}
+
+.english-option-button-readonly:hover {
+  border-color: color-mix(in srgb, var(--color-outline-variant) 22%, transparent);
+  background: color-mix(in srgb, var(--color-surface-container-low) 72%, var(--color-surface-container-lowest));
+}
+
+.english-option-button-readonly.english-option-button-selected:hover {
+  border-color: color-mix(in srgb, var(--color-primary) 48%, var(--color-outline-variant));
+  background: color-mix(in srgb, var(--color-primary) 10%, var(--color-surface-container-lowest));
+}
+
 .english-option-button-marking {
   cursor: text;
 }

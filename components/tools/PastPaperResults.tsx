@@ -262,9 +262,10 @@ function EnglishResultPanel({
               const attempt = passage.attempt;
               const score = attempt?.score ?? 0;
               const maxScore = attempt?.maxScore ?? 0;
-              return createElement("div", {
+              return createElement(Link, {
                 key: passage.id,
-                className: "rounded-lg border border-outline-variant/20 bg-surface-container-lowest p-3",
+                href: `/tools/english-training?passage=${encodeURIComponent(passage.id)}&edit=1`,
+                className: "block rounded-lg border border-outline-variant/20 bg-surface-container-lowest p-3 transition-colors hover:border-primary/40",
               },
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
@@ -277,6 +278,7 @@ function EnglishResultPanel({
                     {formatScore(score)}/{formatScore(maxScore)}
                   </div>
                 </div>,
+                <div className="mt-2 text-xs font-semibold text-primary">修改结果</div>,
               );
             })}
           </div>

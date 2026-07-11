@@ -549,6 +549,7 @@ export function EnglishTraining() {
   const [activeCategoryId, setActiveCategoryId] = useState<TrainingCategoryId | null>(null);
   const [activePassageId, setActivePassageId] = useState<string | null>(null);
   const [draftAnswersByPassageId, setDraftAnswersByPassageId] = useState<Record<string, EnglishAttemptAnswerInput>>({});
+  const [editingSubmittedPassageId, setEditingSubmittedPassageId] = useState<string | null>(null);
   const [saving, setSaving] = useState<"save" | "submit" | null>(null);
   const [articlePage, setArticlePage] = useState(0);
   const [vocabularyDialogOpen, setVocabularyDialogOpen] = useState(false);
@@ -670,6 +671,7 @@ export function EnglishTraining() {
 
       setActiveCategoryId(getCategoryForPassage(passage));
       setActivePassageId(passage.id);
+      setEditingSubmittedPassageId(params.get("edit") === "1" ? passage.id : null);
       setStage("practice");
 
       const vocabularyId = params.get("vocab");
@@ -696,6 +698,7 @@ export function EnglishTraining() {
 
   const handleOpenPassage = (passageId: string) => {
     setActivePassageId(passageId);
+    setEditingSubmittedPassageId(null);
     setArticlePage(0);
     setVocabularyForm(createVocabularyForm(passageId));
     setRecommendations([]);
@@ -707,6 +710,7 @@ export function EnglishTraining() {
   const handleBack = () => {
     if (stage === "practice") {
       setStage("sets");
+      setEditingSubmittedPassageId(null);
       setArticlePage(0);
       return;
     }
@@ -718,6 +722,7 @@ export function EnglishTraining() {
 
   const handleSaveAttempt = async (submitted: boolean) => {
     if (!activePassage || saving) return;
+    const updatingSubmittedResult = submitted && activeAttempt?.status === "submitted";
     setSaving(submitted ? "submit" : "save");
     try {
       const saved = await englishTrainingApi.saveAttempt({
@@ -731,13 +736,38 @@ export function EnglishTraining() {
         ...current,
         attempts: [saved, ...current.attempts.filter((attempt) => attempt.id !== saved.id && attempt.passageId !== saved.passageId)],
       }));
-      toast.success(submitted ? "已提交本篇训练" : "已保存作答进度");
+      setDraftAnswersByPassageId((current) => {
+        const next = { ...current };
+        delete next[activePassage.id];
+        return next;
+      });
+      if (submitted) setEditingSubmittedPassageId(null);
+      toast.success(updatingSubmittedResult ? "已更新本篇训练结果" : submitted ? "已提交本篇训练" : "已保存作答进度");
     } catch (error) {
       const message = error instanceof Error ? error.message : "未知错误";
       toast.error(`${submitted ? "提交" : "保存"}失败：${message}`);
     } finally {
       setSaving(null);
     }
+  };
+
+  const handleStartEditingSubmittedAttempt = () => {
+    if (!activePassage || !activeAttempt || activeAttempt.status !== "submitted") return;
+    setDraftAnswersByPassageId((current) => ({
+      ...current,
+      [activePassage.id]: buildAnswerMap(activeAttempt),
+    }));
+    setEditingSubmittedPassageId(activePassage.id);
+  };
+
+  const handleCancelEditingSubmittedAttempt = () => {
+    if (!activePassage) return;
+    setDraftAnswersByPassageId((current) => {
+      const next = { ...current };
+      delete next[activePassage.id];
+      return next;
+    });
+    setEditingSubmittedPassageId(null);
   };
 
   const openVocabularyDialog = () => {
@@ -996,6 +1026,7 @@ export function EnglishTraining() {
           passage={activePassage}
           questions={activeQuestions}
           attempt={activeAttempt}
+          editingSubmitted={editingSubmittedPassageId === activePassage?.id}
           answers={activeAnswers}
           vocabulary={activeVocabulary}
           passageVocabulary={activePassageVocabulary}
@@ -1022,6 +1053,8 @@ export function EnglishTraining() {
               },
             }));
           }}
+          onStartEditingSubmitted={handleStartEditingSubmittedAttempt}
+          onCancelEditingSubmitted={handleCancelEditingSubmittedAttempt}
           onSave={() => handleSaveAttempt(false)}
           onSubmit={() => handleSaveAttempt(true)}
         />
@@ -1234,6 +1267,7 @@ function PracticeWorkspace({
   passage,
   questions,
   attempt,
+  editingSubmitted,
   answers,
   vocabulary,
   passageVocabulary,
@@ -1251,12 +1285,15 @@ function PracticeWorkspace({
   onVocabularySelectionCapture,
   onConfirmVocabularySelection,
   onAnswerChange,
+  onStartEditingSubmitted,
+  onCancelEditingSubmitted,
   onSave,
   onSubmit,
 }: {
   passage: EnglishPassage | null;
   questions: EnglishQuestion[];
   attempt?: EnglishAttempt;
+  editingSubmitted: boolean;
   answers: EnglishAttemptAnswerInput;
   vocabulary: EnglishVocabularyEntry[];
   passageVocabulary: EnglishVocabularyEntry[];
@@ -1274,6 +1311,8 @@ function PracticeWorkspace({
   onVocabularySelectionCapture: () => void;
   onConfirmVocabularySelection: () => void;
   onAnswerChange: (questionId: string, answer: string) => void;
+  onStartEditingSubmitted: () => void;
+  onCancelEditingSubmitted: () => void;
   onSave: () => void;
   onSubmit: () => void;
 }) {
@@ -1286,6 +1325,7 @@ function PracticeWorkspace({
   }
 
   const submitted = attempt?.status === "submitted";
+  const showSubmittedResult = submitted && !editingSubmitted;
   const objective = isEnglishObjectiveSection(passage.section);
   const articlePages = paginatePassageContent(passage.content);
   const currentPage = Math.min(articlePage, Math.max(articlePages.length - 1, 0));
@@ -1307,7 +1347,7 @@ function PracticeWorkspace({
           <h2 className="english-practice-title">{getPassageDisplayTitle(passage)}</h2>
           {submitted && (
             <p className="english-practice-score">
-              得分 {attempt?.score ?? 0}/{attempt?.maxScore ?? 0}
+              {editingSubmitted ? "正在修改 · 原得分" : "得分"} {attempt?.score ?? 0}/{attempt?.maxScore ?? 0}
             </p>
           )}
           {markingVocabulary && (
@@ -1330,14 +1370,36 @@ function PracticeWorkspace({
             {savingVocabulary || recommendingVocabulary ? <Loader2 className="h-4 w-4 animate-spin" /> : <Highlighter className="h-4 w-4" />}
             生词
           </button>
-          <button type="button" onClick={onSave} disabled={Boolean(saving) || submitted} className="control-button h-10 px-3 text-sm">
-            {saving === "save" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-            保存
-          </button>
-          <button type="button" onClick={onSubmit} disabled={Boolean(saving) || !canSubmit} className="control-button control-button-primary h-10 px-3 text-sm">
-            {saving === "submit" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
-            提交本篇
-          </button>
+          {submitted ? (
+            editingSubmitted ? (
+              <>
+                <button type="button" onClick={onCancelEditingSubmitted} disabled={Boolean(saving)} className="control-button h-10 px-3 text-sm">
+                  <X className="h-4 w-4" />
+                  取消修改
+                </button>
+                <button type="button" onClick={onSubmit} disabled={Boolean(saving) || !canSubmit} className="control-button control-button-primary h-10 px-3 text-sm">
+                  {saving === "submit" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                  保存修改
+                </button>
+              </>
+            ) : (
+              <button type="button" onClick={onStartEditingSubmitted} disabled={Boolean(saving) || !canSubmit} className="control-button control-button-primary h-10 px-3 text-sm">
+                <PenLine className="h-4 w-4" />
+                修改结果
+              </button>
+            )
+          ) : (
+            <>
+              <button type="button" onClick={onSave} disabled={Boolean(saving)} className="control-button h-10 px-3 text-sm">
+                {saving === "save" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                保存
+              </button>
+              <button type="button" onClick={onSubmit} disabled={Boolean(saving) || !canSubmit} className="control-button control-button-primary h-10 px-3 text-sm">
+                {saving === "submit" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                提交本篇
+              </button>
+            </>
+          )}
         </div>
       </div>
 
@@ -1395,7 +1457,8 @@ function PracticeWorkspace({
                     question={question}
                     value={answers[question.id] ?? ""}
                     savedAnswer={savedAnswer}
-                    submitted={submitted}
+                    submitted={showSubmittedResult}
+                    readOnly={submitted && !editingSubmitted}
                     objective={objective}
                     vocabulary={vocabulary}
                     markingVocabulary={markingVocabulary}
@@ -1432,6 +1495,7 @@ function QuestionBlock({
   value,
   savedAnswer,
   submitted,
+  readOnly,
   objective,
   vocabulary,
   markingVocabulary,
@@ -1442,6 +1506,7 @@ function QuestionBlock({
   value: string;
   savedAnswer?: { isCorrect?: boolean; score: number };
   submitted: boolean;
+  readOnly: boolean;
   objective: boolean;
   vocabulary: EnglishVocabularyEntry[];
   markingVocabulary: boolean;
@@ -1490,10 +1555,11 @@ function QuestionBlock({
                 key={`${question.id}-${option.label}`}
                 type="button"
                 onClick={() => {
-                  if (markingVocabulary) return;
+                  if (markingVocabulary || readOnly) return;
                   onChange(option.label);
                 }}
-                className={`english-option-button ${selected ? "english-option-button-selected" : ""} ${markingVocabulary ? "english-option-button-marking" : ""}`}
+                aria-disabled={readOnly}
+                className={`english-option-button ${selected ? "english-option-button-selected" : ""} ${readOnly ? "english-option-button-readonly" : ""} ${markingVocabulary ? "english-option-button-marking" : ""}`}
               >
                 <span className="english-option-label">
                   {option.label}
@@ -1514,6 +1580,7 @@ function QuestionBlock({
         <textarea
           value={value}
           onChange={(event) => onChange(event.target.value)}
+          readOnly={readOnly}
           rows={objective ? 2 : 8}
           className="field-control english-written-answer mt-3 w-full resize-y px-3 py-2"
           placeholder={objective ? "填写答案" : "记录你的作答"}
