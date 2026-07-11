@@ -30,7 +30,8 @@ function toNoteCreateInput(note: ParsedNote): NoteCreateInput {
     coverImage: note.coverImage || undefined,
     createdAt: note.createdAt,
     updatedAt: note.updatedAt,
-    isPublished: true,
+    // Imported material must be reviewed before it can appear publicly.
+    isPublished: false,
   };
 }
 
@@ -74,7 +75,7 @@ export function ImportPreview({ isOpen, onClose, parsedNotes, onImported }: Impo
       }
 
       completed = true;
-      toast.success(`已保存 ${savedCount} 篇笔记`);
+      toast.success(`已保存 ${savedCount} 篇草稿，请审核后再发布`);
       onImported?.();
       if (!onImported) onClose();
       router.push("/notes");
@@ -173,7 +174,7 @@ export function ImportPreview({ isOpen, onClose, parsedNotes, onImported }: Impo
                   className="motion-ui motion-interactive px-4 py-2 rounded-lg editorial-gradient text-on-primary text-sm font-medium hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2"
                 >
                   {isSaving && <Loader2 className="w-4 h-4 animate-spin" />}
-                  {isSaving ? "保存中" : `保存全部 (${parsedNotes.length})`}
+                  {isSaving ? "保存中" : `保存为草稿 (${parsedNotes.length})`}
                 </button>
               )}
             </div>

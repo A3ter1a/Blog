@@ -22,6 +22,8 @@ interface SettingsPanelProps {
   onClose: () => void;
 }
 
+const MAX_IMPORT_FILE_BYTES = 10 * 1024 * 1024;
+
 export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
   const { preferences, updatePreference, resetPreferences } = useReadingPreferences();
   const { isAdmin } = useAdminAuth();
@@ -70,6 +72,11 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
   const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (file.size > MAX_IMPORT_FILE_BYTES) {
+      setImportError('导入文件不能超过 10 MB，请拆分后再导入。');
+      e.target.value = '';
+      return;
+    }
 
     const reader = new FileReader();
     reader.onload = (event) => {

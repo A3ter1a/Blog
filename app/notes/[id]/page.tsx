@@ -1,4 +1,5 @@
 import type { Metadata, ResolvingMetadata } from "next";
+import { notFound } from "next/navigation";
 import { cache } from "react";
 import { chaptersApi } from "@/lib/chapters-api";
 import { notesApi } from "@/lib/supabase";
@@ -130,6 +131,10 @@ export async function generateMetadata(
 export default async function NoteReaderPage({ params }: NoteReaderPageProps) {
   const { id } = await params;
   const initialData = await getInitialNote(id);
+
+  if (!initialData.loadError && !initialData.note) {
+    notFound();
+  }
 
   return (
     <NoteReaderClient

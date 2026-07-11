@@ -6,7 +6,6 @@ import {
   type EnglishAttemptAnswer,
   type EnglishPassage,
   type EnglishQuestion,
-  type EnglishSection,
   type EnglishVocabularyEntry,
   type EnglishVocabularyEntryType,
   type EnglishVocabularyMasteryStatus,

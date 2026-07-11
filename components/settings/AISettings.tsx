@@ -10,6 +10,7 @@ import {
   ALLOW_CLIENT_AI_KEYS,
   DEEPSEEK_MODEL_OPTIONS,
   DEFAULT_AI_CONFIG,
+  DEFAULT_QWEN_ENDPOINT,
   QWEN_OCR_MODEL_OPTIONS,
   normalizeAIConfig,
   sanitizeAIConfig,
@@ -20,7 +21,6 @@ type ConfigTestBody = {
   provider: 'deepseek' | 'qwen' | 'baidu-ocr';
   apiKey?: string;
   model?: string;
-  endpoint?: string;
 };
 
 type ConfigTestProvider = ConfigTestBody['provider'];
@@ -96,7 +96,6 @@ export function AISettings() {
       } else if (provider === 'qwen') {
         if (ALLOW_CLIENT_AI_KEYS) body.apiKey = config.qwenApiKey;
         body.model = config.qwenModel;
-        body.endpoint = config.qwenApiEndpoint;
       }
 
       const res = await fetch('/api/ai/config', {
@@ -286,14 +285,9 @@ export function AISettings() {
                 ))}
               </select>
             </div>
-            <div>
-              <label className="text-xs text-on-surface-variant/60 mb-1 block">API 端点</label>
-              <input
-                type="text"
-                value={config.qwenApiEndpoint}
-                onChange={e => setConfig({ ...config, qwenApiEndpoint: e.target.value })}
-                className="w-full px-3 py-2 bg-surface-container-highest rounded-lg input-soft text-on-surface text-sm"
-              />
+            <div className="rounded-lg bg-surface-container-highest px-3 py-2">
+              <p className="text-xs text-on-surface-variant/60">固定官方端点</p>
+              <p className="mt-1 break-all text-xs text-on-surface">{DEFAULT_QWEN_ENDPOINT}</p>
             </div>
             <button
               onClick={() => testConnection('qwen')}

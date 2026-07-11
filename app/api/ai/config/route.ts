@@ -7,6 +7,7 @@ import {
   DEFAULT_QWEN_ENDPOINT,
   DEFAULT_QWEN_MODEL,
   QWEN_OCR_MODEL_OPTIONS,
+  isOfficialQwenEndpoint,
   isQwenOcrModel,
 } from '@/lib/ai-config';
 import { getBaiduAccessToken, hasBaiduOcrCredentials } from '@/lib/baidu-unlimited-ocr';
@@ -106,6 +107,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: `未知的 provider: ${provider}` }, { status: 400 });
     }
 
+    if (provider === 'qwen' && !isOfficialQwenEndpoint(clientEndpoint)) {
+      return NextResponse.json(
+        { error: 'Qwen 仅支持官方 DashScope HTTPS 地址，不能使用自定义端点。' },
+        { status: 400 },
+      );
+    }
+
     // Prefer server-side env vars, fall back to client-provided keys
     const apiKey = provider === 'deepseek'
       ? resolveAIKey('deepseek', clientApiKey)
@@ -113,9 +121,8 @@ export async function POST(req: NextRequest) {
     const model = typeof clientModel === 'string' && clientModel.trim()
       ? clientModel.trim()
       : (provider === 'deepseek' ? DEFAULT_DEEPSEEK_MODEL : DEFAULT_QWEN_MODEL);
-    const endpoint = typeof clientEndpoint === 'string' && clientEndpoint.trim()
-      ? clientEndpoint.trim()
-      : DEFAULT_QWEN_ENDPOINT;
+    // Never use a client-provided address for an authenticated request.
+    const endpoint = DEFAULT_QWEN_ENDPOINT;
 
     if (!apiKey) {
       return NextResponse.json({ error: '缺少必要参数 (provider, apiKey)' }, { status: 400 });

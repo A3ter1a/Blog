@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { Fragment, useMemo, type ReactNode } from "react";
 import { ChevronRight } from "lucide-react";
 import katex from "katex";
 import { extractTocItems } from "@/lib/markdown";
@@ -10,25 +10,28 @@ interface TableOfContentsProps {
   className?: string;
 }
 
-function renderInlineMath(text: string): string {
-  if (!text.includes("$")) return text;
+function renderInlineMath(text: string): ReactNode[] {
+  if (!text.includes("$")) return [<Fragment key="text-0">{text}</Fragment>];
 
   const parts = text.split(/(?<!\$)\$(?!\$)(.+?)(?<!\$)\$(?!\$)/g);
-  if (parts.length === 1) return text;
+  if (parts.length === 1) return [<Fragment key="text-0">{text}</Fragment>];
 
   return parts
     .map((part, index) => {
-      if (index % 2 === 0) return part;
+      if (index % 2 === 0) return <Fragment key={`text-${index}`}>{part}</Fragment>;
       try {
-        return katex.renderToString(part.trim(), {
+        const html = katex.renderToString(part.trim(), {
           throwOnError: false,
           displayMode: false,
+          trust: false,
         });
+        // KaTeX only generates markup for the formula fragment. Every ordinary
+        // title fragment remains a React text node and is escaped by React.
+        return <span key={`math-${index}`} dangerouslySetInnerHTML={{ __html: html }} />;
       } catch {
-        return `$${part}$`;
+        return <Fragment key={`text-${index}`}>{`$${part}$`}</Fragment>;
       }
-    })
-    .join("");
+    });
 }
 
 export function TableOfContents({ content, className = "" }: TableOfContentsProps) {
@@ -56,7 +59,7 @@ export function TableOfContents({ content, className = "" }: TableOfContentsProp
         >
           <div className="flex items-center gap-2">
             <ChevronRight className="motion-icon-shift w-3 h-3 opacity-0 -ml-4 group-hover:opacity-100 group-hover:translate-x-0.5" />
-            <span dangerouslySetInnerHTML={{ __html: renderInlineMath(item.title) }} />
+            <span>{renderInlineMath(item.title)}</span>
           </div>
         </button>
       ))}

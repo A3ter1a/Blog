@@ -340,10 +340,10 @@ export const notesApi = {
       query = query.eq("is_published", true);
     }
 
-    const { data, error } = await query.single();
+    const { data, error } = await query.maybeSingle();
 
-    if (error) return null;
-    return mapSnakeToCamel(data);
+    if (error) throw error;
+    return data ? mapSnakeToCamel(data) : null;
   },
 
   // Admin edit page read. The page is already guarded by AdminGate, so avoid
@@ -354,10 +354,10 @@ export const notesApi = {
       .from("notes")
       .select(NOTE_DETAIL_FIELDS)
       .eq("id", id)
-      .single();
+      .maybeSingle();
 
-    if (error) return null;
-    return mapSnakeToCamel(data);
+    if (error) throw error;
+    return data ? mapSnakeToCamel(data) : null;
   },
 
   // Public detail read for the article/problem reading page. Avoids the admin-session round trip.
@@ -368,10 +368,10 @@ export const notesApi = {
       .select(NOTE_DETAIL_FIELDS)
       .eq("id", id)
       .eq("is_published", true)
-      .single();
+      .maybeSingle();
 
-    if (error) return null;
-    return mapSnakeToCamel(data);
+    if (error) throw error;
+    return data ? mapSnakeToCamel(data) : null;
   },
 
   // Get the fields required by the practice page without loading note content, videos, or cover image.

@@ -1064,7 +1064,6 @@ export function EnglishTraining() {
           open={vocabularyDialogOpen}
           mode={vocabularyDialogMode}
           passage={activePassage}
-          questions={activeQuestions}
           submitted={isSubmittedAttempt(activeAttempt)}
           form={vocabularyForm}
           recommendations={recommendations}
@@ -1535,7 +1534,6 @@ function VocabularyDialog({
   open,
   mode,
   passage,
-  questions,
   submitted,
   form,
   recommendations,
@@ -1555,7 +1553,6 @@ function VocabularyDialog({
   open: boolean;
   mode: VocabularyDialogMode;
   passage: EnglishPassage;
-  questions: EnglishQuestion[];
   submitted: boolean;
   form: VocabularyFormState;
   recommendations: EnglishVocabularyRecommendation[];

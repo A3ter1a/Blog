@@ -5,6 +5,7 @@ import {
   DEFAULT_QWEN_ENDPOINT,
   DEFAULT_QWEN_MODEL,
   getQwenOcrModelCandidates,
+  isOfficialQwenEndpoint,
   isQwenOcrModel,
 } from '@/lib/ai-config';
 
@@ -48,13 +49,19 @@ export async function POST(req: NextRequest) {
 
     const { imageBase64, mimeType: clientMimeType, apiKey: clientApiKey, model: clientModel, endpoint: clientEndpoint } = await req.json();
 
+    if (!isOfficialQwenEndpoint(clientEndpoint)) {
+      return NextResponse.json(
+        { error: 'Qwen 仅支持官方 DashScope HTTPS 地址，不能使用自定义端点。' },
+        { status: 400 },
+      );
+    }
+
     const apiKey = resolveAIKey('qwen', clientApiKey);
     const model = typeof clientModel === 'string' && clientModel.trim()
       ? clientModel.trim()
       : DEFAULT_QWEN_MODEL;
-    const endpoint = typeof clientEndpoint === 'string' && clientEndpoint.trim()
-      ? clientEndpoint.trim()
-      : DEFAULT_QWEN_ENDPOINT;
+    // Always send server credentials to the fixed official endpoint only.
+    const endpoint = DEFAULT_QWEN_ENDPOINT;
     const mimeType = normalizeImageMimeType(clientMimeType);
 
     if (!imageBase64 || !apiKey) {

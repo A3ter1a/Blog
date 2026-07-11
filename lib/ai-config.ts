@@ -59,8 +59,37 @@ export function normalizeAIConfig(value: unknown): AIConfig {
     deepseekModel: asNonEmptyString(raw.deepseekModel, DEFAULT_AI_CONFIG.deepseekModel),
     qwenApiKey: asString(raw.qwenApiKey, DEFAULT_AI_CONFIG.qwenApiKey),
     qwenModel: asNonEmptyString(raw.qwenModel, DEFAULT_AI_CONFIG.qwenModel),
-    qwenApiEndpoint: asNonEmptyString(raw.qwenApiEndpoint, DEFAULT_AI_CONFIG.qwenApiEndpoint),
+    // The endpoint is intentionally not user-configurable. Keeping the stored
+    // value normalized also clears legacy custom endpoints from local storage.
+    qwenApiEndpoint: DEFAULT_QWEN_ENDPOINT,
   };
+}
+
+/**
+ * Reject every client-supplied Qwen endpoint other than the fixed DashScope
+ * compatible-mode URL. Validation happens before a server-side key is read or
+ * sent, preventing SSRF and accidental key disclosure.
+ */
+export function isOfficialQwenEndpoint(value: unknown): boolean {
+  if (value === undefined || value === null || value === "") return true;
+  if (typeof value !== "string") return false;
+
+  try {
+    const requested = new URL(value.trim());
+    const official = new URL(DEFAULT_QWEN_ENDPOINT);
+    const normalizePath = (path: string) => path.replace(/\/+$/, "") || "/";
+
+    return requested.protocol === "https:"
+      && requested.hostname === official.hostname
+      && requested.port === ""
+      && requested.username === ""
+      && requested.password === ""
+      && requested.search === ""
+      && requested.hash === ""
+      && normalizePath(requested.pathname) === normalizePath(official.pathname);
+  } catch {
+    return false;
+  }
 }
 
 export function sanitizeAIConfig(config: AIConfig): AIConfig {

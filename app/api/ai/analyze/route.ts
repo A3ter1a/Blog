@@ -121,7 +121,7 @@ async function parseOrRepairAIJson(
 ): Promise<{ parsed: unknown; tokensUsed: number }> {
   try {
     return { parsed: parseAIJson(content), tokensUsed: 0 };
-  } catch (firstParseError: unknown) {
+  } catch {
     const repairPrompt = `Repair the following AI output into one valid JSON object only.
 It must match this shape: {"problems":[{"question":"","answer":"","type":"calculation","difficulty":"medium","suggestedChapter":null,"options":[],"confidence":0.5}]}.
 Keep the original math content. Escape all LaTeX backslashes correctly for JSON strings. Return JSON only.
