@@ -2,6 +2,7 @@ import { getSupabase } from "./supabase";
 import {
   englishPassageLabels,
   englishSectionLabels,
+  normalizeEnglishQuestionOptions,
   type EnglishAttempt,
   type EnglishAttemptAnswer,
   type EnglishPassage,
@@ -57,7 +58,7 @@ function mapQuestion(row: EnglishQuestionRow): EnglishQuestion {
     passageId: row.passage_id ?? "",
     questionNo: row.question_no ?? "",
     stem: row.stem ?? "",
-    options: Array.isArray(row.options) ? row.options : [],
+    options: normalizeEnglishQuestionOptions(row.options),
     standardAnswer: row.standard_answer ?? "",
     score: row.score ?? 0,
     sortOrder: row.sort_order ?? 0,

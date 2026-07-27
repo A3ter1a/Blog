@@ -44,6 +44,9 @@ Asteroid 的核心目标是把备考期间分散的学习材料变成一个可�
 - OCR 上传识别、笔记分析、文本润色、资料检索和数学三相关生成接口。
 - DeepSeek / Qwen Vision 等配置优先走服务端环境变量。
 - AI 输出统一经过 JSON 解析和错误兜底，降低模型返回格式漂移带来的前端风险。
+- 全局任务中心统一承载两类长任务：百度讲义 OCR 作为外部异步任务，Markdown 审阅和题库图片 OCR 作为站内分块任务。
+- 题库图片会先压缩并写入私有 `ocr-documents` 临时路径，每次 Route Handler 只领取一张图片；关闭弹窗、刷新或换页后仍可继续，全部成功后才清理源图。
+- 站内任务依赖 `0014_job_item_lease_rpc.sql` 与 `0020_problem_ocr_job_assets.sql`，且 `WP3_INTERNAL_JOB_LEASE_ENABLED` 默认关闭；迁移未就绪时题库 OCR 保留原页面内识别回退。
 
 ## 页面地图
 
@@ -109,25 +112,18 @@ npm run dev
 | `NEXT_PUBLIC_SUPABASE_URL` | Supabase 项目 URL | 是 |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase 匿名 Key | 是 |
 | `NEXT_PUBLIC_SITE_URL` | 生产站点地址，用于 SEO、robots 和 sitemap | 是 |
-| `ADMIN_EMAILS` | 允许使用后台写入能力的管理员邮箱，逗号分隔 | 是 |
+| `ADMIN_EMAILS` | 仅用于部署自检或紧急恢复；运行时管理员真源是 `admin_users` | 否 |
+| `ENGLISH_TRAINING_CORE_MODE` | 英语训练持久化模式：`legacy`（默认）、`dual` 或 `shared`；只能在对应数据库迁移与验收通过后切换 | 否 |
+| `MATH_TRAINING_CORE_MODE` | 数学训练持久化模式：`local`（默认）或 `shared`；只能在 `0019` 与真实题源验收完成后切换 | 否 |
+| `WP3_INTERNAL_JOB_LEASE_ENABLED` | WP3 站内分块任务开关，默认 `false`；仅在数据库 `0014` lease RPC 与 `0020` 私有 OCR 图片配置均已执行并验收后设为 `true` | 否 |
 | `DEEPSEEK_API_KEY` | 服务端 DeepSeek API Key | 否 |
 | `QWEN_API_KEY` | 服务端 Qwen Vision API Key | 否 |
 
 ## 数据库与权限
 
-生产环境以 `supabase/migrations/` 为唯一标准入口：
+生产环境以 `supabase/migrations/` 为唯一标准入口，但**现有生产项目不得重放 `0001–0007`**。完整的新项目顺序、现有生产项目的阶段门、fixed shadow 要求和迁移后核验方法统一记录在 `supabase/README.md`。
 
-1. 在 Supabase SQL Editor 执行 `supabase/migrations/0001_base_schema.sql`
-2. 继续执行 `supabase/migrations/0002_rls_policies.sql`
-3. 继续执行 `supabase/migrations/0003_problem_practice_marked.sql`
-4. 继续执行 `supabase/migrations/0004_english_training.sql`
-5. 继续执行 `supabase/migrations/0005_english_vocabulary_context.sql`
-6. 继续执行 `supabase/migrations/0006_english_vocabulary_source_scope.sql`
-7. 继续执行 `supabase/migrations/0007_document_ocr_storage.sql`
-8. 将 Supabase Auth 管理员邮箱插入 `public.admin_users`
-9. 运行只读脚本 `supabase/verification.sql`，确认表结构、RLS、策略、Storage bucket 和管理员邮箱匹配状态
-
-不要在生产环境继续使用旧的 `supabase-init.sql`。当前迁移会把公开阅读、管理员写入、个人练习记录和图片存储权限分开处理。
+不要在生产环境继续使用旧的 `supabase-init.sql`，也不要因为本地迁移文件存在就认为远端已经执行。当前迁移会把公开阅读、管理员写入、个人练习记录和图片存储权限分开处理。
 
 ## 常用验证
 

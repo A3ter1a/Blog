@@ -93,7 +93,7 @@ export function OCRUploader({ isOpen, onClose, onAccept, chapterContext }: OCRUp
   const [previewUrls, setPreviewUrls] = useState<string[]>([]);
   const [fileError, setFileError] = useState<string | null>(null);
   const [prepareProgress, setPrepareProgress] = useState<{ total: number; completed: number } | null>(null);
-  const { scanState, startScan, resetScan, cancelScan } = useAIScan();
+  const { scanState, startScan, resetScan, claimScanResult, isPersistentScan } = useAIScan();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const prepareRunRef = useRef(0);
 
@@ -200,10 +200,12 @@ export function OCRUploader({ isOpen, onClose, onAccept, chapterContext }: OCRUp
     const problems = scanState.extractedProblems || [];
     const unacceptedProblems = problems.filter((_, index) => !acceptedIndices.has(index));
     if (unacceptedProblems.length === 0) {
+      claimScanResult();
       handleClose();
       return;
     }
     onAccept(unacceptedProblems.map(buildProblem));
+    claimScanResult();
     handleClose();
   };
 
@@ -215,7 +217,6 @@ export function OCRUploader({ isOpen, onClose, onAccept, chapterContext }: OCRUp
 
   const handleClose = () => {
     prepareRunRef.current += 1;
-    cancelScan();
     previewUrls.forEach(url => URL.revokeObjectURL(url));
     setPreviewUrls([]);
     setFileError(null);
@@ -224,6 +225,7 @@ export function OCRUploader({ isOpen, onClose, onAccept, chapterContext }: OCRUp
   };
 
   const handleRetry = () => {
+    if (scanState.stage === 'complete') claimScanResult();
     prepareRunRef.current += 1;
     previewUrls.forEach(url => URL.revokeObjectURL(url));
     setPreviewUrls([]);
@@ -281,7 +283,7 @@ export function OCRUploader({ isOpen, onClose, onAccept, chapterContext }: OCRUp
             <button
               onClick={handleClose}
               className="motion-ui motion-interactive p-2 rounded-full hover:bg-surface-container-high"
-              title={isBusy ? '取消导入' : '关闭'}
+              title={isProcessing && isPersistentScan ? '关闭弹窗，任务继续运行' : isBusy ? '关闭' : '关闭'}
             >
               <X className="w-5 h-5 text-on-surface-variant" />
             </button>
@@ -344,6 +346,11 @@ export function OCRUploader({ isOpen, onClose, onAccept, chapterContext }: OCRUp
             {isProcessing && (
               <div className="space-y-2">
                 <AIProgressIndicator stage={scanState.stage} progress={scanState.progress} />
+                {isPersistentScan && (
+                  <p className="text-xs text-primary/80 text-center">
+                    源图和进度已保存到任务中心；关闭弹窗、刷新或切换页面都不会丢失任务。
+                  </p>
+                )}
                 {totalImages > 1 && (
                   <p className="text-xs text-on-surface-variant/60 text-center">
                     最多 {AI_SCAN_CONCURRENT_LIMIT} 张并行识别，当前更新第 {currentImage}/{totalImages} 张，已完成 {completedImages} 张，失败 {failedImages} 张

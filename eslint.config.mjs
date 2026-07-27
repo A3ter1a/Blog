@@ -14,6 +14,10 @@ const eslintConfig = defineConfig([
     "next-env.d.ts",
     ".vercel/**",
     ".vercel-tmp/**",
+    // Local WP1-B runtime artifacts are third-party binaries or sensitive dumps,
+    // not project source files.
+    ".tools/**",
+    ".local-backups/**",
   ]),
 ]);
 

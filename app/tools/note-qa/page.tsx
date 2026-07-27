@@ -8,5 +8,5 @@ export const metadata = createNoIndexMetadata({
 });
 
 export default function NoteQAPage() {
-  redirect("/tools/resource-search");
+  redirect("/notes");
 }

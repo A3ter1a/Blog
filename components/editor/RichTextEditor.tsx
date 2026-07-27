@@ -14,7 +14,8 @@ import { MarkdownImage } from "@/lib/markdown-image-extension";
 import { DOMParser, type Node as ProseMirrorNode } from "@tiptap/pm/model";
 import { TextSelection, type EditorState, type Transaction } from "@tiptap/pm/state";
 import type { EditorView } from "@tiptap/pm/view";
-import { repairMarkdown, renderMarkdownToHtml } from "@/lib/markdown";
+import { normalizeMarkdownForWrite } from "@/lib/content-contract";
+import { renderMarkdownToHtml } from "@/lib/markdown";
 
 type MarkdownStorage = {
   markdown: {
@@ -300,7 +301,7 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
           event.preventDefault();
 
           try {
-            const html = renderMarkdownToHtml(repairMarkdown(text), { renderMath: false });
+            const html = renderMarkdownToHtml(normalizeMarkdownForWrite(text, "editor"), { renderMath: false });
             const dom = document.createElement('div');
             dom.innerHTML = html;
             const slice = DOMParser.fromSchema(view.state.schema).parseSlice(dom, {

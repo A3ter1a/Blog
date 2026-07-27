@@ -1,4 +1,5 @@
-import { restoreLatexEscapedControlChars } from "@/lib/utils";
+import { restoreLatexEscapedControlChars } from "./utils.ts";
+import { repairAIJsonText } from "./ai-json-repair.ts";
 
 function stripCodeFence(text: string): string {
   const trimmed = text.trim();
@@ -52,55 +53,6 @@ function extractBalancedJson(text: string): string | null {
   return null;
 }
 
-function escapeInvalidBackslashes(jsonText: string): string {
-  let result = '';
-  let inString = false;
-  let escaped = false;
-
-  for (let i = 0; i < jsonText.length; i++) {
-    const char = jsonText[i];
-
-    if (!inString) {
-      result += char;
-      if (char === '"') inString = true;
-      continue;
-    }
-
-    if (escaped) {
-      escaped = false;
-      result += char;
-      continue;
-    }
-
-    if (char === '"') {
-      inString = false;
-      result += char;
-      continue;
-    }
-
-    if (char === '\\') {
-      const next = jsonText[i + 1];
-      if (!next) {
-        result += '\\\\';
-        continue;
-      }
-
-      if (next === 'u') {
-        const hex = jsonText.slice(i + 2, i + 6);
-        result += /^[0-9a-fA-F]{4}$/.test(hex) ? char : '\\\\';
-        continue;
-      }
-
-      result += /["\\/bfnrt]/.test(next) ? char : '\\\\';
-      continue;
-    }
-
-    result += char;
-  }
-
-  return result;
-}
-
 function restoreLatexControlEscapes(value: unknown): unknown {
   if (typeof value === 'string') {
     return restoreLatexEscapedControlChars(value);
@@ -124,7 +76,7 @@ function parseJsonCandidate(candidate: string): unknown {
   try {
     return restoreLatexControlEscapes(JSON.parse(cleaned));
   } catch {
-    return restoreLatexControlEscapes(JSON.parse(escapeInvalidBackslashes(cleaned)));
+    return restoreLatexControlEscapes(JSON.parse(repairAIJsonText(cleaned)));
   }
 }
 

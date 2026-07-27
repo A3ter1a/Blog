@@ -1,4 +1,14 @@
-import { assertAdminWrite, getSupabase } from "./supabase";
+import { getSupabase } from "./supabase";
+import { buildAuthHeaders } from "./fetch-with-auth";
+import { normalizeEnglishQuestionOptions } from "./english-training";
+import type { EnglishPassageRoundLedger } from "./english-round-history";
+import type { EnglishTrainingCommandAction, EnglishTrainingPersistenceMode } from "./english-training-core";
+import {
+  buildEnglishSubjectiveGradeBreakdown,
+  type EnglishSubjectiveGradeSuggestion,
+} from "./english-subjective-grade";
+import { AI_CONFIG_STORAGE_KEY, ALLOW_CLIENT_AI_KEYS, DEFAULT_AI_CONFIG, normalizeAIConfig } from "./ai-config";
+import { readJsonStorage } from "./browser-storage";
 import type {
   EnglishAttempt,
   EnglishAttemptAnswer,
@@ -16,10 +26,6 @@ import type {
   EnglishPassageRow,
   EnglishQuestionRow,
 } from "./supabase-schema";
-import {
-  isEnglishObjectiveSection,
-  normalizeEnglishObjectiveAnswer,
-} from "./english-training";
 
 const ENGLISH_PAPER_FIELDS = "id,year,paper_type,title,total_score,created_at,updated_at";
 const ENGLISH_PASSAGE_FIELDS = "id,paper_id,year,section,passage_no,title,content,total_score,sort_order,created_at,updated_at";
@@ -28,6 +34,32 @@ const ENGLISH_ATTEMPT_FIELDS = "id,user_id,passage_id,status,score,max_score,sta
 const ENGLISH_ATTEMPT_ANSWER_FIELDS = "id,attempt_id,question_id,answer,is_correct,score,created_at,updated_at";
 
 export type EnglishAttemptAnswerInput = Record<string, string>;
+
+export type EnglishTrainingRoundHistory = {
+  mode: EnglishTrainingPersistenceMode;
+  ledgers: EnglishPassageRoundLedger[];
+};
+
+export type EnglishTrainingCommandResult = EnglishTrainingRoundHistory & {
+  attempt?: EnglishAttempt;
+};
+
+export type EnglishSubjectiveSuggestionResult = EnglishTrainingRoundHistory & {
+  suggestion: EnglishSubjectiveGradeSuggestion;
+};
+
+async function readRoundHistoryResponse(response: Response, fallback: string): Promise<EnglishTrainingRoundHistory> {
+  const payload = await response.json().catch(() => ({})) as {
+    mode?: EnglishTrainingPersistenceMode;
+    ledgers?: EnglishPassageRoundLedger[];
+    error?: string;
+  };
+  if (!response.ok) throw new Error(payload.error || fallback);
+  return {
+    mode: payload.mode === "dual" || payload.mode === "shared" ? payload.mode : "legacy",
+    ledgers: Array.isArray(payload.ledgers) ? payload.ledgers : [],
+  };
+}
 
 function toDate(value: string | null | undefined, fallback = new Date()): Date {
   return value ? new Date(value) : fallback;
@@ -70,7 +102,7 @@ function mapQuestion(row: EnglishQuestionRow): EnglishQuestion {
     passageId: row.passage_id ?? "",
     questionNo: row.question_no ?? "",
     stem: row.stem ?? "",
-    options: Array.isArray(row.options) ? row.options : [],
+    options: normalizeEnglishQuestionOptions(row.options),
     standardAnswer: row.standard_answer ?? "",
     score: row.score ?? 0,
     sortOrder: row.sort_order ?? 0,
@@ -116,21 +148,25 @@ async function getCurrentUserId(): Promise<string | null> {
   return data.session?.user.id ?? null;
 }
 
-function getQuestionScore(
-  passage: EnglishPassage,
-  question: EnglishQuestion,
-  answer: string,
-  submitted: boolean,
-): { isCorrect?: boolean; score: number } {
-  if (!submitted || !isEnglishObjectiveSection(passage.section)) return { score: 0 };
-  const expected = normalizeEnglishObjectiveAnswer(question.standardAnswer);
-  const actual = normalizeEnglishObjectiveAnswer(answer);
-  if (!expected || !actual) return { isCorrect: false, score: 0 };
-  const isCorrect = expected === actual;
-  return { isCorrect, score: isCorrect ? question.score : 0 };
-}
-
 export const englishTrainingApi = {
+  async getRoundHistory(): Promise<EnglishTrainingRoundHistory> {
+    const response = await fetch("/api/english/attempt", {
+      method: "GET",
+      headers: await buildAuthHeaders(),
+      cache: "no-store",
+    });
+    const payload = await response.json().catch(() => ({})) as {
+      mode?: EnglishTrainingPersistenceMode;
+      ledgers?: EnglishPassageRoundLedger[];
+      error?: string;
+    };
+    if (!response.ok) throw new Error(payload.error || "英语训练历史加载失败");
+    return {
+      mode: payload.mode === "dual" || payload.mode === "shared" ? payload.mode : "legacy",
+      ledgers: Array.isArray(payload.ledgers) ? payload.ledgers : [],
+    };
+  },
+
   async getTrainingData(): Promise<EnglishTrainingData> {
     const supabase = getSupabase();
     const userId = await getCurrentUserId();
@@ -210,74 +246,148 @@ export const englishTrainingApi = {
 
   async saveAttempt({
     passage,
-    questions,
     answers,
-    submitted,
-    currentAttempt,
+    round,
+    action,
   }: {
     passage: EnglishPassage;
-    questions: EnglishQuestion[];
     answers: EnglishAttemptAnswerInput;
-    submitted: boolean;
-    currentAttempt?: EnglishAttempt;
-  }): Promise<EnglishAttempt> {
-    const userId = await assertAdminWrite();
-    const supabase = getSupabase();
-    const now = new Date().toISOString();
-    const maxScore = questions.reduce((sum, question) => sum + question.score, 0);
-    const graded = questions.map((question) => ({
-      question,
-      answer: answers[question.id] ?? "",
-      grade: getQuestionScore(passage, question, answers[question.id] ?? "", submitted),
-    }));
-    const keepSubmitted = currentAttempt?.status === "submitted" && !submitted;
-    const totalScore = submitted
-      ? graded.reduce((sum, item) => sum + item.grade.score, 0)
-      : currentAttempt?.score ?? 0;
-
-    const attemptPayload: EnglishAttemptInsert = {
-      user_id: userId,
-      passage_id: passage.id,
-      status: submitted || keepSubmitted ? "submitted" : "in_progress",
-      score: totalScore,
-      max_score: maxScore,
-      started_at: currentAttempt?.startedAt.toISOString() ?? now,
-      submitted_at: submitted ? now : currentAttempt?.submittedAt?.toISOString(),
-      created_at: currentAttempt ? undefined : now,
-      updated_at: now,
+    round: 1 | 2 | 3;
+    action: Exclude<EnglishTrainingCommandAction, "start_next">;
+  }): Promise<EnglishTrainingCommandResult> {
+    const response = await fetch("/api/english/attempt", {
+      method: "POST",
+      headers: await buildAuthHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify({
+        passageId: passage.id,
+        answers,
+        round,
+        action,
+        commandId: crypto.randomUUID(),
+      }),
+    });
+    const payload = await response.json().catch(() => ({})) as {
+      attempt?: EnglishAttemptRow | null;
+      answers?: EnglishAttemptAnswerRow[];
+      mode?: EnglishTrainingPersistenceMode;
+      ledgers?: EnglishPassageRoundLedger[];
+      error?: string;
     };
+    if (!response.ok) throw new Error(payload.error || "英语训练保存失败");
+    return {
+      mode: payload.mode === "dual" || payload.mode === "shared" ? payload.mode : "legacy",
+      ledgers: Array.isArray(payload.ledgers) ? payload.ledgers : [],
+      ...(payload.attempt ? { attempt: mapAttempt(payload.attempt, (payload.answers ?? []).map(mapAttemptAnswer)) } : {}),
+    };
+  },
 
-    const { data: attemptData, error: attemptError } = await supabase
-      .from("english_attempts")
-      .upsert(attemptPayload, { onConflict: "user_id,passage_id" })
-      .select(ENGLISH_ATTEMPT_FIELDS)
-      .single();
-    if (attemptError) throw attemptError;
+  async startNextRound(
+    passage: EnglishPassage,
+    round: 1 | 2 | 3,
+  ): Promise<EnglishTrainingCommandResult> {
+    const response = await fetch("/api/english/attempt", {
+      method: "POST",
+      headers: await buildAuthHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify({
+        passageId: passage.id,
+        answers: {},
+        round,
+        action: "start_next",
+        commandId: crypto.randomUUID(),
+      }),
+    });
+    const payload = await response.json().catch(() => ({})) as {
+      attempt?: EnglishAttemptRow | null;
+      answers?: EnglishAttemptAnswerRow[];
+      mode?: EnglishTrainingPersistenceMode;
+      ledgers?: EnglishPassageRoundLedger[];
+      error?: string;
+    };
+    if (!response.ok) throw new Error(payload.error || "无法开始下一轮");
+    return {
+      mode: payload.mode === "dual" || payload.mode === "shared" ? payload.mode : "legacy",
+      ledgers: Array.isArray(payload.ledgers) ? payload.ledgers : [],
+      ...(payload.attempt ? { attempt: mapAttempt(payload.attempt, (payload.answers ?? []).map(mapAttemptAnswer)) } : {}),
+    };
+  },
 
-    const attempt = mapAttempt(attemptData as EnglishAttemptRow);
-    const answerPayloads: EnglishAttemptAnswerInsert[] = graded.map(({ question, answer, grade }) => ({
-      attempt_id: attempt.id,
-      question_id: question.id,
-      answer,
-      is_correct: keepSubmitted
-        ? currentAttempt?.answers.find((item) => item.questionId === question.id)?.isCorrect
-        : grade.isCorrect,
-      score: keepSubmitted
-        ? currentAttempt?.answers.find((item) => item.questionId === question.id)?.score ?? 0
-        : grade.score,
-      updated_at: now,
-      created_at: currentAttempt ? undefined : now,
-    }));
-
-    if (answerPayloads.length > 0) {
-      const { data: answerData, error: answerError } = await supabase
-        .from("english_attempt_answers")
-        .upsert(answerPayloads, { onConflict: "attempt_id,question_id" })
-        .select(ENGLISH_ATTEMPT_ANSWER_FIELDS);
-      if (answerError) throw answerError;
-      attempt.answers = ((answerData || []) as EnglishAttemptAnswerRow[]).map(mapAttemptAnswer);
+  async requestSubjectiveSuggestion({
+    passage,
+    round,
+    answers,
+  }: {
+    passage: EnglishPassage;
+    round: 1 | 2 | 3;
+    answers: EnglishAttemptAnswerInput;
+  }): Promise<EnglishSubjectiveSuggestionResult> {
+    const config = readJsonStorage(AI_CONFIG_STORAGE_KEY, DEFAULT_AI_CONFIG, normalizeAIConfig);
+    const suggestionResponse = await fetch("/api/ai/english-subjective-grade", {
+      method: "POST",
+      headers: await buildAuthHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify({
+        passageId: passage.id,
+        answers,
+        apiKey: ALLOW_CLIENT_AI_KEYS ? config.deepseekApiKey : undefined,
+      }),
+    });
+    const suggestionPayload = await suggestionResponse.json().catch(() => ({})) as {
+      suggestion?: EnglishSubjectiveGradeSuggestion;
+      error?: string;
+    };
+    if (!suggestionResponse.ok || !suggestionPayload.suggestion) {
+      throw new Error(suggestionPayload.error || "英语主观题建议评分失败");
     }
 
-    return attempt;
+    const suggestion = suggestionPayload.suggestion;
+    const recordResponse = await fetch("/api/english/subjective", {
+      method: "POST",
+      headers: await buildAuthHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify({
+        action: "record_suggestion",
+        passageId: passage.id,
+        round,
+        answers,
+        commandId: crypto.randomUUID(),
+        suggestion: {
+          score: suggestion.score,
+          feedback: suggestion.feedback,
+          breakdown: buildEnglishSubjectiveGradeBreakdown(suggestion),
+        },
+      }),
+    });
+    return { ...await readRoundHistoryResponse(recordResponse, "AI 建议保存失败"), suggestion };
+  },
+
+  async confirmSubjectiveGrade({
+    passage,
+    revisionId,
+    score,
+    feedback,
+    suggestion,
+  }: {
+    passage: EnglishPassage;
+    revisionId: string;
+    score: number;
+    feedback: string;
+    suggestion: EnglishSubjectiveGradeSuggestion;
+  }): Promise<EnglishTrainingRoundHistory> {
+    const response = await fetch("/api/english/subjective", {
+      method: "POST",
+      headers: await buildAuthHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify({
+        action: "confirm_final",
+        passageId: passage.id,
+        revisionId,
+        commandId: crypto.randomUUID(),
+        score,
+        feedback,
+        breakdown: {
+          ...buildEnglishSubjectiveGradeBreakdown(suggestion),
+          decision: "user_confirmed",
+          suggestedScore: suggestion.score,
+        },
+      }),
+    });
+    return readRoundHistoryResponse(response, "英语主观题终分确认失败");
   },
 };

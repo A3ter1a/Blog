@@ -38,6 +38,8 @@ type UseNoteEditorRouteResult = {
   routeReady: boolean;
   isEditMode: boolean;
   editingId: string;
+  editingContentVersion: number | null;
+  editingIsPublished: boolean;
   isLoadingExistingNote: boolean;
   loadNotice: string | null;
   loadError: string | null;
@@ -89,6 +91,8 @@ export function useNoteEditorRoute({
   const [routeReady, setRouteReady] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
   const [editingId, setEditingId] = useState("");
+  const [editingContentVersion, setEditingContentVersion] = useState<number | null>(null);
+  const [editingIsPublished, setEditingIsPublished] = useState(false);
   const [isLoadingExistingNote, setIsLoadingExistingNote] = useState(false);
   const [loadNotice, setLoadNotice] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -104,6 +108,8 @@ export function useNoteEditorRoute({
       if (editId) {
         setIsEditMode(true);
         setEditingId(editId);
+        setEditingContentVersion(null);
+        setEditingIsPublished(false);
         setIsLoadingExistingNote(true);
         setLoadNotice(null);
         setLoadError(null);
@@ -117,6 +123,8 @@ export function useNoteEditorRoute({
         withLoadTimeout(notesApi.getEditableById(editId)).then((existingNote) => {
           if (cancelled) return;
           if (existingNote) {
+            setEditingContentVersion(existingNote.contentVersion);
+            setEditingIsPublished(existingNote.isPublished);
             setLoadNotice(null);
             const visibleTags = splitMath3PracticeTags(existingNote.tags).visibleTags;
 
@@ -153,18 +161,22 @@ export function useNoteEditorRoute({
       } else if (importMode) {
         setIsEditMode(false);
         setEditingId("");
+        setEditingContentVersion(null);
+        setEditingIsPublished(false);
         setLoadError(null);
         setLoadNotice(null);
         setIsLoadingExistingNote(false);
         if (initialImportDraft) {
           applyDraft(draftFromImport(initialImportDraft));
-          toast.success("已自动填充导入内容，请检查后发布");
+          toast.success("已自动填充导入内容，请检查后保存");
           sessionStorage.removeItem("pendingImport");
         }
         setRouteReady(true);
       } else {
         setIsEditMode(false);
         setEditingId("");
+        setEditingContentVersion(null);
+        setEditingIsPublished(false);
         setLoadError(null);
         setLoadNotice(null);
         setIsLoadingExistingNote(false);
@@ -186,6 +198,8 @@ export function useNoteEditorRoute({
     routeReady,
     isEditMode,
     editingId,
+    editingContentVersion,
+    editingIsPublished,
     isLoadingExistingNote,
     loadNotice,
     loadError,

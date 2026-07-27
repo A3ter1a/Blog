@@ -124,6 +124,7 @@ export const mockNotes: Note[] = [
     createdAt: new Date('2026-04-20'),
     updatedAt: new Date('2026-04-21'),
     isPublished: true,
+    contentVersion: 1,
   },
   {
     id: 'demo-essay-1',
@@ -135,6 +136,7 @@ export const mockNotes: Note[] = [
     createdAt: new Date('2026-04-19'),
     updatedAt: new Date('2026-04-21'),
     isPublished: true,
+    contentVersion: 1,
   },
   {
     id: 'demo-problem-1',
@@ -221,5 +223,6 @@ export const mockNotes: Note[] = [
     createdAt: new Date('2026-04-18'),
     updatedAt: new Date('2026-04-21'),
     isPublished: true,
+    contentVersion: 1,
   },
 ];

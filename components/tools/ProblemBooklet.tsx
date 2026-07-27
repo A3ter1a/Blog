@@ -4,7 +4,10 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   Bookmark,
   BookOpen,
+  ChevronLeft,
+  ChevronRight,
   CheckSquare,
+  Eye,
   FileDown,
   Loader2,
   Printer,
@@ -17,7 +20,18 @@ import { MarkdownContent } from "@/components/ui/MarkdownContent";
 import { PageHeader, PageShell } from "@/components/ui/PageScaffold";
 import { useToast } from "@/components/ui/Toast";
 import { flattenPracticeProblems, getPracticeProblemKey, type PracticeProblemItem } from "@/lib/math3-practice";
+import {
+  buildBookletNoteMarkdown,
+  buildBookletSourceManifest,
+  calculateBookletMarkdownSnapshotSha256,
+  calculateBookletProblemSha256,
+  validateBookletProblemSnapshot,
+  type BookletProblemSnapshot,
+} from "@/lib/booklet-contract";
+import { normalizeMarkdownForWrite } from "@/lib/content-contract";
+import { buildAuthHeaders } from "@/lib/fetch-with-auth";
 import { problemPracticeApi } from "@/lib/problem-practice-api";
+import { getPrivateNoteReadPath } from "@/lib/note-routes";
 import { notesApi } from "@/lib/supabase";
 import type { Difficulty, Note, ProblemPracticeStatus, ProblemType, Subject } from "@/lib/types";
 import { difficultyMap, problemTypeMap, subjectMap } from "@/lib/types";
@@ -30,6 +44,7 @@ type ExportTarget = "questions" | "answers";
 const PROBLEM_SET_LIMIT = 200;
 const MARKED_SET_ID = "__asteroid_marked_problem_set__";
 const MARKED_SET_DATE = new Date(0);
+const BOOKLET_RULE_VERSION = "asteroid-booklet-v2";
 
 type MarkedStatusLoadState = "idle" | "loading" | "ready" | "error";
 
@@ -63,6 +78,10 @@ function unique(values: string[]): string[] {
 
 function normalizeQuery(value: string): string {
   return value.trim().toLowerCase();
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
 }
 
 function getSetProblemKeys(set: Note | undefined): string[] {
@@ -112,7 +131,8 @@ function createMarkedSetSummary(count: number, loadState: MarkedStatusLoadState)
     problems: [],
     createdAt: MARKED_SET_DATE,
     updatedAt: MARKED_SET_DATE,
-    isPublished: true,
+    isPublished: false,
+    contentVersion: 1,
     helperText: loadState === "loading" ? "正在同步三刷标记" : "三刷收集",
     isMarkedVirtualSet: true,
     problemCountHint: loadState === "loading" ? undefined : count,
@@ -158,6 +178,12 @@ export function ProblemBooklet() {
   const [loadingSummaries, setLoadingSummaries] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [activePrintTarget, setActivePrintTarget] = useState<ExportTarget | null>(null);
+  const [creatingNote, setCreatingNote] = useState(false);
+  const [preparingBookletPreview, setPreparingBookletPreview] = useState(false);
+  const [bookletSnapshots, setBookletSnapshots] = useState<BookletProblemSnapshot[]>([]);
+  const [bookletReviewed, setBookletReviewed] = useState<boolean[]>([]);
+  const [activeBookletReviewIndex, setActiveBookletReviewIndex] = useState(0);
+  const [bookletReviewOpen, setBookletReviewOpen] = useState(false);
   const [markedStatuses, setMarkedStatuses] = useState<ProblemPracticeStatus[]>([]);
   const [markedStatusLoadState, setMarkedStatusLoadState] = useState<MarkedStatusLoadState>("idle");
 
@@ -496,6 +522,113 @@ export function ProblemBooklet() {
     }, 250);
   };
 
+  const openPrivateBookletReview = async () => {
+    if (selectedProblems.length === 0 || preparingBookletPreview) {
+      if (selectedProblems.length === 0) toast.info("先选择要放入笔记的题目");
+      return;
+    }
+    setPreparingBookletPreview(true);
+    try {
+      const snapshots = await Promise.all(selectedProblems.map(async (problem): Promise<BookletProblemSnapshot> => {
+        const snapshot: BookletProblemSnapshot = {
+          sourceNoteId: problem.sourceNoteId,
+          sourceProblemId: problem.id,
+          sourceContentVersion: problem.sourceContentVersion,
+          sourceLabel: `${problem.sourceNoteTitle} · 原题集第 ${problem.sourceProblemIndex + 1} 题`,
+          question: problem.question,
+          standardAnswer: problem.answer,
+          explanation: problem.explanation ?? "",
+          methodSummary: problem.tips ?? "",
+        };
+        return { ...snapshot, sourceChecksum: await calculateBookletProblemSha256(snapshot) };
+      }));
+      setBookletSnapshots(snapshots);
+      setBookletReviewed(snapshots.map(() => false));
+      setActiveBookletReviewIndex(0);
+      setBookletReviewOpen(true);
+    } catch (error) {
+      toast.error(`做题本预览准备失败：${error instanceof Error ? error.message : "未知错误"}`);
+    } finally {
+      setPreparingBookletPreview(false);
+    }
+  };
+
+  const createPrivateBookletNote = async () => {
+    if (bookletSnapshots.length === 0 || creatingNote) return;
+    const invalidIndex = bookletSnapshots.findIndex((snapshot) => !validateBookletProblemSnapshot(snapshot).valid);
+    if (invalidIndex >= 0) {
+      const missing = validateBookletProblemSnapshot(bookletSnapshots[invalidIndex]).missingFields;
+      const labels = {
+        question: "题目",
+        standardAnswer: "标准答案",
+        explanation: "详细解析",
+        methodSummary: "方法总结",
+      };
+      toast.error(`第 ${invalidIndex + 1} 题缺少${missing.map((field) => labels[field]).join("、")}，补齐后才能生成正式三刷笔记。`);
+      setActiveBookletReviewIndex(invalidIndex);
+      return;
+    }
+    const unreviewedIndex = bookletReviewed.findIndex((reviewed) => !reviewed);
+    if (unreviewedIndex >= 0 || bookletReviewed.length !== bookletSnapshots.length) {
+      toast.error(`请逐题核对方法总结；第 ${Math.max(0, unreviewedIndex) + 1} 题尚未确认。`);
+      setActiveBookletReviewIndex(Math.max(0, unreviewedIndex));
+      return;
+    }
+
+    setCreatingNote(true);
+    try {
+      const dateLabel = new Intl.DateTimeFormat("zh-CN", {
+        timeZone: "Asia/Shanghai",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      }).format(new Date());
+      const title = `三刷做题本 · ${dateLabel}`;
+      const content = normalizeMarkdownForWrite(buildBookletNoteMarkdown(bookletSnapshots), "editor");
+      const snapshotChecksum = await calculateBookletMarkdownSnapshotSha256(content);
+      const sourceRefs = buildBookletSourceManifest(bookletSnapshots);
+      const response = await fetch("/api/booklets", {
+        method: "POST",
+        headers: await buildAuthHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify({
+          commandId: crypto.randomUUID(),
+          title,
+          content,
+          sourceRefs,
+          ruleVersion: BOOKLET_RULE_VERSION,
+          snapshotChecksum,
+          methodSummaryConfirmed: true,
+        }),
+      });
+      const payload = asRecord(await response.json().catch(() => ({})));
+      let noteId = "";
+      if (response.ok) {
+        const result = asRecord(payload.result);
+        noteId = typeof result.noteId === "string" ? result.noteId : "";
+        if (!noteId) throw new Error("数据库没有返回做题本笔记 ID");
+      } else if (response.status === 409) {
+        const note = await notesApi.create({
+          type: "note",
+          title,
+          content,
+          subject: "math",
+          tags: ["三刷做题本", "错题复盘", "自动快照"],
+          isPublished: false,
+        });
+        noteId = note.id;
+      } else {
+        throw new Error(typeof payload.error === "string" ? payload.error : "做题本原子创建失败");
+      }
+      setBookletReviewOpen(false);
+      toast.success("三刷做题本已保存到私人笔记");
+      window.location.assign(getPrivateNoteReadPath(noteId));
+    } catch (error) {
+      toast.error(`生成私人笔记失败：${error instanceof Error ? error.message : "未知错误"}`);
+    } finally {
+      setCreatingNote(false);
+    }
+  };
+
   return (
     <>
       <div className="no-print">
@@ -550,12 +683,17 @@ export function ProblemBooklet() {
                     <Printer className="h-4 w-4" />
                     导出答案册
                   </button>
+                  <button type="button" onClick={openPrivateBookletReview} disabled={selectedProblems.length === 0 || preparingBookletPreview} className="control-button h-11 whitespace-nowrap px-3 text-sm max-sm:flex-1">
+                    {preparingBookletPreview ? <Loader2 className="h-4 w-4 animate-spin" /> : <Eye className="h-4 w-4" />}
+                    预览并确认入笔记
+                  </button>
                 </div>
               </div>
 
               <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-on-surface-variant">
                 <span className="tag-chip px-2 py-0.5">{visibleProblems.length} 个结果</span>
                 <span className="tag-chip px-2 py-0.5">{selectedProblems.length} 题入册</span>
+                <span>生成笔记前会强制检查题目、答案、详细解析与方法总结。</span>
                 {loadingSets && <span className="inline-flex items-center gap-1"><Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />加载题目</span>}
               </div>
             </div>
@@ -576,6 +714,23 @@ export function ProblemBooklet() {
         </section>
       </PageShell>
 
+      {bookletReviewOpen && (
+        <BookletNoteReviewDialog
+          snapshots={bookletSnapshots}
+          reviewed={bookletReviewed}
+          activeIndex={activeBookletReviewIndex}
+          creating={creatingNote}
+          onActiveIndexChange={setActiveBookletReviewIndex}
+          onSnapshotChange={(index, next) => {
+            setBookletSnapshots((current) => current.map((snapshot, snapshotIndex) => snapshotIndex === index ? next : snapshot));
+            setBookletReviewed((current) => current.map((value, snapshotIndex) => snapshotIndex === index ? false : value));
+          }}
+          onReviewedChange={(index, value) => setBookletReviewed((current) => current.map((reviewed, snapshotIndex) => snapshotIndex === index ? value : reviewed))}
+          onClose={() => { if (!creatingNote) setBookletReviewOpen(false); }}
+          onConfirm={() => { void createPrivateBookletNote(); }}
+        />
+      )}
+
       {activePrintTarget && (
         <PrintDeck
           className={activePrintTarget === "questions" ? "problem-booklet-questions" : "problem-booklet-answers"}
@@ -584,6 +739,127 @@ export function ProblemBooklet() {
         />
       )}
     </>
+  );
+}
+
+function BookletNoteReviewDialog({
+  snapshots,
+  reviewed,
+  activeIndex,
+  creating,
+  onActiveIndexChange,
+  onSnapshotChange,
+  onReviewedChange,
+  onClose,
+  onConfirm,
+}: {
+  snapshots: BookletProblemSnapshot[];
+  reviewed: boolean[];
+  activeIndex: number;
+  creating: boolean;
+  onActiveIndexChange: (index: number) => void;
+  onSnapshotChange: (index: number, snapshot: BookletProblemSnapshot) => void;
+  onReviewedChange: (index: number, value: boolean) => void;
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  const snapshot = snapshots[activeIndex];
+  if (!snapshot) return null;
+  const validation = validateBookletProblemSnapshot(snapshot);
+  const reviewedCount = reviewed.filter(Boolean).length;
+  const allReady = reviewedCount === snapshots.length
+    && snapshots.every((item) => validateBookletProblemSnapshot(item).valid);
+  const updateField = (field: "question" | "standardAnswer" | "explanation" | "methodSummary", value: string) => {
+    onSnapshotChange(activeIndex, { ...snapshot, [field]: value });
+  };
+
+  return (
+    <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/45 p-3 sm:p-6" role="presentation" onClick={onClose}>
+      <section className="surface-panel flex max-h-[92vh] w-full max-w-5xl flex-col overflow-hidden" role="dialog" aria-modal="true" aria-label="三刷做题本入笔记预览" onClick={(event) => event.stopPropagation()}>
+        <header className="flex flex-wrap items-start justify-between gap-3 border-b border-outline-variant/20 p-4 sm:p-5">
+          <div>
+            <div className="text-xs font-semibold text-primary">入笔记前人工确认</div>
+            <h2 className="mt-1 text-lg font-semibold text-on-surface">逐题核对四段快照</h2>
+            <p className="mt-1 text-sm text-on-surface-variant">题目、答案、详细解析、方法总结都会直接显示在私人笔记；方法总结必须逐题确认。</p>
+          </div>
+          <button type="button" onClick={onClose} disabled={creating} className="control-button h-9 w-9 p-0" aria-label="关闭预览"><X className="h-4 w-4" /></button>
+        </header>
+
+        <div className="grid min-h-0 flex-1 lg:grid-cols-[14rem_minmax(0,1fr)]">
+          <aside className="overflow-y-auto border-b border-outline-variant/20 p-3 lg:border-b-0 lg:border-r">
+            <div className="mb-3 text-xs text-on-surface-variant">已确认 {reviewedCount}/{snapshots.length} 题</div>
+            <div className="grid grid-cols-5 gap-2 lg:grid-cols-3">
+              {snapshots.map((item, index) => (
+                <button
+                  key={`${item.sourceNoteId}-${item.sourceProblemId}-${index}`}
+                  type="button"
+                  onClick={() => onActiveIndexChange(index)}
+                  className={`control-button h-9 px-2 text-xs ${index === activeIndex ? "control-button-primary" : ""}`}
+                  aria-label={`查看第 ${index + 1} 题`}
+                >
+                  {reviewed[index] ? <CheckSquare className="h-3.5 w-3.5" /> : <Square className="h-3.5 w-3.5" />}
+                  {index + 1}
+                </button>
+              ))}
+            </div>
+          </aside>
+
+          <div className="min-h-0 overflow-y-auto p-4 sm:p-5">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <div className="text-xs text-on-surface-variant">第 {activeIndex + 1}/{snapshots.length} 题</div>
+                <div className="mt-1 text-sm font-semibold text-on-surface">{snapshot.sourceLabel}</div>
+              </div>
+              {!validation.valid && <span className="text-xs text-red-600">仍缺少 {validation.missingFields.length} 项</span>}
+            </div>
+
+            <div className="mt-4 grid gap-4">
+              <ReviewTextarea label="题目" value={snapshot.question} onChange={(value) => updateField("question", value)} rows={5} />
+              <ReviewTextarea label="标准答案" value={snapshot.standardAnswer} onChange={(value) => updateField("standardAnswer", value)} rows={4} />
+              <ReviewTextarea label="详细解析" value={snapshot.explanation} onChange={(value) => updateField("explanation", value)} rows={6} />
+              <ReviewTextarea label="方法总结" value={snapshot.methodSummary} onChange={(value) => updateField("methodSummary", value)} rows={5} emphasis />
+            </div>
+
+            <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-lg border border-primary/25 bg-primary/[0.05] p-3 text-sm text-on-surface">
+              <input
+                type="checkbox"
+                checked={Boolean(reviewed[activeIndex])}
+                disabled={!validation.valid}
+                onChange={(event) => onReviewedChange(activeIndex, event.target.checked)}
+                className="mt-0.5 h-4 w-4"
+              />
+              <span>我已对照本题内容，确认方法总结准确、可复用，并同意把这四段内容写入不可变快照区。</span>
+            </label>
+          </div>
+        </div>
+
+        <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-outline-variant/20 p-4">
+          <div className="flex gap-2">
+            <button type="button" onClick={() => onActiveIndexChange(Math.max(0, activeIndex - 1))} disabled={activeIndex === 0 || creating} className="control-button h-10 px-3 text-sm"><ChevronLeft className="h-4 w-4" />上一题</button>
+            <button type="button" onClick={() => onActiveIndexChange(Math.min(snapshots.length - 1, activeIndex + 1))} disabled={activeIndex === snapshots.length - 1 || creating} className="control-button h-10 px-3 text-sm">下一题<ChevronRight className="h-4 w-4" /></button>
+          </div>
+          <button type="button" onClick={onConfirm} disabled={!allReady || creating} className="control-button control-button-primary h-11 px-4 text-sm">
+            {creating ? <Loader2 className="h-4 w-4 animate-spin" /> : <BookOpen className="h-4 w-4" />}
+            {allReady ? "确认快照并保存到私人笔记" : `还需确认 ${snapshots.length - reviewedCount} 题`}
+          </button>
+        </footer>
+      </section>
+    </div>
+  );
+}
+
+function ReviewTextarea({ label, value, onChange, rows, emphasis = false }: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  rows: number;
+  emphasis?: boolean;
+}) {
+  return (
+    <label className="grid gap-1.5 text-xs text-on-surface-variant">
+      <span className={emphasis ? "font-semibold text-primary" : "font-semibold text-on-surface"}>{label}</span>
+      <textarea value={value} onChange={(event) => onChange(event.target.value)} rows={rows} className="field-control resize-y px-3 py-2 text-sm leading-6 text-on-surface" />
+    </label>
   );
 }
 
@@ -796,12 +1072,20 @@ function AnswerPage({ problem, pageIndex, total }: { problem: PracticeProblemIte
         <h3 className="mb-3 text-sm font-semibold text-green-800">答案</h3>
         <MarkdownContent content={problem.answer || "暂无答案"} className="booklet-markdown text-green-950" />
       </section>
-      {problem.explanation?.trim() && (
-        <section className="mt-4 rounded-lg border border-neutral-200 bg-neutral-50 p-4">
-          <h3 className="mb-3 text-sm font-semibold text-neutral-800">解析</h3>
-          <MarkdownContent content={problem.explanation} className="booklet-markdown text-neutral-950" />
-        </section>
-      )}
+      <section className="mt-4 rounded-lg border border-neutral-200 bg-neutral-50 p-4">
+        <h3 className="mb-3 text-sm font-semibold text-neutral-800">详细解析</h3>
+        <MarkdownContent
+          content={problem.explanation?.trim() || "暂无解析；生成正式做题本前必须补充并确认。"}
+          className="booklet-markdown text-neutral-950"
+        />
+      </section>
+      <section className="mt-4 rounded-lg border border-sky-200 bg-sky-50 p-4">
+        <h3 className="mb-3 text-sm font-semibold text-sky-900">方法总结</h3>
+        <MarkdownContent
+          content={problem.tips?.trim() || "暂无方法总结；生成正式做题本前必须补充并确认。"}
+          className="booklet-markdown text-sky-950"
+        />
+      </section>
     </article>
   );
 }

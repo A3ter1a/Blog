@@ -336,6 +336,7 @@ export function NotesClient({
     <>
       <PageHeader
         width="wide"
+        template="library"
         title="文章与题集"
         description="搜索、阅读、整理你的学习材料。"
         actions={isAdmin && (
@@ -367,7 +368,7 @@ export function NotesClient({
         ]}
       />
 
-      <PageShell width="wide" topPadding="content">
+      <PageShell width="wide" topPadding="content" template="library">
 
         {/* Batch Actions Bar (visible in select mode) */}
         {isAdmin && selectMode && (

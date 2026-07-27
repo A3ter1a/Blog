@@ -28,6 +28,7 @@ function createStaticEntries(now: Date): MetadataRoute.Sitemap {
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const now = new Date();
   const entries = createStaticEntries(now);
+  if (process.env.ASTEROID_OFFLINE_BUILD === "1") return entries;
 
   try {
     const notes = await notesApi.getSummaries({

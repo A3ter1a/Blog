@@ -146,6 +146,7 @@ export interface Note {
   createdAt: Date;
   updatedAt: Date;
   isPublished: boolean;
+  contentVersion: number | null;
 }
 
 export const subjectMap: Record<Subject, string> = {

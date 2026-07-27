@@ -1,43 +1,13 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useEffect, useRef, useState } from "react";
 
 const StudyTimeline = dynamic(() => import("@/components/home/StudyTimeline"), {
   loading: () => <StudyTimelineSkeleton />,
 });
 
 export function StudyTimelineDeferred() {
-  const [shouldLoad, setShouldLoad] = useState(false);
-  const hostRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    const host = hostRef.current;
-
-    if (!host || typeof IntersectionObserver === "undefined") {
-      setShouldLoad(true);
-      return;
-    }
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries.some((entry) => entry.isIntersecting)) {
-          setShouldLoad(true);
-          observer.disconnect();
-        }
-      },
-      { rootMargin: "420px 0px" },
-    );
-
-    observer.observe(host);
-    return () => observer.disconnect();
-  }, []);
-
-  return (
-    <div ref={hostRef}>
-      {shouldLoad ? <StudyTimeline /> : <StudyTimelineSkeleton />}
-    </div>
-  );
+  return <StudyTimeline />;
 }
 
 function StudyTimelineSkeleton() {

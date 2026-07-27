@@ -7,6 +7,7 @@ import Link from "next/link";
 import { notesApi } from "@/lib/supabase";
 import { subjectMap, typeMap } from "@/lib/types";
 import type { Note } from "@/lib/types";
+import { getNoteReadPath } from "@/lib/note-routes";
 import { dialogMotion, overlayMotion, uiMotion } from "@/lib/motion";
 
 interface SearchOverlayProps {
@@ -149,7 +150,7 @@ export function SearchOverlay({ isOpen, onClose }: SearchOverlayProps) {
                       {results.map((note) => (
                         <Link
                           key={note.id}
-                          href={`/notes/${note.id}`}
+                          href={getNoteReadPath(note)}
                           onClick={onClose}
                           className="motion-ui group flex items-center justify-between px-6 py-3 hover:bg-surface-container-high"
                         >

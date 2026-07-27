@@ -1,11 +1,13 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ChangeEvent } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { AlertCircle, CheckCircle2, FileScan, FileUp, Link as LinkIcon, Loader2, RotateCcw, X } from "lucide-react";
 import { MarkdownContent } from "@/components/ui/MarkdownContent";
+import { useJobCenter } from "@/components/jobs/JobCenter";
 import { buildAuthHeaders } from "@/lib/fetch-with-auth";
+import { normalizeMarkdownForWrite } from "@/lib/content-contract";
 import { dialogMotion, overlayMotion, uiMotion } from "@/lib/motion";
 import { deleteOcrDocument, generateFileName, uploadOcrDocument } from "@/lib/supabase-storage";
 
@@ -22,24 +24,13 @@ type SubmitResponse = {
   success?: boolean;
   taskId?: unknown;
   fileName?: unknown;
-  error?: unknown;
-};
-
-type StatusResponse = {
-  success?: boolean;
-  taskId?: unknown;
-  status?: unknown;
-  taskError?: unknown;
-  markdown?: unknown;
-  markdownUrl?: unknown;
+  ledgerAvailability?: unknown;
+  ledgerJob?: unknown;
   error?: unknown;
 };
 
 const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
 const DIRECT_UPLOAD_LIMIT_BYTES = 4 * 1024 * 1024;
-const FIRST_POLL_DELAY_MS = 5000;
-const POLL_INTERVAL_MS = 6000;
-const MAX_POLLS = 120;
 
 function toString(value: unknown): string {
   if (value === null || value === undefined) return "";
@@ -56,10 +47,6 @@ function formatFileSize(size: number) {
   return `${(size / 1024 / 1024).toFixed(1)} MB`;
 }
 
-function wait(ms: number) {
-  return new Promise((resolve) => window.setTimeout(resolve, ms));
-}
-
 async function readApiJson<T extends { error?: unknown }>(response: Response, fallback: string): Promise<T> {
   const payload = await response.json().catch(() => ({})) as T;
   if (!response.ok) {
@@ -69,7 +56,7 @@ async function readApiJson<T extends { error?: unknown }>(response: Response, fa
 }
 
 function normalizeMarkdownForInsert(markdown: string) {
-  return `\n\n${markdown.trim()}\n`;
+  return `\n\n${normalizeMarkdownForWrite(markdown, "ocr")}\n`;
 }
 
 function shouldUseTemporaryLink(file: File) {
@@ -81,6 +68,7 @@ function isPayloadTooLargeResponse(response: Response) {
 }
 
 export function DocumentOcrDialog({ isOpen, onClose, onInsert }: DocumentOcrDialogProps) {
+  const { jobs, createDocumentOcrJob, loadJobResult, claimJobResult } = useJobCenter();
   const [sourceMode, setSourceMode] = useState<SourceMode>("upload");
   const [file, setFile] = useState<File | null>(null);
   const [fileUrl, setFileUrl] = useState("");
@@ -91,12 +79,47 @@ export function DocumentOcrDialog({ isOpen, onClose, onInsert }: DocumentOcrDial
   const [statusText, setStatusText] = useState("");
   const [error, setError] = useState("");
   const [pollCount, setPollCount] = useState(0);
-  const activeRunRef = useRef(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const temporaryOcrPathRef = useRef<string | null>(null);
+  const autoRestoreJobRef = useRef<string | null>(null);
+  const resumableJob = taskId
+    ? undefined
+    : jobs.find((job) => (
+      job.type === "document_ocr"
+      && (job.status === "queued" || job.status === "running" || (job.status === "succeeded" && !job.resultClaimedAt))
+    ));
+  const effectiveTaskId = taskId || resumableJob?.id || "";
+  const currentJob = jobs.find((job) => job.id === effectiveTaskId);
+  const visibleStage: OcrStage = currentJob
+    ? currentJob.status === "succeeded"
+      ? "complete"
+      : currentJob.status === "failed"
+        ? "error"
+        : "waiting"
+    : stage;
+  const visibleMarkdown = currentJob?.resultMarkdown ?? markdown;
+  const visibleStatusText = currentJob?.statusText ?? statusText;
+  const visibleError = currentJob?.error ?? error;
+  const visiblePollCount = currentJob?.pollCount ?? pollCount;
 
-  const isBusy = stage === "submitting" || stage === "waiting";
+  const isBusy = stage === "submitting";
   const canSubmit = sourceMode === "upload" ? Boolean(file) : Boolean(fileUrl.trim());
+
+  useEffect(() => {
+    if (!isOpen) {
+      autoRestoreJobRef.current = null;
+      return;
+    }
+    if (
+      currentJob?.status === "succeeded"
+      && !currentJob.resultMarkdown
+      && currentJob.remoteJobId
+      && autoRestoreJobRef.current !== currentJob.id
+    ) {
+      autoRestoreJobRef.current = currentJob.id;
+      void loadJobResult(currentJob.id);
+    }
+  }, [currentJob, isOpen, loadJobResult]);
 
   const cleanupTemporaryOcrFile = async () => {
     const path = temporaryOcrPathRef.current;
@@ -111,10 +134,9 @@ export function DocumentOcrDialog({ isOpen, onClose, onInsert }: DocumentOcrDial
   };
 
   const reset = () => {
-    activeRunRef.current += 1;
-    void cleanupTemporaryOcrFile();
+    if (!currentJob) void cleanupTemporaryOcrFile();
     setStage("idle");
-    setTaskId("");
+    setTaskId("__new__");
     setMarkdown("");
     setStatusText("");
     setError("");
@@ -122,7 +144,6 @@ export function DocumentOcrDialog({ isOpen, onClose, onInsert }: DocumentOcrDial
   };
 
   const handleClose = () => {
-    reset();
     onClose();
   };
 
@@ -130,7 +151,7 @@ export function DocumentOcrDialog({ isOpen, onClose, onInsert }: DocumentOcrDial
     const nextFile = event.target.files?.[0] || null;
     setError("");
     setMarkdown("");
-    setTaskId("");
+    setTaskId("__new__");
     setPollCount(0);
     setStage("idle");
 
@@ -158,52 +179,14 @@ export function DocumentOcrDialog({ isOpen, onClose, onInsert }: DocumentOcrDial
     setFileName(nextFile.name);
   };
 
-  const pollTask = async (nextTaskId: string, runId: number) => {
-    for (let index = 0; index < MAX_POLLS; index += 1) {
-      await wait(index === 0 ? FIRST_POLL_DELAY_MS : POLL_INTERVAL_MS);
-      if (activeRunRef.current !== runId) return;
-
-      setPollCount(index + 1);
-      setStatusText("正在等待百度解析结果");
-
-      const response = await fetch(`/api/ai/document-ocr?taskId=${encodeURIComponent(nextTaskId)}`, {
-        method: "GET",
-        headers: await buildAuthHeaders(),
-        cache: "no-store",
-      });
-      const payload = await readApiJson<StatusResponse>(response, "讲义 OCR 任务查询失败");
-      const status = toString(payload.status);
-
-      if (status === "success") {
-        const resultMarkdown = toString(payload.markdown);
-        if (!resultMarkdown) {
-          throw new Error("百度已完成解析，但没有下载到 Markdown 结果");
-        }
-        if (activeRunRef.current !== runId) return;
-        setMarkdown(resultMarkdown);
-        setStage("complete");
-        setStatusText("解析完成");
-        return;
-      }
-
-      if (status === "failed") {
-        throw new Error(toString(payload.taskError) || "百度 OCR 解析失败");
-      }
-
-      if (activeRunRef.current !== runId) return;
-      setStatusText(status === "running" ? "百度正在解析讲义" : "任务排队中");
-    }
-
-    throw new Error("等待时间过长，请稍后重新查询或重新提交");
-  };
-
-  const submitUrlSource = async (url: string, submittedFileName: string) => {
+  const submitUrlSource = async (url: string, submittedFileName: string, sourcePath?: string) => {
     return fetch("/api/ai/document-ocr", {
       method: "POST",
       headers: await buildAuthHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({
         fileUrl: url,
         fileName: submittedFileName,
+        sourcePath,
       }),
     });
   };
@@ -225,7 +208,7 @@ export function DocumentOcrDialog({ isOpen, onClose, onInsert }: DocumentOcrDial
     const uploaded = await uploadOcrDocument(selectedFile, generateFileName("ocr-temp", "pdf"));
     temporaryOcrPathRef.current = uploaded.path;
     setStatusText("临时文件链接已生成，正在提交百度 OCR 任务");
-    return submitUrlSource(uploaded.url, selectedFile.name);
+    return submitUrlSource(uploaded.url, selectedFile.name, uploaded.path);
   };
 
   const submitUploadedFile = async (selectedFile: File) => {
@@ -250,8 +233,6 @@ export function DocumentOcrDialog({ isOpen, onClose, onInsert }: DocumentOcrDial
   const handleSubmit = async () => {
     if (isBusy || !canSubmit) return;
 
-    const runId = activeRunRef.current + 1;
-    activeRunRef.current = runId;
     setStage("submitting");
     setMarkdown("");
     setTaskId("");
@@ -273,15 +254,18 @@ export function DocumentOcrDialog({ isOpen, onClose, onInsert }: DocumentOcrDial
       const payload = await readApiJson<SubmitResponse>(response, "讲义 OCR 任务提交失败");
       const nextTaskId = toString(payload.taskId);
       if (!nextTaskId) throw new Error("百度 OCR 没有返回任务 ID");
-      if (activeRunRef.current !== runId) return;
-
-      setTaskId(nextTaskId);
+      const job = createDocumentOcrJob({
+        externalTaskId: nextTaskId,
+        fileName: fileName.trim() || file?.name || toString(payload.fileName) || "PDF 讲义 OCR",
+        sourcePath: temporaryOcrPathRef.current ?? undefined,
+        ledgerAvailability: toString(payload.ledgerAvailability),
+        ledgerJob: payload.ledgerJob,
+      });
+      temporaryOcrPathRef.current = null;
+      setTaskId(job.id);
       setStage("waiting");
-      setStatusText("任务已提交，等待解析");
-      await pollTask(nextTaskId, runId);
-      void cleanupTemporaryOcrFile();
+      setStatusText("任务已保存到任务中心，可安全关闭或切换页面");
     } catch (submitError: unknown) {
-      if (activeRunRef.current !== runId) return;
       void cleanupTemporaryOcrFile();
       setStage("error");
       setError(getErrorMessage(submitError, "讲义 OCR 失败"));
@@ -290,8 +274,10 @@ export function DocumentOcrDialog({ isOpen, onClose, onInsert }: DocumentOcrDial
   };
 
   const handleInsert = () => {
-    if (!markdown.trim()) return;
-    onInsert(normalizeMarkdownForInsert(markdown));
+    if (!visibleMarkdown.trim()) return;
+    onInsert(normalizeMarkdownForInsert(visibleMarkdown));
+    if (effectiveTaskId) claimJobResult(effectiveTaskId);
+    reset();
     handleClose();
   };
 
@@ -306,7 +292,7 @@ export function DocumentOcrDialog({ isOpen, onClose, onInsert }: DocumentOcrDial
         exit="exit"
         transition={{ duration: uiMotion.duration.fast, ease: uiMotion.ease.standard }}
         className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/40 p-4 backdrop-blur-sm"
-        onClick={() => { if (!isBusy) handleClose(); }}
+        onClick={handleClose}
       >
         <motion.div
           variants={dialogMotion}
@@ -329,8 +315,8 @@ export function DocumentOcrDialog({ isOpen, onClose, onInsert }: DocumentOcrDial
               type="button"
               onClick={handleClose}
               className="motion-ui motion-interactive flex h-9 w-9 items-center justify-center rounded-full hover:bg-surface-container-high"
-              title={isBusy ? "取消解析" : "关闭"}
-              aria-label={isBusy ? "取消解析" : "关闭"}
+              title={visibleStage === "waiting" ? "关闭（任务继续运行）" : "关闭"}
+              aria-label={visibleStage === "waiting" ? "关闭，任务继续运行" : "关闭"}
             >
               <X className="h-5 w-5 text-on-surface-variant" />
             </button>
@@ -414,40 +400,40 @@ export function DocumentOcrDialog({ isOpen, onClose, onInsert }: DocumentOcrDial
               </div>
             )}
 
-            {stage !== "idle" && (
+            {visibleStage !== "idle" && (
               <div className="mt-4 rounded-xl border border-outline-variant/15 bg-surface-container-low p-4">
                 <div className="flex items-center gap-3">
-                  {stage === "complete" ? (
+                  {visibleStage === "complete" ? (
                     <CheckCircle2 className="h-5 w-5 text-green-700" />
-                  ) : stage === "error" ? (
+                  ) : visibleStage === "error" ? (
                     <AlertCircle className="h-5 w-5 text-red-600" />
                   ) : (
                     <Loader2 className="h-5 w-5 animate-spin text-primary" />
                   )}
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium text-on-surface">
-                      {stage === "error" ? "解析失败" : stage === "complete" ? "解析完成" : statusText || "正在处理"}
+                      {visibleStage === "error" ? "解析失败" : visibleStage === "complete" ? "解析完成" : visibleStatusText || "正在处理"}
                     </p>
                     <p className="mt-0.5 truncate text-xs text-on-surface-variant/60">
-                      {taskId ? `任务：${taskId}` : "等待任务 ID"}
-                      {pollCount > 0 ? ` · 第 ${pollCount} 次查询` : ""}
+                      {currentJob?.externalTaskId ? `外部任务：${currentJob.externalTaskId}` : "等待任务 ID"}
+                      {visiblePollCount > 0 ? ` · 第 ${visiblePollCount} 次查询` : ""}
                     </p>
                   </div>
                 </div>
-                {error && (
-                  <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
+                {visibleError && (
+                  <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{visibleError}</p>
                 )}
               </div>
             )}
 
-            {markdown && (
+            {visibleMarkdown && (
               <div className="mt-4 overflow-hidden rounded-xl border border-outline-variant/15">
                 <div className="flex items-center justify-between border-b border-outline-variant/10 bg-surface-container-low px-4 py-2">
                   <span className="text-sm font-medium text-on-surface">Markdown 预览</span>
-                  <span className="text-xs text-on-surface-variant/60">{markdown.length.toLocaleString()} 字符</span>
+                  <span className="text-xs text-on-surface-variant/60">{visibleMarkdown.length.toLocaleString()} 字符</span>
                 </div>
                 <div className="max-h-[42vh] overflow-y-auto bg-surface-container-lowest p-4">
-                  <MarkdownContent content={markdown} className="text-sm text-on-surface" />
+                  <MarkdownContent content={visibleMarkdown} className="text-sm text-on-surface" />
                 </div>
               </div>
             )}
@@ -471,7 +457,7 @@ export function DocumentOcrDialog({ isOpen, onClose, onInsert }: DocumentOcrDial
               >
                 关闭
               </button>
-              {stage === "complete" ? (
+              {visibleStage === "complete" ? (
                 <button
                   type="button"
                   onClick={handleInsert}
@@ -487,7 +473,7 @@ export function DocumentOcrDialog({ isOpen, onClose, onInsert }: DocumentOcrDial
                   className="control-button control-button-primary h-10 px-4 text-sm"
                 >
                   {isBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileScan className="h-4 w-4" />}
-                  {isBusy ? "解析中" : "开始 OCR"}
+                  {isBusy ? "正在提交" : visibleStage === "waiting" ? "新建另一个任务" : "开始 OCR"}
                 </button>
               )}
             </div>

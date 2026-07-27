@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   brushStageLabels,
   studyTimelines,
@@ -8,8 +8,27 @@ import {
   type StudySubjectTimeline,
   type StudyTimelineTask,
 } from "@/components/home/studyTimelineData";
+import {
+  getMonthNumber,
+  getNextTimelineTaskStatus,
+  getTimelineTaskStatusWeight,
+  mergeTimelineTaskStatuses,
+  migrateLegacyTimelineCompletion,
+  normalizeTimelineTaskStatusMap,
+  resolveCurrentTimelineMonthId,
+  type TimelineTaskStatus,
+  type TimelineTaskStatusMap,
+} from "@/lib/study-timeline";
+import {
+  importMissingPlanningTaskStatuses,
+  loadPlanningTaskStatuses,
+  savePlanningTaskStatus,
+  savePlanningTaskStatuses,
+} from "@/lib/planning-task-status-api";
 
-const STORAGE_KEY = "asteroid-study-timeline-completed:v1";
+const STORAGE_KEY = "asteroid-study-timeline-status:v2";
+const LEGACY_STORAGE_KEY = "asteroid-study-timeline-completed:v1";
+const PENDING_STORAGE_KEY = "asteroid-study-timeline-pending:v1";
 
 const stageStyles: Record<BrushStage, { dot: string; pill: string }> = {
   first: {
@@ -50,7 +69,23 @@ const monthToneStyles = {
 
 const detailStageColumns = "minmax(22rem,1.35fr) minmax(20rem,1.2fr) minmax(16rem,1fr) minmax(24rem,1.45fr)";
 
-type CompletionMap = Record<string, true>;
+const taskStatusMeta: Record<TimelineTaskStatus, { label: string; symbol: string; className: string }> = {
+  not_started: {
+    label: "未开始",
+    symbol: "○",
+    className: "opacity-65 saturate-75 hover:opacity-90",
+  },
+  in_progress: {
+    label: "进行中",
+    symbol: "◐",
+    className: "opacity-100 ring-2 ring-white/30",
+  },
+  completed: {
+    label: "已完成",
+    symbol: "✓",
+    className: "order-last opacity-40 saturate-50 hover:opacity-65",
+  },
+};
 
 type TimelineMonthSlot = {
   id: string;
@@ -62,12 +97,15 @@ type TimelineMonthSlot = {
   }>;
 };
 
+type PlanningAccessState = "checking" | "anonymous" | "authenticated" | "unavailable";
+
 export default function StudyTimeline() {
   const subjects = studyTimelines;
   const months = useMemo(() => buildTimelineMonths(subjects), [subjects]);
+  const currentMonthId = useMemo(() => resolveCurrentTimelineMonthId(months), [months]);
   const detailRef = useRef<HTMLDivElement | null>(null);
   const [activeMonthId, setActiveMonthId] = useState<string | null>(null);
-  const [selectedMonthId, setSelectedMonthId] = useState<string | null>(null);
+  const [selectedMonthId, setSelectedMonthId] = useState<string | null>(() => currentMonthId);
   const activeMonth = activeMonthId
     ? months.find((month) => month.id === activeMonthId) ?? null
     : null;
@@ -77,25 +115,65 @@ export default function StudyTimeline() {
   const activeMonthIndex = activeMonth
     ? months.findIndex((month) => month.id === activeMonth.id)
     : -1;
-  const [completed, setCompleted] = useState<CompletionMap>(() => readStoredCompletion());
+  const [taskStatuses, setTaskStatuses] = useState<TimelineTaskStatusMap>({});
+  const [planningAccess, setPlanningAccess] = useState<PlanningAccessState>("checking");
+  const remoteUserIdRef = useRef<string | null>(null);
+  const saveSequenceRef = useRef<Record<string, number>>({});
+  const canEditTaskStatuses = planningAccess === "authenticated";
+
+  useEffect(() => {
+    let cancelled = false;
+
+    void loadPlanningTaskStatuses().then(async (remote) => {
+      if (cancelled) return;
+      if (!remote) {
+        setPlanningAccess("anonymous");
+        return;
+      }
+
+      remoteUserIdRef.current = remote.userId;
+      const localStatuses = readStoredTaskStatuses();
+      const importedStatuses = await importMissingPlanningTaskStatuses(remote.userId, localStatuses, remote.statuses);
+      const pendingStatuses = readPendingTaskStatuses(remote.userId);
+      if (Object.keys(pendingStatuses).length > 0) {
+        await savePlanningTaskStatuses(remote.userId, pendingStatuses);
+        clearPendingTaskStatuses(remote.userId, pendingStatuses);
+      }
+      const mergedStatuses = mergeTimelineTaskStatuses(importedStatuses, remote.statuses, pendingStatuses);
+
+      if (cancelled) return;
+      persistTaskStatuses(mergedStatuses);
+      setTaskStatuses(mergedStatuses);
+      setPlanningAccess("authenticated");
+    }).catch(() => {
+      if (cancelled) return;
+      // Keep local and pending states for a later authenticated retry, but do not
+      // expose editable controls while the owner boundary cannot be confirmed.
+      setPlanningAccess("unavailable");
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const activeSubjectGroups = useMemo(() => {
     return (activeMonth?.subjects ?? [])
       .map((subject) => ({
         ...subject,
-        tasks: sortTasksByCompletion(subject.tasks, completed),
+        tasks: sortTasksByStatus(subject.tasks, canEditTaskStatuses ? taskStatuses : {}),
       }))
       .filter((subject) => subject.tasks.length > 0);
-  }, [activeMonth, completed]);
+  }, [activeMonth, canEditTaskStatuses, taskStatuses]);
 
   const selectedSubjectGroups = useMemo(() => {
     return (selectedMonth?.subjects ?? [])
       .map((subject) => ({
         ...subject,
-        tasks: sortTasksByCompletion(subject.tasks, completed),
+        tasks: sortTasksByStatus(subject.tasks, canEditTaskStatuses ? taskStatuses : {}),
       }))
       .filter((subject) => subject.tasks.length > 0);
-  }, [selectedMonth, completed]);
+  }, [canEditTaskStatuses, selectedMonth, taskStatuses]);
 
   const selectMonth = (monthId: string) => {
     setActiveMonthId(null);
@@ -109,17 +187,30 @@ export default function StudyTimeline() {
     });
   };
 
-  const toggleTask = (taskId: string) => {
-    setCompleted((current) => {
-      const next = { ...current };
+  const cycleTaskStatus = (taskId: string) => {
+    if (!canEditTaskStatuses) return;
 
-      if (next[taskId]) {
-        delete next[taskId];
-      } else {
-        next[taskId] = true;
-      }
+    setTaskStatuses((current) => {
+      const currentStatus = current[taskId] ?? "not_started";
+      const next = {
+        ...current,
+        [taskId]: getNextTimelineTaskStatus(currentStatus),
+      };
 
-      persistCompletion(next);
+      persistTaskStatuses(next);
+      const userId = remoteUserIdRef.current;
+      const sequence = (saveSequenceRef.current[taskId] ?? 0) + 1;
+      saveSequenceRef.current[taskId] = sequence;
+      if (userId) persistPendingTaskStatus(userId, taskId, next[taskId]);
+
+      void savePlanningTaskStatus(taskId, next[taskId])
+        .then(() => {
+          if (saveSequenceRef.current[taskId] !== sequence || !userId) return;
+          clearPendingTaskStatus(userId, taskId, next[taskId]);
+        })
+        .catch(() => {
+          // The pending queue keeps the latest authenticated manual change for retry.
+        });
       return next;
     });
   };
@@ -212,19 +303,35 @@ export default function StudyTimeline() {
                     ) : null}
                     <div className="flex gap-2 overflow-x-auto pb-1">
                       {subject.tasks.map((task) => {
-                        const done = Boolean(completed[task.id]);
+                        if (!canEditTaskStatuses) {
+                          return (
+                            <span
+                              key={task.id}
+                              className={`shrink-0 whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-bold text-white sm:text-sm ${
+                                stageStyles[task.stage].pill
+                              }`}
+                            >
+                              {task.title}
+                            </span>
+                          );
+                        }
+
+                        const status = taskStatuses[task.id] ?? "not_started";
+                        const statusMeta = taskStatusMeta[status];
+                        const nextStatus = getNextTimelineTaskStatus(status);
 
                         return (
                           <button
                             key={task.id}
                             type="button"
-                            aria-pressed={done}
-                            aria-label={`${task.title}，${brushStageLabels[task.stage]}，${done ? "已完成" : "未完成"}`}
-                            onClick={() => toggleTask(task.id)}
+                            data-status={status}
+                            aria-label={`${task.title}，${brushStageLabels[task.stage]}，当前${statusMeta.label}；点击切换为${taskStatusMeta[nextStatus].label}`}
+                            onClick={() => cycleTaskStatus(task.id)}
                             className={`motion-ui motion-interactive shrink-0 whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-bold text-white hover:-translate-y-0.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/40 sm:text-sm ${
                               stageStyles[task.stage].pill
-                            } ${done ? "order-last opacity-40 saturate-75 hover:opacity-65" : "opacity-100"}`}
+                            } ${statusMeta.className}`}
                           >
+                            <span aria-hidden="true" className="mr-1.5">{statusMeta.symbol}</span>
                             {task.title}
                           </button>
                         );
@@ -249,10 +356,26 @@ export default function StudyTimeline() {
                 {selectedMonth.label}
               </p>
               <p className="mt-2 text-sm font-semibold text-on-surface-variant">
-                本月重心
+                {selectedMonth.id === currentMonthId ? "北京时间 · 当前重心" : "北京时间 · 月度计划"}
               </p>
             </div>
-            <div className="flex flex-wrap items-center gap-3">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+              {canEditTaskStatuses ? (
+                (Object.entries(taskStatusMeta) as Array<[TimelineTaskStatus, (typeof taskStatusMeta)[TimelineTaskStatus]]>).map(([status, meta]) => (
+                  <span key={status} className="inline-flex items-center gap-1 text-xs font-semibold text-on-surface-variant">
+                    <span aria-hidden="true">{meta.symbol}</span>
+                    {meta.label}
+                  </span>
+                ))
+              ) : (
+                <span className="text-xs font-semibold text-on-surface-variant">
+                  {planningAccess === "checking"
+                    ? "正在确认登录状态"
+                    : planningAccess === "unavailable"
+                      ? "个人状态同步暂不可用"
+                      : "登录后可更新个人状态"}
+                </span>
+              )}
               {Object.entries(brushStageLabels).map(([stage, label]) => (
                 <span key={stage} className="inline-flex items-center gap-1.5 text-xs font-bold text-on-surface-variant">
                   <span className={`h-2.5 w-2.5 rounded-full ${stageStyles[stage as BrushStage].dot}`} />
@@ -285,19 +408,35 @@ export default function StudyTimeline() {
                           </p>
                           <div className="flex gap-2 overflow-x-auto pb-1">
                             {tasks.map((task) => {
-                              const done = Boolean(completed[task.id]);
+                              if (!canEditTaskStatuses) {
+                                return (
+                                  <span
+                                    key={task.id}
+                                    className={`shrink-0 whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-bold text-white sm:text-sm ${
+                                      stageStyles[task.stage].pill
+                                    }`}
+                                  >
+                                    {task.title}
+                                  </span>
+                                );
+                              }
+
+                              const status = taskStatuses[task.id] ?? "not_started";
+                              const statusMeta = taskStatusMeta[status];
+                              const nextStatus = getNextTimelineTaskStatus(status);
 
                               return (
                                 <button
                                   key={task.id}
                                   type="button"
-                                  aria-pressed={done}
-                                  aria-label={`${task.title}，${brushStageLabels[task.stage]}，${done ? "已完成" : "未完成"}`}
-                                  onClick={() => toggleTask(task.id)}
+                                  data-status={status}
+                                  aria-label={`${task.title}，${brushStageLabels[task.stage]}，当前${statusMeta.label}；点击切换为${taskStatusMeta[nextStatus].label}`}
+                                  onClick={() => cycleTaskStatus(task.id)}
                                   className={`motion-ui motion-interactive shrink-0 whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-bold text-white hover:-translate-y-0.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/25 sm:text-sm ${
                                     stageStyles[task.stage].pill
-                                  } ${done ? "order-last opacity-40 saturate-75 hover:opacity-65" : "opacity-100"}`}
+                                  } ${statusMeta.className}`}
                                 >
+                                  <span aria-hidden="true" className="mr-1.5">{statusMeta.symbol}</span>
                                   {task.title}
                                 </button>
                               );
@@ -343,8 +482,7 @@ function buildTimelineMonths(subjects: StudySubjectTimeline[]) {
 }
 
 function getMonthOrder(label: string) {
-  const match = label.match(/\d+/);
-  return match ? Number(match[0]) : Number.MAX_SAFE_INTEGER;
+  return getMonthNumber(label) ?? Number.MAX_SAFE_INTEGER;
 }
 
 function getMonthTone(label: string): keyof typeof monthToneStyles {
@@ -361,15 +499,17 @@ function getMonthTone(label: string): keyof typeof monthToneStyles {
   return "orange";
 }
 
-function sortTasksByCompletion(tasks: StudyTimelineTask[], completed: CompletionMap) {
+function sortTasksByStatus(tasks: StudyTimelineTask[], statuses: TimelineTaskStatusMap) {
   return tasks
     .map((task, index) => ({ task, index }))
     .sort((left, right) => {
-      const leftDone = completed[left.task.id] ? 1 : 0;
-      const rightDone = completed[right.task.id] ? 1 : 0;
+      const leftStatus = statuses[left.task.id] ?? "not_started";
+      const rightStatus = statuses[right.task.id] ?? "not_started";
+      const leftWeight = getTimelineTaskStatusWeight(leftStatus);
+      const rightWeight = getTimelineTaskStatusWeight(rightStatus);
 
-      if (leftDone !== rightDone) {
-        return leftDone - rightDone;
+      if (leftWeight !== rightWeight) {
+        return leftWeight - rightWeight;
       }
 
       return left.index - right.index;
@@ -386,7 +526,7 @@ function buildStageGroups(tasks: StudyTimelineTask[]) {
     }));
 }
 
-function readStoredCompletion(): CompletionMap {
+function readStoredTaskStatuses(): TimelineTaskStatusMap {
   if (typeof window === "undefined") {
     return {};
   }
@@ -394,32 +534,72 @@ function readStoredCompletion(): CompletionMap {
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
 
-    if (!raw) {
+    if (raw) {
+      return normalizeTimelineTaskStatusMap(JSON.parse(raw));
+    }
+
+    const legacyRaw = window.localStorage.getItem(LEGACY_STORAGE_KEY);
+    if (!legacyRaw) {
       return {};
     }
 
-    const parsed = JSON.parse(raw);
-
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-      return {};
-    }
-
-    return Object.fromEntries(
-      Object.entries(parsed).filter(([, value]) => value === true),
-    ) as CompletionMap;
+    const migrated = migrateLegacyTimelineCompletion(JSON.parse(legacyRaw));
+    persistTaskStatuses(migrated);
+    return migrated;
   } catch {
     return {};
   }
 }
 
-function persistCompletion(completion: CompletionMap) {
+function persistTaskStatuses(statuses: TimelineTaskStatusMap) {
   if (typeof window === "undefined") {
     return;
   }
 
   try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(completion));
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(statuses));
   } catch {
     // Local storage can fail in private modes; the UI still works for this session.
+  }
+}
+
+function getPendingStorageKey(userId: string): string {
+  return `${PENDING_STORAGE_KEY}:${userId}`;
+}
+
+function readPendingTaskStatuses(userId: string): TimelineTaskStatusMap {
+  if (typeof window === "undefined") return {};
+  try {
+    return normalizeTimelineTaskStatusMap(JSON.parse(window.localStorage.getItem(getPendingStorageKey(userId)) ?? "{}"));
+  } catch {
+    return {};
+  }
+}
+
+function persistPendingTaskStatus(userId: string, taskId: string, status: TimelineTaskStatus) {
+  try {
+    window.localStorage.setItem(
+      getPendingStorageKey(userId),
+      JSON.stringify({ ...readPendingTaskStatuses(userId), [taskId]: status }),
+    );
+  } catch {
+    // The immediate UI remains usable even when browser storage is unavailable.
+  }
+}
+
+function clearPendingTaskStatus(userId: string, taskId: string, expectedStatus: TimelineTaskStatus) {
+  const current = readPendingTaskStatuses(userId);
+  if (current[taskId] !== expectedStatus) return;
+  delete current[taskId];
+  try {
+    window.localStorage.setItem(getPendingStorageKey(userId), JSON.stringify(current));
+  } catch {
+    // A stale retry marker is safer than silently losing a failed authenticated save.
+  }
+}
+
+function clearPendingTaskStatuses(userId: string, uploaded: TimelineTaskStatusMap) {
+  for (const [taskId, status] of Object.entries(uploaded)) {
+    clearPendingTaskStatus(userId, taskId, status);
   }
 }

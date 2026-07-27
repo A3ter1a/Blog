@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { callDeepSeek } from "@/lib/ai-client";
 import { DEFAULT_DEEPSEEK_MODEL } from "@/lib/ai-config";
 import {
-  buildNoteQAContext,
   normalizeNoteQAContextLimit,
   normalizeNoteQAMode,
   normalizeNoteQAQuestion,
@@ -10,11 +9,35 @@ import {
   normalizeNoteQASubject,
   type NoteQAMode,
 } from "@/lib/note-qa";
-import { requireAdminRequest, resolveAIKey } from "@/lib/server-admin-auth";
-import { notesApi } from "@/lib/supabase";
+import { buildAcceptedMemoryContext } from "@/lib/assistant-memory";
+import { getAdminRequestContext, resolveAIKey } from "@/lib/server-admin-auth";
+import { listAssistantMemories } from "@/lib/server-assistant-memory";
+import { searchPrivateNoteRag, syncPrivateNotesRag } from "@/lib/server-private-note-rag";
+import type { NoteRow } from "@/lib/supabase-schema";
+import { normalizeNoteProblems } from "@/lib/supabase";
+import type { Note } from "@/lib/types";
 
 export const runtime = "nodejs";
 export const maxDuration = 90;
+
+const NOTE_QA_FIELDS = "id,type,title,content,subject,tags,problems,created_at,updated_at,is_published,content_version";
+
+function mapNote(row: NoteRow): Note {
+  const createdAt = row.created_at ? new Date(row.created_at) : new Date(0);
+  return {
+    id: row.id ?? "",
+    type: row.type ?? "note",
+    title: row.title ?? "",
+    content: row.content ?? "",
+    subject: row.subject ?? undefined,
+    tags: Array.isArray(row.tags) ? row.tags : [],
+    problems: normalizeNoteProblems(row.problems),
+    createdAt,
+    updatedAt: row.updated_at ? new Date(row.updated_at) : createdAt,
+    isPublished: row.is_published ?? false,
+    contentVersion: row.content_version ?? null,
+  };
+}
 
 function getModeInstruction(mode: NoteQAMode): string {
   if (mode === "locate") {
@@ -34,8 +57,8 @@ function getModeInstruction(mode: NoteQAMode): string {
 
 export async function POST(req: NextRequest) {
   try {
-    const adminError = await requireAdminRequest(req);
-    if (adminError) return adminError;
+    const auth = await getAdminRequestContext(req);
+    if (!auth.ok) return auth.response;
 
     const body: unknown = await req.json().catch(() => ({}));
     const record = body && typeof body === "object" && !Array.isArray(body)
@@ -46,6 +69,7 @@ export async function POST(req: NextRequest) {
     const subject = normalizeNoteQASubject(record.subject);
     const mode = normalizeNoteQAMode(record.mode);
     const contextLimit = normalizeNoteQAContextLimit(record.contextLimit);
+    const noteId = typeof record.noteId === "string" ? record.noteId.trim().slice(0, 80) : "";
 
     if (!question) {
       return NextResponse.json({ error: "请输入要查的问题", success: false }, { status: 400 });
@@ -60,19 +84,32 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "DeepSeek API key 未配置", success: false }, { status: 400 });
     }
 
-    const notes = await notesApi.getQuestionAnswerSources({
-      type: scope === "all" ? undefined : scope,
-      subject: subject === "all" ? undefined : subject,
-      limit: 160,
-    });
+    const supabase = auth.context.supabase;
+    let sourceQuery = supabase
+      .from("notes")
+      .select(NOTE_QA_FIELDS)
+      .order("updated_at", { ascending: false })
+      .limit(160);
+    if (noteId) sourceQuery = sourceQuery.eq("id", noteId);
+    if (scope !== "all") sourceQuery = sourceQuery.eq("type", scope);
+    if (subject !== "all") sourceQuery = sourceQuery.eq("subject", subject);
+    const { data: sourceRows, error: sourceError } = await sourceQuery;
+    if (sourceError) throw sourceError;
+    const notes = ((sourceRows ?? []) as NoteRow[]).map(mapNote);
 
-    const { context, sources, totalChunks } = buildNoteQAContext(notes, question, scope, contextLimit);
+    const indexStats = await syncPrivateNotesRag(supabase, notes);
+    const { context, sources, totalChunks } = await searchPrivateNoteRag(supabase, {
+      question,
+      noteId: noteId || undefined,
+      limit: contextLimit,
+    });
     if (!context || sources.length === 0) {
       return NextResponse.json({
-        error: "没有找到可用于回答的已发布内容",
+        error: "没有找到可用于回答的私人笔记内容",
         success: false,
       }, { status: 404 });
     }
+    const memoryContext = buildAcceptedMemoryContext(await listAssistantMemories(supabase));
 
     const systemPrompt = `你只根据给出的笔记片段回答。
 规则：
@@ -82,9 +119,11 @@ export async function POST(req: NextRequest) {
 - 涉及公式时使用 Markdown 和 LaTeX。
 - 关键结论后引用来源编号，例如 [S1]、[S2]。
 - 不要引用没有出现在上下文里的来源编号。
+- 用户已确认的记忆只作为偏好和学习背景，不能替代笔记证据，也不能伪造来源。
+- 若问题涉及经济学概念，必须同时给出严谨定义和通俗解释；资料没有足够定义或页码时明确指出缺口，不得伪造平狄克教材引用。
 - ${getModeInstruction(mode)}`;
 
-    const userPrompt = `问题：${question}
+    const userPrompt = `问题：${question}${memoryContext ? `\n\n用户已确认的记忆：\n${memoryContext}` : ""}
 
 可用片段：
 ${context}`;
@@ -103,6 +142,7 @@ ${context}`;
       answer: content.trim(),
       sources,
       totalChunks,
+      indexStats,
       tokensUsed,
       success: true,
     });

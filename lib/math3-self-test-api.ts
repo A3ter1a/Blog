@@ -1,26 +1,41 @@
 import { assertAdminWrite, getSupabase, type Math3SelfTestInsert, type Math3SelfTestRow, type Math3SelfTestUpdate } from "./supabase";
+import type { Json } from "./supabase-schema";
 import {
-  createEmptyMath3SelfTestAttempt,
+  normalizeMath3SelfTestAttempt,
+  normalizeMath3SelfTestPaper,
   type Math3SelfTestCreateInput,
-  type Math3SelfTestPaper,
+  type Math3SelfTestDifficulty,
+  type Math3SelfTestMode,
   type Math3SelfTestRecord,
+  type Math3SelfTestStatus,
 } from "./math3-self-test";
 
 const MATH3_SELF_TEST_FIELDS = "id,user_id,title,mode,difficulty,status,paper,attempt,score,max_score,started_at,submitted_at,created_at,updated_at";
 
+function toJson(value: unknown): Json {
+  return JSON.parse(JSON.stringify(value)) as Json;
+}
+
 function mapMath3SelfTestSnakeToCamel(row: Math3SelfTestRow): Math3SelfTestRecord {
   const createdAt = row.created_at ? new Date(row.created_at) : new Date();
   const updatedAt = row.updated_at ? new Date(row.updated_at) : createdAt;
-  const paper = row.paper as Math3SelfTestPaper;
-  const attempt = row.attempt ?? createEmptyMath3SelfTestAttempt(row.started_at ?? undefined);
+  const mode: Math3SelfTestMode = row.mode === "full" ? "full" : "quick";
+  const difficulty: Math3SelfTestDifficulty = row.difficulty === "comfort" || row.difficulty === "challenge"
+    ? row.difficulty
+    : "simulation";
+  const status: Math3SelfTestStatus = row.status === "in_progress" || row.status === "submitted" || row.status === "reviewed"
+    ? row.status
+    : "draft";
+  const paper = normalizeMath3SelfTestPaper(row.paper, mode, difficulty);
+  const attempt = normalizeMath3SelfTestAttempt(row.attempt, row.started_at ?? undefined);
 
   return {
     id: row.id ?? "",
     userId: row.user_id || undefined,
     title: row.title ?? paper?.title ?? "数学三自测试卷",
-    mode: row.mode ?? paper?.mode ?? "quick",
-    difficulty: row.difficulty ?? paper?.difficulty ?? "simulation",
-    status: row.status ?? "draft",
+    mode,
+    difficulty,
+    status,
     paper,
     attempt,
     score: row.score ?? attempt.totalScore ?? 0,
@@ -39,8 +54,8 @@ function mapMath3SelfTestCamelToSnake(test: Partial<Math3SelfTestRecord>): Math3
   if (test.mode !== undefined) db.mode = test.mode;
   if (test.difficulty !== undefined) db.difficulty = test.difficulty;
   if (test.status !== undefined) db.status = test.status;
-  if (test.paper !== undefined) db.paper = test.paper;
-  if (test.attempt !== undefined) db.attempt = test.attempt;
+  if (test.paper !== undefined) db.paper = toJson(test.paper);
+  if (test.attempt !== undefined) db.attempt = toJson(test.attempt);
   if (test.score !== undefined) db.score = test.score;
   if (test.maxScore !== undefined) db.max_score = test.maxScore;
   if (test.startedAt !== undefined) db.started_at = test.startedAt?.toISOString();
@@ -81,8 +96,17 @@ export const math3SelfTestsApi = {
     const supabase = getSupabase();
     const now = new Date().toISOString();
     const payload: Math3SelfTestInsert = {
-      ...mapMath3SelfTestCamelToSnake(test),
       user_id: userId,
+      title: test.title,
+      mode: test.mode,
+      difficulty: test.difficulty,
+      status: test.status,
+      paper: toJson(test.paper),
+      attempt: toJson(test.attempt),
+      score: test.score,
+      max_score: test.maxScore,
+      started_at: test.startedAt?.toISOString(),
+      submitted_at: test.submittedAt?.toISOString(),
       created_at: now,
       updated_at: now,
     };

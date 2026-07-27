@@ -1,7 +1,7 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import type { Note, NoteType, Profile, Subject } from "./types";
+import type { Note, NoteType, Problem, Profile, Subject, Video } from "./types";
 import { DEFAULT_PROFILE, normalizeProfile } from "./profile";
-import type { Database, NoteRow, NoteUpdate } from "./supabase-schema";
+import type { Database, Json, NoteRow, NoteUpdate } from "./supabase-schema";
 
 export type {
   ChapterInsert,
@@ -40,10 +40,11 @@ export type {
   SiteProfileUpdate,
 } from "./supabase-schema";
 
-export type NoteCreateInput = Omit<Note, "id" | "createdAt" | "updatedAt"> & Partial<Pick<Note, "createdAt" | "updatedAt">>;
+export type NoteCreateInput = Omit<Note, "id" | "createdAt" | "updatedAt" | "contentVersion"> & Partial<Pick<Note, "createdAt" | "updatedAt">>;
 export type NoteMutationMeta = {
   id: string;
   updatedAt: Date;
+  contentVersion: number | null;
 };
 export type NoteSummaryQueryOptions = {
   type?: NoteType;
@@ -65,6 +66,8 @@ export type NoteQAReadOptions = {
   type?: NoteType;
   subject?: Subject;
   limit?: number;
+  noteId?: string;
+  publishedOnly?: boolean;
 };
 
 const SITE_PROFILE_ID = "main";
@@ -82,6 +85,7 @@ const NOTE_DETAIL_FIELDS = `
         updated_at,
         is_published
       `;
+const NOTE_EDIT_FIELDS = `${NOTE_DETAIL_FIELDS}, content_version`;
 
 const NOTE_QA_FIELDS = `
         id,
@@ -138,6 +142,118 @@ function normalizeSearchTerm(query: string): string {
     .trim()
     .replace(/[%,()*{}"\\]/g, " ")
     .replace(/\s+/g, " ");
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+}
+
+function optionalString(value: unknown): string | undefined {
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+function stringArray(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+}
+
+export function normalizeNoteVideos(value: unknown): Video[] {
+  if (!Array.isArray(value)) return [];
+
+  return value.flatMap((item) => {
+    const record = asRecord(item);
+    if (!record || typeof record.id !== "string" || typeof record.title !== "string") return [];
+    if (record.platform !== "bilibili" && record.platform !== "youtube") return [];
+
+    const bilibiliRecord = asRecord(record.bilibili);
+    const youtubeRecord = asRecord(record.youtube);
+    return [{
+      id: record.id,
+      platform: record.platform,
+      title: record.title,
+      bilibili: bilibiliRecord && typeof bilibiliRecord.bvid === "string" && typeof bilibiliRecord.title === "string"
+        ? {
+            bvid: bilibiliRecord.bvid,
+            title: bilibiliRecord.title,
+            cid: optionalString(bilibiliRecord.cid),
+            p: typeof bilibiliRecord.p === "number" ? bilibiliRecord.p : undefined,
+            cover: optionalString(bilibiliRecord.cover),
+            author: optionalString(bilibiliRecord.author),
+            duration: optionalString(bilibiliRecord.duration),
+          }
+        : undefined,
+      youtube: youtubeRecord && typeof youtubeRecord.videoId === "string" && typeof youtubeRecord.title === "string"
+        ? {
+            videoId: youtubeRecord.videoId,
+            title: youtubeRecord.title,
+            cover: optionalString(youtubeRecord.cover),
+            author: optionalString(youtubeRecord.author),
+            duration: optionalString(youtubeRecord.duration),
+          }
+        : undefined,
+    }];
+  });
+}
+
+export function normalizeNoteProblems(value: unknown): Problem[] {
+  if (!Array.isArray(value)) return [];
+  const allowedTypes = new Set(["choice", "fill", "calculation", "proof", "proofEssay"] as const);
+  const allowedDifficulties = new Set(["easy", "medium", "hard"] as const);
+  const allowedAIStatuses = new Set(["none", "scanning", "scanned", "complete", "error"] as const);
+
+  return value.flatMap((item) => {
+    const record = asRecord(item);
+    if (!record) return [];
+    const type = allowedTypes.has(record.type as never) ? record.type as Problem["type"] : "calculation";
+    const difficulty = allowedDifficulties.has(record.difficulty as never) ? record.difficulty as Problem["difficulty"] : "medium";
+    const rawOptions = Array.isArray(record.options) ? record.options : [];
+    const options = rawOptions.flatMap((option) => {
+      const optionRecord = asRecord(option);
+      return optionRecord && typeof optionRecord.label === "string" && typeof optionRecord.content === "string"
+        ? [{ label: optionRecord.label, content: optionRecord.content }]
+        : [];
+    });
+    const ocrRecord = asRecord(record.ocrSource);
+    const aiRecord = asRecord(record.aiResult);
+    const aiStatus = allowedAIStatuses.has(record.aiStatus as never)
+      ? record.aiStatus as Problem["aiStatus"]
+      : undefined;
+
+    return [{
+      id: typeof record.id === "string" ? record.id : "",
+      type,
+      difficulty,
+      question: typeof record.question === "string" ? record.question : "",
+      options: type === "choice" ? options : undefined,
+      answer: typeof record.answer === "string" ? record.answer : "",
+      explanation: typeof record.explanation === "string" ? record.explanation : "",
+      tips: optionalString(record.tips),
+      source: optionalString(record.source),
+      tags: stringArray(record.tags),
+      chapterId: optionalString(record.chapterId),
+      aiStatus,
+      ocrSource: ocrRecord && typeof ocrRecord.imageUrl === "string" && typeof ocrRecord.processedAt === "string"
+        ? { imageUrl: ocrRecord.imageUrl, processedAt: ocrRecord.processedAt }
+        : undefined,
+      aiResult: aiRecord
+        && typeof aiRecord.rawQuestion === "string"
+        && typeof aiRecord.rawAnswer === "string"
+        && typeof aiRecord.rawExplanation === "string"
+        && typeof aiRecord.confidence === "number"
+        ? {
+            rawQuestion: aiRecord.rawQuestion,
+            rawAnswer: aiRecord.rawAnswer,
+            rawExplanation: aiRecord.rawExplanation,
+            confidence: aiRecord.confidence,
+          }
+        : undefined,
+    }];
+  });
+}
+
+function toJson(value: unknown): Json {
+  return JSON.parse(JSON.stringify(value)) as Json;
 }
 
 // 延迟初始化 - 只在变量存在时创建客户端
@@ -254,11 +370,12 @@ function mapSnakeToCamel(row: NoteRow): Note {
     subject: row.subject || undefined,
     tags: Array.isArray(row.tags) ? row.tags : [],
     coverImage: row.cover_image || undefined,
-    videos: Array.isArray(row.videos) ? row.videos : [],
-    problems: Array.isArray(row.problems) ? row.problems : [],
+    videos: normalizeNoteVideos(row.videos),
+    problems: normalizeNoteProblems(row.problems),
     createdAt,
     updatedAt,
-    isPublished: row.is_published ?? true,
+    isPublished: row.is_published ?? false,
+    contentVersion: row.content_version ?? null,
   };
 }
 
@@ -271,8 +388,8 @@ function mapCamelToSnake(note: Partial<Note>): NoteUpdate {
   if (note.subject !== undefined) db.subject = note.subject;
   if (note.tags !== undefined) db.tags = note.tags;
   if (note.coverImage !== undefined) db.cover_image = note.coverImage;
-  if (note.videos !== undefined) db.videos = note.videos;
-  if (note.problems !== undefined) db.problems = note.problems;
+  if (note.videos !== undefined) db.videos = toJson(note.videos);
+  if (note.problems !== undefined) db.problems = toJson(note.problems);
   if (note.isPublished !== undefined) db.is_published = note.isPublished;
   return db;
 }
@@ -352,10 +469,20 @@ export const notesApi = {
     const supabase = getSupabase();
     const { data, error } = await supabase
       .from("notes")
-      .select(NOTE_DETAIL_FIELDS)
+      .select(NOTE_EDIT_FIELDS)
       .eq("id", id)
       .maybeSingle();
 
+    if (error?.code === "42703") {
+      const legacy = await supabase
+        .from("notes")
+        .select(NOTE_DETAIL_FIELDS)
+        .eq("id", id)
+        .maybeSingle();
+
+      if (legacy.error) throw legacy.error;
+      return legacy.data ? mapSnakeToCamel(legacy.data) : null;
+    }
     if (error) throw error;
     return data ? mapSnakeToCamel(data) : null;
   },
@@ -396,10 +523,11 @@ export const notesApi = {
     let query = supabase
       .from("notes")
       .select(NOTE_QA_FIELDS)
-      .eq("is_published", true)
       .order("updated_at", { ascending: false })
       .limit(limit);
 
+    if (options.publishedOnly !== false) query = query.eq("is_published", true);
+    if (options.noteId) query = query.eq("id", options.noteId);
     if (options.type) query = query.eq("type", options.type);
     if (options.subject) query = query.eq("subject", options.subject);
 
@@ -453,6 +581,7 @@ export const notesApi = {
     return {
       id: data.id ?? "",
       updatedAt: data.updated_at ? new Date(data.updated_at) : updatedAt,
+      contentVersion: null,
     };
   },
 
@@ -475,24 +604,53 @@ export const notesApi = {
   },
 
   // Update note and return only lightweight mutation metadata.
-  async updateLight(id: string, updates: Partial<Note>): Promise<NoteMutationMeta> {
+  async updateLight(id: string, updates: Partial<Note>, expectedContentVersion?: number | null): Promise<NoteMutationMeta> {
     await assertAdminWrite();
     const supabase = getSupabase();
     const dbUpdates = mapCamelToSnake(updates);
     const updatedAt = new Date();
     dbUpdates.updated_at = updatedAt.toISOString();
 
-    const { data, error } = await supabase
+    let resolvedContentVersion = expectedContentVersion;
+    if (resolvedContentVersion === undefined) {
+      const versionResult = await supabase
+        .from("notes")
+        .select("content_version")
+        .eq("id", id)
+        .maybeSingle();
+
+      if (versionResult.error?.code === "42703") {
+        resolvedContentVersion = null;
+      } else if (versionResult.error) {
+        throw versionResult.error;
+      } else {
+        resolvedContentVersion = versionResult.data?.content_version ?? null;
+      }
+    }
+
+    let query = supabase
       .from("notes")
       .update(dbUpdates)
-      .eq("id", id)
-      .select("id, updated_at")
-      .single();
+      .eq("id", id);
+
+    if (resolvedContentVersion !== null) {
+      query = query.eq("content_version", resolvedContentVersion);
+    }
+
+    const result = resolvedContentVersion === null
+      ? await query.select("id, updated_at").maybeSingle()
+      : await query.select("id, updated_at, content_version").maybeSingle();
+    const { data, error } = result;
 
     if (error) throw error;
+    if (!data) {
+      throw new Error("这篇内容已在其他页面被修改，请刷新后合并更改，系统没有覆盖较新的版本");
+    }
+    const returnedContentVersion = (data as { content_version?: unknown }).content_version;
     return {
       id: data.id ?? id,
       updatedAt: data.updated_at ? new Date(data.updated_at) : updatedAt,
+      contentVersion: typeof returnedContentVersion === "number" ? returnedContentVersion : null,
     };
   },
 
@@ -604,7 +762,7 @@ export const profileApi = {
       .from("site_profile")
       .upsert({
         id: SITE_PROFILE_ID,
-        profile: nextProfile,
+        profile: toJson(nextProfile),
         updated_at: new Date().toISOString(),
       }, { onConflict: "id" })
       .select("profile")

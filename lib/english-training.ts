@@ -17,6 +17,18 @@ export interface EnglishQuestionOption {
   content: string;
 }
 
+export function normalizeEnglishQuestionOptions(value: unknown): EnglishQuestionOption[] {
+  if (!Array.isArray(value)) return [];
+
+  return value.flatMap((item) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return [];
+    const record = item as Record<string, unknown>;
+    return typeof record.label === "string" && typeof record.content === "string"
+      ? [{ label: record.label, content: record.content }]
+      : [];
+  });
+}
+
 export interface EnglishPaper {
   id: string;
   year: number;

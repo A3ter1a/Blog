@@ -118,13 +118,39 @@ export const chaptersApi = {
   // Reorder chapters (batch update sortOrder)
   async reorder(ids: string[]): Promise<void> {
     await assertAdminWrite();
+    if (ids.length === 0) return;
+    if (new Set(ids).size !== ids.length || ids.some((id) => !id.trim())) {
+      throw new Error('章节排序包含空值或重复项');
+    }
+
     const supabase = getSupabase();
     const timestamp = new Date().toISOString();
-    const updates: ChapterInsert[] = ids.map((id, index) => ({
-      id,
-      sort_order: index,
-      updated_at: timestamp,
-    }));
+    const { data: existingRows, error: readError } = await supabase
+      .from('chapters')
+      .select(CHAPTER_FIELDS)
+      .in('id', ids);
+    if (readError) throw readError;
+
+    const rowsById = new Map((existingRows || []).map((row) => [row.id, row]));
+    if (rowsById.size !== ids.length) {
+      throw new Error('部分章节已不存在，请刷新后重新排序');
+    }
+
+    const updates: ChapterInsert[] = ids.map((id, index) => {
+      const row = rowsById.get(id);
+      if (!row) throw new Error('章节排序数据已失效');
+      return {
+        id: row.id,
+        note_id: row.note_id,
+        name: row.name,
+        parent_id: row.parent_id,
+        sort_order: index,
+        description: row.description,
+        color: row.color,
+        created_at: row.created_at,
+        updated_at: timestamp,
+      };
+    });
 
     const { error } = await supabase.from('chapters').upsert(updates);
     if (error) throw error;

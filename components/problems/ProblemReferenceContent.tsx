@@ -5,6 +5,7 @@ import Link from "next/link";
 import { BookOpen, ExternalLink, Loader2 } from "lucide-react";
 import { notesApi } from "@/lib/supabase";
 import type { Note, Problem } from "@/lib/types";
+import { getNoteReadHref } from "@/lib/note-routes";
 import {
   extractProblemReferenceNoteIds,
   splitProblemReferenceContent,
@@ -210,7 +211,7 @@ function ProblemReferenceBlock({
         </div>
         {firstProblem && (
           <Link
-            href={`/notes/${state.note.id}#problem-${firstProblem.problem.id}`}
+            href={getNoteReadHref(state.note, `problem-${firstProblem.problem.id}`)}
             className="control-button h-9 self-start px-3 text-xs sm:self-auto"
           >
             <ExternalLink className="h-3.5 w-3.5" />

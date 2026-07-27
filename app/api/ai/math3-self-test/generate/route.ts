@@ -3,7 +3,7 @@ import { callDeepSeek } from "@/lib/ai-client";
 import { DEFAULT_DEEPSEEK_MODEL } from "@/lib/ai-config";
 import { parseAIJson } from "@/lib/ai-json";
 import { getMath3KnowledgePromptContext, getMath3SelfTestConfig, math3SelfTestDifficultyMeta, normalizeMath3SelfTestPaper, type Math3SelfTestDifficulty, type Math3SelfTestMode } from "@/lib/math3-self-test";
-import { repairMarkdown } from "@/lib/markdown";
+import { normalizeMarkdownForWrite } from "@/lib/content-contract";
 import { requireAdminRequest, resolveAIKey } from "@/lib/server-admin-auth";
 
 export const runtime = "nodejs";
@@ -22,16 +22,16 @@ function repairPaperMarkdown(paper: ReturnType<typeof normalizeMath3SelfTestPape
     ...paper,
     questions: paper.questions.map((question) => ({
       ...question,
-      question: repairMarkdown(question.question),
-      answer: repairMarkdown(question.answer),
-      explanation: repairMarkdown(question.explanation),
+      question: normalizeMarkdownForWrite(question.question, "ai"),
+      answer: normalizeMarkdownForWrite(question.answer, "ai"),
+      explanation: normalizeMarkdownForWrite(question.explanation, "ai"),
       options: question.options?.map((option) => ({
         ...option,
-        content: repairMarkdown(option.content),
+        content: normalizeMarkdownForWrite(option.content, "ai"),
       })),
       rubricSteps: question.rubricSteps.map((step) => ({
         ...step,
-        expected: repairMarkdown(step.expected),
+        expected: normalizeMarkdownForWrite(step.expected, "ai"),
       })),
     })),
   };

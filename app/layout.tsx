@@ -4,6 +4,9 @@ import { Navbar } from "@/components/layout/Navbar";
 import { MotionProvider } from "@/components/layout/MotionProvider";
 import { PageTransition } from "@/components/layout/PageTransition";
 import { ToastProvider } from "@/components/ui/Toast";
+import { JobCenterProvider } from "@/components/jobs/JobCenter";
+import { ThemeController } from "@/components/layout/ThemeController";
+import { AssistantDock } from "@/components/ai-assistant/AssistantDock";
 import {
   DEFAULT_OG_IMAGE,
   SITE_DESCRIPTION,
@@ -71,10 +74,14 @@ export default function RootLayout({
   return (
     <html lang="zh-CN" className="h-full antialiased" data-scroll-behavior="smooth" suppressHydrationWarning>
       <body className="min-h-full flex flex-col bg-surface text-on-surface selection:bg-primary-container selection:text-on-primary-container">
+        <ThemeController />
         <MotionProvider>
           <ToastProvider>
-            <Navbar />
-            <PageTransition>{children}</PageTransition>
+            <JobCenterProvider>
+              <Navbar />
+              <PageTransition>{children}</PageTransition>
+              <AssistantDock />
+            </JobCenterProvider>
           </ToastProvider>
         </MotionProvider>
       </body>

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { createElement, useEffect, useMemo, useState } from "react";
-import { ArrowLeft, CheckCircle2, Loader2 } from "lucide-react";
+import { ArrowLeft, CheckCircle2, History, Loader2 } from "lucide-react";
 import { PageHeader, PageShell } from "@/components/ui/PageScaffold";
 import { useToast } from "@/components/ui/Toast";
 import {
@@ -14,15 +14,32 @@ import {
   type EnglishResultPassage,
   type EnglishResultsData,
 } from "@/lib/english-results-api";
+import { englishTrainingApi } from "@/lib/english-training-api";
+import { findUnreconciledEnglishLocalHistory, type EnglishTrainingPersistenceMode } from "@/lib/english-training-core";
+import {
+  ENGLISH_ROUND_HISTORY_CHANGE_EVENT,
+  getEffectiveEnglishRoundResult,
+  getLatestEnglishRoundRevision,
+  importLegacyEnglishAttempt,
+  readEnglishRoundLedgers,
+  upsertEnglishRoundLedger,
+  writeEnglishRoundLedgers,
+  type EnglishPassageRoundLedger,
+  type EnglishRoundRevision,
+} from "@/lib/english-round-history";
 
 type ResultTab = "english" | "math";
+type EnglishResultView = "type" | "paper";
+
+type EnglishEffectivePassage = {
+  passage: EnglishResultPassage;
+  ledger: EnglishPassageRoundLedger;
+  round: 1 | 2 | 3;
+  revision: EnglishRoundRevision;
+};
 
 const objectiveSections: EnglishSection[] = ["reading", "cloze", "new_type"];
 const sectionOrder: EnglishSection[] = ["reading", "cloze", "new_type", "translation", "writing"];
-
-function isSubmitted(passage: EnglishResultPassage): boolean {
-  return passage.attempt?.status === "submitted";
-}
 
 function getObjectivePassages(passages: EnglishResultPassage[]): EnglishResultPassage[] {
   return passages.filter((passage) => objectiveSections.includes(passage.section));
@@ -40,6 +57,9 @@ export function PastPaperResults() {
   const toast = useToast();
   const [data, setData] = useState<EnglishResultsData>({ passages: [] });
   const [activeTab, setActiveTab] = useState<ResultTab>("english");
+  const [englishView, setEnglishView] = useState<EnglishResultView>("type");
+  const [roundLedgers, setRoundLedgers] = useState<EnglishPassageRoundLedger[]>([]);
+  const [persistenceMode, setPersistenceMode] = useState<EnglishTrainingPersistenceMode>("legacy");
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -50,9 +70,43 @@ export function PastPaperResults() {
       setIsLoading(true);
       setLoadError(null);
       try {
-        const results = await englishResultsApi.getResultsData();
+        const [results, roundHistory] = await Promise.all([
+          englishResultsApi.getResultsData(),
+          englishTrainingApi.getRoundHistory(),
+        ]);
         if (cancelled) return;
         setData(results);
+        setPersistenceMode(roundHistory.mode);
+        const stored = readEnglishRoundLedgers();
+        if (roundHistory.mode !== "legacy") {
+          const unreconciled = findUnreconciledEnglishLocalHistory(stored, roundHistory.ledgers);
+          if (unreconciled.length > 0) {
+            const passageCount = new Set(unreconciled.map((issue) => issue.passageId)).size;
+            throw new Error(`检测到 ${passageCount} 个题组仍有仅存在于本机的三轮或纠正历史。为避免覆盖，需先完成本机历史迁移确认。`);
+          }
+        }
+        const imported = roundHistory.mode === "legacy"
+          ? results.passages.reduce((ledgers, passage) => {
+            if (!passage.attempt) return ledgers;
+            const attempt = passage.attempt;
+            const existing = ledgers.find((ledger) => ledger.passageId === passage.id);
+            const ledger = importLegacyEnglishAttempt(existing, {
+              passageId: passage.id,
+              status: attempt.status,
+              answers: Object.fromEntries(attempt.answers.map((answer) => [answer.questionId, answer.answer])),
+              score: attempt.score,
+              maxScore: attempt.maxScore,
+              startedAt: attempt.startedAt.toISOString(),
+              submittedAt: attempt.submittedAt?.toISOString(),
+              updatedAt: attempt.updatedAt.toISOString(),
+            });
+            return upsertEnglishRoundLedger(ledgers, ledger);
+          }, stored)
+          : roundHistory.ledgers;
+        setRoundLedgers(imported);
+        if (roundHistory.mode === "legacy" && JSON.stringify(imported) !== JSON.stringify(stored)) {
+          writeEnglishRoundLedgers(imported);
+        }
       } catch (error) {
         if (cancelled) return;
         const message = error instanceof Error ? error.message : "未知错误";
@@ -69,11 +123,33 @@ export function PastPaperResults() {
     };
   }, [toast]);
 
+  useEffect(() => {
+    if (persistenceMode !== "legacy") return;
+    const refresh = () => setRoundLedgers(readEnglishRoundLedgers());
+    window.addEventListener(ENGLISH_ROUND_HISTORY_CHANGE_EVENT, refresh);
+    window.addEventListener("storage", refresh);
+    return () => {
+      window.removeEventListener(ENGLISH_ROUND_HISTORY_CHANGE_EVENT, refresh);
+      window.removeEventListener("storage", refresh);
+    };
+  }, [persistenceMode]);
+
+  const ledgersByPassageId = useMemo(
+    () => new Map(roundLedgers.map((ledger) => [ledger.passageId, ledger])),
+    [roundLedgers],
+  );
+
+  const effectivePassages = useMemo(() => data.passages.flatMap((passage): EnglishEffectivePassage[] => {
+    const ledger = ledgersByPassageId.get(passage.id);
+    const result = getEffectiveEnglishRoundResult(ledger);
+    return ledger && result ? [{ passage, ledger, round: result.round.round, revision: result.revision }] : [];
+  }), [data.passages, ledgersByPassageId]);
+
   const stats = useMemo(() => {
     const objectivePassages = getObjectivePassages(data.passages);
-    const submitted = objectivePassages.filter(isSubmitted);
-    const score = submitted.reduce((sum, passage) => sum + (passage.attempt?.score ?? 0), 0);
-    const maxScore = submitted.reduce((sum, passage) => sum + (passage.attempt?.maxScore ?? 0), 0);
+    const submitted = effectivePassages.filter((item) => objectiveSections.includes(item.passage.section));
+    const score = submitted.reduce((sum, item) => sum + item.revision.score, 0);
+    const maxScore = submitted.reduce((sum, item) => sum + item.revision.maxScore, 0);
     return {
       objectiveTotal: objectivePassages.length,
       submittedTotal: submitted.length,
@@ -82,14 +158,14 @@ export function PastPaperResults() {
       lost: Math.max(maxScore - score, 0),
       accuracy: getAccuracy(score, maxScore),
     };
-  }, [data.passages]);
+  }, [data.passages, effectivePassages]);
 
   const sectionStats = useMemo(() => {
     return sectionOrder.map((section) => {
       const sectionPassages = data.passages.filter((passage) => passage.section === section);
-      const submitted = sectionPassages.filter(isSubmitted);
-      const score = submitted.reduce((sum, passage) => sum + (passage.attempt?.score ?? 0), 0);
-      const maxScore = submitted.reduce((sum, passage) => sum + (passage.attempt?.maxScore ?? 0), 0);
+      const submitted = effectivePassages.filter((item) => item.passage.section === section);
+      const score = submitted.reduce((sum, item) => sum + item.revision.score, 0);
+      const maxScore = submitted.reduce((sum, item) => sum + item.revision.maxScore, 0);
       return {
         section,
         total: sectionPassages.length,
@@ -100,14 +176,42 @@ export function PastPaperResults() {
         accuracy: getAccuracy(score, maxScore),
       };
     });
-  }, [data.passages]);
+  }, [data.passages, effectivePassages]);
 
-  const submittedPassages = useMemo(
-    () => getObjectivePassages(data.passages)
-      .filter(isSubmitted)
-      .sort((left, right) => right.year - left.year || left.sortOrder - right.sortOrder),
-    [data.passages],
-  );
+  const paperStats = useMemo(() => {
+    const papers = new Map<string, {
+      paperId: string;
+      year: number;
+      total: number;
+      completed: number;
+      score: number;
+      maxScore: number;
+    }>();
+    for (const passage of getObjectivePassages(data.passages)) {
+      const key = passage.paperId || String(passage.year);
+      const current = papers.get(key) ?? {
+        paperId: key,
+        year: passage.year,
+        total: 0,
+        completed: 0,
+        score: 0,
+        maxScore: 0,
+      };
+      current.total += 1;
+      const effective = effectivePassages.find((item) => item.passage.id === passage.id);
+      if (effective) {
+        current.completed += 1;
+        current.score += effective.revision.score;
+        current.maxScore += effective.revision.maxScore;
+      }
+      papers.set(key, current);
+    }
+    return [...papers.values()].sort((left, right) => right.year - left.year);
+  }, [data.passages, effectivePassages]);
+
+  const recentHistory = useMemo(() => [...effectivePassages]
+    .filter((item) => objectiveSections.includes(item.passage.section))
+    .sort((left, right) => right.revision.createdAt.localeCompare(left.revision.createdAt)), [effectivePassages]);
 
   return (
     <>
@@ -150,7 +254,11 @@ export function PastPaperResults() {
           <EnglishResultPanel
             stats={stats}
             sectionStats={sectionStats}
-            submittedPassages={submittedPassages}
+            paperStats={paperStats}
+            recentHistory={recentHistory}
+            persistenceMode={persistenceMode}
+            view={englishView}
+            onViewChange={setEnglishView}
           />
         ) : (
           <MathResultPlaceholder />
@@ -197,7 +305,11 @@ function InlinePanel({
 function EnglishResultPanel({
   stats,
   sectionStats,
-  submittedPassages,
+  paperStats,
+  recentHistory,
+  persistenceMode,
+  view,
+  onViewChange,
 }: {
   stats: {
     objectiveTotal: number;
@@ -216,11 +328,44 @@ function EnglishResultPanel({
     lost: number;
     accuracy: number;
   }>;
-  submittedPassages: EnglishResultPassage[];
+  paperStats: Array<{
+    paperId: string;
+    year: number;
+    total: number;
+    completed: number;
+    score: number;
+    maxScore: number;
+  }>;
+  recentHistory: EnglishEffectivePassage[];
+  persistenceMode: EnglishTrainingPersistenceMode;
+  view: EnglishResultView;
+  onViewChange: (view: EnglishResultView) => void;
 }) {
   return (
-    <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_24rem]">
+    <div className="space-y-4">
       <section className="surface-panel p-4 sm:p-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="font-headline text-xl font-bold text-on-surface">英语一结果分析</h2>
+            <p className="mt-1 text-sm text-on-surface-variant">正式统计自动采用最高已完成轮次的最新有效版本，AI 建议不会混入分数。</p>
+          </div>
+          <div className="flex gap-2">
+            <TabButton active={view === "type"} onClick={() => onViewChange("type")}>按题型</TabButton>
+            <TabButton active={view === "paper"} onClick={() => onViewChange("paper")}>按套卷</TabButton>
+          </div>
+        </div>
+        <p className="mt-3 rounded-lg border border-outline-variant/20 bg-surface-container-low px-3 py-2 text-xs leading-5 text-on-surface-variant">
+          {persistenceMode === "legacy"
+            ? "当前三轮与纠正轨迹来自本机浏览器；旧数据库只保留最近正式结果。完成生产数据迁移前，这些历史不会冒充跨设备同步。"
+            : persistenceMode === "dual"
+              ? "当前三轮与纠正轨迹来自共享训练核；旧数据库仅保留最高已完成轮次的兼容投影。"
+              : "当前三轮与纠正轨迹来自共享训练核，并以追加式修订和正式评分作为统计真源。"}
+        </p>
+      </section>
+
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_24rem]">
+      {view === "type" ? (
+        <section className="surface-panel p-4 sm:p-5">
         <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
           <div>
             <h2 className="font-headline text-xl font-bold text-on-surface">英语一总览</h2>
@@ -248,44 +393,105 @@ function EnglishResultPanel({
             item,
           }))}
         </div>
-      </section>
+        </section>
+      ) : (
+        <section className="surface-panel p-4 sm:p-5">
+          <div className="mb-4">
+            <h2 className="font-headline text-xl font-bold text-on-surface">年度套卷</h2>
+            <p className="mt-1 text-sm text-on-surface-variant">同一年各客观题型合并观察；未完成的题组不计入已得分分母。</p>
+          </div>
+          {paperStats.length === 0 ? (
+            <p className="rounded-lg border border-dashed border-outline-variant/30 px-3 py-8 text-center text-sm text-on-surface-variant">还没有可分析的套卷。</p>
+          ) : (
+            <div className="space-y-3">
+              {paperStats.map((paper) => {
+                const accuracy = getAccuracy(paper.score, paper.maxScore);
+                return (
+                  <div key={paper.paperId} className="rounded-lg border border-outline-variant/20 bg-surface-container-lowest p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <div className="text-xl font-bold tabular-nums text-on-surface">{paper.year} 英语一</div>
+                        <div className="mt-1 text-xs text-on-surface-variant">完成 {paper.completed}/{paper.total} 个客观题组</div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-xl font-bold text-primary">{formatScore(paper.score)}/{formatScore(paper.maxScore)}</div>
+                        <div className="mt-1 text-xs text-on-surface-variant">正确率 {accuracy}%</div>
+                      </div>
+                    </div>
+                    <div className="mt-3 h-2 overflow-hidden rounded-full bg-surface-container-high">
+                      <div className="h-full rounded-full bg-primary" style={{ width: `${paper.maxScore > 0 ? Math.max(accuracy, 4) : 0}%` }} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </section>
+      )}
 
       <section className="surface-panel p-4">
-        <h2 className="font-headline text-base font-bold text-on-surface">最近提交</h2>
-        {submittedPassages.length === 0 ? (
+        <div className="flex items-center gap-2">
+          <History className="h-4 w-4 text-primary" />
+          <h2 className="font-headline text-base font-bold text-on-surface">三轮与纠正轨迹</h2>
+        </div>
+        {recentHistory.length === 0 ? (
           <p className="mt-4 rounded-lg border border-dashed border-outline-variant/30 px-3 py-8 text-center text-sm text-on-surface-variant">
             还没有提交过客观题。
           </p>
         ) : (
           <div className="mt-3 space-y-2">
-            {submittedPassages.slice(0, 12).map((passage) => {
-              const attempt = passage.attempt;
-              const score = attempt?.score ?? 0;
-              const maxScore = attempt?.maxScore ?? 0;
-              return createElement(Link, {
-                key: passage.id,
-                href: `/tools/english-training?passage=${encodeURIComponent(passage.id)}&edit=1`,
-                className: "block rounded-lg border border-outline-variant/20 bg-surface-container-lowest p-3 transition-colors hover:border-primary/40",
-              },
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="text-sm font-bold text-on-surface">{passage.displayTitle}</div>
+            {recentHistory.slice(0, 12).map((item) => (
+              <div key={item.passage.id} className="rounded-lg border border-outline-variant/20 bg-surface-container-lowest p-3">
+                <Link
+                  href={`/tools/english-training?passage=${encodeURIComponent(item.passage.id)}&round=${item.round}&edit=1`}
+                  className="block transition-colors hover:text-primary"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                   <div className="min-w-0">
+                    <div className="text-sm font-bold text-on-surface">{item.passage.displayTitle}</div>
                     <div className="mt-1 text-xs text-on-surface-variant">
-                      {attempt?.submittedAt ? attempt.submittedAt.toLocaleDateString("zh-CN") : "已提交"}
+                      当前采用 R{item.round} · v{item.revision.revisionNo}
                     </div>
                   </div>
                   <div className="text-sm font-bold text-primary">
-                    {formatScore(score)}/{formatScore(maxScore)}
+                    {formatScore(item.revision.score)}/{formatScore(item.revision.maxScore)}
                   </div>
-                </div>,
-                <div className="mt-2 text-xs font-semibold text-primary">修改结果</div>,
-              );
-            })}
+                  </div>
+                </Link>
+                <div className="mt-3 space-y-2 border-t border-outline-variant/15 pt-2">
+                  {item.ledger.rounds.map((round) => (
+                    <div key={round.round} className="text-xs text-on-surface-variant">
+                      <div className="font-semibold text-on-surface">R{round.round} · {formatRoundStatus(round.status)}</div>
+                      <div className="mt-1 flex flex-wrap gap-x-2 gap-y-1">
+                        {round.revisions.length === 0 ? (
+                          <span>尚无正式提交</span>
+                        ) : round.revisions.map((revision) => (
+                          <span key={revision.id}>
+                            v{revision.revisionNo} {revision.kind === "correction" ? "纠正" : "提交"} {formatScore(revision.score)}/{formatScore(revision.maxScore)}{revision.gradeOrigin === "ai_suggested" ? "（AI建议，不计分）" : ""}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <Link href={`/tools/english-training?passage=${encodeURIComponent(item.passage.id)}&round=${item.round}&edit=1`} className="mt-2 inline-block text-xs font-semibold text-primary">
+                  修改当前轮
+                </Link>
+              </div>
+            ))}
           </div>
         )}
       </section>
+      </div>
     </div>
   );
+}
+
+function formatRoundStatus(status: EnglishPassageRoundLedger["rounds"][number]["status"]): string {
+  if (status === "in_progress") return "作答中";
+  if (status === "submitted") return "已提交";
+  if (status === "sealed") return "已封存";
+  return "已放弃";
 }
 
 function MetricCard({ label, value, tone = "text-primary" }: { label: string; value: string; tone?: string }) {

@@ -10,6 +10,18 @@ export type UploadedOcrDocument = {
   expiresInSeconds: number;
 };
 
+export type ProblemOcrUploadInput = {
+  base64: string;
+  mimeType: "image/jpeg" | "image/png" | "image/webp";
+  name: string;
+};
+
+export type UploadedProblemOcrAsset = {
+  path: string;
+  mimeType: ProblemOcrUploadInput["mimeType"];
+  name: string;
+};
+
 // 检查 Supabase 是否已配置
 function checkSupabaseConfig() {
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
@@ -108,6 +120,64 @@ export async function deleteOcrDocument(path: string): Promise<void> {
     .from(OCR_DOCUMENT_BUCKET_NAME)
     .remove([path]);
 
+  if (error) throw error;
+}
+
+function decodeBase64Image(value: string): Uint8Array {
+  const normalized = value.includes(",") ? value.slice(value.indexOf(",") + 1) : value;
+  const binary = atob(normalized);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+  return bytes;
+}
+
+function getProblemOcrExtension(mimeType: ProblemOcrUploadInput["mimeType"]): string {
+  if (mimeType === "image/png") return "png";
+  if (mimeType === "image/webp") return "webp";
+  return "jpg";
+}
+
+/**
+ * Upload compressed problem images to the private OCR bucket before a durable
+ * internal job is created. Every path is scoped to the authenticated user.
+ */
+export async function uploadProblemOcrAssets(inputs: ProblemOcrUploadInput[]): Promise<UploadedProblemOcrAsset[]> {
+  if (inputs.length === 0 || inputs.length > 10) throw new Error("题库 OCR 每次必须上传 1–10 张图片");
+  checkSupabaseConfig();
+  await assertAdminWrite();
+  const supabase = getSupabase();
+  const userResult = await supabase.auth.getUser();
+  if (userResult.error || !userResult.data.user) throw new Error("登录状态已失效，无法上传题库 OCR 图片");
+
+  const batchId = crypto.randomUUID();
+  const uploaded: UploadedProblemOcrAsset[] = [];
+  try {
+    for (let index = 0; index < inputs.length; index += 1) {
+      const input = inputs[index];
+      const path = `problem-ocr/${userResult.data.user.id}/${batchId}/${String(index + 1).padStart(2, "0")}.${getProblemOcrExtension(input.mimeType)}`;
+      const { error } = await supabase.storage.from(OCR_DOCUMENT_BUCKET_NAME).upload(
+        path,
+        decodeBase64Image(input.base64),
+        { contentType: input.mimeType, upsert: false },
+      );
+      if (error) throw new Error(`题库 OCR 图片上传失败：${error.message}。请确认已执行 WP3 图片临时源迁移`);
+      uploaded.push({ path, mimeType: input.mimeType, name: input.name });
+    }
+    return uploaded;
+  } catch (error: unknown) {
+    if (uploaded.length > 0) {
+      await supabase.storage.from(OCR_DOCUMENT_BUCKET_NAME).remove(uploaded.map((asset) => asset.path));
+    }
+    throw error;
+  }
+}
+
+export async function deleteProblemOcrAssets(paths: string[]): Promise<void> {
+  const normalized = Array.from(new Set(paths.map((path) => path.trim()).filter(Boolean)));
+  if (normalized.length === 0) return;
+  await assertAdminWrite();
+  const supabase = getSupabase();
+  const { error } = await supabase.storage.from(OCR_DOCUMENT_BUCKET_NAME).remove(normalized);
   if (error) throw error;
 }
 

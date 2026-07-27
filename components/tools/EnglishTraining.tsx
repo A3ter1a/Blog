@@ -4,22 +4,20 @@ import Link from "next/link";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   ArrowLeft,
-  ArrowRight,
   BookOpen,
-  Check,
   ChevronRight,
   Circle,
   ClipboardCheck,
   FileText,
   Loader2,
   PenLine,
-  Save,
   Sparkles,
-  X,
 } from "lucide-react";
 import { PageHeader, PageShell } from "@/components/ui/PageScaffold";
 import { useToast } from "@/components/ui/Toast";
 import { englishTrainingApi, type EnglishAttemptAnswerInput } from "@/lib/english-training-api";
+import { findUnreconciledEnglishLocalHistory, type EnglishTrainingPersistenceMode } from "@/lib/english-training-core";
+import type { EnglishSubjectiveGradeSuggestion } from "@/lib/english-subjective-grade";
 import {
   isEnglishObjectiveSection,
   type EnglishAttempt,
@@ -27,6 +25,22 @@ import {
   type EnglishQuestion,
   type EnglishTrainingData,
 } from "@/lib/english-training";
+import {
+  createEmptyEnglishLedger,
+  getEffectiveEnglishRoundResult,
+  getEnglishRound,
+  getLatestEnglishRoundRevision,
+  getPreferredEnglishRound,
+  importLegacyEnglishAttempt,
+  readEnglishRoundLedgers,
+  saveEnglishRoundDraft,
+  startNextEnglishRound,
+  submitEnglishRoundRevision,
+  upsertEnglishRoundLedger,
+  writeEnglishRoundLedgers,
+  type EnglishPassageRoundLedger,
+} from "@/lib/english-round-history";
+import { EnglishPracticeWorkspace, getPassageDisplayTitle } from "@/components/tools/EnglishPracticeWorkspace";
 
 type TrainingStage = "types" | "sets" | "practice";
 type TrainingCategoryId = "reading" | "minor" | "writing";
@@ -81,205 +95,6 @@ function buildAnswerMap(attempt?: EnglishAttempt): EnglishAttemptAnswerInput {
   return Object.fromEntries(attempt.answers.map((answer) => [answer.questionId, answer.answer]));
 }
 
-function shouldMergeDisplayBlock(current: string, next: string): boolean {
-  const currentText = current.trim();
-  const nextText = next.trim();
-  if (!currentText || !nextText) return false;
-  if (/[,;:—-]$/.test(currentText)) return true;
-  if (/\b(and|or|but|nor|for|so|yet|to|of|in|on|at|by|with|from|as|than|that|which|who|whose|when|where)$/i.test(currentText)) {
-    return true;
-  }
-  if (!/[.!?]["')\]]?$/.test(currentText)) return true;
-  if (/^[a-z,.;:)\]]/.test(nextText)) return true;
-  if (/\b[a-z]\)$/.test(currentText) && countWords(currentText) < 36) return true;
-  return false;
-}
-
-function splitLongParagraph(paragraph: string): string[] {
-  if (paragraph.length < 980) return [paragraph];
-
-  const parts: string[] = [];
-  let current = "";
-  const sentences = paragraph.match(/[^.!?]+[.!?]["')\]]?|[^.!?]+$/g) ?? [paragraph];
-
-  for (const sentence of sentences) {
-    const next = current ? `${current} ${sentence.trim()}` : sentence.trim();
-    if (current && next.length > 760) {
-      parts.push(current);
-      current = sentence.trim();
-      continue;
-    }
-    current = next;
-  }
-
-  if (current) parts.push(current);
-  return parts.length > 0 ? parts : [paragraph];
-}
-
-function normalizePassageParagraphs(content: string): string[] {
-  const blocks = content
-    .replace(/\r\n/g, "\n")
-    .split(/\n{2,}/)
-    .map((block) => block.replace(/\s+/g, " ").trim())
-    .filter(Boolean);
-
-  if (blocks.length <= 1) {
-    return blocks.length === 0 ? [] : splitLongParagraph(content.replace(/\s+/g, " ").trim());
-  }
-
-  const paragraphs: string[] = [];
-  let current = "";
-  for (const block of blocks) {
-    if (!current) {
-      current = block;
-      continue;
-    }
-    if (shouldMergeDisplayBlock(current, block)) {
-      current = `${current} ${block}`;
-      continue;
-    }
-    paragraphs.push(current);
-    current = block;
-  }
-  if (current) paragraphs.push(current);
-  return paragraphs.flatMap(splitLongParagraph);
-}
-
-function countWords(text: string): number {
-  return text.match(/[A-Za-z]+(?:[-'][A-Za-z]+)?|\d+/g)?.length ?? 0;
-}
-
-function splitParagraphIntoChunks(paragraph: string, targetWords: number): string[] {
-  if (countWords(paragraph) <= targetWords) return [paragraph];
-  const sentences = paragraph.match(/[^.!?]+[.!?]["')\]]?|[^.!?]+$/g) ?? [paragraph];
-  const chunks: string[] = [];
-  let current = "";
-  let currentWords = 0;
-
-  for (const sentence of sentences) {
-    const cleanSentence = sentence.trim();
-    const sentenceWords = countWords(cleanSentence);
-    if (sentenceWords > targetWords) {
-      if (current) {
-        chunks.push(current);
-        current = "";
-        currentWords = 0;
-      }
-      const words = cleanSentence.split(/\s+/).filter(Boolean);
-      for (let index = 0; index < words.length; index += targetWords) {
-        chunks.push(words.slice(index, index + targetWords).join(" "));
-      }
-      continue;
-    }
-    if (current && currentWords + sentenceWords > targetWords) {
-      chunks.push(current);
-      current = cleanSentence;
-      currentWords = sentenceWords;
-      continue;
-    }
-    current = current ? `${current} ${cleanSentence}` : cleanSentence;
-    currentWords += sentenceWords;
-  }
-  if (current) chunks.push(current);
-  return chunks;
-}
-
-function paginatePassageContent(content: string, targetWords = 380): string[] {
-  const paragraphs = normalizePassageParagraphs(content);
-  if (paragraphs.length === 0) return [];
-
-  const pages: string[] = [];
-  let current: string[] = [];
-  let currentWords = 0;
-
-  for (const paragraph of paragraphs) {
-    const paragraphWords = countWords(paragraph);
-    const pieces = paragraphWords > targetWords + 120
-      ? splitParagraphIntoChunks(paragraph, targetWords)
-      : [paragraph];
-
-    for (const piece of pieces) {
-      const pieceWords = countWords(piece);
-      if (current.length > 0 && currentWords + pieceWords > targetWords) {
-        pages.push(current.join("\n\n"));
-        current = [];
-        currentWords = 0;
-      }
-      current.push(piece);
-      currentWords += pieceWords;
-    }
-  }
-
-  if (current.length > 0) pages.push(current.join("\n\n"));
-  return pages;
-}
-
-function renderClozeParagraph(content: string): ReactNode[] {
-  const nodes: ReactNode[] = [];
-  const pattern = /(?<!\w)(\d{1,2})(?!\w)/g;
-  let lastIndex = 0;
-
-  for (const match of content.matchAll(pattern)) {
-    const index = match.index ?? 0;
-    const blankNo = match[1];
-    const fullMatch = match[0];
-    const value = Number(blankNo);
-    const nextText = content.slice(index + fullMatch.length).trimStart().toLowerCase();
-    const shouldUnderline = value >= 1 && value <= 20 && !nextText.startsWith("point");
-
-    if (index > lastIndex) {
-      nodes.push(content.slice(lastIndex, index));
-    }
-    nodes.push(shouldUnderline
-      ? <span key={`${index}-${blankNo}`} className="cloze-blank">{blankNo}</span>
-      : fullMatch);
-    lastIndex = index + fullMatch.length;
-  }
-
-  if (lastIndex < content.length) {
-    nodes.push(content.slice(lastIndex));
-  }
-
-  return nodes;
-}
-
-function PassagePageContent({
-  content,
-  cloze,
-}: {
-  content: string;
-  cloze: boolean;
-}) {
-  const paragraphs = content.split(/\n{2,}/).map((paragraph) => paragraph.trim()).filter(Boolean);
-
-  return (
-    <div className="english-passage-content text-on-surface">
-      {paragraphs.map((paragraph, index) => (
-        <p key={`${index}-${paragraph.slice(0, 12)}`}>
-          {cloze ? renderClozeParagraph(paragraph) : paragraph}
-        </p>
-      ))}
-    </div>
-  );
-}
-
-function getQuestionTitle(question: EnglishQuestion, passage: EnglishPassage): string {
-  if (passage.section === "cloze") return `Blank ${question.questionNo}`;
-  return question.stem || `第 ${question.questionNo} 题`;
-}
-
-function getPassageDisplayTitle(passage: EnglishPassage): string {
-  if (passage.section === "reading" && passage.passageNo.startsWith("text")) {
-    return `${passage.year} 阅读 ${passage.passageNo.replace("text", "")}`;
-  }
-  if (passage.passageNo === "small_writing") return `${passage.year} 小作文`;
-  if (passage.passageNo === "big_writing") return `${passage.year} 大作文`;
-  if (passage.section === "cloze") return `${passage.year} 完形`;
-  if (passage.section === "new_type") return `${passage.year} 新题型`;
-  if (passage.section === "translation") return `${passage.year} 翻译`;
-  return `${passage.year}`;
-}
-
 function getPassageWindowLabel(passage: EnglishPassage): string {
   if (passage.section === "reading" && passage.passageNo.startsWith("text")) {
     return passage.passageNo.replace("text", "");
@@ -324,8 +139,13 @@ export function EnglishTraining() {
   const [activeCategoryId, setActiveCategoryId] = useState<TrainingCategoryId | null>(null);
   const [activePassageId, setActivePassageId] = useState<string | null>(null);
   const [draftAnswersByPassageId, setDraftAnswersByPassageId] = useState<Record<string, EnglishAttemptAnswerInput>>({});
-  const [editingSubmittedPassageId, setEditingSubmittedPassageId] = useState<string | null>(null);
+  const [roundLedgers, setRoundLedgers] = useState<EnglishPassageRoundLedger[]>([]);
+  const [persistenceMode, setPersistenceMode] = useState<EnglishTrainingPersistenceMode>("legacy");
+  const [activeRoundByPassageId, setActiveRoundByPassageId] = useState<Record<string, 1 | 2 | 3>>({});
+  const [editingSubmittedRoundKey, setEditingSubmittedRoundKey] = useState<string | null>(null);
   const [saving, setSaving] = useState<"save" | "submit" | null>(null);
+  const [startingNext, setStartingNext] = useState(false);
+  const [subjectiveBusy, setSubjectiveBusy] = useState<"suggest" | "confirm" | null>(null);
   const [articlePage, setArticlePage] = useState(0);
   const [routeApplied, setRouteApplied] = useState(false);
 
@@ -336,9 +156,41 @@ export function EnglishTraining() {
       setIsLoading(true);
       setLoadError(null);
       try {
-        const trainingData = await englishTrainingApi.getTrainingData();
+        const [trainingData, roundHistory] = await Promise.all([
+          englishTrainingApi.getTrainingData(),
+          englishTrainingApi.getRoundHistory(),
+        ]);
         if (cancelled) return;
         setData(trainingData);
+        setPersistenceMode(roundHistory.mode);
+        const stored = readEnglishRoundLedgers();
+        if (roundHistory.mode !== "legacy") {
+          const unreconciled = findUnreconciledEnglishLocalHistory(stored, roundHistory.ledgers);
+          if (unreconciled.length > 0) {
+            const passageCount = new Set(unreconciled.map((issue) => issue.passageId)).size;
+            throw new Error(`检测到 ${passageCount} 个题组仍有仅存在于本机的三轮或纠正历史。为避免覆盖，需先完成本机历史迁移确认。`);
+          }
+        }
+        const imported = roundHistory.mode === "legacy"
+          ? trainingData.attempts.reduce((ledgers, attempt) => {
+            const existing = ledgers.find((ledger) => ledger.passageId === attempt.passageId);
+            const ledger = importLegacyEnglishAttempt(existing, {
+              passageId: attempt.passageId,
+              status: attempt.status,
+              answers: buildAnswerMap(attempt),
+              score: attempt.score,
+              maxScore: attempt.maxScore,
+              startedAt: attempt.startedAt.toISOString(),
+              submittedAt: attempt.submittedAt?.toISOString(),
+              updatedAt: attempt.updatedAt.toISOString(),
+            });
+            return upsertEnglishRoundLedger(ledgers, ledger);
+          }, stored)
+          : roundHistory.ledgers;
+        setRoundLedgers(imported);
+        if (roundHistory.mode === "legacy" && JSON.stringify(imported) !== JSON.stringify(stored)) {
+          writeEnglishRoundLedgers(imported);
+        }
       } catch (error) {
         if (cancelled) return;
         const message = error instanceof Error ? error.message : "未知错误";
@@ -358,6 +210,11 @@ export function EnglishTraining() {
   const attemptsByPassageId = useMemo(
     () => new Map(data.attempts.map((attempt) => [attempt.passageId, attempt])),
     [data.attempts],
+  );
+
+  const ledgersByPassageId = useMemo(
+    () => new Map(roundLedgers.map((ledger) => [ledger.passageId, ledger])),
+    [roundLedgers],
   );
 
   const questionsByPassageId = useMemo(() => {
@@ -389,16 +246,16 @@ export function EnglishTraining() {
   }, [data.passages]);
 
   const stats = useMemo(() => {
-    const submitted = data.attempts.filter((attempt) => attempt.status === "submitted");
-    const score = submitted.reduce((sum, attempt) => sum + attempt.score, 0);
-    const maxScore = submitted.reduce((sum, attempt) => sum + attempt.maxScore, 0);
+    const effectiveResults = roundLedgers.flatMap((ledger) => getEffectiveEnglishRoundResult(ledger) ?? []);
+    const score = effectiveResults.reduce((sum, result) => sum + result.revision.score, 0);
+    const maxScore = effectiveResults.reduce((sum, result) => sum + result.revision.maxScore, 0);
     return {
       total: data.passages.length,
-      submitted: submitted.length,
-      inProgress: data.attempts.filter((attempt) => attempt.status === "in_progress").length,
+      submitted: effectiveResults.length,
+      inProgress: roundLedgers.filter((ledger) => ledger.rounds.some((round) => round.status === "in_progress")).length,
       accuracy: maxScore > 0 ? Math.round((score / maxScore) * 100) : 0,
     };
-  }, [data.attempts, data.passages.length]);
+  }, [data.passages.length, roundLedgers]);
 
   const activeCategory = useMemo(
     () => TRAINING_CATEGORIES.find((category) => category.id === activeCategoryId) ?? null,
@@ -411,9 +268,27 @@ export function EnglishTraining() {
     : null;
   const activeAttempt = activePassage ? attemptsByPassageId.get(activePassage.id) : undefined;
   const activeQuestions = activePassage ? questionsByPassageId.get(activePassage.id) ?? [] : [];
+  const activeLedger = activePassage ? ledgersByPassageId.get(activePassage.id) : undefined;
+  const activeRoundNo = activePassage
+    ? activeRoundByPassageId[activePassage.id] ?? getPreferredEnglishRound(activeLedger)
+    : 1;
+  const activeRound = getEnglishRound(activeLedger, activeRoundNo);
+  const activeRoundRevision = getLatestEnglishRoundRevision(activeRound);
+  const activeRoundKey = activePassage ? `${activePassage.id}:${activeRoundNo}` : "";
   const activeAnswers = activePassage
-    ? draftAnswersByPassageId[activePassage.id] ?? buildAnswerMap(activeAttempt)
+    ? draftAnswersByPassageId[activeRoundKey]
+      ?? activeRound?.draftAnswers
+      ?? activeRoundRevision?.answers
+      ?? (activeRoundNo === 1 ? buildAnswerMap(activeAttempt) : {})
     : {};
+
+  const persistLedger = (ledger: EnglishPassageRoundLedger, writeLocal = persistenceMode === "legacy") => {
+    setRoundLedgers((current) => {
+      const next = upsertEnglishRoundLedger(current, ledger);
+      if (writeLocal) writeEnglishRoundLedgers(next);
+      return next;
+    });
+  };
 
   useEffect(() => {
     if (routeApplied || isLoading || data.passages.length === 0 || typeof window === "undefined") return;
@@ -433,7 +308,13 @@ export function EnglishTraining() {
 
       setActiveCategoryId(getCategoryForPassage(passage));
       setActivePassageId(passage.id);
-      setEditingSubmittedPassageId(params.get("edit") === "1" ? passage.id : null);
+      const ledger = ledgersByPassageId.get(passage.id);
+      const requestedRound = Number(params.get("round"));
+      const round = requestedRound >= 1 && requestedRound <= 3 && getEnglishRound(ledger, requestedRound)
+        ? requestedRound as 1 | 2 | 3
+        : getPreferredEnglishRound(ledger);
+      setActiveRoundByPassageId((current) => ({ ...current, [passage.id]: round }));
+      setEditingSubmittedRoundKey(params.get("edit") === "1" ? `${passage.id}:${round}` : null);
       setStage("practice");
       setArticlePage(0);
 
@@ -441,7 +322,7 @@ export function EnglishTraining() {
     }, 0);
 
     return () => window.clearTimeout(timeout);
-  }, [data.passages, isLoading, routeApplied]);
+  }, [data.passages, isLoading, ledgersByPassageId, routeApplied]);
 
   const handleSelectCategory = (categoryId: TrainingCategoryId) => {
     setActiveCategoryId(categoryId);
@@ -449,8 +330,17 @@ export function EnglishTraining() {
   };
 
   const handleOpenPassage = (passageId: string) => {
+    let ledger = ledgersByPassageId.get(passageId);
+    if (!ledger) {
+      ledger = createEmptyEnglishLedger(passageId, new Date().toISOString());
+      persistLedger(ledger);
+    }
     setActivePassageId(passageId);
-    setEditingSubmittedPassageId(null);
+    setActiveRoundByPassageId((current) => ({
+      ...current,
+      [passageId]: getPreferredEnglishRound(ledger),
+    }));
+    setEditingSubmittedRoundKey(null);
     setArticlePage(0);
     setStage("practice");
   };
@@ -458,7 +348,7 @@ export function EnglishTraining() {
   const handleBack = () => {
     if (stage === "practice") {
       setStage("sets");
-      setEditingSubmittedPassageId(null);
+      setEditingSubmittedRoundKey(null);
       setArticlePage(0);
       return;
     }
@@ -470,27 +360,86 @@ export function EnglishTraining() {
 
   const handleSaveAttempt = async (submitted: boolean) => {
     if (!activePassage || saving) return;
-    const updatingSubmittedResult = submitted && activeAttempt?.status === "submitted";
+    const now = new Date().toISOString();
+    const ledger = activeLedger ?? createEmptyEnglishLedger(activePassage.id, now);
+    const round = getEnglishRound(ledger, activeRoundNo);
+    if (!round) {
+      toast.error(`第 ${activeRoundNo} 轮尚未建立。`);
+      return;
+    }
+    const updatingSubmittedResult = submitted && round.revisions.length > 0;
     setSaving(submitted ? "submit" : "save");
     try {
-      const saved = await englishTrainingApi.saveAttempt({
-        passage: activePassage,
-        questions: activeQuestions,
-        answers: activeAnswers,
-        submitted,
-        currentAttempt: activeAttempt,
-      });
-      setData((current) => ({
-        ...current,
-        attempts: [saved, ...current.attempts.filter((attempt) => attempt.id !== saved.id && attempt.passageId !== saved.passageId)],
-      }));
+      let nextLedger: EnglishPassageRoundLedger;
+      let nextMode = persistenceMode;
+      if (submitted) {
+        const result = await englishTrainingApi.saveAttempt({
+          passage: activePassage,
+          answers: activeAnswers,
+          round: activeRoundNo,
+          action: "submit",
+        });
+        nextMode = result.mode;
+        setPersistenceMode(result.mode);
+        if (result.attempt) {
+          const saved = result.attempt;
+          setData((current) => ({
+            ...current,
+            attempts: [saved, ...current.attempts.filter((attempt) => attempt.id !== saved.id && attempt.passageId !== saved.passageId)],
+          }));
+        }
+        if (result.mode === "legacy") {
+          if (!result.attempt) throw new Error("旧训练路径没有返回保存结果");
+          nextLedger = submitEnglishRoundRevision(ledger, activeRoundNo, {
+            answers: activeAnswers,
+            score: result.attempt.score,
+            maxScore: result.attempt.maxScore,
+            gradeOrigin: isEnglishObjectiveSection(activePassage.section) ? "system_scored" : "user_final",
+            now,
+          });
+        } else {
+          const serverLedger = result.ledgers.find((item) => item.passageId === activePassage.id);
+          if (!serverLedger) throw new Error("共享训练核未返回当前题组历史");
+          nextLedger = serverLedger;
+        }
+      } else {
+        const shouldPersistRemotely = persistenceMode !== "legacy"
+          || (activeRoundNo === 1 && activeAttempt?.status !== "submitted");
+        if (shouldPersistRemotely) {
+          const result = await englishTrainingApi.saveAttempt({
+            passage: activePassage,
+            answers: activeAnswers,
+            round: activeRoundNo,
+            action: "save_draft",
+          });
+          nextMode = result.mode;
+          setPersistenceMode(result.mode);
+          if (result.attempt) {
+            const saved = result.attempt;
+            setData((current) => ({
+              ...current,
+              attempts: [saved, ...current.attempts.filter((attempt) => attempt.id !== saved.id && attempt.passageId !== saved.passageId)],
+            }));
+          }
+          if (result.mode !== "legacy") {
+            const serverLedger = result.ledgers.find((item) => item.passageId === activePassage.id);
+            if (!serverLedger) throw new Error("共享训练核未返回当前题组草稿");
+            nextLedger = serverLedger;
+          } else {
+            nextLedger = saveEnglishRoundDraft(ledger, activeRoundNo, activeAnswers, now);
+          }
+        } else {
+          nextLedger = saveEnglishRoundDraft(ledger, activeRoundNo, activeAnswers, now);
+        }
+      }
+      persistLedger(nextLedger, nextMode === "legacy");
       setDraftAnswersByPassageId((current) => {
         const next = { ...current };
-        delete next[activePassage.id];
+        delete next[activeRoundKey];
         return next;
       });
-      if (submitted) setEditingSubmittedPassageId(null);
-      toast.success(updatingSubmittedResult ? "已更新本篇训练结果" : submitted ? "已提交本篇训练" : "已保存作答进度");
+      if (submitted) setEditingSubmittedRoundKey(null);
+      toast.success(updatingSubmittedResult ? `已追加 R${activeRoundNo} 纠正记录` : submitted ? `已提交 R${activeRoundNo}` : `已保存 R${activeRoundNo} 草稿`);
     } catch (error) {
       const message = error instanceof Error ? error.message : "未知错误";
       toast.error(`${submitted ? "提交" : "保存"}失败：${message}`);
@@ -500,22 +449,121 @@ export function EnglishTraining() {
   };
 
   const handleStartEditingSubmittedAttempt = () => {
-    if (!activePassage || !activeAttempt || activeAttempt.status !== "submitted") return;
+    if (!activePassage || !activeRoundRevision) return;
     setDraftAnswersByPassageId((current) => ({
       ...current,
-      [activePassage.id]: buildAnswerMap(activeAttempt),
+      [activeRoundKey]: activeRoundRevision.answers,
     }));
-    setEditingSubmittedPassageId(activePassage.id);
+    setEditingSubmittedRoundKey(activeRoundKey);
   };
 
   const handleCancelEditingSubmittedAttempt = () => {
     if (!activePassage) return;
     setDraftAnswersByPassageId((current) => {
       const next = { ...current };
-      delete next[activePassage.id];
+      delete next[activeRoundKey];
       return next;
     });
-    setEditingSubmittedPassageId(null);
+    setEditingSubmittedRoundKey(null);
+  };
+
+  const handleSelectRound = (round: 1 | 2 | 3) => {
+    if (!activePassage || !getEnglishRound(activeLedger, round)) return;
+    setActiveRoundByPassageId((current) => ({ ...current, [activePassage.id]: round }));
+    setEditingSubmittedRoundKey(null);
+  };
+
+  const handleStartNextRound = async () => {
+    if (!activePassage || !activeLedger || startingNext) return;
+    setStartingNext(true);
+    try {
+      let next: EnglishPassageRoundLedger;
+      let nextMode = persistenceMode;
+      if (persistenceMode === "legacy") {
+        next = startNextEnglishRound(activeLedger, new Date().toISOString());
+      } else {
+        const result = await englishTrainingApi.startNextRound(activePassage, activeRoundNo);
+        nextMode = result.mode;
+        setPersistenceMode(result.mode);
+        const serverLedger = result.ledgers.find((item) => item.passageId === activePassage.id);
+        next = result.mode === "legacy"
+          ? startNextEnglishRound(activeLedger, new Date().toISOString())
+          : serverLedger ?? (() => { throw new Error("共享训练核未返回下一轮"); })();
+      }
+      const round = getPreferredEnglishRound(next);
+      persistLedger(next, nextMode === "legacy");
+      setActiveRoundByPassageId((current) => ({ ...current, [activePassage.id]: round }));
+      setEditingSubmittedRoundKey(null);
+      toast.success(`R${round} 已开始，上一轮已封存`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "无法开始下一轮");
+    } finally {
+      setStartingNext(false);
+    }
+  };
+
+  const handleRequestSubjectiveSuggestion = async () => {
+    if (!activePassage || subjectiveBusy || saving || startingNext) return;
+    if (persistenceMode === "legacy") {
+      toast.error("主观题确认流需先完成共享训练核迁移。");
+      return;
+    }
+    if (!Object.values(activeAnswers).some((answer) => answer.trim())) {
+      toast.error("请先填写作答，再获取 AI 建议。");
+      return;
+    }
+
+    setSubjectiveBusy("suggest");
+    try {
+      const result = await englishTrainingApi.requestSubjectiveSuggestion({
+        passage: activePassage,
+        round: activeRoundNo,
+        answers: activeAnswers,
+      });
+      setPersistenceMode(result.mode);
+      const serverLedger = result.ledgers.find((item) => item.passageId === activePassage.id);
+      if (!serverLedger) throw new Error("共享训练核未返回主观题建议记录");
+      persistLedger(serverLedger, false);
+      setDraftAnswersByPassageId((current) => {
+        const next = { ...current };
+        delete next[activeRoundKey];
+        return next;
+      });
+      setEditingSubmittedRoundKey(null);
+      toast.success(`已生成 R${activeRoundNo} AI 建议，请核对并确认终分`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "主观题建议评分失败");
+    } finally {
+      setSubjectiveBusy(null);
+    }
+  };
+
+  const handleConfirmSubjectiveGrade = async (
+    revisionId: string,
+    score: number,
+    feedback: string,
+    suggestion: EnglishSubjectiveGradeSuggestion,
+  ) => {
+    if (!activePassage || subjectiveBusy || saving || startingNext) return;
+    setSubjectiveBusy("confirm");
+    try {
+      const result = await englishTrainingApi.confirmSubjectiveGrade({
+        passage: activePassage,
+        revisionId,
+        score,
+        feedback,
+        suggestion,
+      });
+      setPersistenceMode(result.mode);
+      const serverLedger = result.ledgers.find((item) => item.passageId === activePassage.id);
+      if (!serverLedger) throw new Error("共享训练核未返回主观题终分记录");
+      persistLedger(serverLedger, false);
+      toast.success(`R${activeRoundNo} 正式终分已确认`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "主观题终分确认失败");
+    } finally {
+      setSubjectiveBusy(null);
+    }
   };
 
   const workspace = (
@@ -540,13 +588,20 @@ export function EnglishTraining() {
         />
       )}
       {stage === "practice" && (
-        <PracticeWorkspace
+        <EnglishPracticeWorkspace
           passage={activePassage}
           questions={activeQuestions}
           attempt={activeAttempt}
-          editingSubmitted={editingSubmittedPassageId === activePassage?.id}
+          ledger={activeLedger}
+          activeRound={activeRoundNo}
+          roundRecord={activeRound}
+          roundRevision={activeRoundRevision}
+          editingSubmitted={editingSubmittedRoundKey === activeRoundKey}
           answers={activeAnswers}
           saving={saving}
+          subjectiveBusy={subjectiveBusy}
+          startingNext={startingNext}
+          persistenceMode={persistenceMode}
           loading={isLoading}
           articlePage={articlePage}
           onArticlePageChange={setArticlePage}
@@ -555,16 +610,21 @@ export function EnglishTraining() {
             if (!activePassage) return;
             setDraftAnswersByPassageId((current) => ({
               ...current,
-              [activePassage.id]: {
-                ...(current[activePassage.id] ?? buildAnswerMap(activeAttempt)),
+              [activeRoundKey]: {
+                ...(current[activeRoundKey] ?? activeAnswers),
                 [questionId]: answer,
               },
             }));
           }}
+          onRoundChange={handleSelectRound}
+          onStartNextRound={handleStartNextRound}
           onStartEditingSubmitted={handleStartEditingSubmittedAttempt}
           onCancelEditingSubmitted={handleCancelEditingSubmittedAttempt}
           onSave={() => handleSaveAttempt(false)}
-          onSubmit={() => handleSaveAttempt(true)}
+          onSubmit={() => activePassage && isEnglishObjectiveSection(activePassage.section)
+            ? handleSaveAttempt(true)
+            : handleRequestSubjectiveSuggestion()}
+          onConfirmSubjectiveGrade={handleConfirmSubjectiveGrade}
         />
       )}
     </section>
@@ -744,254 +804,6 @@ function TrainingSetList({
         )}
       </section>
     </section>
-  );
-}
-
-function PracticeWorkspace({
-  passage,
-  questions,
-  attempt,
-  editingSubmitted,
-  answers,
-  saving,
-  loading,
-  articlePage,
-  onArticlePageChange,
-  onBack,
-  onAnswerChange,
-  onStartEditingSubmitted,
-  onCancelEditingSubmitted,
-  onSave,
-  onSubmit,
-}: {
-  passage: EnglishPassage | null;
-  questions: EnglishQuestion[];
-  attempt?: EnglishAttempt;
-  editingSubmitted: boolean;
-  answers: EnglishAttemptAnswerInput;
-  saving: "save" | "submit" | null;
-  loading: boolean;
-  articlePage: number;
-  onArticlePageChange: (page: number) => void;
-  onBack: () => void;
-  onAnswerChange: (questionId: string, answer: string) => void;
-  onStartEditingSubmitted: () => void;
-  onCancelEditingSubmitted: () => void;
-  onSave: () => void;
-  onSubmit: () => void;
-}) {
-  if (loading) {
-    return <EmptyWorkspace icon={<Loader2 className="h-6 w-6 animate-spin text-primary" />} text="正在加载英语真题训练。" />;
-  }
-
-  if (!passage) {
-    return <EmptyWorkspace text="没有找到当前题组。" />;
-  }
-
-  const submitted = attempt?.status === "submitted";
-  const showSubmittedResult = submitted && !editingSubmitted;
-  const objective = isEnglishObjectiveSection(passage.section);
-  const articlePages = paginatePassageContent(passage.content);
-  const currentPage = Math.min(articlePage, Math.max(articlePages.length - 1, 0));
-  const canSubmit = questions.length > 0 && objective;
-
-  return (
-    <section className="english-practice-shell">
-      <div className="english-practice-toolbar">
-        <div className="english-practice-titlebar">
-          <button type="button" onClick={onBack} className="control-button h-9 px-3 text-sm">
-            <ArrowLeft className="h-4 w-4" />
-            返回题组
-          </button>
-          <h2 className="english-practice-title">{getPassageDisplayTitle(passage)}</h2>
-          {submitted && (
-            <p className="english-practice-score">
-              {editingSubmitted ? "正在修改 · 原得分" : "得分"} {attempt?.score ?? 0}/{attempt?.maxScore ?? 0}
-            </p>
-          )}
-        </div>
-        <div className="flex shrink-0 flex-wrap gap-2">
-          {submitted ? (
-            editingSubmitted ? (
-              <>
-                <button type="button" onClick={onCancelEditingSubmitted} disabled={Boolean(saving)} className="control-button h-10 px-3 text-sm">
-                  <X className="h-4 w-4" />
-                  取消修改
-                </button>
-                <button type="button" onClick={onSubmit} disabled={Boolean(saving) || !canSubmit} className="control-button control-button-primary h-10 px-3 text-sm">
-                  {saving === "submit" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
-                  保存修改
-                </button>
-              </>
-            ) : (
-              <button type="button" onClick={onStartEditingSubmitted} disabled={Boolean(saving) || !canSubmit} className="control-button control-button-primary h-10 px-3 text-sm">
-                <PenLine className="h-4 w-4" />
-                修改结果
-              </button>
-            )
-          ) : (
-            <>
-              <button type="button" onClick={onSave} disabled={Boolean(saving)} className="control-button h-10 px-3 text-sm">
-                {saving === "save" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                保存
-              </button>
-              <button type="button" onClick={onSubmit} disabled={Boolean(saving) || !canSubmit} className="control-button control-button-primary h-10 px-3 text-sm">
-                {saving === "submit" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
-                提交本篇
-              </button>
-            </>
-          )}
-        </div>
-      </div>
-
-      <div className="english-practice-grid">
-        <article className="english-article-pane">
-          {articlePages.length > 0 ? (
-            <>
-              <div className="mb-4 flex items-center justify-between gap-3 text-xs text-on-surface-variant">
-                <span>文章 {currentPage + 1} / {articlePages.length}</span>
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={() => onArticlePageChange(Math.max(currentPage - 1, 0))}
-                    disabled={currentPage === 0}
-                    className="control-button h-8 min-h-0 px-2 text-xs"
-                  >
-                    <ArrowLeft className="h-3.5 w-3.5" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => onArticlePageChange(Math.min(currentPage + 1, articlePages.length - 1))}
-                    disabled={currentPage >= articlePages.length - 1}
-                    className="control-button h-8 min-h-0 px-2 text-xs"
-                  >
-                    <ArrowRight className="h-3.5 w-3.5" />
-                  </button>
-                </div>
-              </div>
-              <div className="english-article-page">
-                <PassagePageContent
-                  content={articlePages[currentPage]}
-                  cloze={passage.section === "cloze"}
-                />
-              </div>
-            </>
-          ) : (
-            <div className="flex min-h-[28rem] items-center justify-center rounded-lg border border-dashed border-outline-variant/30 text-sm text-on-surface-variant">
-              这篇真题原文还未导入。
-            </div>
-          )}
-        </article>
-
-        <aside className="english-question-pane">
-          {questions.length === 0 ? (
-            <InlineState text={passage.section === "writing" ? "写作 AI 评分入口预留中。" : "这篇的题目还未导入。"} />
-          ) : (
-            <div className="grid gap-4">
-              {questions.map((question) => {
-                const savedAnswer = attempt?.answers.find((answer) => answer.questionId === question.id);
-                return (
-                  <QuestionBlock
-                    key={question.id}
-                    passage={passage}
-                    question={question}
-                    value={answers[question.id] ?? ""}
-                    savedAnswer={savedAnswer}
-                    submitted={showSubmittedResult}
-                    readOnly={submitted && !editingSubmitted}
-                    objective={objective}
-                    onChange={(answer) => onAnswerChange(question.id, answer)}
-                  />
-                );
-              })}
-            </div>
-          )}
-        </aside>
-      </div>
-    </section>
-  );
-}
-
-function QuestionBlock({
-  passage,
-  question,
-  value,
-  savedAnswer,
-  submitted,
-  readOnly,
-  objective,
-  onChange,
-}: {
-  passage: EnglishPassage;
-  question: EnglishQuestion;
-  value: string;
-  savedAnswer?: { isCorrect?: boolean; score: number };
-  submitted: boolean;
-  readOnly: boolean;
-  objective: boolean;
-  onChange: (value: string) => void;
-}) {
-  const correct = submitted && savedAnswer?.isCorrect === true;
-  const wrong = submitted && savedAnswer?.isCorrect === false;
-  const questionTitle = getQuestionTitle(question, passage);
-  const showStem = Boolean(questionTitle.trim());
-  const resultText = correct ? "正确" : wrong ? "错误" : null;
-
-  return (
-    <div className={`english-question-card ${correct ? "english-question-card-correct" : ""} ${wrong ? "english-question-card-wrong" : ""}`}>
-      <div className="english-question-meta">
-        <span>第 {question.questionNo} 题</span>
-        {resultText && (
-          <span className={correct ? "text-green-700" : "text-red-700"}>
-            {resultText} · {savedAnswer?.score ?? 0}/{question.score}
-          </span>
-        )}
-      </div>
-      {showStem && (
-        <p className="english-question-stem">{questionTitle}</p>
-      )}
-
-      {question.options.length > 0 ? (
-        <div className="mt-4 grid gap-2.5">
-          {question.options.map((option) => {
-            const selected = value === option.label;
-            return (
-              <button
-                key={`${question.id}-${option.label}`}
-                type="button"
-                onClick={() => {
-                  if (readOnly) return;
-                  onChange(option.label);
-                }}
-                aria-disabled={readOnly}
-                className={`english-option-button ${selected ? "english-option-button-selected" : ""} ${readOnly ? "english-option-button-readonly" : ""}`}
-              >
-                <span className="english-option-label">
-                  {option.label}
-                </span>
-                <span className="english-option-content">{option.content}</span>
-              </button>
-            );
-          })}
-        </div>
-      ) : (
-        <textarea
-          value={value}
-          onChange={(event) => onChange(event.target.value)}
-          readOnly={readOnly}
-          rows={objective ? 2 : 8}
-          className="field-control english-written-answer mt-3 w-full resize-y px-3 py-2"
-          placeholder={objective ? "填写答案" : "记录你的作答"}
-        />
-      )}
-
-      {submitted && objective && (
-        <div className="mt-3 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-900">
-          <span className="font-semibold">标准答案：</span>
-          {question.standardAnswer || "未导入"}
-        </div>
-      )}
-    </div>
   );
 }
 

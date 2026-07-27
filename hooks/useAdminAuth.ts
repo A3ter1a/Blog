@@ -87,6 +87,12 @@ function readCachedAdminAuth(): CachedAdminAuth | null {
     removeStorage(ADMIN_AUTH_CACHE_KEY);
     return null;
   }
+  // A previous 403 must not survive a deployment or an administrator-list
+  // repair. Only positive authorization is reusable across sessions.
+  if (!cached.isAdmin) {
+    removeStorage(ADMIN_AUTH_CACHE_KEY);
+    return null;
+  }
 
   return cached;
 }
@@ -97,6 +103,11 @@ function readCachedAdminAuthForUser(user: User): CachedAdminAuth | null {
 }
 
 function writeCachedAdminAuth(user: User, isAdmin: boolean): void {
+  if (!isAdmin) {
+    removeStorage(ADMIN_AUTH_CACHE_KEY);
+    return;
+  }
+
   const checkedAt = Date.now();
   writeJsonStorage<CachedAdminAuth>(ADMIN_AUTH_CACHE_KEY, {
     userId: user.id,
@@ -108,14 +119,11 @@ function writeCachedAdminAuth(user: User, isAdmin: boolean): void {
 }
 
 export function useAdminAuth(): AdminAuthState {
-  const [state, setState] = useState<AdminAuthState>(() => {
-    const cachedAdminAuth = readCachedAdminAuth();
-    return {
-      loading: true,
-      user: null,
-      isAdmin: cachedAdminAuth?.isAdmin ?? false,
-      error: null,
-    };
+  const [state, setState] = useState<AdminAuthState>({
+    loading: true,
+    user: null,
+    isAdmin: false,
+    error: null,
   });
 
   useEffect(() => {

@@ -3,12 +3,20 @@ import {
   BookOpen,
   ClipboardCheck,
   FileDown,
+  ScanText,
   RotateCcw,
 } from "lucide-react";
 import { PageHeader, PageShell } from "@/components/ui/PageScaffold";
 import { ToolHubCard, ToolHubGrid, type ToolHubCardItem } from "@/components/tools/ToolHubCard";
 
 const mathTrainingModules: ToolHubCardItem[] = [
+  {
+    title: "数学真题 OCR 核对",
+    description: "整套结束后统一识别答题纸，逐页确认无误再进入评分。",
+    href: "/tools/math-paper-ocr",
+    icon: ScanText,
+    tone: "border-sky-500/20 bg-sky-500/10 text-sky-700",
+  },
   {
     title: "数学三自测",
     description: "先做：生成计时训练卷，并保存作答与复盘记录。",
@@ -44,6 +52,7 @@ export function MathTrainingCenter() {
     <>
       <PageHeader
         width="normal"
+        template="training"
         title="数学训练"
         description="日常数学练习入口，按训练、复盘、章节和导出使用。"
         actions={(
@@ -53,7 +62,7 @@ export function MathTrainingCenter() {
         )}
       />
 
-      <PageShell width="normal" topPadding="content">
+      <PageShell width="normal" topPadding="content" template="training">
         <ToolHubGrid>
           {mathTrainingModules.map((module) => (
             <ToolHubCard key={module.href} item={module} />

@@ -254,6 +254,65 @@ function toStringArray(value: unknown): string[] {
   );
 }
 
+function toStringRecord(value: unknown): Record<string, string> {
+  if (!isRecord(value)) return {};
+  return Object.fromEntries(
+    Object.entries(value).flatMap(([key, item]) => typeof item === "string" ? [[key, item]] : [])
+  );
+}
+
+function toNumberRecord(value: unknown): Record<string, number> {
+  if (!isRecord(value)) return {};
+  return Object.fromEntries(
+    Object.entries(value).flatMap(([key, item]) => {
+      const numberValue = Number(item);
+      return Number.isFinite(numberValue) ? [[key, numberValue]] : [];
+    })
+  );
+}
+
+function normalizeStepGrades(value: unknown): Record<string, Math3SelfTestStepGrade[]> {
+  if (!isRecord(value)) return {};
+
+  return Object.fromEntries(
+    Object.entries(value).flatMap(([questionId, rawGrades]) => {
+      if (!Array.isArray(rawGrades)) return [];
+      const grades = rawGrades.flatMap((rawGrade) => {
+        if (!isRecord(rawGrade)) return [];
+        const stepId = getString(rawGrade.stepId);
+        if (!stepId) return [];
+        const maxPoints = Math.max(0, getNumber(rawGrade.maxPoints, 0));
+        return [{
+          stepId,
+          awardedPoints: Math.max(0, Math.min(maxPoints, getNumber(rawGrade.awardedPoints, 0))),
+          maxPoints,
+          feedback: getString(rawGrade.feedback),
+          confidence: Math.max(0, Math.min(1, getNumber(rawGrade.confidence, 0))),
+          gradedAt: getString(rawGrade.gradedAt),
+        }];
+      });
+      return grades.length > 0 ? [[questionId, grades]] : [];
+    })
+  );
+}
+
+export function normalizeMath3SelfTestAttempt(value: unknown, startedAt?: string): Math3SelfTestAttempt {
+  const source = isRecord(value) ? value : {};
+  const normalizedStartedAt = getString(source.startedAt, startedAt);
+  const submittedAt = getString(source.submittedAt);
+
+  return {
+    answers: toStringRecord(source.answers),
+    markedQuestionIds: toStringArray(source.markedQuestionIds),
+    objectiveScores: toNumberRecord(source.objectiveScores),
+    stepGrades: normalizeStepGrades(source.stepGrades),
+    questionScores: toNumberRecord(source.questionScores),
+    totalScore: getNumber(source.totalScore, 0),
+    startedAt: normalizedStartedAt || undefined,
+    submittedAt: submittedAt || undefined,
+  };
+}
+
 function normalizeAreaId(value: unknown): Math3KnowledgeAreaId {
   return value === "linear-algebra" || value === "probability-statistics" || value === "calculus"
     ? value

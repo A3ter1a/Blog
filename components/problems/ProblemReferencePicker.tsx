@@ -6,6 +6,7 @@ import { BookOpen, ExternalLink, Loader2, Plus, Target } from "lucide-react";
 import { createProblemReferenceMarker, parseProblemSelection } from "@/lib/problem-references";
 import { notesApi } from "@/lib/supabase";
 import type { Note, Problem } from "@/lib/types";
+import { getNoteReadHref } from "@/lib/note-routes";
 import { scheduleDeferredClientWork } from "@/lib/deferred-client-work";
 
 interface ProblemReferencePickerProps {
@@ -159,7 +160,9 @@ export function ProblemReferencePicker({ isOpen, onInsert }: ProblemReferencePic
                 selectedProblems.slice(0, 10).map(({ number, problem }) => (
                   <Link
                     key={problem.id}
-                    href={`/notes/${selectedNoteId}#problem-${problem.id}`}
+                    href={selectedSet
+                      ? getNoteReadHref(selectedSet, `problem-${problem.id}`)
+                      : "/notes"}
                     className="flex items-start gap-2 rounded-md px-2 py-2 text-xs text-on-surface-variant transition-colors hover:bg-surface-container-lowest hover:text-primary"
                   >
                     <ExternalLink className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />

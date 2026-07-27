@@ -7,7 +7,7 @@ import {
   mergeVisibleTagsWithMath3Tags,
   splitMath3PracticeTags,
 } from "@/lib/math3-practice";
-import { normalizeMarkdownImageBlocks } from "@/lib/markdown-format";
+import { normalizeMarkdownForWrite, normalizeProblemForWrite } from "@/lib/content-contract";
 import { normalizeProblemReferenceMarkup } from "@/lib/problem-references";
 import { getProblemsValidationIssues, normalizeProblem } from "@/lib/problem-utils";
 import { notesApi } from "@/lib/supabase";
@@ -16,6 +16,7 @@ import type { NoteType, Problem, Subject, Video } from "@/lib/types";
 type NoteSaveDraft = {
   isEditMode: boolean;
   editingId: string;
+  editingContentVersion: number | null;
   noteType: NoteType;
   title: string;
   subject: Subject;
@@ -64,7 +65,7 @@ export function useNoteSave(): UseNoteSaveResult {
     }
 
     const normalizedProblems = draft.noteType === "problem"
-      ? draft.problems.map(normalizeProblem)
+      ? draft.problems.map(normalizeProblem).map((problem) => normalizeProblemForWrite(problem, "editor"))
       : undefined;
     if (normalizedProblems) {
       const firstInvalidProblem = getProblemsValidationIssues(normalizedProblems)[0];
@@ -87,7 +88,7 @@ export function useNoteSave(): UseNoteSaveResult {
       title: draft.title,
       subject: draft.noteType === "essay" ? undefined : draft.subject,
       tags,
-      content: normalizeProblemReferenceMarkup(normalizeMarkdownImageBlocks(draft.content)),
+      content: normalizeProblemReferenceMarkup(normalizeMarkdownForWrite(draft.content, "editor")),
       videos: draft.videos,
       problems: normalizedProblems,
       coverImage: draft.coverImage || undefined,
@@ -96,14 +97,14 @@ export function useNoteSave(): UseNoteSaveResult {
     setIsSaving(true);
     try {
       if (draft.isEditMode) {
-        await notesApi.updateLight(draft.editingId, noteData);
+        await notesApi.updateLight(draft.editingId, noteData, draft.editingContentVersion);
         toast.success("笔记已更新！");
         return { id: draft.editingId };
       }
 
       const newNote = await notesApi.createLight({
         ...noteData,
-        isPublished: true,
+        isPublished: false,
       });
       toast.success("笔记已创建！");
       return { id: newNote.id };

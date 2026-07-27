@@ -2,12 +2,13 @@ import type { ReactNode } from "react";
 
 type PageWidth = "compact" | "normal" | "wide" | "workspace";
 type PageTopPadding = "nav" | "content" | "none";
+type PageTemplate = "default" | "library" | "reader" | "workspace" | "training";
 
 const widthClasses: Record<PageWidth, string> = {
-  compact: "max-w-4xl",
-  normal: "max-w-6xl",
-  wide: "max-w-7xl",
-  workspace: "max-w-[104rem]",
+  compact: "page-frame--compact",
+  normal: "page-frame--normal",
+  wide: "page-frame--wide",
+  workspace: "page-frame--workspace",
 };
 
 const topPaddingClasses: Record<PageTopPadding, string> = {
@@ -26,16 +27,21 @@ export function PageShell({
   children,
   width = "wide",
   topPadding = "nav",
+  template = "default",
   className = "",
 }: {
   children: ReactNode;
   width?: PageWidth;
   topPadding?: PageTopPadding;
+  template?: PageTemplate;
   className?: string;
 }) {
   return (
-    <main className={`min-h-screen bg-surface pb-20 ${topPaddingClasses[topPadding]} ${className}`}>
-      <div className={`mx-auto w-full px-4 sm:px-6 lg:px-8 ${widthClasses[width]}`}>
+    <main
+      className={`page-shell page-template-${template} ${topPaddingClasses[topPadding]} ${className}`}
+      data-page-template={template}
+    >
+      <div className={`page-frame ${widthClasses[width]}`}>
         {children}
       </div>
     </main>
@@ -50,6 +56,7 @@ export function PageHeader({
   actions,
   stats,
   width = "wide",
+  template = "default",
 }: {
   eyebrow?: string;
   icon?: ReactNode;
@@ -58,10 +65,14 @@ export function PageHeader({
   actions?: ReactNode;
   stats?: PageStat[];
   width?: PageWidth;
+  template?: PageTemplate;
 }) {
   return (
-    <section className="motion-page border-b border-outline-variant/20 bg-surface-container-low/72 pt-20">
-      <div className={`mx-auto w-full px-4 py-5 sm:px-6 sm:py-7 lg:px-8 ${widthClasses[width]}`}>
+    <section
+      className={`page-header page-template-${template}`}
+      data-page-template={template}
+    >
+      <div className={`page-frame ${widthClasses[width]}`}>
         <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
           <div className="min-w-0">
             {eyebrow && (
@@ -102,18 +113,18 @@ export function StatStrip({
   if (stats.length === 0) return null;
 
   return (
-    <div className={`motion-ui grid w-full grid-cols-2 gap-2 rounded-2xl border border-outline-variant/15 bg-surface-container-lowest/90 p-2 shadow-ambient md:grid-cols-4 ${className}`}>
+    <dl className={`page-stat-strip ${className}`}>
       {stats.map((stat) => (
-        <div key={stat.label} className="motion-ui rounded-xl bg-surface-container-low px-3 py-2 text-center">
-          <div className={`text-base font-bold md:text-lg ${stat.tone ?? "text-primary"}`}>
+        <div key={stat.label} className="page-stat">
+          <dd className={`text-base font-bold md:text-lg ${stat.tone ?? "text-primary"}`}>
             {stat.value}
-          </div>
-          <div className="mt-0.5 text-[11px] text-on-surface-variant">
+          </dd>
+          <dt className="mt-0.5 text-[11px] text-on-surface-variant">
             {stat.label}
-          </div>
+          </dt>
         </div>
       ))}
-    </div>
+    </dl>
   );
 }
 

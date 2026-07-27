@@ -26,9 +26,17 @@ const LATEX_COMMAND_WORD_LIST = [
   "binom",
   "because",
   "big",
+  "bigl",
+  "bigr",
   "Big",
+  "Bigl",
+  "Bigr",
   "bigg",
+  "biggl",
+  "biggr",
   "Bigg",
+  "Biggl",
+  "Biggr",
   "cap",
   "cdot",
   "cdots",
@@ -76,6 +84,10 @@ const LATEX_COMMAND_WORD_LIST = [
   "le",
   "leq",
   "left",
+  "leftarrow",
+  "Leftarrow",
+  "leftrightarrow",
+  "Leftrightarrow",
   "lfloor",
   "lim",
   "liminf",
@@ -89,6 +101,7 @@ const LATEX_COMMAND_WORD_LIST = [
   "max",
   "min",
   "mathrm",
+  "middle",
   "mp",
   "mu",
   "nabla",
@@ -131,6 +144,8 @@ const LATEX_COMMAND_WORD_LIST = [
   "rceil",
   "rfloor",
   "right",
+  "rightarrow",
+  "Rightarrow",
   "rho",
   "sec",
   "setminus",
@@ -152,6 +167,7 @@ const LATEX_COMMAND_WORD_LIST = [
   "theta",
   "Theta",
   "therefore",
+  "implies",
   "tilde",
   "times",
   "to",
@@ -307,12 +323,12 @@ function isInsideDollarMath(content: string, offset: number): boolean {
 }
 
 export function normalizeLatexForKatex(latex: string, displayMode = false): string {
-  let next = restoreLatexMarkdownEscapes(
-    protectLatexLineBreaks(decodeLatexHtmlEntities(latex))
-      .replace(OVER_ESCAPED_LATEX_COMMAND_PATTERN, "\\$1")
-      .replace(COMPACT_SIM_DISTRIBUTION_PATTERN, "\\sim ")
-      .replace(MISSING_LATEX_COMMAND_BACKSLASH_PATTERN, "\\$1"),
-  )
+  const decoded = decodeLatexHtmlEntities(latex)
+    .replace(OVER_ESCAPED_LATEX_COMMAND_PATTERN, "\\$1")
+    .replace(COMPACT_SIM_DISTRIBUTION_PATTERN, "\\sim ")
+    .replace(MISSING_LATEX_COMMAND_BACKSLASH_PATTERN, "\\$1");
+
+  let next = restoreLatexMarkdownEscapes(protectLatexLineBreaks(decoded))
     .replace(SIMPLE_MISSING_LOWER_BOUND_PATTERN, "\\$1_{$2}")
     .replace(SIMPLE_MISSING_LIMIT_BOUND_PATTERN, "\\lim_{$1}");
 

@@ -1,0 +1,29 @@
+# Local secrets and production database recovery material
+.env*
+.local-backups/
+.tools/postgresql/
+
+# Local planning, audit, and browser QA artifacts
+fable info/
+output/
+.playwright-cli/
+
+# Local build/runtime state
+.git/
+.next/
+node_modules/
+.vercel/
+.vercel-tmp/
+
+# Local logs and temporary files
+*.log
+debug.log
+tmp/
+__pycache__/
+scripts/__pycache__/
+
+# Local-only imported exam corpora
+data/english-papers/*.json
+!data/english-papers/english1-sample.json
+data/english-papers/*.sql
+data/english-papers/sql-chunks/

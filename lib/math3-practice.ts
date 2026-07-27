@@ -26,6 +26,7 @@ export interface PracticeProblemItem extends Problem {
   sourceNoteId: string;
   sourceNoteTitle: string;
   sourceProblemIndex: number;
+  sourceContentVersion: number;
 }
 
 export interface Math3ScopeProblemSetStat {
@@ -294,6 +295,7 @@ export function flattenPracticeProblems(problemSets: Note[], scope?: Math3Practi
         sourceNoteId: set.id,
         sourceNoteTitle: set.title,
         sourceProblemIndex: index,
+        sourceContentVersion: set.contentVersion ?? 1,
       }))
   );
 }

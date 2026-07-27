@@ -5,8 +5,8 @@ import { AsteroidParticles } from "@/components/ui/AsteroidParticles";
 
 export default function Home() {
   return (
-    <main className="relative min-h-screen overflow-hidden bg-surface">
-      <section className="relative flex min-h-[100svh] items-center justify-center px-6 pt-20">
+    <main className="page-template-home relative min-h-screen overflow-hidden bg-surface" data-page-template="home">
+      <section className="page-hero relative flex min-h-[100svh] items-center justify-center px-6 pt-20">
         <div className="absolute left-1/2 top-1/2 h-[min(76vw,34rem)] w-[min(94vw,51rem)] -translate-x-1/2 -translate-y-[56%]">
           <Image
             src="/logo-hero.webp"
@@ -44,7 +44,7 @@ export default function Home() {
         id="study-timeline"
         className="py-14 [contain-intrinsic-size:360px] [content-visibility:auto] sm:py-20"
       >
-        <div className="mx-auto w-full max-w-6xl px-4 sm:px-6 lg:px-8">
+        <div className="page-frame page-frame--normal">
           <StudyTimelineDeferred />
         </div>
       </section>

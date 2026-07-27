@@ -6,6 +6,7 @@ import { subjectMap, typeMap, type Note } from "@/lib/types";
 import { FileText, BookOpen, Calendar, Check, Clock } from "lucide-react";
 import { estimateReadingTime } from "@/lib/utils";
 import { getVisibleNoteTags } from "@/lib/math3-practice";
+import { getNoteReadPath } from "@/lib/note-routes";
 import { getListItemTransition, surfaceMotion, uiMotion } from "@/lib/motion";
 
 interface NoteCardProps {
@@ -37,9 +38,8 @@ export function NoteCard({ note, index, isSelected = false, onToggleSelect, sele
       initial="initial"
       animate="animate"
       transition={getListItemTransition(index)}
-      whileHover={{ y: -4, transition: { duration: uiMotion.duration.standard, ease: uiMotion.ease.emphasized } }}
       onClick={handleClick}
-      className={`surface-card motion-card-lift group h-full cursor-pointer overflow-hidden ${
+      className={`surface-card library-card group h-full cursor-pointer overflow-hidden ${
         selectMode
           ? isSelected
             ? "border-primary/50 bg-primary/5 ring-2 ring-primary/15"
@@ -47,9 +47,9 @@ export function NoteCard({ note, index, isSelected = false, onToggleSelect, sele
           : ""
       }`}
     >
-      <Link href={`/notes/${note.id}`} className="flex h-full flex-col" onClick={selectMode ? (e) => e.preventDefault() : undefined}>
+      <Link href={getNoteReadPath(note)} className="flex h-full flex-col" onClick={selectMode ? (e) => e.preventDefault() : undefined}>
         {/* Cover Image or Placeholder */}
-        <div className="relative aspect-[16/9] overflow-hidden rounded-t-2xl bg-surface-container-low">
+        <div className="relative aspect-[16/9] overflow-hidden rounded-t-md bg-surface-container-low">
           {note.coverImage ? (
             // Has cover image
             <>

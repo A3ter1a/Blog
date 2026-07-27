@@ -2,7 +2,6 @@ import {
   BookOpenText,
   Calculator,
   GraduationCap,
-  Search,
 } from "lucide-react";
 import { PageHeader, PageShell } from "@/components/ui/PageScaffold";
 import { ToolHubCard, ToolHubGrid, type ToolHubCardItem } from "@/components/tools/ToolHubCard";
@@ -10,9 +9,9 @@ import { createPageMetadata } from "@/lib/site-metadata";
 
 export const metadata = createPageMetadata({
   title: "工具",
-  description: "进入 Asteroid 的学习工具台，按真题、数学训练和资料检索选择复习入口。",
+  description: "进入 Asteroid 的学习工具台，按真题、数学训练和经济学术语选择复习入口。",
   path: "/tools",
-  keywords: ["学习工具", "真题中心", "数学训练", "资料检索"],
+  keywords: ["学习工具", "真题中心", "数学训练", "经济学术语"],
 });
 
 const toolHubs: ToolHubCardItem[] = [
@@ -40,14 +39,6 @@ const toolHubs: ToolHubCardItem[] = [
     icon: BookOpenText,
     tone: "border-amber-500/20 bg-amber-500/10 text-amber-700",
   },
-  {
-    id: "resource-search",
-    title: "资料检索",
-    description: "在已发布笔记和题集中定位内容，查找材料来源。",
-    href: "/tools/resource-search",
-    icon: Search,
-    tone: "border-sky-500/20 bg-sky-500/10 text-sky-700",
-  },
 ];
 
 export default function ToolsPage() {
@@ -55,11 +46,12 @@ export default function ToolsPage() {
     <>
       <PageHeader
         width="normal"
+        template="training"
         title="工具"
         description="先选复习方向，再进入具体操作。"
       />
 
-      <PageShell width="normal" topPadding="content">
+      <PageShell width="normal" topPadding="content" template="training">
         <ToolHubGrid>
           {toolHubs.map((tool) => (
             <ToolHubCard key={tool.href} item={tool} />

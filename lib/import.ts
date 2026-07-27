@@ -1,5 +1,6 @@
 import type { NoteType, Subject, Problem, Video } from './types';
 import { sanitizeFileName } from './utils';
+import { normalizeMarkdownForWrite, normalizeProblemForWrite } from './content-contract';
 
 type FrontMatterValue = string | string[];
 type FrontMatter = Record<string, FrontMatterValue>;
@@ -256,7 +257,7 @@ export function importFromJSON(content: string): ParsedNote[] {
 
     return {
       title: asString(record.title) || 'Untitled',
-      content: asString(record.content) || '',
+      content: normalizeMarkdownForWrite(asString(record.content) || '', 'import'),
       tags: asStringArray(record.tags, `第 ${index + 1} 条.tags`),
       createdAt: asDate(record.createdAt, `第 ${index + 1} 条.createdAt`) || new Date(),
       updatedAt: asDate(record.updatedAt, `第 ${index + 1} 条.updatedAt`) || new Date(),
@@ -264,7 +265,7 @@ export function importFromJSON(content: string): ParsedNote[] {
       videos: asVideos(record.videos),
       type: asNoteType(record.type),
       subject: asSubject(record.subject),
-      problems: asProblems(record.problems),
+      problems: asProblems(record.problems)?.map((problem) => normalizeProblemForWrite(problem, 'import')),
       raw: record,
     };
   });
@@ -291,7 +292,7 @@ export function importFromMarkdown(content: string): ParsedNote {
 
   return {
     title: asString(frontMatter.title) || extractFirstHeading(body) || 'Untitled',
-    content: body,
+    content: normalizeMarkdownForWrite(body, 'import'),
     tags: allTags,
     createdAt,
     updatedAt,
@@ -299,7 +300,7 @@ export function importFromMarkdown(content: string): ParsedNote {
     videos: asVideos(frontMatter.videos),
     type: asNoteType(frontMatter.type),
     subject: asSubject(frontMatter.subject),
-    problems: asProblems(frontMatter.problems),
+    problems: asProblems(frontMatter.problems)?.map((problem) => normalizeProblemForWrite(problem, 'import')),
     raw: frontMatter,
   };
 }

@@ -8,14 +8,22 @@ interface ProblemListProps {
   problems: Problem[];
   noteId?: string;
   statusMap?: Record<string, ProblemPracticeStatus>;
+  onProblemNavigate?: (problemId: string) => void;
 }
 
-export function ProblemList({ problems, noteId, statusMap = {} }: ProblemListProps) {
+export function ProblemList({ problems, noteId, statusMap = {}, onProblemNavigate }: ProblemListProps) {
   const scrollToProblem = (problemId: string) => {
-    const element = document.getElementById(`problem-${problemId}`);
-    if (element) {
-      element.scrollIntoView({ behavior: "smooth", block: "start" });
-    }
+    onProblemNavigate?.(problemId);
+
+    const performScroll = () => {
+      const element = document.getElementById(`problem-${problemId}`);
+      if (element) {
+        element.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    };
+
+    window.requestAnimationFrame(performScroll);
+    window.setTimeout(performScroll, 120);
   };
 
   if (problems.length === 0) {

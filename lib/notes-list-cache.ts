@@ -43,7 +43,8 @@ function normalizeCachedNote(value: unknown): Note | null {
     problems: [],
     createdAt,
     updatedAt,
-    isPublished: typeof value.isPublished === "boolean" ? value.isPublished : true,
+    isPublished: typeof value.isPublished === "boolean" ? value.isPublished : false,
+    contentVersion: typeof value.contentVersion === "number" ? value.contentVersion : null,
   };
 }
 

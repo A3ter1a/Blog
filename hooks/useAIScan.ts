@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useRef, type SetStateAction } from 'react';
+import { useState, useCallback, useEffect, useRef, type SetStateAction } from 'react';
 import type { Problem, ProblemType, Difficulty, ProblemOption } from '@/lib/types';
 import { recordDeepSeekUsage, recordQwenUsage } from '@/lib/ai-usage';
 import { buildAuthHeaders } from '@/lib/fetch-with-auth';
@@ -13,8 +13,10 @@ import {
   normalizeAIConfig,
 } from '@/lib/ai-config';
 import { readJsonStorage } from '@/lib/browser-storage';
-import { repairProblemMarkdownFields } from '@/lib/markdown';
+import { normalizeProblemForWrite } from '@/lib/content-contract';
 import { extractOptions } from '@/lib/utils';
+import { useJobCenter } from '@/components/jobs/JobCenter';
+import { extractProblemOcrJobResult, type ProblemOcrJobResult } from '@/lib/problem-ocr-contract';
 
 export type ScanStage = 'idle' | 'uploading' | 'scanning' | 'analyzing' | 'complete' | 'error';
 export type ScanImageStatus = 'queued' | 'scanning' | 'analyzing' | 'complete' | 'error';
@@ -45,6 +47,21 @@ export interface ScanState {
   imageProgress?: ScanImageProgress[];
   warnings?: string[];
   error?: string;
+}
+
+function buildCompletedScanState(result: ProblemOcrJobResult): ScanState {
+  return {
+    stage: 'complete',
+    progress: 100,
+    ocrText: result.captures.at(-1)?.ocrText,
+    currentImage: result.totalImages,
+    totalImages: result.totalImages,
+    completedImages: result.completedImages,
+    failedImages: result.failedImages,
+    extractedProblems: result.extractedProblems,
+    imageProgress: result.imageProgress,
+    warnings: result.warnings,
+  };
 }
 
 const MAX_OCR_LENGTH = 6000;
@@ -205,7 +222,7 @@ function normalizeProblem(
 
   const type = toProblemType(problemData.type);
   const fallbackOptions = type === 'choice' ? extractOptions(question) : undefined;
-  const normalized = repairProblemMarkdownFields({
+  const normalized = normalizeProblemForWrite({
     type,
     difficulty: toDifficulty(problemData.difficulty),
     question,
@@ -221,7 +238,7 @@ function normalizeProblem(
       rawExplanation: '',
       confidence: toConfidence(problemData.confidence),
     },
-  });
+  }, 'ocr');
 
   return normalized;
 }
@@ -232,9 +249,104 @@ export interface ChapterContextItem {
 }
 
 export function useAIScan() {
+  const {
+    jobs,
+    createProblemOcrJob,
+    createLocalProblemOcrJob,
+    updateJob,
+    loadJobResult,
+    claimJobResult,
+  } = useJobCenter();
   const [scanState, setScanState] = useState<ScanState>({ stage: 'idle', progress: 0 });
+  const [isPersistentScan, setIsPersistentScan] = useState(false);
   const activeRunRef = useRef(0);
   const activeControllersRef = useRef<Set<AbortController>>(new Set());
+  const jobIdRef = useRef<string | null>(null);
+  const resultLoadRequestedRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    const current = jobIdRef.current
+      ? jobs.find((job) => job.id === jobIdRef.current)
+      : undefined;
+    const resumable = current ?? (scanState.stage === 'idle'
+      ? jobs.find((job) => (
+        job.type === 'problem_ocr'
+        && Boolean(job.remoteJobId)
+        && !job.resultClaimedAt
+        && (job.status === 'queued'
+          || job.status === 'running'
+          || job.status === 'waiting_for_trigger'
+          || job.status === 'succeeded')
+      ))
+      : undefined);
+    if (!resumable) return;
+    if (resumable.type !== 'problem_ocr' || !resumable.remoteJobId || resumable.resultClaimedAt) return;
+
+    jobIdRef.current = resumable.id;
+    queueMicrotask(() => {
+      if (jobIdRef.current === resumable.id) setIsPersistentScan(true);
+    });
+
+    if (resumable.status === 'queued' || resumable.status === 'running' || resumable.status === 'waiting_for_trigger') {
+      queueMicrotask(() => {
+        if (jobIdRef.current !== resumable.id) return;
+        setScanState((previous) => ({
+          ...previous,
+          stage: 'scanning',
+          progress: resumable.progress ?? Math.max(previous.progress, PROGRESS_START),
+          currentImage: resumable.progressTotal
+            ? Math.min((resumable.progressCurrent ?? 0) + 1, resumable.progressTotal)
+            : previous.currentImage,
+          totalImages: resumable.progressTotal ?? previous.totalImages,
+          completedImages: resumable.progressCurrent ?? previous.completedImages ?? 0,
+          failedImages: 0,
+          error: undefined,
+        }));
+      });
+      return;
+    }
+
+    if (resumable.status === 'failed') {
+      queueMicrotask(() => {
+        if (jobIdRef.current !== resumable.id) return;
+        setScanState((previous) => ({
+          ...previous,
+          stage: 'error',
+          progress: resumable.progress ?? previous.progress,
+          totalImages: resumable.progressTotal ?? previous.totalImages,
+          completedImages: resumable.progressCurrent ?? previous.completedImages,
+          error: resumable.error || '题库 OCR 持久任务失败，可在任务中心重试。',
+        }));
+      });
+      return;
+    }
+
+    if (resumable.status !== 'succeeded') return;
+    const result = extractProblemOcrJobResult(resumable.resultPayload);
+    if (result) {
+      queueMicrotask(() => {
+        if (jobIdRef.current === resumable.id) setScanState(buildCompletedScanState(result));
+      });
+      return;
+    }
+
+    if (resumable.resultPayload) {
+      queueMicrotask(() => {
+        if (jobIdRef.current !== resumable.id) return;
+        setScanState({
+          stage: 'error',
+          progress: 100,
+          error: '题库 OCR 已完成，但结构化结果校验失败；原始任务记录仍保留。',
+        });
+      });
+      return;
+    }
+
+    if (!resultLoadRequestedRef.current.has(resumable.id)) {
+      resultLoadRequestedRef.current.add(resumable.id);
+      void loadJobResult(resumable.id);
+    }
+  }, [jobs, loadJobResult, scanState.stage]);
 
   const abortActiveRequests = useCallback(() => {
     activeControllersRef.current.forEach((controller) => controller.abort());
@@ -266,6 +378,8 @@ export function useAIScan() {
   const resetScan = useCallback(() => {
     activeRunRef.current += 1;
     abortActiveRequests();
+    jobIdRef.current = null;
+    setIsPersistentScan(false);
     setScanState({ stage: 'idle', progress: 0 });
   }, [abortActiveRequests]);
 
@@ -282,6 +396,62 @@ export function useAIScan() {
     abortActiveRequests();
     const runId = activeRunRef.current + 1;
     activeRunRef.current = runId;
+    setIsPersistentScan(false);
+
+    setActiveState(runId, {
+      stage: 'uploading',
+      progress: PROGRESS_START,
+      currentImage: 1,
+      totalImages,
+      completedImages: 0,
+      failedImages: 0,
+      warnings: [],
+    });
+
+    try {
+      const persistentJob = await createProblemOcrJob({
+        images: images.map((image) => ({
+          base64: image.base64,
+          mimeType: image.mimeType === 'image/png' || image.mimeType === 'image/webp'
+            ? image.mimeType
+            : 'image/jpeg',
+          name: image.name || '题目图片',
+        })),
+        chapterContext: chapterContext ?? [],
+        qwenModel: config.qwenModel,
+        deepseekModel: config.deepseekModel || DEFAULT_DEEPSEEK_MODEL,
+      });
+      if (activeRunRef.current !== runId) return;
+      if (persistentJob) {
+        jobIdRef.current = persistentJob.id;
+        setIsPersistentScan(true);
+        setActiveState(runId, {
+          stage: 'scanning',
+          progress: persistentJob.progress ?? PROGRESS_START,
+          currentImage: 1,
+          totalImages,
+          completedImages: 0,
+          failedImages: 0,
+          warnings: [],
+        });
+        return;
+      }
+    } catch (error: unknown) {
+      if (activeRunRef.current !== runId) return;
+      setActiveState(runId, {
+        stage: 'error',
+        progress: 0,
+        totalImages,
+        completedImages: 0,
+        failedImages: 0,
+        error: getErrorMessage(error, '题库 OCR 持久任务创建失败'),
+      });
+      return;
+    }
+
+    const localJob = createLocalProblemOcrJob(`${totalImages} 张题目图片 OCR`);
+    jobIdRef.current = localJob.id;
+    setIsPersistentScan(false);
 
     const initialImageProgress = images.map((image, index): ScanImageProgress => ({
       index,
@@ -317,6 +487,13 @@ export function useAIScan() {
         totalImages,
         ocrText: ocrText ?? prev.ocrText,
       }));
+      updateJob(localJob.id, {
+        status: 'running',
+        phase: stage === 'scanning' ? 'OCR 识别' : '整理题目',
+        statusText: `已处理 ${Math.min(finishedUnits, totalUnits)}/${totalUnits} 个步骤`,
+        progress: Math.min(99, progress),
+        heartbeatAt: new Date().toISOString(),
+      });
     };
 
     const updateImageProgress = (index: number, patch: Partial<ScanImageProgress>) => {
@@ -538,6 +715,14 @@ export function useAIScan() {
           warnings,
           error: warnings[0] || 'AI 扫描失败，请重试',
         }));
+        updateJob(localJob.id, {
+          status: 'failed',
+          phase: '识别失败',
+          statusText: '所有图片均未提取到可用题目',
+          error: warnings[0] || 'AI 扫描失败，请重试',
+          progress: 100,
+          heartbeatAt: new Date().toISOString(),
+        });
         return;
       }
 
@@ -551,6 +736,21 @@ export function useAIScan() {
         extractedProblems: allProblems,
         warnings,
       }));
+      updateJob(localJob.id, {
+        status: 'succeeded',
+        phase: '结果待领取',
+        statusText: `识别完成，共提取 ${allProblems.length} 道题`,
+        progress: 100,
+        heartbeatAt: new Date().toISOString(),
+        resultPayload: {
+          totalImages,
+          completedImages,
+          failedImages,
+          extractedProblems: allProblems,
+          warnings,
+        },
+        error: undefined,
+      });
     } catch (error: unknown) {
       if (activeRunRef.current !== runId) return;
 
@@ -568,8 +768,19 @@ export function useAIScan() {
         warnings,
         error: msg,
       });
+      updateJob(localJob.id, {
+        status: 'failed',
+        phase: '识别中断',
+        statusText: '任务失败，可重新选择原图后重试',
+        error: msg,
+        heartbeatAt: new Date().toISOString(),
+      });
     }
-  }, [abortActiveRequests, fetchWithTimeout, setActiveState]);
+  }, [abortActiveRequests, createLocalProblemOcrJob, createProblemOcrJob, fetchWithTimeout, setActiveState, updateJob]);
 
-  return { scanState, startScan, resetScan, cancelScan: resetScan };
+  const claimScanResult = useCallback(() => {
+    if (jobIdRef.current) claimJobResult(jobIdRef.current);
+  }, [claimJobResult]);
+
+  return { scanState, startScan, resetScan, cancelScan: resetScan, claimScanResult, isPersistentScan };
 }

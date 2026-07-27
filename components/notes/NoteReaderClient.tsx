@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Calendar, Tag, Edit2, Trash2, ChevronDown, ChevronUp, BookOpen, BookMarked, Loader2, Clock, Layers, SlidersHorizontal } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Calendar, Tag, Edit2, Trash2, ChevronDown, ChevronUp, BookOpen, BookMarked, Loader2, Clock, Layers, SlidersHorizontal } from "lucide-react";
 import { notesApi } from "@/lib/supabase";
 import { chaptersApi } from "@/lib/chapters-api";
 import { subjectMap, typeMap, Note, Chapter, Problem, type ProblemPracticeStatus } from "@/lib/types";
@@ -27,6 +27,7 @@ import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { useAdminAuth } from "@/hooks/useAdminAuth";
 import { useToast } from "@/components/ui/Toast";
 import { overlayMotion, surfaceMotion, uiMotion } from "@/lib/motion";
+import { detectBookletSourceDrift, extractBookletSourceManifest, type BookletProblemSnapshot } from "@/lib/booklet-contract";
 
 type NoteReaderClientProps = {
   noteId: string;
@@ -34,9 +35,25 @@ type NoteReaderClientProps = {
   initialChapters?: Chapter[];
   initialChaptersLoaded?: boolean;
   initialLoadError?: boolean;
+  accessScope?: "public" | "owner";
 };
 
 type PracticeStatusLoadState = "idle" | "loading" | "ready" | "error";
+
+const INITIAL_PROBLEM_WINDOW_SIZE = 12;
+const PROBLEM_WINDOW_INCREMENT = 12;
+
+function getProblemGroupKey(group: { chapter: Chapter | undefined }): string {
+  return group.chapter?.id ?? "ungrouped";
+}
+
+function getGroupProblemWindowKey(groupKey: string): string {
+  return `group:${groupKey}`;
+}
+
+function getFlatProblemWindowKey(selectedChapterId?: string): string {
+  return `flat:${selectedChapterId ?? "all"}`;
+}
 
 export function NoteReaderClient({
   noteId,
@@ -44,6 +61,7 @@ export function NoteReaderClient({
   initialChapters = [],
   initialChaptersLoaded = false,
   initialLoadError = false,
+  accessScope = "public",
 }: NoteReaderClientProps) {
   const router = useRouter();
   const { preferences } = useReadingPreferences();
@@ -62,6 +80,10 @@ export function NoteReaderClient({
   const [practiceStatusMap, setPracticeStatusMap] = useState<Record<string, ProblemPracticeStatus>>({});
   const [practiceStatusLoadState, setPracticeStatusLoadState] = useState<PracticeStatusLoadState>("idle");
   const [markingProblemKey, setMarkingProblemKey] = useState<string | null>(null);
+  const [problemGroupExpansion, setProblemGroupExpansion] = useState<Record<string, boolean>>({});
+  const [visibleProblemCounts, setVisibleProblemCounts] = useState<Record<string, number>>({});
+  const [visibleProblemStarts, setVisibleProblemStarts] = useState<Record<string, number>>({});
+  const [bookletDriftCount, setBookletDriftCount] = useState<number | null>(null);
   const skipInitialChapterFetchRef = useRef(initialChaptersLoaded);
   const lastHashScrollRef = useRef("");
 
@@ -76,16 +98,21 @@ export function NoteReaderClient({
       setPracticeStatusMap({});
       setPracticeStatusLoadState("idle");
       setMarkingProblemKey(null);
+      setProblemGroupExpansion({});
+      setVisibleProblemCounts({});
+      setVisibleProblemStarts({});
       skipInitialChapterFetchRef.current = initialChaptersLoaded;
     }, 0);
 
     return () => window.clearTimeout(timer);
-  }, [initialChapters, initialChaptersLoaded, initialLoadError, initialNote, noteId]);
+  }, [accessScope, initialChapters, initialChaptersLoaded, initialLoadError, initialNote, noteId]);
 
   const loadNote = useCallback(async () => {
     try {
       setLoading(true);
-      const data = await notesApi.getPublishedById(noteId);
+      const data = accessScope === "owner"
+        ? await notesApi.getEditableById(noteId)
+        : await notesApi.getPublishedById(noteId);
       setNote(data);
       setIsCoverExpanded(Boolean(data?.coverImage));
     } catch (error) {
@@ -93,7 +120,7 @@ export function NoteReaderClient({
     } finally {
       setLoading(false);
     }
-  }, [noteId]);
+  }, [accessScope, noteId]);
 
   useEffect(() => {
     if (initialNote && !initialLoadError) return;
@@ -122,6 +149,43 @@ export function NoteReaderClient({
       .then(setChapters)
       .catch(() => setChapters([]));
   }, [note?.type, noteId]);
+
+  useEffect(() => {
+    const manifest = extractBookletSourceManifest(note?.content ?? "");
+    if (!isAdmin || manifest.length === 0) {
+      queueMicrotask(() => setBookletDriftCount(null));
+      return;
+    }
+
+    let cancelled = false;
+    const sourceNoteIds = [...new Set(manifest.map((entry) => entry.sourceNoteId))];
+    Promise.all(sourceNoteIds.map((id) => notesApi.getById(id)))
+      .then((sourceNotes) => {
+        if (cancelled) return;
+        const byId = new Map(sourceNotes.filter((item): item is Note => Boolean(item)).map((item) => [item.id, item]));
+        const currentSnapshots = manifest.flatMap((entry): BookletProblemSnapshot[] => {
+          const sourceNote = byId.get(entry.sourceNoteId);
+          const problem = sourceNote?.problems?.find((item) => item.id === entry.sourceProblemId);
+          return problem ? [{
+            sourceNoteId: entry.sourceNoteId,
+            sourceProblemId: entry.sourceProblemId,
+            sourceLabel: sourceNote?.title ?? "源题",
+            question: problem.question,
+            standardAnswer: problem.answer,
+            explanation: problem.explanation ?? "",
+            methodSummary: problem.tips ?? "",
+          }] : [];
+        });
+        setBookletDriftCount(detectBookletSourceDrift(manifest, currentSnapshots).length);
+      })
+      .catch(() => {
+        if (!cancelled) setBookletDriftCount(null);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isAdmin, note?.content]);
 
   // Derive filtered & grouped problems for chapter support
   const allProblems = useMemo(() => note?.problems || [], [note?.problems]);
@@ -160,6 +224,73 @@ export function NoteReaderClient({
 
     return groups.length > 1 ? groups : null;
   }, [allProblems, chapters, selectedChapterId]);
+
+  const expandProblemGroupForProblem = useCallback((problemId: string) => {
+    if (!chapterGroups) return;
+    const group = chapterGroups.find((candidate) => candidate.problems.some((problem) => problem.id === problemId));
+    if (!group) return;
+    const groupKey = getProblemGroupKey(group);
+    setProblemGroupExpansion((current) => current[groupKey] === true
+      ? current
+      : { ...current, [groupKey]: true });
+  }, [chapterGroups]);
+
+  const ensureProblemRendered = useCallback((problemId: string) => {
+    const group = chapterGroups?.find((candidate) => candidate.problems.some((problem) => problem.id === problemId));
+    if (group) {
+      const groupKey = getProblemGroupKey(group);
+      const windowKey = getGroupProblemWindowKey(groupKey);
+      const index = group.problems.findIndex((problem) => problem.id === problemId);
+      const windowStart = Math.floor(index / INITIAL_PROBLEM_WINDOW_SIZE) * INITIAL_PROBLEM_WINDOW_SIZE;
+      setProblemGroupExpansion(Object.fromEntries(
+        (chapterGroups ?? []).map((candidate) => [getProblemGroupKey(candidate), getProblemGroupKey(candidate) === groupKey]),
+      ));
+      setVisibleProblemStarts((current) => ({ ...current, [windowKey]: windowStart }));
+      setVisibleProblemCounts((current) => ({
+        ...current,
+        [windowKey]: Math.min(group.problems.length, windowStart + INITIAL_PROBLEM_WINDOW_SIZE),
+      }));
+      return;
+    }
+
+    const index = filteredProblems.findIndex((problem) => problem.id === problemId);
+    if (index < 0) return;
+    const windowKey = getFlatProblemWindowKey(selectedChapterId);
+    const windowStart = Math.floor(index / INITIAL_PROBLEM_WINDOW_SIZE) * INITIAL_PROBLEM_WINDOW_SIZE;
+    setVisibleProblemStarts((current) => ({ ...current, [windowKey]: windowStart }));
+    setVisibleProblemCounts((current) => ({
+      ...current,
+      [windowKey]: Math.min(filteredProblems.length, windowStart + INITIAL_PROBLEM_WINDOW_SIZE),
+    }));
+  }, [chapterGroups, filteredProblems, selectedChapterId]);
+
+  const loadMoreProblems = useCallback((windowKey: string, total: number) => {
+    setVisibleProblemCounts((current) => ({
+      ...current,
+      [windowKey]: Math.min(
+        total,
+        (current[windowKey] ?? INITIAL_PROBLEM_WINDOW_SIZE) + PROBLEM_WINDOW_INCREMENT,
+      ),
+    }));
+  }, []);
+
+  const resetProblemWindow = useCallback((windowKey: string) => {
+    setVisibleProblemStarts((current) => ({ ...current, [windowKey]: 0 }));
+    setVisibleProblemCounts((current) => ({
+      ...current,
+      [windowKey]: INITIAL_PROBLEM_WINDOW_SIZE,
+    }));
+  }, []);
+
+  const toggleProblemGroup = useCallback((groupKey: string, isExpanded: boolean) => {
+    if (isExpanded) {
+      setProblemGroupExpansion((current) => ({ ...current, [groupKey]: false }));
+      return;
+    }
+    setProblemGroupExpansion(Object.fromEntries(
+      (chapterGroups ?? []).map((candidate) => [getProblemGroupKey(candidate), getProblemGroupKey(candidate) === groupKey]),
+    ));
+  }, [chapterGroups]);
   const visibleTags = useMemo(() => getVisibleNoteTags(note?.tags ?? []), [note?.tags]);
   const unassignedProblemCount = useMemo(
     () => allProblems.filter((problem) => !problem.chapterId).length,
@@ -220,6 +351,10 @@ export function NoteReaderClient({
     const scrollKey = `${note.id}:${targetId}`;
     if (lastHashScrollRef.current === scrollKey) return;
 
+    const expansionTimer = targetId.startsWith("problem-")
+      ? window.setTimeout(() => ensureProblemRendered(targetId.slice("problem-".length)), 0)
+      : null;
+
     const scrollToTarget = () => {
       const target = document.getElementById(targetId);
       if (!target) return;
@@ -233,10 +368,11 @@ export function NoteReaderClient({
 
     return () => {
       window.cancelAnimationFrame(frame);
+      if (expansionTimer !== null) window.clearTimeout(expansionTimer);
       window.clearTimeout(timer);
       window.clearTimeout(lateTimer);
     };
-  }, [allProblems.length, note?.content, note?.id]);
+  }, [allProblems.length, ensureProblemRendered, note?.content, note?.id]);
 
   const handleDelete = async () => {
     if (!isAdmin || isDeletingNote) return;
@@ -274,9 +410,12 @@ export function NoteReaderClient({
     // Optimistic update
     setNote({ ...previousNote, problems: updatedProblems });
     try {
-      const savedNote = await notesApi.updateLight(previousNote.id, { problems: updatedProblems });
+      const savedNote = await notesApi.updateLight(
+        previousNote.id,
+        { problems: updatedProblems },
+      );
       setNote(current => current?.id === previousNote.id
-        ? { ...current, updatedAt: savedNote.updatedAt }
+        ? { ...current, updatedAt: savedNote.updatedAt, contentVersion: savedNote.contentVersion }
         : current
       );
       toast.success("题目已保存");
@@ -382,13 +521,13 @@ export function NoteReaderClient({
   };
 
   return (
-    <main className="min-h-screen pb-20 pt-20">
+    <main className="page-template-reader min-h-screen pb-20 pt-20" data-page-template="reader">
       {/* Reading Progress Bar */}
       {preferences.showProgressBar && <ReadingProgress />}
 
       {/* Top Bar with Breadcrumb and Immersive Mode Button */}
-      <div className="sticky top-20 z-30 border-b border-outline-variant/20 bg-surface/80 backdrop-blur-xl">
-        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6 lg:px-8">
+      <div className="sticky top-20 z-30 border-b border-outline-variant/20 bg-surface/80 backdrop-blur-xl" data-print-hide>
+        <div className="page-frame page-frame--wide flex flex-wrap items-center justify-between gap-3 py-3">
           <Link
             href="/notes"
             className="control-button h-9 px-3 text-sm"
@@ -445,7 +584,7 @@ export function NoteReaderClient({
 
       {/* Cover Image (Collapsible) */}
       {note.coverImage && (
-        <div className="mx-auto mb-6 max-w-7xl px-4 sm:px-6 lg:px-8">
+        <div className="page-frame page-frame--wide mb-6">
           <motion.div
             initial={false}
             animate={{ height: isCoverExpanded ? "auto" : 0 }}
@@ -480,8 +619,20 @@ export function NoteReaderClient({
         </div>
       )}
 
+      {bookletDriftCount !== null && bookletDriftCount > 0 && (
+        <div className="page-frame page-frame--wide mb-4">
+          <div className="flex items-start gap-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-900">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+            <div>
+              <div className="font-semibold">检测到 {bookletDriftCount} 道源题已变化或不存在</div>
+              <p className="mt-1 leading-6">当前三刷笔记仍保留生成时快照，不会自动覆盖。需要更新时，请回到做题本重新预览并生成新的私人笔记。</p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Main Layout: Content + Sidebar */}
-      <div className="mx-auto grid max-w-7xl grid-cols-1 gap-6 px-4 sm:px-6 lg:grid-cols-12 lg:gap-8 lg:px-8">
+      <div className="page-frame page-frame--wide grid grid-cols-1 gap-6 lg:grid-cols-12 lg:gap-8">
         {/* Article Content */}
         <div className={`${contentColumnClass} ${contentOrderClass}`}>
           {/* Article Header */}
@@ -490,7 +641,7 @@ export function NoteReaderClient({
             initial="initial"
             animate="animate"
             transition={{ duration: uiMotion.duration.page, ease: uiMotion.ease.emphasized }}
-            className={`surface-panel p-6 sm:p-8 ${isProblem ? "" : readerWidthClass}`}
+            className={`surface-panel reader-title-block p-6 sm:p-8 ${isProblem ? "" : readerWidthClass}`}
           >
             <div className="mb-4 flex flex-wrap items-center gap-2">
               <span
@@ -507,6 +658,11 @@ export function NoteReaderClient({
               {note.subject && (
                 <span className="tag-chip px-2.5 py-1 text-xs font-medium">
                   {subjectMap[note.subject]}
+                </span>
+              )}
+              {!note.isPublished && (
+                <span className="rounded-lg border border-primary/20 bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary">
+                  私人内容 · 仅登录可见
                 </span>
               )}
             </div>
@@ -604,36 +760,91 @@ export function NoteReaderClient({
                 {/* Problem Cards - grouped by chapter or flat */}
                 {chapterGroups && !selectedChapterId ? (
                   <div className="space-y-10">
-                    {chapterGroups.map(group => (
-                      <section key={group.chapter?.id || 'ungrouped'}>
-                        <div className="mb-4 flex items-center gap-3 border-b border-outline-variant/10 pb-2">
-                          <Layers className="h-5 w-5 text-primary" />
-                          <h3 className="font-headline text-lg font-bold text-on-surface">
-                            {group.chapter?.name ?? "未归章节"}
-                          </h3>
-                          <span className="tag-chip px-2 py-0.5 text-xs">
-                            {group.problems.length} 题
-                          </span>
-                        </div>
-                        <div className="space-y-6">
-                          {group.problems.map((problem) => (
-                            <ProblemCard
-                              key={problem.id}
-                              problem={problem}
-                              index={allProblems.indexOf(problem)}
-                              noteId={note?.id}
-                              onUpdate={isAdmin ? handleUpdateProblem : undefined}
-                              {...getProblemPracticeProps(problem)}
-                            />
-                          ))}
-                        </div>
-                      </section>
-                    ))}
+                    {chapterGroups.map((group, groupIndex) => {
+                      const groupKey = getProblemGroupKey(group);
+                      const windowKey = getGroupProblemWindowKey(groupKey);
+                      const isExpanded = problemGroupExpansion[groupKey]
+                        ?? (Object.keys(problemGroupExpansion).length === 0 && groupIndex === 0);
+                      const visibleStart = Math.min(
+                        group.problems.length,
+                        visibleProblemStarts[windowKey] ?? 0,
+                      );
+                      const visibleCount = Math.min(
+                        group.problems.length,
+                        visibleProblemCounts[windowKey] ?? INITIAL_PROBLEM_WINDOW_SIZE,
+                      );
+
+                      return (
+                        <section key={groupKey} className="rounded-xl border border-outline-variant/15 bg-surface-container-lowest/45">
+                          <button
+                            type="button"
+                            onClick={() => toggleProblemGroup(groupKey, isExpanded)}
+                            className="flex w-full items-center gap-3 px-4 py-4 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+                            aria-expanded={isExpanded}
+                            aria-controls={`problem-group-${groupKey}`}
+                          >
+                            <Layers className="h-5 w-5 shrink-0 text-primary" />
+                            <span className="min-w-0 flex-1 font-headline text-lg font-bold text-on-surface">
+                              {group.chapter?.name ?? "未归章节"}
+                            </span>
+                            <span className="text-xs font-semibold text-on-surface-variant">
+                              {group.problems.length} 题
+                            </span>
+                            {isExpanded ? (
+                              <ChevronUp className="h-4 w-4 shrink-0 text-on-surface-variant" />
+                            ) : (
+                              <ChevronDown className="h-4 w-4 shrink-0 text-on-surface-variant" />
+                            )}
+                          </button>
+                          {isExpanded ? (
+                            <div id={`problem-group-${groupKey}`} className="space-y-6 border-t border-outline-variant/10 px-4 py-5">
+                              {visibleStart > 0 && (
+                                <button
+                                  type="button"
+                                  onClick={() => resetProblemWindow(windowKey)}
+                                  className="control-button w-full border-dashed py-3 text-sm"
+                                >
+                                  返回本章开头 · 当前显示 {visibleStart + 1}–{visibleCount}/{group.problems.length}
+                                </button>
+                              )}
+                              {group.problems.slice(visibleStart, visibleCount).map((problem) => (
+                                <ProblemCard
+                                  key={problem.id}
+                                  problem={problem}
+                                  index={allProblems.indexOf(problem)}
+                                  noteId={note?.id}
+                                  onUpdate={isAdmin ? handleUpdateProblem : undefined}
+                                  {...getProblemPracticeProps(problem)}
+                                />
+                              ))}
+                              {visibleCount < group.problems.length && (
+                                <button
+                                  type="button"
+                                  onClick={() => loadMoreProblems(windowKey, group.problems.length)}
+                                  className="control-button w-full border-dashed py-3 text-sm"
+                                >
+                                  继续加载 · 已显示 {visibleCount}/{group.problems.length}
+                                </button>
+                              )}
+                            </div>
+                          ) : null}
+                        </section>
+                      );
+                    })}
                   </div>
                 ) : (
                   filteredProblems.length > 0 ? (
                     <div className="space-y-6">
-                      {filteredProblems.map((problem) => (
+                      {filteredProblems.slice(
+                        Math.min(
+                          filteredProblems.length,
+                          visibleProblemStarts[getFlatProblemWindowKey(selectedChapterId)] ?? 0,
+                        ),
+                        Math.min(
+                          filteredProblems.length,
+                          visibleProblemCounts[getFlatProblemWindowKey(selectedChapterId)] ?? INITIAL_PROBLEM_WINDOW_SIZE,
+                        ),
+                      ).map((problem) => (
                         <ProblemCard
                           key={problem.id}
                           problem={problem}
@@ -643,6 +854,27 @@ export function NoteReaderClient({
                           {...getProblemPracticeProps(problem)}
                         />
                       ))}
+                      {(visibleProblemStarts[getFlatProblemWindowKey(selectedChapterId)] ?? 0) > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => resetProblemWindow(getFlatProblemWindowKey(selectedChapterId))}
+                          className="control-button w-full border-dashed py-3 text-sm"
+                        >
+                          返回当前章节开头
+                        </button>
+                      )}
+                      {(visibleProblemCounts[getFlatProblemWindowKey(selectedChapterId)] ?? INITIAL_PROBLEM_WINDOW_SIZE) < filteredProblems.length && (
+                        <button
+                          type="button"
+                          onClick={() => loadMoreProblems(getFlatProblemWindowKey(selectedChapterId), filteredProblems.length)}
+                          className="control-button w-full border-dashed py-3 text-sm"
+                        >
+                          继续加载 · 已显示 {Math.min(
+                            visibleProblemCounts[getFlatProblemWindowKey(selectedChapterId)] ?? INITIAL_PROBLEM_WINDOW_SIZE,
+                            filteredProblems.length,
+                          )}/{filteredProblems.length}
+                        </button>
+                      )}
                     </div>
                   ) : (
                     <div className="surface-panel border-dashed px-4 py-12 text-center text-sm text-on-surface-variant">
@@ -711,6 +943,7 @@ export function NoteReaderClient({
                       problems={filteredProblems}
                       noteId={note.id}
                       statusMap={practiceStatusMap}
+                      onProblemNavigate={ensureProblemRendered}
                     />
                   </div>
                 ) : (
@@ -836,7 +1069,16 @@ export function NoteReaderClient({
                         <span>{selectedChapter.name}</span>
                       </div>
                     )}
-                    {filteredProblems.map((problem) => (
+                    {filteredProblems.slice(
+                      Math.min(
+                        filteredProblems.length,
+                        visibleProblemStarts[getFlatProblemWindowKey(selectedChapterId)] ?? 0,
+                      ),
+                      Math.min(
+                        filteredProblems.length,
+                        visibleProblemCounts[getFlatProblemWindowKey(selectedChapterId)] ?? INITIAL_PROBLEM_WINDOW_SIZE,
+                      ),
+                    ).map((problem) => (
                       <ProblemCard
                         key={problem.id}
                         problem={problem}

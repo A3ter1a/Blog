@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createBaiduOcrTask, queryBaiduOcrTask } from "@/lib/baidu-unlimited-ocr";
-import { requireAdminRequest } from "@/lib/server-admin-auth";
+import { getAdminRequestContext } from "@/lib/server-admin-auth";
+import {
+  normalizeOcrSourcePath,
+  persistExternalOcrStatus,
+  registerExternalOcrJob,
+} from "@/lib/server-job-ledger";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -73,24 +78,48 @@ async function parseSubmitSource(req: NextRequest) {
   const raw = isRecord(body) ? body : {};
   const fileUrl = toString(raw.fileUrl);
   const fileName = normalizeFileName(raw.fileName, "lecture.pdf");
+  const requestedSourcePath = toString(raw.sourcePath);
+  const sourcePath = normalizeOcrSourcePath(requestedSourcePath);
   if (!fileUrl) {
     throw new Error("请填写可公开访问的 PDF 文件链接");
   }
+  if (requestedSourcePath && !sourcePath) {
+    throw new Error("OCR 临时文件路径无效");
+  }
 
-  return { fileUrl, fileName };
+  return { fileUrl, fileName, sourcePath };
 }
 
 export async function POST(req: NextRequest) {
   try {
-    const adminError = await requireAdminRequest(req);
-    if (adminError) return adminError;
+    const auth = await getAdminRequestContext(req);
+    if (!auth.ok) return auth.response;
 
     const source = await parseSubmitSource(req);
     const taskId = await createBaiduOcrTask(source);
+    let ledgerAvailability: "synced" | "schema_pending" | "sync_failed" = "sync_failed";
+    let ledgerJob = null;
+    try {
+      const ledger = await registerExternalOcrJob(auth.context.supabase, {
+        userId: auth.context.user.id,
+        taskId,
+        title: source.fileName,
+        sourcePath: "sourcePath" in source ? source.sourcePath : undefined,
+      });
+      ledgerAvailability = ledger.availability;
+      ledgerJob = ledger.data;
+    } catch (ledgerError: unknown) {
+      console.error(
+        "[DocumentOcrLedger] registration failed:",
+        ledgerError instanceof Error ? ledgerError.message : "unknown error",
+      );
+    }
 
     return NextResponse.json({
       taskId,
       fileName: source.fileName,
+      ledgerAvailability,
+      ledgerJob,
       success: true,
     });
   } catch (error: unknown) {
@@ -101,8 +130,8 @@ export async function POST(req: NextRequest) {
 
 export async function GET(req: NextRequest) {
   try {
-    const adminError = await requireAdminRequest(req);
-    if (adminError) return adminError;
+    const auth = await getAdminRequestContext(req);
+    if (!auth.ok) return auth.response;
 
     const taskId = req.nextUrl.searchParams.get("taskId")?.trim() || "";
     if (!taskId || !isTaskId(taskId)) {
@@ -110,8 +139,26 @@ export async function GET(req: NextRequest) {
     }
 
     const result = await queryBaiduOcrTask(taskId);
+    let ledgerAvailability: "synced" | "schema_pending" | "sync_failed" = "sync_failed";
+    let ledgerJob = null;
+    try {
+      const ledger = await persistExternalOcrStatus(
+        auth.context.supabase,
+        auth.context.user.id,
+        result,
+      );
+      ledgerAvailability = ledger.availability;
+      ledgerJob = ledger.data;
+    } catch (ledgerError: unknown) {
+      console.error(
+        "[DocumentOcrLedger] status persistence failed:",
+        ledgerError instanceof Error ? ledgerError.message : "unknown error",
+      );
+    }
     return NextResponse.json({
       ...result,
+      ledgerAvailability,
+      ledgerJob,
       success: true,
     });
   } catch (error: unknown) {

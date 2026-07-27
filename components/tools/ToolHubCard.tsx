@@ -15,7 +15,7 @@ export type ToolHubCardItem = {
 
 export function ToolHubGrid({ children }: { children: ReactNode }) {
   return (
-    <section className="mx-auto grid max-w-4xl gap-3">
+    <section className="catalog-index mx-auto max-w-4xl">
       {children}
     </section>
   );
@@ -26,7 +26,7 @@ export function ToolHubCard({ item }: { item: ToolHubCardItem }) {
   const tone = item.tone ?? "border-primary/15 bg-primary/10 text-primary";
   const content = (
     <>
-      <span className={`motion-ui flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border ${item.href ? "group-hover:scale-[1.03]" : ""} ${tone}`}>
+      <span className={`motion-ui flex h-11 w-11 shrink-0 items-center justify-center rounded-md border ${tone}`}>
         <Icon className="h-5 w-5" />
       </span>
       <div className="min-w-0 flex-1">
@@ -46,8 +46,8 @@ export function ToolHubCard({ item }: { item: ToolHubCardItem }) {
     </>
   );
 
-  const className = `surface-card group flex min-h-28 items-center gap-4 p-4 text-left sm:p-5 ${
-    item.href ? "motion-card-lift" : "opacity-60"
+  const className = `catalog-row group flex min-h-28 items-center gap-4 p-4 text-left sm:p-5 ${
+    item.href ? "" : "opacity-60"
   }`;
 
   if (!item.href) {

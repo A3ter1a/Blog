@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Upload, Type, ListTree, Eye, AlignLeft, XCircle, RotateCcw, Columns3 } from "lucide-react";
+import { X, Upload, Type, ListTree, Eye, AlignLeft, XCircle, RotateCcw, Columns3, MonitorCog, Sun, Moon } from "lucide-react";
 import type { Profile } from "@/lib/types";
 import { DEFAULT_PROFILE } from "@/lib/profile";
 import { profileApi } from "@/lib/supabase";
@@ -16,6 +16,8 @@ import { AISettings } from "@/components/settings/AISettings";
 import { useAdminAuth } from "@/hooks/useAdminAuth";
 import { useToast } from "@/components/ui/Toast";
 import { collapsibleMotion, overlayMotion, uiMotion } from "@/lib/motion";
+import { setThemePreference, useThemePreference } from "@/components/layout/ThemeController";
+import type { ThemePreference } from "@/lib/theme-contract";
 
 interface SettingsPanelProps {
   isOpen: boolean;
@@ -26,6 +28,7 @@ const MAX_IMPORT_FILE_BYTES = 10 * 1024 * 1024;
 
 export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
   const { preferences, updatePreference, resetPreferences } = useReadingPreferences();
+  const themePreference = useThemePreference();
   const { isAdmin } = useAdminAuth();
   const toast = useToast();
   const [portalRoot] = useState<HTMLElement | null>(() => (
@@ -141,6 +144,7 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
               <button
                 onClick={onClose}
                 className="motion-ui motion-interactive p-2 rounded-full hover:bg-surface-container-high"
+                aria-label="关闭设置"
               >
                 <X className="w-5 h-5 text-on-surface-variant" />
               </button>
@@ -304,6 +308,35 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
                     恢复阅读默认值
                   </button>
                 </div>
+              </section>
+
+              <section>
+                <h3 className="mb-4 flex items-center gap-2 text-sm font-medium text-on-surface-variant">
+                  <MonitorCog className="h-4 w-4" />
+                  显示主题
+                </h3>
+                <div className="grid grid-cols-3 border-y border-outline-variant/20">
+                  {([
+                    { value: "follow", label: "跟随日光", icon: <MonitorCog className="h-4 w-4" /> },
+                    { value: "light", label: "恒亮", icon: <Sun className="h-4 w-4" /> },
+                    { value: "dark", label: "恒暗", icon: <Moon className="h-4 w-4" /> },
+                  ] as { value: ThemePreference; label: string; icon: React.ReactNode }[]).map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => setThemePreference(option.value)}
+                      className={`flex min-h-16 flex-col items-center justify-center gap-1 border-r border-outline-variant/20 px-2 text-xs last:border-r-0 ${
+                        themePreference === option.value ? "bg-primary text-on-primary" : "text-on-surface-variant hover:bg-surface-container-low"
+                      }`}
+                    >
+                      {option.icon}
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+                <p className="mt-3 text-xs leading-5 text-on-surface-variant/70">
+                  跟随日光会按北京当天的日出与日落时间自动切换，不读取定位权限。
+                </p>
               </section>
 
               {!isAdmin && (

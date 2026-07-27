@@ -1,4 +1,5 @@
 import type { Note, NoteType, Problem, Subject } from "@/lib/types";
+import { getNoteReadHref, getNoteReadPath } from "@/lib/note-routes";
 import GithubSlugger from "github-slugger";
 
 export type NoteQAScope = "all" | NoteType;
@@ -20,6 +21,8 @@ export type NoteQASource = {
 type NoteQAChunk = NoteQASource & {
   content: string;
 };
+
+export type PersistentNoteRagChunk = Pick<NoteQAChunk, "content" | "sourceLabel" | "href">;
 
 export type NoteQAContextResult = {
   context: string;
@@ -135,7 +138,7 @@ function getContentSections(note: Note): Array<{
   sourceLabel: string;
   href: string;
 }> {
-  const baseHref = `/notes/${note.id}`;
+  const baseHref = getNoteReadPath(note);
   const content = note.content || "";
   const headingMatches = Array.from(content.matchAll(/^ {0,3}#{1,6}\s+(.+?)\s*#*\s*$/gm));
 
@@ -179,7 +182,7 @@ function formatProblem(problem: Problem, index: number): string {
   return `题目 ${index + 1}：${problem.question}${optionText}\n答案：${problem.answer}`;
 }
 
-function buildChunksFromNote(note: Note): NoteQAChunk[] {
+export function buildNoteRagChunks(note: Note): NoteQAChunk[] {
   const chunks: NoteQAChunk[] = [];
   const base = {
     noteId: note.id,
@@ -211,7 +214,7 @@ function buildChunksFromNote(note: Note): NoteQAChunk[] {
       ...base,
       id: `${note.id}:problem:${problemAnchorId}`,
       sourceLabel: `题目 ${index + 1}`,
-      href: `/notes/${note.id}#problem-${problemAnchorId}`,
+      href: getNoteReadHref(note, `problem-${problemAnchorId}`),
       content,
       excerpt: toExcerpt(content),
       score: 0,
@@ -244,7 +247,7 @@ export function buildNoteQAContext(
 ): NoteQAContextResult {
   const scopedNotes = scope === "all" ? notes : notes.filter((note) => note.type === scope);
   const terms = tokenize(question);
-  const chunks = scopedNotes.flatMap(buildChunksFromNote);
+  const chunks = scopedNotes.flatMap(buildNoteRagChunks);
   const ranked = chunks
     .map((chunk) => ({ ...chunk, score: scoreChunk(question, terms, chunk) }))
     .filter((chunk) => chunk.score > 0 || terms.length === 0)

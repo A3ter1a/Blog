@@ -12,6 +12,8 @@
 
 # testing
 /coverage
+/.playwright-cli/
+/output/
 
 # next.js
 /.next/
@@ -30,6 +32,10 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 work-dev-server*.log
+debug.log
+
+# local project planning and evidence packages
+/fable info/
 
 # env files (can opt-in for committing if needed)
 .env*
@@ -54,6 +60,10 @@ scripts/__pycache__/
 !/data/english-papers/english1-sample.json
 /data/english-papers/*.sql
 /data/english-papers/sql-chunks/
+
+# local database backups and temporary PostgreSQL tools
+/.local-backups/
+/.tools/postgresql/
 
 # typescript
 *.tsbuildinfo

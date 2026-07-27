@@ -20,6 +20,10 @@ type InitialNotesPayload = {
 };
 
 async function getInitialNotes(): Promise<InitialNotesPayload> {
+  if (process.env.ASTEROID_OFFLINE_BUILD === "1") {
+    return { notes: [], hasMoreNotes: false, loadError: true };
+  }
+
   try {
     const data = await notesApi.getSummaries({
       sortOrder: "desc",

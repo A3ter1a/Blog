@@ -99,6 +99,10 @@ create table if not exists public.site_profile (
   updated_at timestamptz not null default now()
 );
 
+insert into public.site_profile (id, profile)
+values ('main', '{}'::jsonb)
+on conflict (id) do nothing;
+
 create table if not exists public.admin_users (
   id uuid primary key default gen_random_uuid(),
   email text not null,
