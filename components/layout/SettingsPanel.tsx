@@ -18,6 +18,13 @@ import { useToast } from "@/components/ui/Toast";
 import { collapsibleMotion, overlayMotion, uiMotion } from "@/lib/motion";
 import { setThemePreference, useThemePreference } from "@/components/layout/ThemeController";
 import type { ThemePreference } from "@/lib/theme-contract";
+import { useAiAccountSlot } from "@/hooks/useAiAccountSlot";
+import {
+  AI_ACCOUNT_SLOT_CONFIG,
+  clearActiveAiAccountSlot,
+  getAiAccountSlotPath,
+  isExpectedAiAccountEmail,
+} from "@/lib/auth-session-slot";
 
 interface SettingsPanelProps {
   isOpen: boolean;
@@ -30,6 +37,7 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
   const { preferences, updatePreference, resetPreferences } = useReadingPreferences();
   const themePreference = useThemePreference();
   const { loading: authLoading, user, isAdmin } = useAdminAuth();
+  const accountSlot = useAiAccountSlot();
   const toast = useToast();
   const [portalRoot] = useState<HTMLElement | null>(() => (
     typeof document === "undefined" ? null : document.body
@@ -77,6 +85,7 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
       const { error } = await getSupabase().auth.signOut({ scope: "local" });
       if (error) throw error;
 
+      clearActiveAiAccountSlot();
       onClose();
       // A full reload clears note/admin client state and re-evaluates the session boundary.
       window.location.href = "/";
@@ -191,7 +200,11 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
                           {user.email ?? "已登录账号"}
                         </p>
                         <p className="mt-2 text-xs leading-5 text-on-surface-variant/75">
-                          {isAdmin ? "管理员账号，可维护博客内容与设置。" : "AI 学科账号，只能编辑自己的内容并提交审核。"}
+                          {accountSlot
+                            ? (isExpectedAiAccountEmail(accountSlot, user.email)
+                              ? `${AI_ACCOUNT_SLOT_CONFIG[accountSlot].label}专属会话，只能编辑自己的内容并提交审核。`
+                              : "当前账号与本窗口的学科会话槽不一致，请退出后从正确入口登录。")
+                            : (isAdmin ? "管理员账号，可维护博客内容与设置。" : "当前默认会话不是管理员账号。")}
                         </p>
                       </div>
                     </div>
@@ -209,10 +222,12 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
                   <div className="rounded-xl bg-surface-container-low p-4">
                     <p className="text-sm text-on-surface">当前未登录</p>
                     <p className="mt-1 text-xs leading-5 text-on-surface-variant/75">
-                      管理员与 AI 学科账号都从同一个登录入口进入。
+                      {accountSlot
+                        ? `${AI_ACCOUNT_SLOT_CONFIG[accountSlot].label}账号将从当前专属入口登录。`
+                        : "默认入口只用于管理员账号。"}
                     </p>
                     <Link
-                      href="/login"
+                      href={getAiAccountSlotPath("/login", accountSlot)}
                       onClick={onClose}
                       className="control-button control-button-primary mt-4 inline-flex min-h-11 items-center justify-center px-4 text-sm"
                     >

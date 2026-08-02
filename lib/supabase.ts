@@ -3,6 +3,11 @@ import type { Note, NoteAuthorKind, NoteType, Problem, Profile, Subject, Video }
 import { DEFAULT_PROFILE, normalizeProfile } from "./profile";
 import type { Database, Json, NoteRow, NoteUpdate } from "./supabase-schema";
 import type { PublicAiProfile } from "./ai-profile";
+import {
+  getActiveAiAccountSlot,
+  getAiAccountAuthStorageKey,
+  type AiAccountSlot,
+} from "./auth-session-slot";
 
 export type {
   ChapterInsert,
@@ -261,13 +266,27 @@ function toJson(value: unknown): Json {
 
 // 延迟初始化 - 只在变量存在时创建客户端
 let _supabase: SupabaseClient<Database> | null = null;
+let _supabaseSlot: AiAccountSlot | null | undefined;
 
 export function getSupabase(): SupabaseClient<Database> {
+  const activeSlot = getActiveAiAccountSlot();
+  if (_supabase && _supabaseSlot !== activeSlot) {
+    throw new Error("账号会话槽已改变，请刷新当前窗口后继续");
+  }
+
   if (!_supabase) {
     if (!supabaseUrl || !supabaseAnonKey) {
       throw new Error("Supabase 未配置。请设置 NEXT_PUBLIC_SUPABASE_URL 和 NEXT_PUBLIC_SUPABASE_ANON_KEY");
     }
-    _supabase = createClient<Database>(supabaseUrl, supabaseAnonKey);
+    _supabaseSlot = activeSlot;
+    _supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, activeSlot ? {
+      auth: {
+        storageKey: getAiAccountAuthStorageKey(supabaseUrl, activeSlot),
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: true,
+      },
+    } : undefined);
   }
   return _supabase;
 }

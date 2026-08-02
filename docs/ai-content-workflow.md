@@ -21,6 +21,23 @@
 
 AI 账号不得出现在 `admin_users`。迁移通过数据库触发器同时拦截两种方向的冲突；账号 provisioning 仍必须由管理员在 Supabase Auth/SQL 中逐项审核完成。
 
+### 持久化学科会话槽
+
+四个 Codex 学科窗口通过应用端会话槽共用同一个浏览器资料，而不共用 Supabase token：
+
+| 槽位 | 固定邮箱 | 完整启动入口 |
+| --- | --- | --- |
+| `math` | `math.ai@a3ter1a.cn` | `/login?account=math` |
+| `english` | `english.ai@a3ter1a.cn` | `/login?account=english` |
+| `politics` | `politics.ai@a3ter1a.cn` | `/login?account=politics` |
+| `economics` | `economics.ai@a3ter1a.cn` | `/login?account=economics` |
+
+每个槽位使用独立的 Supabase `localStorage storageKey`，管理员继续使用 Supabase 默认 key；当前标签页的槽位只写入 `sessionStorage`。因此浏览器关闭后 token 仍可恢复，但不同标签页不会争用“当前学科”。每个标签页只懒加载当前槽位的一个 client，不会为了保活而创建四个 client、轮询后台或要求四个窗口常驻。
+
+学科入口会锁定邮箱，并在登录后校验 `ai_profiles.subject` 与 `ai_profiles.account_key` 都等于槽位名。默认 `/login` 拒绝四个学科邮箱，避免它们进入管理员默认 storage key。退出只清除当前槽位；清除浏览器站点数据、撤销 refresh token、修改密码或管理员停用账号后才需要重新登录。
+
+同一标签页运行期间不得从一个槽位切换到另一个槽位；需要切换时先退出，再用目标入口完整加载。密码、access token、refresh token 和 Cookie 不得写入提示词、代码、文档或任务日志。
+
 ## 内容隔离
 
 | 内容 | 存储位置 | AI 权限 | 管理员权限 |

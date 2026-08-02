@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { buildAuthHeaders } from "@/lib/fetch-with-auth";
 import { getSupabase } from "@/lib/supabase";
+import { doesAiProfileMatchSlot, getActiveAiAccountSlot } from "@/lib/auth-session-slot";
 import type { AiContentProposalRow } from "@/lib/server-ai-content";
 
 export type AiWorkspaceProfile = {
@@ -41,6 +42,11 @@ export function useAiContentWorkspace() {
   const reload = useCallback(async () => {
     setState((current) => ({ ...current, loading: true, error: null }));
     try {
+      const activeSlot = getActiveAiAccountSlot();
+      if (!activeSlot) {
+        throw new Error("请从对应学科的专属入口进入 AI 内容工作台");
+      }
+
       const response = await fetch("/api/ai/content-proposals?limit=60", {
         headers: await buildAuthHeaders(),
         cache: "no-store",
@@ -52,6 +58,9 @@ export function useAiContentWorkspace() {
       const record = payload && typeof payload === "object" && !Array.isArray(payload)
         ? payload as Record<string, unknown>
         : {};
+      if (!doesAiProfileMatchSlot(activeSlot, record.profile)) {
+        throw new Error("当前账号资料与学科会话槽不一致，请退出后检查账号配置");
+      }
       setState({
         loading: false,
         profile: (record.profile ?? null) as AiWorkspaceProfile | null,

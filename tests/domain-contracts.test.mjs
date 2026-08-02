@@ -11,6 +11,18 @@ import {
   selectLatestEffectivePaperResult,
 } from "../lib/training-contract.ts";
 import {
+  AI_ACCOUNT_SLOTS,
+  AI_ACCOUNT_SLOT_CONFIG,
+  clearActiveAiAccountSlot,
+  doesAiProfileMatchSlot,
+  getActiveAiAccountSlot,
+  getAiAccountAuthStorageKey,
+  getAiAccountSlotForEmail,
+  getAiAccountSlotPath,
+  isExpectedAiAccountEmail,
+  normalizeAiAccountSlot,
+} from "../lib/auth-session-slot.ts";
+import {
   assertUniqueJobItemKeys,
   canClaimJobResult,
   claimJobItem,
@@ -1436,8 +1448,85 @@ test("管理员缓存不参与首帧渲染，避免登录导航产生水合分�
     /useState<AdminAuthState>\(\{\s*loading: true,\s*user: null,\s*isAdmin: false,/,
   );
   assert.match(authHook, /function resolveAdminState[\s\S]*readCachedAdminAuthForUser\(user\)/);
-  assert.match(authHook, /if \(!cached\.isAdmin\) \{[\s\S]*removeStorage\(ADMIN_AUTH_CACHE_KEY\)/);
-  assert.match(authHook, /function writeCachedAdminAuth[\s\S]*if \(!isAdmin\) \{[\s\S]*removeStorage\(ADMIN_AUTH_CACHE_KEY\)/);
+  assert.match(authHook, /if \(!cached\.isAdmin\) \{[\s\S]*removeStorage\(cacheKey\)/);
+  assert.match(authHook, /function writeCachedAdminAuth[\s\S]*if \(!isAdmin\) \{[\s\S]*removeStorage\(cacheKey\)/);
+});
+
+test("四个 AI 学科账号使用稳定且互不相同的持久会话槽", () => {
+  assert.deepEqual(AI_ACCOUNT_SLOTS, ["math", "english", "politics", "economics"]);
+  const keys = AI_ACCOUNT_SLOTS.map((slot) => (
+    getAiAccountAuthStorageKey("https://example-ref.supabase.co", slot)
+  ));
+  assert.equal(new Set(keys).size, AI_ACCOUNT_SLOTS.length);
+  assert.equal(keys.every((key) => key.startsWith("asteroid-example-ref-auth-")), true);
+
+  for (const slot of AI_ACCOUNT_SLOTS) {
+    const config = AI_ACCOUNT_SLOT_CONFIG[slot];
+    assert.equal(normalizeAiAccountSlot(slot), slot);
+    assert.equal(getAiAccountSlotForEmail(config.email.toUpperCase()), slot);
+    assert.equal(isExpectedAiAccountEmail(slot, ` ${config.email} `), true);
+    assert.equal(getAiAccountSlotPath("/tools/ai-content", slot), `/tools/ai-content?account=${slot}`);
+    assert.equal(doesAiProfileMatchSlot(slot, { subject: slot, account_key: slot }), true);
+    assert.equal(doesAiProfileMatchSlot(slot, { subject: slot, account_key: "other" }), false);
+  }
+  assert.equal(normalizeAiAccountSlot("admin"), null);
+  assert.equal(getAiAccountSlotForEmail("owner@example.com"), null);
+  assert.equal(getAiAccountSlotPath("/login", null), "/login");
+});
+
+test("当前标签页槽位从 URL 初始化、跨站内导航保留并可独立清理", () => {
+  const previousWindow = globalThis.window;
+  const values = new Map();
+  const fakeWindow = {
+    location: { search: "?account=math" },
+    sessionStorage: {
+      getItem: (key) => values.get(key) ?? null,
+      setItem: (key, value) => values.set(key, value),
+      removeItem: (key) => values.delete(key),
+    },
+  };
+
+  Object.defineProperty(globalThis, "window", {
+    configurable: true,
+    writable: true,
+    value: fakeWindow,
+  });
+
+  try {
+    assert.equal(getActiveAiAccountSlot(), "math");
+    fakeWindow.location.search = "";
+    assert.equal(getActiveAiAccountSlot(), "math");
+    clearActiveAiAccountSlot();
+    assert.equal(getActiveAiAccountSlot(), null);
+  } finally {
+    if (previousWindow === undefined) {
+      delete globalThis.window;
+    } else {
+      Object.defineProperty(globalThis, "window", {
+        configurable: true,
+        writable: true,
+        value: previousWindow,
+      });
+    }
+  }
+});
+
+test("登录页和 Supabase client 强制执行管理员与学科会话隔离", () => {
+  const slotContract = readFileSync(resolve("lib/auth-session-slot.ts"), "utf8");
+  const supabaseClient = readFileSync(resolve("lib/supabase.ts"), "utf8");
+  const authHook = readFileSync(resolve("hooks/useAdminAuth.ts"), "utf8");
+  const workspaceHook = readFileSync(resolve("hooks/useAiContentWorkspace.ts"), "utf8");
+  const login = readFileSync(resolve("app/login/page.tsx"), "utf8");
+
+  assert.match(slotContract, /window\.sessionStorage\.setItem\(ACTIVE_AI_ACCOUNT_SLOT_SESSION_KEY, querySlot\)/);
+  assert.match(supabaseClient, /storageKey: getAiAccountAuthStorageKey\(supabaseUrl, activeSlot\)/);
+  assert.match(supabaseClient, /persistSession: true/);
+  assert.match(supabaseClient, /autoRefreshToken: true/);
+  assert.match(authHook, /if \(aiAccountSlot\) \{[\s\S]*isAdmin: false/);
+  assert.match(workspaceHook, /if \(!activeSlot\)[\s\S]*doesAiProfileMatchSlot\(activeSlot, record\.profile\)/);
+  assert.match(login, /getAiAccountSlotForEmail\(normalizedEmail\)/);
+  assert.match(login, /doesAiProfileMatchSlot\(accountSlot, profile\)/);
+  assert.match(login, /router\.push\(getAiAccountSlotPath\("\/tools\/ai-content", accountSlot\)\)/);
 });
 
 test("设置页为管理员和 AI 学科账号提供本地退出并清空客户端状态", () => {
@@ -1445,9 +1534,11 @@ test("设置页为管理员和 AI 学科账号提供本地退出并清空客户�
   const login = readFileSync(resolve("app/login/page.tsx"), "utf8");
   assert.match(settings, /const \{ loading: authLoading, user, isAdmin \} = useAdminAuth\(\)/);
   assert.match(settings, /auth\.signOut\(\{ scope: "local" \}\)/);
+  assert.match(settings, /clearActiveAiAccountSlot\(\)/);
   assert.match(settings, /window\.location\.href = "\/"/);
   assert.match(settings, /退出登录/);
   assert.match(login, /auth\.signOut\(\{ scope: "local" \}\)/);
+  assert.match(login, /clearActiveAiAccountSlot\(\)/);
 });
 
 test("首页核心规划不再依赖 IntersectionObserver 才挂载", () => {

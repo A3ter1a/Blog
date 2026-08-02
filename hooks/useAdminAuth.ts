@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import type { User } from "@supabase/supabase-js";
 import { getSupabase } from "@/lib/supabase";
 import { readJsonStorage, removeStorage, writeJsonStorage } from "@/lib/browser-storage";
+import { getActiveAiAccountSlot, getAuthCacheKey } from "@/lib/auth-session-slot";
 
 type AdminAuthState = {
   loading: boolean;
@@ -21,7 +22,7 @@ type CachedAdminAuth = {
   expiresAt: number;
 };
 
-const ADMIN_AUTH_CACHE_KEY = "asteroid-admin-auth";
+const ADMIN_AUTH_CACHE_KEY_BASE = "asteroid-admin-auth";
 const ADMIN_AUTH_CACHE_TTL_MS = 12 * 60 * 60 * 1000;
 const ADMIN_AUTH_REVALIDATE_INTERVAL_MS = 60 * 1000;
 
@@ -77,21 +78,22 @@ function normalizeCachedAdminAuth(value: unknown): CachedAdminAuth | null {
 }
 
 function readCachedAdminAuth(): CachedAdminAuth | null {
+  const cacheKey = getAuthCacheKey(ADMIN_AUTH_CACHE_KEY_BASE);
   const cached = readJsonStorage<CachedAdminAuth | null>(
-    ADMIN_AUTH_CACHE_KEY,
+    cacheKey,
     null,
     normalizeCachedAdminAuth,
   );
 
   if (!cached) return null;
   if (cached.expiresAt <= Date.now()) {
-    removeStorage(ADMIN_AUTH_CACHE_KEY);
+    removeStorage(cacheKey);
     return null;
   }
   // A previous 403 must not survive a deployment or an administrator-list
   // repair. Only positive authorization is reusable across sessions.
   if (!cached.isAdmin) {
-    removeStorage(ADMIN_AUTH_CACHE_KEY);
+    removeStorage(cacheKey);
     return null;
   }
 
@@ -104,13 +106,14 @@ function readCachedAdminAuthForUser(user: User): CachedAdminAuth | null {
 }
 
 function writeCachedAdminAuth(user: User, isAdmin: boolean): void {
+  const cacheKey = getAuthCacheKey(ADMIN_AUTH_CACHE_KEY_BASE);
   if (!isAdmin) {
-    removeStorage(ADMIN_AUTH_CACHE_KEY);
+    removeStorage(cacheKey);
     return;
   }
 
   const checkedAt = Date.now();
-  writeJsonStorage<CachedAdminAuth>(ADMIN_AUTH_CACHE_KEY, {
+  writeJsonStorage<CachedAdminAuth>(cacheKey, {
     userId: user.id,
     email: user.email ?? null,
     isAdmin,
@@ -132,6 +135,7 @@ export function useAdminAuth(): AdminAuthState {
   useEffect(() => {
     if (isUiLabPath) return;
 
+    const aiAccountSlot = getActiveAiAccountSlot();
     let mounted = true;
     let unsubscribe: (() => void) | undefined;
     let errorTimer: number | undefined;
@@ -173,7 +177,7 @@ export function useAdminAuth(): AdminAuthState {
       const checkId = latestCheckId;
 
       if (!user || !token) {
-        removeStorage(ADMIN_AUTH_CACHE_KEY);
+        removeStorage(getAuthCacheKey(ADMIN_AUTH_CACHE_KEY_BASE));
         if (!mounted) return;
         setState({
           loading: false,
@@ -185,6 +189,19 @@ export function useAdminAuth(): AdminAuthState {
       }
 
       if (!mounted) return;
+
+      // A dedicated AI account slot can never be an administrator session.
+      // Skipping the admin endpoint avoids a pointless 403 on each page mount.
+      if (aiAccountSlot) {
+        removeStorage(getAuthCacheKey(ADMIN_AUTH_CACHE_KEY_BASE));
+        setState({
+          loading: false,
+          user,
+          isAdmin: false,
+          error: errorMessage ?? null,
+        });
+        return;
+      }
 
       const cached = readCachedAdminAuthForUser(user);
       if (cached) {
