@@ -1440,6 +1440,16 @@ test("管理员缓存不参与首帧渲染，避免登录导航产生水合分�
   assert.match(authHook, /function writeCachedAdminAuth[\s\S]*if \(!isAdmin\) \{[\s\S]*removeStorage\(ADMIN_AUTH_CACHE_KEY\)/);
 });
 
+test("设置页为管理员和 AI 学科账号提供本地退出并清空客户端状态", () => {
+  const settings = readFileSync(resolve("components/layout/SettingsPanel.tsx"), "utf8");
+  const login = readFileSync(resolve("app/login/page.tsx"), "utf8");
+  assert.match(settings, /const \{ loading: authLoading, user, isAdmin \} = useAdminAuth\(\)/);
+  assert.match(settings, /auth\.signOut\(\{ scope: "local" \}\)/);
+  assert.match(settings, /window\.location\.href = "\/"/);
+  assert.match(settings, /退出登录/);
+  assert.match(login, /auth\.signOut\(\{ scope: "local" \}\)/);
+});
+
 test("首页核心规划不再依赖 IntersectionObserver 才挂载", () => {
   const deferred = readFileSync(resolve("components/home/StudyTimelineDeferred.tsx"), "utf8");
   assert.equal(deferred.includes("IntersectionObserver"), false);

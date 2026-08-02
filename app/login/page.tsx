@@ -57,9 +57,13 @@ export default function LoginPage() {
 
   const handleLogout = async () => {
     setSubmitting(true);
-    await getSupabase().auth.signOut();
+    const { error } = await getSupabase().auth.signOut({ scope: "local" });
     setSubmitting(false);
-    setMessage("已退出登录");
+    if (error) {
+      setMessage(`退出登录失败：${error.message}`);
+      return;
+    }
+    window.location.href = "/";
   };
 
   return (

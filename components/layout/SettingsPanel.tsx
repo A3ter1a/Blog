@@ -4,10 +4,10 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Upload, Type, ListTree, Eye, AlignLeft, XCircle, RotateCcw, Columns3, MonitorCog, Sun, Moon, UserRound } from "lucide-react";
+import { X, Upload, Type, ListTree, Eye, AlignLeft, XCircle, RotateCcw, Columns3, MonitorCog, Sun, Moon, UserRound, LogOut, Loader2 } from "lucide-react";
 import type { Profile } from "@/lib/types";
 import { DEFAULT_PROFILE } from "@/lib/profile";
-import { profileApi } from "@/lib/supabase";
+import { getSupabase, profileApi } from "@/lib/supabase";
 import { useReadingPreferences, TOCPosition, ContentWidth } from "@/lib/useReadingPreferences";
 import { ParsedNote, detectFormat, importFromJSON, importFromMarkdown, importFromObsidian } from "@/lib/import";
 import { ImportPreview } from "@/components/export/ImportPreview";
@@ -29,7 +29,7 @@ const MAX_IMPORT_FILE_BYTES = 10 * 1024 * 1024;
 export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
   const { preferences, updatePreference, resetPreferences } = useReadingPreferences();
   const themePreference = useThemePreference();
-  const { isAdmin } = useAdminAuth();
+  const { loading: authLoading, user, isAdmin } = useAdminAuth();
   const toast = useToast();
   const [portalRoot] = useState<HTMLElement | null>(() => (
     typeof document === "undefined" ? null : document.body
@@ -40,9 +40,10 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
 
   // Import state
   const [importError, setImportError] = useState<string | null>(null);
+  const [isSigningOut, setIsSigningOut] = useState(false);
 
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen || !isAdmin) return;
     let mounted = true;
 
     void (async () => {
@@ -54,7 +55,7 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
     return () => {
       mounted = false;
     };
-  }, [isOpen]);
+  }, [isOpen, isAdmin]);
 
   const handleSaveProfile = async (newProfile: Profile) => {
     try {
@@ -65,6 +66,24 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
       const message = error instanceof Error ? error.message : "未知错误";
       toast.error(`保存个人资料失败：${message}`);
       throw error;
+    }
+  };
+
+  const handleSignOut = async () => {
+    if (isSigningOut) return;
+    setIsSigningOut(true);
+
+    try {
+      const { error } = await getSupabase().auth.signOut({ scope: "local" });
+      if (error) throw error;
+
+      onClose();
+      // A full reload clears note/admin client state and re-evaluates the session boundary.
+      window.location.href = "/";
+    } catch (error: unknown) {
+      setIsSigningOut(false);
+      const message = error instanceof Error ? error.message : "未知错误";
+      toast.error(`退出登录失败：${message}`);
     }
   };
 
@@ -152,6 +171,57 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
 
             {/* Content */}
             <div className="flex-1 overflow-y-auto p-6 space-y-8">
+              <section aria-labelledby="settings-account-title">
+                <h3 id="settings-account-title" className="mb-4 flex items-center gap-2 text-sm font-medium text-on-surface-variant">
+                  <UserRound className="h-4 w-4" />
+                  账号
+                </h3>
+
+                {authLoading ? (
+                  <div className="flex items-center gap-3 rounded-xl bg-surface-container-low p-4 text-sm text-on-surface-variant" aria-live="polite">
+                    <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                    正在检查登录状态...
+                  </div>
+                ) : user ? (
+                  <div className="rounded-xl border border-outline-variant/15 bg-surface-container-low p-4">
+                    <div className="flex items-start gap-3">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs text-on-surface-variant">当前账号</p>
+                        <p className="mt-1 truncate text-sm font-medium text-on-surface" title={user.email ?? undefined}>
+                          {user.email ?? "已登录账号"}
+                        </p>
+                        <p className="mt-2 text-xs leading-5 text-on-surface-variant/75">
+                          {isAdmin ? "管理员账号，可维护博客内容与设置。" : "AI 学科账号，只能编辑自己的内容并提交审核。"}
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleSignOut}
+                      disabled={isSigningOut}
+                      className="control-button control-button-danger motion-ui motion-interactive mt-4 flex min-h-11 w-full items-center justify-center gap-2 px-4 text-sm"
+                    >
+                      {isSigningOut ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogOut className="h-4 w-4" />}
+                      {isSigningOut ? "正在退出..." : "退出登录"}
+                    </button>
+                  </div>
+                ) : (
+                  <div className="rounded-xl bg-surface-container-low p-4">
+                    <p className="text-sm text-on-surface">当前未登录</p>
+                    <p className="mt-1 text-xs leading-5 text-on-surface-variant/75">
+                      管理员与 AI 学科账号都从同一个登录入口进入。
+                    </p>
+                    <Link
+                      href="/login"
+                      onClick={onClose}
+                      className="control-button control-button-primary mt-4 inline-flex min-h-11 items-center justify-center px-4 text-sm"
+                    >
+                      前往账号登录
+                    </Link>
+                  </div>
+                )}
+              </section>
+
               {/* Reading Preferences */}
               <section>
                 <h3 className="text-sm font-medium text-on-surface-variant mb-4 flex items-center gap-2">
@@ -363,22 +433,6 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
                   跟随日光会按北京当天的日出与日落时间自动切换，不读取定位权限。
                 </p>
               </section>
-
-              {!isAdmin && (
-                <section className="rounded-xl bg-surface-container-low p-4">
-                  <h3 className="text-sm font-medium text-on-surface mb-2">管理员功能已保护</h3>
-                  <p className="text-xs text-on-surface-variant/70 mb-3">
-                    个人资料、AI 配置和导入入口只在管理员登录后显示。
-                  </p>
-                  <Link
-                    href="/login"
-                    onClick={onClose}
-                    className="inline-flex px-3 py-2 rounded-lg bg-primary text-on-primary text-xs font-medium"
-                  >
-                    管理员登录
-                  </Link>
-                </section>
-              )}
 
               {isAdmin && (
                 <>
