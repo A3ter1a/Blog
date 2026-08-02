@@ -1,5 +1,5 @@
 export type JobClass = "external" | "internal";
-export type JobStatus = "queued" | "dispatched" | "running" | "waiting_for_trigger" | "succeeded" | "failed" | "stalled" | "claimed";
+export type JobStatus = "queued" | "dispatched" | "running" | "waiting_for_trigger" | "succeeded" | "failed" | "stalled" | "claimed" | "cancelled";
 export type JobItemStatus = "pending" | "leased" | "succeeded" | "failed";
 export type ExternalProviderStatus = "pending" | "running" | "success" | "failed" | "unknown";
 
@@ -117,7 +117,7 @@ export function planExternalJobStatusTransition(
   providerStatus: ExternalProviderStatus,
   hasDurableResult: boolean,
 ): ExternalJobStatusTransition {
-  if (currentStatus === "claimed" || currentStatus === "succeeded") {
+  if (currentStatus === "claimed" || currentStatus === "succeeded" || currentStatus === "cancelled") {
     return { shouldPersist: false, nextStatus: currentStatus };
   }
   if (currentStatus === "failed" && providerStatus !== "success") {

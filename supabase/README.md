@@ -23,7 +23,17 @@ For a brand-new empty project, run the files in order. **Do not replay `0001`–
 17. `supabase/migrations/0017_english_training_command_rpc.sql`
 18. `supabase/migrations/0018_english_subjective_grade_rpc.sql`
 19. `supabase/migrations/0019_math_training_and_booklet_core.sql`
-20. `supabase/verification.sql` as a read-only check after all migrations have finished
+20. `supabase/migrations/0020_problem_ocr_job_assets.sql`
+21. `supabase/migrations/0021_private_note_rag_and_memory.sql`
+22. `supabase/migrations/0022_private_note_rag_operator_fix.sql`
+23. `supabase/migrations/0023_ai_content_accounts_and_collections.sql`
+24. `supabase/migrations/0024_ai_content_review_comments.sql`
+25. `supabase/migrations/0025_ai_collection_publish_boundary.sql`
+26. `supabase/migrations/0026_job_center_lifecycle.sql`
+27. `supabase/migrations/0027_ai_knowledge_quizzes.sql`
+28. `supabase/migrations/0028_ai_knowledge_quiz_insert_policy_fix.sql`
+29. `supabase/migrations/0029_ai_content_submission_rpc.sql`
+30. `supabase/verification.sql` as a read-only check after all migrations have finished
 
 For the existing production project, `0008`–`0012` may only be run after the fixed-shadow rehearsal, production backup verification, and a separate user confirmation. `0013` additionally requires its own fixed-shadow behavior-matrix pass and a new confirmation. `0014` has only passed a local PostgreSQL concurrency rehearsal; it requires a new fixed-shadow transaction rehearsal and separate authorization before any remote write. `0015` has only passed a local immutable-snapshot/apply/rollback rehearsal; it also requires a new fixed-shadow transaction rehearsal and separate authorization. `0016` has passed a rollback/idempotency rehearsal against the local WP1-B production backup. `0017–0018` have passed authenticated RPC, transaction rollback, objective/subjective three-round, correction, idempotency, confirmation, and legacy-projection rehearsals in disposable PostgreSQL only. `0019` has passed a disposable PostgreSQL rollback/RLS/idempotency rehearsal with structure-only math fixtures; no real math paper was imported and it has not run on fixed shadow. None has run on production. Never treat the presence of these files as proof that a remote database has been migrated.
 
@@ -49,6 +59,15 @@ Do not run `supabase-init.sql` for production setup. It is kept only as a legacy
 - `0018` English subjective grade RPCs: append an advisory `ai_suggested` grade beside the answer revision, require an explicit `user_final` event before the next round, and allow later final-score revisions without rewriting earlier suggestions or final grades.
 - `0019` math/booklet core: adds admin-maintained fixed math papers and rubrics, append-only OCR confirmations, confirmation-bound AI/user grades with readable step deductions, and metadata-only booklets whose private note is the single body source. Re-confirmation invalidates old grades as current results without deleting them; the next round requires a `user_final` grade on the latest confirmation.
 - `0020` problem OCR assets: extends the existing private `ocr-documents` bucket to accept compressed JPEG/PNG/WebP problem images while retaining PDF support. It changes no Storage object or policy and deletes no file.
+- `0021` private-note RAG and memory: stores append-only source versions/chunks, private-note search derivatives, and reviewable memory candidates behind owner/admin RLS. It does not make private notes public.
+- `0022` private-note RAG operator fix: keeps the RAG search RPC safe when called with an empty `search_path` by qualifying the pgvector operator and preserving the existing owner boundary.
+- `0023` AI content accounts and collections: adds four-subject AI profile/account metadata, isolated AI proposals, author ownership fields on `notes`, and generic incrementally editable note collections. AI accounts can only edit their own private drafts and collections; approval and publication remain administrator actions. The migration does not provision Auth users or seed credentials.
+- `0024` AI review comments and publication: stores human comments against a proposal content version and browser UTF-16 selection offsets. AI accounts can read only comments on their own proposals; only administrators can create, resolve, dismiss, or delete comments. The administrator-only `publish_ai_content_proposal` function publishes or idempotently refreshes the existing `notes` row in one transaction, preserving `author_kind = 'ai'`, `author_profile_id`, and `owner_user_id`.
+- `0025` AI collection publish boundary: grants the RLS-filtered public read needed by collection cards/detail pages and keeps AI-owned collections/items private and editable only until an administrator publishes them. It does not introduce a special note type or alter existing note rows.
+- `0026` job-center lifecycle: adds explicit cancellation and terminal retention boundaries for user-visible message-center jobs.
+- `0027` AI knowledge quizzes: stores AI-generated handout quick-test metadata and private question/answer/explanation rows separately from Markdown, with AI-owner/admin RLS and server-side grading support.
+- `0028` AI knowledge quiz policy fix: repairs the self-checked insert state for databases that already applied `0027`, and freezes AI edits after submission while retaining the controlled transition into `pending_review`.
+- `0029` AI content submission RPC: moves an owned proposal from `self_checked` to `pending_review` atomically without widening the general proposal UPDATE policy, so submitted content remains frozen for human review.
 - `note-images` Storage bucket: public image URLs remain readable because the bucket is public; object metadata reads for upsert plus uploads, overwrites, and deletes require admin access.
 - `ocr-documents` Storage bucket: private staging for Baidu lecture PDFs and durable problem-OCR source images. Problem images use `problem-ocr/{user_id}/{batch_uuid}/{ordinal}.{ext}` and are removed only after every job item succeeds; failed work retains sources for explicit retry.
 
@@ -108,6 +127,14 @@ npm run verify:wp5-backfill-assets
 npm run verify:wp5-backfill-local
 npm run verify:wp6-core-assets
 npm run verify:wp6-core-local
+npm run verify:wp8-ai-content-assets
+npm run verify:wp8-ai-content-local
+npm run verify:wp8-ai-content-types
+npm run verify:wp9-ai-content-assets
+npm run verify:wp10-ai-review-assets
+npm run verify:wp10-ai-review-local
+npm run verify:wp13-ai-knowledge-quiz-assets
+npm run verify:wp13-ai-knowledge-quiz-local
 ```
 
 The `*-local` commands start disposable PostgreSQL clusters bound only to `127.0.0.1` and remove them after the rehearsal. They do not connect to fixed shadow or production.

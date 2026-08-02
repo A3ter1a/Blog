@@ -1,7 +1,9 @@
 import {
+  Bot,
   BookOpenText,
   Calculator,
   GraduationCap,
+  Layers3,
 } from "lucide-react";
 import { PageHeader, PageShell } from "@/components/ui/PageScaffold";
 import { ToolHubCard, ToolHubGrid, type ToolHubCardItem } from "@/components/tools/ToolHubCard";
@@ -15,6 +17,22 @@ export const metadata = createPageMetadata({
 });
 
 const toolHubs: ToolHubCardItem[] = [
+  {
+    id: "ai-content",
+    title: "AI 内容工作台",
+    description: "AI 学科账号提交 Markdown，自动自检后进入人工审核。",
+    href: "/tools/ai-content",
+    icon: Bot,
+    tone: "border-primary/20 bg-primary/10 text-primary",
+  },
+  {
+    id: "collections",
+    title: "合集工作台",
+    description: "按章节或主题逐篇追加内容，随时调整顺序、移除或发布。",
+    href: "/tools/collections",
+    icon: Layers3,
+    tone: "border-violet-500/20 bg-violet-500/10 text-violet-700",
+  },
   {
     id: "past-papers",
     title: "真题中心",

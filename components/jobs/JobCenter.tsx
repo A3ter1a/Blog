@@ -10,7 +10,8 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { AlertTriangle, CheckCircle2, Clock3, FileScan, Loader2, RotateCcw, X } from "lucide-react";
+import { usePathname } from "next/navigation";
+import { AlertTriangle, CheckCircle2, CircleX, Clock3, FileScan, Loader2, RotateCcw, X } from "lucide-react";
 import { buildAuthHeaders } from "@/lib/fetch-with-auth";
 import {
   CLIENT_JOB_STORAGE_KEY,
@@ -22,6 +23,7 @@ import {
   normalizeRemoteJobRows,
   normalizeStoredJobs,
   prepareClientJobsForStorage,
+  removeExpiredClientJobs,
   type ClientJob,
 } from "@/lib/job-client";
 import {
@@ -60,6 +62,7 @@ type JobCenterContextValue = {
   createLocalProblemOcrJob: (title: string) => ClientJob;
   createBatchGradeJob: (title: string) => ClientJob;
   updateJob: (id: string, patch: Partial<ClientJob>) => void;
+  cancelJob: (id: string) => void;
   retryJob: (id: string) => void;
   loadJobResult: (id: string) => Promise<void>;
   claimJobResult: (id: string) => void;
@@ -89,6 +92,28 @@ const JobCenterContext = createContext<JobCenterContextValue | null>(null);
 const POLL_INTERVAL_MS = 6000;
 const AUTH_RETRY_BACKOFF_MS = 30_000;
 const MAX_HISTORY = 40;
+
+type JobBucket = "pending" | "running" | "completed";
+
+function getJobBucket(job: ClientJob): JobBucket {
+  if (job.status === "running") return "running";
+  if (job.status === "queued" || job.status === "waiting_for_trigger") return "pending";
+  return "completed";
+}
+
+function getJobBucketLabel(bucket: JobBucket): string {
+  if (bucket === "pending") return "待处理";
+  if (bucket === "running") return "进行中";
+  return "已完成";
+}
+
+function getJobStatusLabel(job: ClientJob): string {
+  if (job.status === "failed") return "失败";
+  if (job.status === "cancelled") return "已取消";
+  if (job.status === "succeeded" || job.status === "claimed") return "已完成";
+  if (job.status === "running") return "进行中";
+  return "待处理";
+}
 
 function toText(value: unknown): string {
   if (value === null || value === undefined) return "";
@@ -122,11 +147,15 @@ async function fetchRemoteJobLedger(): Promise<ClientJob[]> {
 }
 
 export function JobCenterProvider({ children }: { children: ReactNode }) {
+  const pathname = usePathname();
+  const isUiLab = pathname.startsWith("/ui-lab/");
   const [jobs, setJobs] = useState<ClientJob[]>([]);
   const [isOpen, setIsOpen] = useState(false);
+  const [activeBucket, setActiveBucket] = useState<JobBucket>("pending");
   const hydratedRef = useRef(false);
   const jobsRef = useRef<ClientJob[]>([]);
   const pollingRef = useRef(new Set<string>());
+  const cancelledRef = useRef(new Set<string>());
   const resultLoadingRef = useRef(new Set<string>());
   const authRetryAfterRef = useRef(new Map<string, number>());
 
@@ -135,9 +164,16 @@ export function JobCenterProvider({ children }: { children: ReactNode }) {
   }, [jobs]);
 
   useEffect(() => {
+    if (isUiLab) {
+      hydratedRef.current = true;
+      return;
+    }
+
     queueMicrotask(() => {
       try {
-        const stored = normalizeStoredJobs(JSON.parse(localStorage.getItem(CLIENT_JOB_STORAGE_KEY) ?? "[]"));
+        const stored = removeExpiredClientJobs(
+          normalizeStoredJobs(JSON.parse(localStorage.getItem(CLIENT_JOB_STORAGE_KEY) ?? "[]")),
+        );
         const hydrated: ClientJob[] = stored.map((job) => (
           job.class === "internal" && isClientJobActive(job) && !job.remoteJobId
             ? {
@@ -162,9 +198,22 @@ export function JobCenterProvider({ children }: { children: ReactNode }) {
         hydratedRef.current = true;
       }
     });
-  }, []);
+  }, [isUiLab]);
 
   useEffect(() => {
+    if (isUiLab) return;
+
+    const cleanup = () => {
+      setJobs((current) => removeExpiredClientJobs(current));
+    };
+    cleanup();
+    const timer = window.setInterval(cleanup, 60 * 60 * 1000);
+    return () => window.clearInterval(timer);
+  }, [isUiLab]);
+
+  useEffect(() => {
+    if (isUiLab) return;
+
     const refresh = () => {
       authRetryAfterRef.current.clear();
       void fetchRemoteJobLedger()
@@ -175,9 +224,11 @@ export function JobCenterProvider({ children }: { children: ReactNode }) {
     };
     window.addEventListener("focus", refresh);
     return () => window.removeEventListener("focus", refresh);
-  }, []);
+  }, [isUiLab]);
 
   useEffect(() => {
+    if (isUiLab) return;
+
     if (!hydratedRef.current) return;
     try {
       localStorage.setItem(
@@ -187,13 +238,15 @@ export function JobCenterProvider({ children }: { children: ReactNode }) {
     } catch {
       // 云端已同步结果不会重复塞进 localStorage；本机存储满时保留当前内存状态。
     }
-  }, [jobs]);
+  }, [isUiLab, jobs]);
 
   useEffect(() => {
+    if (isUiLab) return;
+
     const sync = (event: StorageEvent) => {
       if (event.key !== CLIENT_JOB_STORAGE_KEY || !event.newValue) return;
       try {
-        const stored = normalizeStoredJobs(JSON.parse(event.newValue));
+        const stored = removeExpiredClientJobs(normalizeStoredJobs(JSON.parse(event.newValue)));
         setJobs((current) => mergeClientJobLedgers(
           stored,
           current.filter((job) => job.ledgerState === "synced"),
@@ -204,7 +257,7 @@ export function JobCenterProvider({ children }: { children: ReactNode }) {
     };
     window.addEventListener("storage", sync);
     return () => window.removeEventListener("storage", sync);
-  }, []);
+  }, [isUiLab]);
 
   const updateJob = useCallback((id: string, patch: Partial<ClientJob>) => {
     setJobs((current) => current.map((job) => (
@@ -219,6 +272,7 @@ export function JobCenterProvider({ children }: { children: ReactNode }) {
     try {
       await deleteOcrDocument(job.sourcePath);
     } catch (error: unknown) {
+      if (cancelledRef.current.has(job.id)) return;
       updateJob(job.id, {
         cleanupError: error instanceof Error ? error.message : "临时文件清理失败",
       });
@@ -243,6 +297,7 @@ export function JobCenterProvider({ children }: { children: ReactNode }) {
   }, [updateJob]);
 
   const pollJob = useCallback(async (job: ClientJob) => {
+    if (cancelledRef.current.has(job.id)) return;
     const canPollExternal = job.type === "document_ocr" && Boolean(job.externalTaskId);
     const canAdvanceInternal = job.class === "internal" && Boolean(job.remoteJobId);
     if ((!canPollExternal && !canAdvanceInternal) || pollingRef.current.has(job.id)) return;
@@ -251,6 +306,7 @@ export function JobCenterProvider({ children }: { children: ReactNode }) {
     try {
       await withBrowserJobLock(job.remoteJobId ?? job.id, async () => {
         const authHeaders = await buildAuthHeaders();
+        if (cancelledRef.current.has(job.id)) return;
         if (!authHeaders.has("Authorization")) {
           if (job.phase !== "等待登录恢复" || job.error) {
             updateJob(job.id, {
@@ -281,6 +337,7 @@ export function JobCenterProvider({ children }: { children: ReactNode }) {
             return;
           }
           if (!response.ok) throw new Error(toText(payload.error) || "站内任务推进失败");
+          if (cancelledRef.current.has(job.id)) return;
           authRetryAfterRef.current.delete(job.id);
           const remoteJobs = normalizeRemoteJobRows(payload.job ? [payload.job] : []);
           if (remoteJobs.length > 0) {
@@ -305,6 +362,7 @@ export function JobCenterProvider({ children }: { children: ReactNode }) {
           return;
         }
         if (!response.ok) throw new Error(toText(payload.error) || "讲义 OCR 任务查询失败");
+        if (cancelledRef.current.has(job.id)) return;
         authRetryAfterRef.current.delete(job.id);
         const remoteJobs = normalizeRemoteJobRows(payload.ledgerJob ? [payload.ledgerJob] : []);
         if (remoteJobs.length > 0) {
@@ -371,6 +429,7 @@ export function JobCenterProvider({ children }: { children: ReactNode }) {
   );
 
   useEffect(() => {
+    if (isUiLab) return;
     if (!activeJobPollKey) return;
 
     const pollAll = () => jobsRef.current
@@ -379,7 +438,7 @@ export function JobCenterProvider({ children }: { children: ReactNode }) {
     pollAll();
     const timer = window.setInterval(pollAll, POLL_INTERVAL_MS);
     return () => window.clearInterval(timer);
-  }, [activeJobPollKey, pollJob]);
+  }, [activeJobPollKey, isUiLab, pollJob]);
 
   const createDocumentOcrJob = useCallback((input: CreateDocumentOcrJobInput) => {
     const now = new Date().toISOString();
@@ -522,6 +581,56 @@ export function JobCenterProvider({ children }: { children: ReactNode }) {
     return job;
   }, []);
 
+  const cancelJob = useCallback((id: string) => {
+    const target = jobs.find((job) => job.id === id);
+    if (!target || !isClientJobActive(target) || cancelledRef.current.has(id)) return;
+
+    cancelledRef.current.add(id);
+    const now = new Date().toISOString();
+    updateJob(id, {
+      status: "cancelled",
+      phase: "任务已取消",
+      statusText: target.remoteJobId
+        ? "已停止本地轮询，正在同步跨设备任务账本"
+        : "任务已取消，已停止本地跟踪",
+      heartbeatAt: now,
+      error: undefined,
+    });
+
+    void (async () => {
+      try {
+        if (target.remoteJobId) {
+          const response = await fetch(`/api/jobs/${encodeURIComponent(target.remoteJobId)}/cancel`, {
+            method: "POST",
+            headers: await buildAuthHeaders(),
+            cache: "no-store",
+          });
+          const payload = await response.json().catch(() => ({})) as JobMutationResponse;
+          if (response.status === 503 && payload.availability === "schema_pending") {
+            updateJob(id, {
+              ledgerState: "schema_pending",
+              statusText: "已在本机取消；任务账本迁移后再同步",
+            });
+          } else {
+            if (!response.ok) throw new Error(toText(payload.error) || "任务取消同步失败");
+            const remoteJobs = normalizeRemoteJobRows(payload.job ? [payload.job] : []);
+            if (remoteJobs.length > 0) setJobs((current) => mergeClientJobLedgers(current, remoteJobs));
+          }
+        }
+
+        await cleanupSource({ ...target, status: "cancelled" });
+      } catch (error: unknown) {
+        cancelledRef.current.delete(id);
+        updateJob(id, {
+          status: target.status,
+          phase: "取消同步失败",
+          statusText: "取消请求失败，任务仍保留在消息中心，可再次尝试",
+          error: error instanceof Error ? error.message : "任务取消失败",
+        });
+      }
+    })();
+  }, [cleanupSource, jobs, updateJob]);
+
   const retryJob = useCallback((id: string) => {
     const target = jobs.find((job) => job.id === id);
     if (!target || !canRetryClientJob(target)) return;
@@ -646,57 +755,99 @@ export function JobCenterProvider({ children }: { children: ReactNode }) {
     createLocalProblemOcrJob,
     createBatchGradeJob,
     updateJob,
+    cancelJob,
     retryJob,
     loadJobResult,
     claimJobResult,
     dismissJob,
-  }), [claimJobResult, createBatchGradeJob, createDocumentOcrJob, createLocalProblemOcrJob, createMarkdownReviewJob, createProblemOcrJob, dismissJob, jobs, loadJobResult, retryJob, updateJob]);
+  }), [cancelJob, claimJobResult, createBatchGradeJob, createDocumentOcrJob, createLocalProblemOcrJob, createMarkdownReviewJob, createProblemOcrJob, dismissJob, jobs, loadJobResult, retryJob, updateJob]);
 
   const activeCount = jobs.filter(isClientJobActive).length;
   const unclaimedCount = jobs.filter((job) => job.status === "succeeded" && !job.resultClaimedAt).length;
+  const bucketCounts = useMemo(() => ({
+    pending: jobs.filter((job) => getJobBucket(job) === "pending").length,
+    running: jobs.filter((job) => getJobBucket(job) === "running").length,
+    completed: jobs.filter((job) => getJobBucket(job) === "completed").length,
+  }), [jobs]);
+  const displayBucket: JobBucket = bucketCounts[activeBucket] > 0
+    ? activeBucket
+    : bucketCounts.running > 0
+      ? "running"
+      : bucketCounts.pending > 0
+        ? "pending"
+        : "completed";
+  const visibleJobs = jobs.filter((job) => getJobBucket(job) === displayBucket);
+  const hasMessages = jobs.length > 0;
 
   return (
     <JobCenterContext.Provider value={value}>
       {children}
-      <button
-        type="button"
-        className="job-center-fab"
-        onClick={() => {
-          setIsOpen(true);
-          authRetryAfterRef.current.clear();
-          void fetchRemoteJobLedger()
-            .then((remoteJobs) => {
-              if (remoteJobs.length > 0) setJobs((current) => mergeClientJobLedgers(current, remoteJobs));
-            })
-            .catch(() => undefined);
-        }}
-        aria-label={`打开任务中心，${activeCount} 个进行中，${unclaimedCount} 个待领取`}
-      >
-        {activeCount > 0 ? <Loader2 className="h-5 w-5 animate-spin" /> : <Clock3 className="h-5 w-5" />}
-        {(activeCount + unclaimedCount) > 0 && <span>{activeCount + unclaimedCount}</span>}
-      </button>
+      {!isUiLab && hasMessages && (
+        <button
+          type="button"
+          className="job-center-fab"
+          onClick={() => {
+            setIsOpen(true);
+            authRetryAfterRef.current.clear();
+            void fetchRemoteJobLedger()
+              .then((remoteJobs) => {
+                if (remoteJobs.length > 0) setJobs((current) => mergeClientJobLedgers(current, remoteJobs));
+              })
+              .catch(() => undefined);
+          }}
+          aria-label={`打开消息中心，${activeCount} 个进行中，${unclaimedCount} 个待领取，${jobs.length} 条消息`}
+        >
+          {activeCount > 0 ? <Loader2 className="h-5 w-5 animate-spin" /> : <Clock3 className="h-5 w-5" />}
+          <span>{activeCount + unclaimedCount}</span>
+        </button>
+      )}
 
-      {isOpen && (
+      {!isUiLab && isOpen && hasMessages && (
         <div className="job-center-overlay" role="presentation" onClick={() => setIsOpen(false)}>
-          <aside className="job-center-drawer" role="dialog" aria-modal="true" aria-label="任务中心" onClick={(event) => event.stopPropagation()}>
+          <aside className="job-center-drawer" role="dialog" aria-modal="true" aria-label="消息中心" onClick={(event) => event.stopPropagation()}>
             <header className="job-center-header">
               <div>
-                <span>后台任务</span>
-                <h2>任务中心</h2>
+                <span>任务通知</span>
+                <h2>消息中心</h2>
+                <p>需要你决策、编辑或留意的事项会保留在这里。</p>
               </div>
-              <button type="button" onClick={() => setIsOpen(false)} aria-label="关闭任务中心"><X className="h-5 w-5" /></button>
+              <button type="button" onClick={() => setIsOpen(false)} aria-label="关闭消息中心"><X className="h-5 w-5" /></button>
             </header>
 
-            <div className="job-center-list">
-              {jobs.length === 0 && <p className="job-center-empty">当前没有任务。长时间 OCR、导入和索引任务会显示在这里。</p>}
-              {jobs.map((job) => (
+            <div className="job-center-bucket-tabs" role="tablist" aria-label="消息状态分组">
+              {(["pending", "running", "completed"] as JobBucket[]).map((bucket) => (
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={displayBucket === bucket}
+                  className={displayBucket === bucket ? "is-active" : ""}
+                  key={bucket}
+                  onClick={() => setActiveBucket(bucket)}
+                >
+                  {getJobBucketLabel(bucket)}
+                  <span>{bucketCounts[bucket]}</span>
+                </button>
+              ))}
+            </div>
+
+            <div className="job-center-list" role="tabpanel">
+              {visibleJobs.length === 0 && (
+                <p className="job-center-empty">暂无{getJobBucketLabel(displayBucket)}事项。终态消息会保留 3 天后自动清理。</p>
+              )}
+              {visibleJobs.map((job) => (
                 <article className="job-center-item" key={job.id}>
                   <div className="job-center-item-icon" data-status={job.status}>
-                    {job.status === "succeeded" ? <CheckCircle2 /> : job.status === "failed" ? <AlertTriangle /> : <FileScan />}
+                    {job.status === "succeeded" || job.status === "claimed"
+                      ? <CheckCircle2 />
+                      : job.status === "failed"
+                        ? <AlertTriangle />
+                        : job.status === "cancelled"
+                          ? <CircleX />
+                          : <FileScan />}
                   </div>
                   <div className="job-center-item-body">
                     <div className="job-center-item-title">
-                      <strong>{job.title}</strong>
+                      <strong>{job.title}<span className="job-center-status" data-status={job.status}>{getJobStatusLabel(job)}</span></strong>
                       <time>{new Date(job.createdAt).toLocaleString("zh-CN", { hour12: false })}</time>
                     </div>
                     <p>{getClientJobProgressLabel(job)}</p>
@@ -716,6 +867,12 @@ export function JobCenterProvider({ children }: { children: ReactNode }) {
                     )}
                     {job.cleanupError && <small className="job-center-warning">临时文件尚未清理：{job.cleanupError}</small>}
                     <div className="job-center-actions">
+                      {isClientJobActive(job) && (
+                        <button type="button" className="job-center-cancel" onClick={() => cancelJob(job.id)}>
+                          <X className="h-4 w-4" />
+                          取消任务
+                        </button>
+                      )}
                       {canRetryClientJob(job) && (
                         <button type="button" onClick={() => retryJob(job.id)}>
                           <RotateCcw className="h-4 w-4" />

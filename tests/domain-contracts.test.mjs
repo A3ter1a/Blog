@@ -58,6 +58,17 @@ import {
   validateEconomicsConcept,
 } from "../lib/economics-concept-contract.ts";
 import { normalizeMarkdownSyntax } from "../lib/markdown-normalizer.ts";
+import {
+  AI_CONTENT_MAX_CHARS,
+  runAiContentSelfCheck,
+  validateAiContentInput,
+} from "../lib/ai-content-contract.ts";
+import {
+  answersEqual,
+  runAiKnowledgeQuizSelfCheck,
+  toPublicAiKnowledgeQuizItem,
+} from "../lib/ai-knowledge-quiz-contract.ts";
+import { validateReviewSelection } from "../lib/ai-review-contract.ts";
 import { normalizeLatexForKatex } from "../lib/utils.ts";
 import { repairAIJsonText } from "../lib/ai-json-repair.ts";
 import {
@@ -96,6 +107,7 @@ import {
   normalizeRemoteJobRows,
   normalizeStoredJobs,
   prepareClientJobsForStorage,
+  removeExpiredClientJobs,
 } from "../lib/job-client.ts";
 import {
   getBeijingSolarHours,
@@ -586,6 +598,109 @@ test("Markdown 风险检测拒绝把公式语义变化当作安全修复", () =>
   assert.equal(changedMath.some((risk) => risk.code === "normalization_changed_math"), true);
 });
 
+test("AI 内容自检覆盖 Markdown、排版和标题层级，并允许安全规范化", () => {
+  const valid = runAiContentSelfCheck("# 微观经济学\n\n## 需求\n\n价格变化沿曲线移动。\n\n### 重点\n\n- 其他条件不变");
+  assert.equal(valid.selfCheck.passed, true);
+  assert.equal(valid.selfCheck.checks.markdown, true);
+  assert.equal(valid.selfCheck.checks.layout, true);
+  assert.equal(valid.selfCheck.checks.headings, true);
+
+  const malformedHeading = runAiContentSelfCheck("# 总标题\n\n### 跳级标题\n\n正文");
+  assert.equal(malformedHeading.selfCheck.passed, false);
+  assert.equal(malformedHeading.selfCheck.issues.some((issue) => issue.code === "heading_level_jump"), true);
+
+  const malformedMath = runAiContentSelfCheck("# 标题\n\n公式 $x+1");
+  assert.equal(malformedMath.selfCheck.passed, false);
+  assert.equal(malformedMath.selfCheck.issues.some((issue) => issue.code === "unbalanced_inline_math"), true);
+
+  const longWithoutHeadings = runAiContentSelfCheck("正文 ".repeat(700));
+  assert.equal(longWithoutHeadings.selfCheck.passed, false);
+  assert.equal(longWithoutHeadings.selfCheck.issues.some((issue) => issue.code === "missing_heading"), true);
+
+  const normalized = runAiContentSelfCheck("#标题\n\n正文");
+  assert.equal(normalized.content.startsWith("# 标题"), true);
+  assert.equal(normalized.selfCheck.passed, true);
+});
+
+test("AI 内容输入边界要求标题、正文和章节拆分", () => {
+  assert.equal(validateAiContentInput("", "# 内容"), "请输入文章标题。");
+  assert.equal(validateAiContentInput("标题", ""), "Markdown 正文不能为空。");
+  assert.equal(validateAiContentInput("标题", "x".repeat(AI_CONTENT_MAX_CHARS + 1))?.includes("不能超过"), true);
+  assert.equal(validateAiContentInput("标题", "# 内容"), null);
+});
+
+test("AI 讲义知识点快测先自检，公开投影不泄露答案，判分支持四种题型", () => {
+  const checked = runAiKnowledgeQuizSelfCheck([
+    {
+      itemType: "single_choice",
+      question: "需求定律通常表示什么关系？",
+      options: [{ label: "A", text: "价格越高，需求量越低" }, { label: "B", text: "价格越高，需求量越高" }],
+      answer: "A",
+      explanation: "在其他条件不变时，价格与需求量通常反向变动。",
+      knowledgePoints: ["需求定律"],
+    },
+    {
+      itemType: "true_false",
+      question: "供给曲线移动一定由自身价格变化引起。",
+      answer: false,
+      explanation: "自身价格变化通常表现为沿供给曲线移动，非价格因素才使曲线移动。",
+      knowledgePoints: ["供给曲线"],
+    },
+  ]);
+  assert.equal(checked.selfCheck.passed, true);
+  assert.equal(checked.items.length, 2);
+  assert.equal(answersEqual(checked.items[0].answer, "A"), true);
+  assert.equal(answersEqual(checked.items[1].answer, "false"), true);
+
+  const publicItem = toPublicAiKnowledgeQuizItem(checked.items[0]);
+  assert.equal("answer" in publicItem, false);
+  assert.equal("explanation" in publicItem, false);
+
+  const invalid = runAiKnowledgeQuizSelfCheck([{
+    itemType: "single_choice",
+    question: "缺少答案对应选项",
+    options: [{ label: "A", text: "选项" }, { label: "B", text: "另一个选项" }],
+    answer: "C",
+    explanation: "解析",
+  }]);
+  assert.equal(invalid.selfCheck.passed, false);
+  assert.equal(invalid.selfCheck.issues.some((issue) => issue.code === "answer_option_missing"), true);
+});
+
+test("AI 审核批注绑定内容版本并按 UTF-16 选区校验引用文本", () => {
+  const content = "# 价格\n\n需求曲线";
+  const valid = validateReviewSelection({
+    content,
+    proposalContentVersion: 3,
+    currentContentVersion: 3,
+    selectionStart: 0,
+    selectionEnd: 4,
+    quotedText: "# 价格",
+  });
+  assert.equal(valid.ok, true);
+
+  const stale = validateReviewSelection({
+    content,
+    proposalContentVersion: 2,
+    currentContentVersion: 3,
+    selectionStart: 0,
+    selectionEnd: 2,
+    quotedText: "# ",
+  });
+  assert.deepEqual(stale, { ok: false, status: 409, message: "内容已更新，请重新选择文字后再添加批注。" });
+
+  const mismatchedQuote = validateReviewSelection({
+    content,
+    proposalContentVersion: 3,
+    currentContentVersion: 3,
+    selectionStart: 0,
+    selectionEnd: 2,
+    quotedText: "错误",
+  });
+  assert.equal(mismatchedQuote.ok, false);
+  assert.equal(mismatchedQuote.status, 409);
+});
+
 test("LaTeX 规范化先收敛过度转义命令，再识别真正的矩阵换行", () => {
   assert.equal(normalizeLatexForKatex(String.raw`\\\\\\\\implies`), String.raw`\implies`);
   assert.equal(normalizeLatexForKatex(String.raw`\\\\Rightarrow`), String.raw`\Rightarrow`);
@@ -666,6 +781,36 @@ test("客户端任务账本可从刷新缓存恢复，并区分重试与结果�
   assert.equal(getClientJobProgressLabel({ ...jobs[0], status: "succeeded" }), "等待领取结果");
 });
 
+test("消息中心保留失败/取消终态三天，并持续保留进行中任务", () => {
+  const now = Date.parse("2026-07-31T00:00:00.000Z");
+  const jobs = normalizeStoredJobs([
+    {
+      id: "terminal-fresh",
+      title: "新失败任务",
+      status: "failed",
+      updatedAt: "2026-07-29T00:00:00.000Z",
+      createdAt: "2026-07-29T00:00:00.000Z",
+    },
+    {
+      id: "terminal-expired",
+      title: "旧取消任务",
+      status: "cancelled",
+      updatedAt: "2026-07-27T23:59:59.000Z",
+      createdAt: "2026-07-27T23:59:59.000Z",
+    },
+    {
+      id: "active",
+      title: "进行中任务",
+      status: "running",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+      createdAt: "2026-01-01T00:00:00.000Z",
+    },
+  ]);
+  const retained = removeExpiredClientJobs(jobs, now);
+  assert.deepEqual(new Set(retained.map((job) => job.id)), new Set(["active", "terminal-fresh"]));
+  assert.equal(getClientJobProgressLabel({ ...jobs[1], status: "cancelled" }), "任务已取消");
+});
+
 test("数据库任务账本恢复时按外部任务身份合并且远端状态优先", () => {
   const local = normalizeStoredJobs([{
     id: "local-1",
@@ -722,7 +867,9 @@ test("外部 OCR 任务账本不在列表批量下载正文且只在终态清理
   assert.equal(ledger.includes('.select("id, user_id, job_class, job_kind, status, title'), true);
   assert.equal(ledger.includes('job_kind, status, title, provider, external_task_id, progress_current'), true);
   assert.equal(ledger.includes('.eq("status", currentJob.status)'), true);
-  assert.equal(ledger.includes('.in("status", ["succeeded", "failed", "stalled", "claimed"])'), true);
+  assert.equal(ledger.includes('.in("status", ["succeeded", "failed", "stalled", "claimed", "cancelled"])'), true);
+  assert.equal(ledger.includes("export async function cancelUserJob"), true);
+  assert.equal(ledger.includes("export async function cleanupExpiredUserJobs"), true);
   assert.equal(ledger.includes('export async function getUserJobResult'), true);
 });
 
@@ -1275,7 +1422,7 @@ test("英语主观题 AI 建议会被限幅且必须经 user_final 才能进入�
 test("学习助手入口只对已确认管理员渲染", () => {
   const dock = readFileSync(resolve("components/ai-assistant/AssistantDock.tsx"), "utf8");
   assert.equal(dock.includes("useAdminAuth()"), true);
-  assert.equal(dock.includes("if (authLoading || !isAdmin) return null"), true);
+  assert.equal(dock.includes("if (authLoading || !isAdmin || !noteId || !open) return null"), true);
 });
 
 test("管理员缓存不参与首帧渲染，避免登录导航产生水合分叉", () => {
@@ -1341,6 +1488,7 @@ test("所有现有写入型 Route Handler 都先验证管理员身份", () => {
     "app/api/ai/note-qa/route.ts",
     "app/api/ai/ocr/route.ts",
     "app/api/jobs/[id]/claim/route.ts",
+    "app/api/jobs/[id]/cancel/route.ts",
     "app/api/jobs/[id]/advance/route.ts",
     "app/api/jobs/[id]/retry/route.ts",
     "app/api/jobs/[id]/source/route.ts",
@@ -1361,6 +1509,54 @@ test("所有现有写入型 Route Handler 都先验证管理员身份", () => {
       routePath,
     );
   }
+});
+
+test("AI 内容提案接口只接受 AI 学科账号，不复用管理员写入门", () => {
+  const routes = [
+    "app/api/ai/content-proposals/route.ts",
+    "app/api/ai/content-proposals/[id]/route.ts",
+    "app/api/ai/content-proposals/[id]/self-check/route.ts",
+    "app/api/ai/content-proposals/[id]/submit/route.ts",
+  ];
+  for (const routePath of routes) {
+    const route = readFileSync(resolve(routePath), "utf8");
+    assert.equal(route.includes("getAiRequestContext(req)"), true, routePath);
+    assert.equal(route.includes("getAdminRequestContext(req)"), false, routePath);
+  }
+  const workspace = readFileSync(resolve("components/ai-content/AiContentWorkspace.tsx"), "utf8");
+  assert.equal(workspace.includes("/api/ai/content-proposals"), true);
+  assert.equal(workspace.includes("ContentPreview"), true);
+  assert.equal(workspace.includes("保存并提交审核"), true);
+});
+
+test("AI 内容提案先按 RLS 要求写入草稿，再由同一账号提升为已自检", () => {
+  const workflow = readFileSync(resolve("lib/server-ai-content.ts"), "utf8");
+  const createStart = workflow.indexOf("export async function createAiContentProposal");
+  const createEnd = workflow.indexOf("export type UpdateAiContentProposalInput");
+  const createWorkflow = workflow.slice(createStart, createEnd);
+  const insertStatus = createWorkflow.indexOf('review_status: "draft"');
+  const insertCall = createWorkflow.indexOf('.insert(insert)');
+  const promotionCall = createWorkflow.indexOf('.update({ review_status: "self_checked" })');
+
+  assert.equal(insertStatus >= 0, true);
+  assert.equal(insertCall > insertStatus, true);
+  assert.equal(promotionCall > insertCall, true);
+  assert.equal(createWorkflow.includes('.eq("owner_user_id", input.userId)'), true);
+  assert.equal(createWorkflow.includes('.eq("review_status", "draft")'), true);
+  assert.equal(createWorkflow.includes('review_status: selfCheck.passed ? "self_checked" : "draft"'), false);
+});
+
+test("AI 内容提案通过所有者受控 RPC 提交，通用 RLS 不开放 pending_review 更新", () => {
+  const workflow = readFileSync(resolve("lib/server-ai-content.ts"), "utf8");
+  const migration = readFileSync(resolve("supabase/migrations/0029_ai_content_submission_rpc.sql"), "utf8");
+  const reviewPolicy = readFileSync(resolve("supabase/migrations/0024_ai_content_review_comments.sql"), "utf8");
+
+  assert.equal(workflow.includes('.rpc("submit_ai_content_proposal"'), true);
+  assert.equal(migration.includes("v_proposal.review_status <> 'self_checked'"), true);
+  assert.equal(migration.includes("v_proposal.owner_user_id <> v_user_id"), true);
+  assert.equal(migration.includes("set review_status = 'pending_review'"), true);
+  assert.equal(reviewPolicy.includes("review_status in ('draft', 'self_checked', 'changes_requested')"), true);
+  assert.equal(reviewPolicy.includes("review_status in ('draft', 'self_checked', 'pending_review', 'changes_requested')"), false);
 });
 
 test("本地预部署构建显式离线且不会尝试 Supabase 预加载", () => {
@@ -1438,4 +1634,22 @@ test("WP4 笔记库与工具入口使用连续索引而非重复悬浮卡片", (
   assert.equal(toolHub.includes("catalog-row"), true);
   assert.equal(css.includes(".catalog-row"), true);
   assert.equal(css.includes(".library-card"), true);
+});
+
+test("笔记目录按人工与 AI 来源原位切换且缓存严格隔离", () => {
+  const notesPage = readFileSync(resolve("app/notes/page.tsx"), "utf8");
+  const notesClient = readFileSync(resolve("components/notes/NotesClient.tsx"), "utf8");
+  const notesApi = readFileSync(resolve("lib/supabase.ts"), "utf8");
+  const notesCache = readFileSync(resolve("lib/notes-list-cache.ts"), "utf8");
+
+  assert.equal(notesPage.includes('authorKind: "human"'), true);
+  assert.equal(notesClient.includes('useState<NoteAuthorKind>("human")'), true);
+  assert.equal(notesClient.includes("我的笔记"), true);
+  assert.equal(notesClient.includes("AI 笔记"), true);
+  assert.equal(notesClient.includes('aria-controls="notes-directory-content"'), true);
+  assert.equal(notesClient.includes("router.push"), false);
+  assert.equal(notesClient.includes("authorKind: directoryKind"), true);
+  assert.equal(notesApi.includes('query.eq("author_kind", options.authorKind)'), true);
+  assert.equal(notesApi.includes('q.eq("author_kind", options.authorKind)'), true);
+  assert.equal(notesCache.includes("${authorKind}:${selectedType}:${selectedSubject}:${sortOrder}"), true);
 });

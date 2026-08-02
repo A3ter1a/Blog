@@ -24,6 +24,385 @@ export type Database = {
         }
         Relationships: []
       }
+      ai_content_proposal_comments: {
+        Row: {
+          author_user_id: string
+          body: string
+          created_at: string
+          id: string
+          proposal_content_version: number
+          proposal_id: string
+          quoted_text: string
+          selection_end: number
+          selection_start: number
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          author_user_id: string
+          body: string
+          created_at?: string
+          id?: string
+          proposal_content_version: number
+          proposal_id: string
+          quoted_text?: string
+          selection_end: number
+          selection_start: number
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          author_user_id?: string
+          body?: string
+          created_at?: string
+          id?: string
+          proposal_content_version?: number
+          proposal_id?: string
+          quoted_text?: string
+          selection_end?: number
+          selection_start?: number
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_content_proposal_comments_proposal_id_fkey"
+            columns: ["proposal_id"]
+            isOneToOne: false
+            referencedRelation: "ai_content_proposals"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ai_knowledge_quizzes: {
+        Row: {
+          ai_profile_id: string
+          content_version: number
+          created_at: string
+          id: string
+          item_count: number
+          note_id: string | null
+          owner_user_id: string
+          proposal_id: string
+          published_at: string | null
+          reviewed_at: string | null
+          reviewer_user_id: string | null
+          review_status: string
+          self_check: Json
+          source_checksum: string | null
+          subject: Database["public"]["Enums"]["subject"]
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          ai_profile_id: string
+          content_version?: number
+          created_at?: string
+          id?: string
+          item_count?: number
+          note_id?: string | null
+          owner_user_id: string
+          proposal_id: string
+          published_at?: string | null
+          reviewed_at?: string | null
+          reviewer_user_id?: string | null
+          review_status?: string
+          self_check?: Json
+          source_checksum?: string | null
+          subject: Database["public"]["Enums"]["subject"]
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          ai_profile_id?: string
+          content_version?: number
+          created_at?: string
+          id?: string
+          item_count?: number
+          note_id?: string | null
+          owner_user_id?: string
+          proposal_id?: string
+          published_at?: string | null
+          reviewed_at?: string | null
+          reviewer_user_id?: string | null
+          review_status?: string
+          self_check?: Json
+          source_checksum?: string | null
+          subject?: Database["public"]["Enums"]["subject"]
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_knowledge_quizzes_ai_profile_id_fkey"
+            columns: ["ai_profile_id"]
+            isOneToOne: false
+            referencedRelation: "ai_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_knowledge_quizzes_note_id_fkey"
+            columns: ["note_id"]
+            isOneToOne: false
+            referencedRelation: "notes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_knowledge_quizzes_owner_user_id_fkey"
+            columns: ["owner_user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_knowledge_quizzes_proposal_id_fkey"
+            columns: ["proposal_id"]
+            isOneToOne: false
+            referencedRelation: "ai_content_proposals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_knowledge_quizzes_reviewer_user_id_fkey"
+            columns: ["reviewer_user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ai_knowledge_quiz_items: {
+        Row: {
+          answer: Json
+          created_at: string
+          difficulty: string
+          explanation: string
+          id: string
+          item_type: string
+          knowledge_points: string[]
+          options: Json
+          ordinal: number
+          question: string
+          quiz_id: string
+          source_heading: string | null
+          updated_at: string
+        }
+        Insert: {
+          answer: Json
+          created_at?: string
+          difficulty?: string
+          explanation: string
+          id?: string
+          item_type: string
+          knowledge_points?: string[]
+          options?: Json
+          ordinal: number
+          question: string
+          quiz_id: string
+          source_heading?: string | null
+          updated_at?: string
+        }
+        Update: {
+          answer?: Json
+          created_at?: string
+          difficulty?: string
+          explanation?: string
+          id?: string
+          item_type?: string
+          knowledge_points?: string[]
+          options?: Json
+          ordinal?: number
+          question?: string
+          quiz_id?: string
+          source_heading?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_knowledge_quiz_items_quiz_id_fkey"
+            columns: ["quiz_id"]
+            isOneToOne: false
+            referencedRelation: "ai_knowledge_quizzes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ai_knowledge_quiz_attempts: {
+        Row: {
+          answers: Json
+          completed_at: string | null
+          created_at: string
+          id: string
+          quiz_id: string
+          result: Json
+          score: number | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          answers?: Json
+          completed_at?: string | null
+          created_at?: string
+          id?: string
+          quiz_id: string
+          result?: Json
+          score?: number | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          answers?: Json
+          completed_at?: string | null
+          created_at?: string
+          id?: string
+          quiz_id?: string
+          result?: Json
+          score?: number | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_knowledge_quiz_attempts_quiz_id_fkey"
+            columns: ["quiz_id"]
+            isOneToOne: false
+            referencedRelation: "ai_knowledge_quizzes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_knowledge_quiz_attempts_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ai_content_proposals: {
+        Row: {
+          ai_profile_id: string
+          content: string
+          content_version: number
+          cover_image: string | null
+          created_at: string
+          id: string
+          note_id: string | null
+          owner_user_id: string
+          problems: Json
+          published_at: string | null
+          review_status: string
+          reviewed_at: string | null
+          reviewer_user_id: string | null
+          self_check: Json
+          source_checksum: string | null
+          subject: Database["public"]["Enums"]["subject"]
+          tags: string[]
+          title: string
+          updated_at: string
+          videos: Json
+        }
+        Insert: {
+          ai_profile_id: string
+          content?: string
+          content_version?: number
+          cover_image?: string | null
+          created_at?: string
+          id?: string
+          note_id?: string | null
+          owner_user_id: string
+          problems?: Json
+          published_at?: string | null
+          review_status?: string
+          reviewed_at?: string | null
+          reviewer_user_id?: string | null
+          self_check?: Json
+          source_checksum?: string | null
+          subject: Database["public"]["Enums"]["subject"]
+          tags?: string[]
+          title: string
+          updated_at?: string
+          videos?: Json
+        }
+        Update: {
+          ai_profile_id?: string
+          content?: string
+          content_version?: number
+          cover_image?: string | null
+          created_at?: string
+          id?: string
+          note_id?: string | null
+          owner_user_id?: string
+          problems?: Json
+          published_at?: string | null
+          review_status?: string
+          reviewed_at?: string | null
+          reviewer_user_id?: string | null
+          self_check?: Json
+          source_checksum?: string | null
+          subject?: Database["public"]["Enums"]["subject"]
+          tags?: string[]
+          title?: string
+          updated_at?: string
+          videos?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_content_proposals_ai_profile_id_fkey"
+            columns: ["ai_profile_id"]
+            isOneToOne: false
+            referencedRelation: "ai_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_content_proposals_note_id_fkey"
+            columns: ["note_id"]
+            isOneToOne: false
+            referencedRelation: "notes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ai_profiles: {
+        Row: {
+          academic_affiliation: string
+          account_key: string
+          avatar_url: string | null
+          bio: string
+          created_at: string
+          display_name: string
+          focus_tags: string[]
+          id: string
+          is_active: boolean
+          subject: Database["public"]["Enums"]["subject"]
+          updated_at: string
+        }
+        Insert: {
+          academic_affiliation?: string
+          account_key: string
+          avatar_url?: string | null
+          bio?: string
+          created_at?: string
+          display_name: string
+          focus_tags?: string[]
+          id: string
+          is_active?: boolean
+          subject: Database["public"]["Enums"]["subject"]
+          updated_at?: string
+        }
+        Update: {
+          academic_affiliation?: string
+          account_key?: string
+          avatar_url?: string | null
+          bio?: string
+          created_at?: string
+          display_name?: string
+          focus_tags?: string[]
+          id?: string
+          is_active?: boolean
+          subject?: Database["public"]["Enums"]["subject"]
+          updated_at?: string
+        }
+        Relationships: []
+      }
       attempt_revisions: {
         Row: {
           attempt_id: string
@@ -1103,14 +1482,112 @@ export type Database = {
         }
         Relationships: []
       }
+      note_collection_items: {
+        Row: {
+          added_by_user_id: string
+          collection_id: string
+          created_at: string
+          id: string
+          note_id: string
+          sort_order: number
+          updated_at: string
+        }
+        Insert: {
+          added_by_user_id: string
+          collection_id: string
+          created_at?: string
+          id?: string
+          note_id: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Update: {
+          added_by_user_id?: string
+          collection_id?: string
+          created_at?: string
+          id?: string
+          note_id?: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "note_collection_items_collection_id_fkey"
+            columns: ["collection_id"]
+            isOneToOne: false
+            referencedRelation: "note_collections"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "note_collection_items_note_id_fkey"
+            columns: ["note_id"]
+            isOneToOne: false
+            referencedRelation: "notes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      note_collections: {
+        Row: {
+          ai_profile_id: string | null
+          cover_image: string | null
+          created_at: string
+          description: string
+          id: string
+          is_published: boolean
+          owner_kind: string
+          owner_user_id: string
+          subject: Database["public"]["Enums"]["subject"] | null
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          ai_profile_id?: string | null
+          cover_image?: string | null
+          created_at?: string
+          description?: string
+          id?: string
+          is_published?: boolean
+          owner_kind?: string
+          owner_user_id: string
+          subject?: Database["public"]["Enums"]["subject"] | null
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          ai_profile_id?: string | null
+          cover_image?: string | null
+          created_at?: string
+          description?: string
+          id?: string
+          is_published?: boolean
+          owner_kind?: string
+          owner_user_id?: string
+          subject?: Database["public"]["Enums"]["subject"] | null
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "note_collections_ai_profile_id_fkey"
+            columns: ["ai_profile_id"]
+            isOneToOne: false
+            referencedRelation: "ai_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       notes: {
         Row: {
+          author_kind: string
+          author_profile_id: string | null
           content: string
           content_version: number
           cover_image: string | null
           created_at: string
           id: string
           is_published: boolean
+          owner_user_id: string | null
           problems: Json
           subject: Database["public"]["Enums"]["subject"] | null
           tags: string[]
@@ -1120,12 +1597,15 @@ export type Database = {
           videos: Json
         }
         Insert: {
+          author_kind?: string
+          author_profile_id?: string | null
           content?: string
           content_version?: number
           cover_image?: string | null
           created_at?: string
           id?: string
           is_published?: boolean
+          owner_user_id?: string | null
           problems?: Json
           subject?: Database["public"]["Enums"]["subject"] | null
           tags?: string[]
@@ -1135,12 +1615,15 @@ export type Database = {
           videos?: Json
         }
         Update: {
+          author_kind?: string
+          author_profile_id?: string | null
           content?: string
           content_version?: number
           cover_image?: string | null
           created_at?: string
           id?: string
           is_published?: boolean
+          owner_user_id?: string | null
           problems?: Json
           subject?: Database["public"]["Enums"]["subject"] | null
           tags?: string[]
@@ -1149,7 +1632,15 @@ export type Database = {
           updated_at?: string
           videos?: Json
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "notes_author_profile_fkey"
+            columns: ["author_profile_id"]
+            isOneToOne: false
+            referencedRelation: "ai_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       ocr_confirmations: {
         Row: {
@@ -1687,6 +2178,68 @@ export type Database = {
           p_source_path: string
         }
         Returns: Json
+      }
+      publish_ai_content_proposal: {
+        Args: { p_proposal_id: string }
+        Returns: {
+          ai_profile_id: string
+          content: string
+          content_version: number
+          cover_image: string | null
+          created_at: string
+          id: string
+          note_id: string | null
+          owner_user_id: string
+          problems: Json
+          published_at: string | null
+          review_status: string
+          reviewed_at: string | null
+          reviewer_user_id: string | null
+          self_check: Json
+          source_checksum: string | null
+          subject: Database["public"]["Enums"]["subject"]
+          tags: string[]
+          title: string
+          updated_at: string
+          videos: Json
+        }
+        SetofOptions: {
+          from: "*"
+          to: "ai_content_proposals"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      submit_ai_content_proposal: {
+        Args: { p_proposal_id: string }
+        Returns: {
+          ai_profile_id: string
+          content: string
+          content_version: number
+          cover_image: string | null
+          created_at: string
+          id: string
+          note_id: string | null
+          owner_user_id: string
+          problems: Json
+          published_at: string | null
+          review_status: string
+          reviewed_at: string | null
+          reviewer_user_id: string | null
+          self_check: Json
+          source_checksum: string | null
+          subject: Database["public"]["Enums"]["subject"]
+          tags: string[]
+          title: string
+          updated_at: string
+          videos: Json
+        }
+        SetofOptions: {
+          from: "*"
+          to: "ai_content_proposals"
+          isOneToOne: true
+          isSetofReturn: false
+        }
       }
       record_english_subjective_submission: {
         Args: {

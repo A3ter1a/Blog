@@ -1,6 +1,7 @@
 export const CLIENT_JOB_STORAGE_KEY = "asteroid:jobs:v1";
+export const TERMINAL_JOB_RETENTION_MS = 3 * 24 * 60 * 60 * 1000;
 
-export type ClientJobStatus = "queued" | "running" | "waiting_for_trigger" | "succeeded" | "failed" | "claimed";
+export type ClientJobStatus = "queued" | "running" | "waiting_for_trigger" | "succeeded" | "failed" | "claimed" | "cancelled";
 export type ClientJobLedgerState = "local_only" | "synced" | "schema_pending" | "sync_failed";
 
 export type ClientJob = {
@@ -74,6 +75,7 @@ function normalizeRemoteStatus(value: unknown): ClientJobStatus {
     case "failed":
     case "stalled": return "failed";
     case "claimed": return "claimed";
+    case "cancelled": return "cancelled";
     default: return "queued";
   }
 }
@@ -84,6 +86,7 @@ function defaultRemotePhase(status: ClientJobStatus): string {
   if (status === "succeeded") return "结果待领取";
   if (status === "failed") return "处理失败";
   if (status === "claimed") return "结果已领取";
+  if (status === "cancelled") return "任务已取消";
   return "任务排队中";
 }
 
@@ -92,6 +95,7 @@ function defaultRemoteStatusText(status: ClientJobStatus): string {
   if (status === "succeeded") return "任务完成，可在任务中心领取结果";
   if (status === "failed") return "任务失败，错误详情已保留";
   if (status === "claimed") return "结果已经领取";
+  if (status === "cancelled") return "任务已取消，取消记录会保留一段时间";
   if (status === "running") return "外部平台正在处理";
   return "任务已经持久登记，等待外部平台处理";
 }
@@ -209,7 +213,7 @@ export function normalizeStoredJobs(value: unknown): ClientJob[] {
       || typeof candidate.title !== "string"
       || typeof candidate.createdAt !== "string"
       || typeof candidate.updatedAt !== "string"
-      || !["queued", "running", "waiting_for_trigger", "succeeded", "failed", "claimed"].includes(candidate.status ?? "")
+      || !["queued", "running", "waiting_for_trigger", "succeeded", "failed", "claimed", "cancelled"].includes(candidate.status ?? "")
     ) {
       return [];
     }
@@ -254,10 +258,23 @@ export function isClientJobActive(job: ClientJob): boolean {
   return job.status === "queued" || job.status === "running" || job.status === "waiting_for_trigger";
 }
 
+export function isClientJobTerminal(job: ClientJob): boolean {
+  return job.status === "succeeded" || job.status === "failed" || job.status === "claimed" || job.status === "cancelled";
+}
+
+export function removeExpiredClientJobs(jobs: ClientJob[], now = Date.now()): ClientJob[] {
+  return jobs.filter((job) => {
+    if (!isClientJobTerminal(job)) return true;
+    const updatedAt = Date.parse(job.updatedAt);
+    return !Number.isFinite(updatedAt) || now - updatedAt < TERMINAL_JOB_RETENTION_MS;
+  });
+}
+
 export function getClientJobProgressLabel(job: ClientJob): string {
   if (job.status === "succeeded") return job.resultClaimedAt ? "结果已领取" : "等待领取结果";
   if (job.status === "failed") return "处理失败";
   if (job.status === "claimed") return "结果已领取";
+  if (job.status === "cancelled") return "任务已取消";
   if (job.status === "waiting_for_trigger") return "等待继续处理";
   return job.phase || "处理中";
 }

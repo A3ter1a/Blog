@@ -1,0 +1,4 @@
+interface:
+  display_name: "Blog AI Content"
+  short_description: "Generate review-ready blog Markdown with chapter and quiz rules"
+  default_prompt: "Use the Blog AI Content skill to turn supplied material into review-ready Markdown, self-check its rendering, split long handouts into chapters, and suggest separate knowledge quizzes when requested."

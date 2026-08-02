@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Upload, Type, ListTree, Eye, AlignLeft, XCircle, RotateCcw, Columns3, MonitorCog, Sun, Moon } from "lucide-react";
+import { X, Upload, Type, ListTree, Eye, AlignLeft, XCircle, RotateCcw, Columns3, MonitorCog, Sun, Moon, UserRound } from "lucide-react";
 import type { Profile } from "@/lib/types";
 import { DEFAULT_PROFILE } from "@/lib/profile";
 import { profileApi } from "@/lib/supabase";
@@ -307,6 +307,31 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
                     <RotateCcw className="h-4 w-4" />
                     恢复阅读默认值
                   </button>
+
+                  <div className="rounded-xl border border-outline-variant/15 bg-surface-container-low p-4">
+                    <div className="flex items-start gap-3">
+                      <UserRound className="mt-0.5 h-4 w-4 shrink-0 text-on-surface-variant" />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <span className="text-sm font-medium text-on-surface">角色扮演相关显示</span>
+                            <p className="mt-1 text-xs leading-5 text-on-surface-variant/75">控制文章中的角色头像、角色名和资料入口。</p>
+                          </div>
+                          <button
+                            type="button"
+                            role="switch"
+                            aria-checked={preferences.showRoleplay}
+                            aria-label="切换角色扮演相关显示"
+                            onClick={() => updatePreference("showRoleplay", !preferences.showRoleplay)}
+                            className={`motion-ui motion-interactive flex h-6 w-11 shrink-0 items-center rounded-full ${preferences.showRoleplay ? "bg-primary" : "bg-surface-container-highest"}`}
+                          >
+                            <span className={`motion-ui h-4 w-4 rounded-full bg-on-primary ${preferences.showRoleplay ? "ml-6" : "ml-1"}`} />
+                          </button>
+                        </div>
+                        <p className="mt-2 text-xs text-on-surface-variant/70">{preferences.showRoleplay ? "已开启" : "已关闭，文章按普通内容显示"}</p>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </section>
 

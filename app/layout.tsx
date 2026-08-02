@@ -6,7 +6,6 @@ import { PageTransition } from "@/components/layout/PageTransition";
 import { ToastProvider } from "@/components/ui/Toast";
 import { JobCenterProvider } from "@/components/jobs/JobCenter";
 import { ThemeController } from "@/components/layout/ThemeController";
-import { AssistantDock } from "@/components/ai-assistant/AssistantDock";
 import {
   DEFAULT_OG_IMAGE,
   SITE_DESCRIPTION,
@@ -80,7 +79,6 @@ export default function RootLayout({
             <JobCenterProvider>
               <Navbar />
               <PageTransition>{children}</PageTransition>
-              <AssistantDock />
             </JobCenterProvider>
           </ToastProvider>
         </MotionProvider>

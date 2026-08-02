@@ -1,7 +1,7 @@
 "use client";
 
 import { readJsonStorage, removeStorage, writeJsonStorage } from "@/lib/browser-storage";
-import type { Note, NoteType, Subject } from "@/lib/types";
+import type { Note, NoteAuthorKind, NoteType, Subject } from "@/lib/types";
 
 const NOTES_CACHE_PREFIX = "asteroid-notes-page:";
 const NOTES_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
@@ -67,12 +67,13 @@ function normalizeNotesCache(value: unknown): NotesCachePayload | null {
 
 export function getNotesCacheKey(
   query: string,
+  authorKind: NoteAuthorKind,
   selectedType: NoteType | "all",
   selectedSubject: Subject | "all",
   sortOrder: "desc" | "asc",
 ): string | null {
   if (query.trim()) return null;
-  return `${NOTES_CACHE_PREFIX}${selectedType}:${selectedSubject}:${sortOrder}`;
+  return `${NOTES_CACHE_PREFIX}${authorKind}:${selectedType}:${selectedSubject}:${sortOrder}`;
 }
 
 export function readNotesCache(key: string | null): NotesCachePayload | null {

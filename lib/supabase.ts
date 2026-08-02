@@ -1,7 +1,8 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import type { Note, NoteType, Problem, Profile, Subject, Video } from "./types";
+import type { Note, NoteAuthorKind, NoteType, Problem, Profile, Subject, Video } from "./types";
 import { DEFAULT_PROFILE, normalizeProfile } from "./profile";
 import type { Database, Json, NoteRow, NoteUpdate } from "./supabase-schema";
+import type { PublicAiProfile } from "./ai-profile";
 
 export type {
   ChapterInsert,
@@ -49,6 +50,7 @@ export type NoteMutationMeta = {
 export type NoteSummaryQueryOptions = {
   type?: NoteType;
   subject?: Subject;
+  authorKind?: NoteAuthorKind;
   sortOrder?: "desc" | "asc";
   limit?: number;
   offset?: number;
@@ -60,6 +62,7 @@ export type NoteSearchSummaryOptions = {
   limit?: number;
   includeContent?: boolean;
   includeCoverImage?: boolean;
+  authorKind?: NoteAuthorKind;
 };
 
 export type NoteQAReadOptions = {
@@ -408,6 +411,7 @@ export const notesApi = {
 
     if (options.type) query = query.eq("type", options.type);
     if (options.subject) query = query.or(`subject.eq.${options.subject},type.eq.essay`);
+    if (options.authorKind) query = query.eq("author_kind", options.authorKind);
     if (typeof options.limit === "number") {
       const from = Math.max(0, options.offset ?? 0);
       query = query.range(from, from + Math.max(1, options.limit) - 1);
@@ -499,6 +503,31 @@ export const notesApi = {
 
     if (error) throw error;
     return data ? mapSnakeToCamel(data) : null;
+  },
+
+  // Optional author metadata is queried separately so an older deployment
+  // without WP8 columns keeps its public note reader working.
+  async getAiAuthorProfile(noteId: string, publishedOnly = true): Promise<PublicAiProfile | null> {
+    const supabase = getSupabase();
+    let query = supabase
+      .from("notes")
+      .select("author_kind, author_profile_id")
+      .eq("id", noteId);
+    if (publishedOnly) query = query.eq("is_published", true);
+
+    const { data, error } = await query.maybeSingle();
+    if (error?.code === "42703") return null;
+    if (error) throw error;
+    if (data?.author_kind !== "ai" || !data.author_profile_id) return null;
+
+    const { data: profile, error: profileError } = await supabase
+      .from("ai_profiles")
+      .select("id, account_key, subject, display_name, avatar_url, bio, academic_affiliation, focus_tags, is_active")
+      .eq("id", data.author_profile_id)
+      .eq("is_active", true)
+      .maybeSingle();
+    if (profileError) throw profileError;
+    return profile as PublicAiProfile | null;
   },
 
   // Get the fields required by the practice page without loading note content, videos, or cover image.
@@ -686,6 +715,7 @@ export const notesApi = {
 
       if (type) q = q.eq("type", type);
       if (subject) q = q.or(`subject.eq.${subject},type.eq.essay`);
+      if (options.authorKind) q = q.eq("author_kind", options.authorKind);
       return q;
     };
 
@@ -733,6 +763,19 @@ export const notesApi = {
   // Backward-compatible alias. Prefer searchSummaries() for list pages.
   async search(query: string, type?: NoteType, subject?: Subject): Promise<Note[]> {
     return notesApi.searchSummaries(query, type, subject);
+  },
+};
+
+export const aiProfilesApi = {
+  async getById(id: string): Promise<PublicAiProfile | null> {
+    const { data, error } = await getSupabase()
+      .from("ai_profiles")
+      .select("id, account_key, subject, display_name, avatar_url, bio, academic_affiliation, focus_tags, is_active")
+      .eq("id", id)
+      .eq("is_active", true)
+      .maybeSingle();
+    if (error) throw error;
+    return data as PublicAiProfile | null;
   },
 };
 

@@ -12,6 +12,7 @@ export interface ReadingPreferences {
   contentWidth: ContentWidth;
   tocPosition: TOCPosition;
   showProgressBar: boolean;
+  showRoleplay: boolean;
 }
 
 const DEFAULT_PREFERENCES: ReadingPreferences = {
@@ -20,6 +21,7 @@ const DEFAULT_PREFERENCES: ReadingPreferences = {
   contentWidth: "comfortable",
   tocPosition: "right",
   showProgressBar: true,
+  showRoleplay: true,
 };
 
 const STORAGE_KEY = "reading-preferences";
@@ -54,6 +56,9 @@ function normalizePreferences(value: unknown): ReadingPreferences {
     showProgressBar: typeof parsed.showProgressBar === "boolean"
       ? parsed.showProgressBar
       : DEFAULT_PREFERENCES.showProgressBar,
+    showRoleplay: typeof parsed.showRoleplay === "boolean"
+      ? parsed.showRoleplay
+      : DEFAULT_PREFERENCES.showRoleplay,
   };
 }
 

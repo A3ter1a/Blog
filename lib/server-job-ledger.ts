@@ -7,6 +7,7 @@ import type { Database, Json, Tables, TablesInsert, TablesUpdate } from "@/lib/s
 
 export const DOCUMENT_OCR_PROVIDER = "baidu-unlimited-ocr";
 export const OCR_DOCUMENT_BUCKET = "ocr-documents";
+export const TERMINAL_JOB_RETENTION_MS = 3 * 24 * 60 * 60 * 1000;
 
 export type JobLedgerAvailability = "synced" | "schema_pending";
 export type JobRow = Tables<"jobs">;
@@ -276,6 +277,57 @@ export async function listUserJobs(
   };
 }
 
+export async function cancelUserJob(
+  supabase: SupabaseClient<Database>,
+  userId: string,
+  jobId: string,
+): Promise<JobLedgerResult<JobRow | null>> {
+  const now = new Date().toISOString();
+  const cancelled = await supabase
+    .from("jobs")
+    .update({
+      status: "cancelled",
+      error: "用户已取消任务",
+      finished_at: now,
+      heartbeat_at: now,
+      payload: {
+        operation: "cancelled",
+        phase: "已取消",
+        statusText: "任务已取消，已停止本地跟踪",
+      },
+    })
+    .eq("id", jobId)
+    .eq("user_id", userId)
+    .in("status", ["queued", "dispatched", "running", "waiting_for_trigger", "stalled"])
+    .select("*")
+    .maybeSingle();
+
+  if (cancelled.error) {
+    if (isJobLedgerSchemaPending(cancelled.error)) return { availability: "schema_pending", data: null };
+    throw cancelled.error;
+  }
+  return { availability: "synced", data: cancelled.data as JobRow | null };
+}
+
+export async function cleanupExpiredUserJobs(
+  supabase: SupabaseClient<Database>,
+  userId: string,
+  now = Date.now(),
+): Promise<JobLedgerResult<number>> {
+  const cutoff = new Date(now - TERMINAL_JOB_RETENTION_MS).toISOString();
+  const deleted = await supabase
+    .from("jobs")
+    .delete({ count: "exact" })
+    .eq("user_id", userId)
+    .in("status", ["succeeded", "failed", "stalled", "claimed", "cancelled"])
+    .lt("updated_at", cutoff);
+  if (deleted.error) {
+    if (isJobLedgerSchemaPending(deleted.error)) return { availability: "schema_pending", data: 0 };
+    throw deleted.error;
+  }
+  return { availability: "synced", data: deleted.count ?? 0 };
+}
+
 export async function getUserJobResult(
   supabase: SupabaseClient<Database>,
   userId: string,
@@ -305,7 +357,7 @@ export async function clearTerminalJobSource(
     .update({ source_storage_bucket: null, source_storage_path: null })
     .eq("id", jobId)
     .eq("user_id", userId)
-    .in("status", ["succeeded", "failed", "stalled", "claimed"])
+    .in("status", ["succeeded", "failed", "stalled", "claimed", "cancelled"])
     .select("*")
     .maybeSingle();
 

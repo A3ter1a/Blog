@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
 import type { User } from "@supabase/supabase-js";
 import { getSupabase } from "@/lib/supabase";
 import { readJsonStorage, removeStorage, writeJsonStorage } from "@/lib/browser-storage";
@@ -119,6 +120,8 @@ function writeCachedAdminAuth(user: User, isAdmin: boolean): void {
 }
 
 export function useAdminAuth(): AdminAuthState {
+  const pathname = usePathname();
+  const isUiLabPath = pathname.startsWith("/ui-lab/");
   const [state, setState] = useState<AdminAuthState>({
     loading: true,
     user: null,
@@ -127,6 +130,8 @@ export function useAdminAuth(): AdminAuthState {
   });
 
   useEffect(() => {
+    if (isUiLabPath) return;
+
     let mounted = true;
     let unsubscribe: (() => void) | undefined;
     let errorTimer: number | undefined;
@@ -241,7 +246,7 @@ export function useAdminAuth(): AdminAuthState {
       if (errorTimer !== undefined) window.clearTimeout(errorTimer);
       unsubscribe?.();
     };
-  }, []);
+  }, [isUiLabPath]);
 
-  return state;
+  return isUiLabPath ? { ...state, loading: false } : state;
 }

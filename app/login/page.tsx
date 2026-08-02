@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Loader2, LogIn, LogOut } from "lucide-react";
 import { getSupabase } from "@/lib/supabase";
@@ -31,7 +32,27 @@ export default function LoginPage() {
       return;
     }
 
-    router.push("/create");
+    const session = (await getSupabase().auth.getSession()).data.session;
+    const token = session?.access_token;
+    if (!token) {
+      router.push("/");
+      return;
+    }
+
+    const adminResponse = await fetch("/api/auth/admin", {
+      headers: { Authorization: `Bearer ${token}` },
+      cache: "no-store",
+    });
+    if (adminResponse.ok) {
+      router.push("/create");
+      return;
+    }
+
+    const aiResponse = await fetch("/api/ai/content-proposals?limit=1", {
+      headers: { Authorization: `Bearer ${token}` },
+      cache: "no-store",
+    });
+    router.push(aiResponse.ok ? "/tools/ai-content" : "/");
   };
 
   const handleLogout = async () => {
@@ -44,9 +65,9 @@ export default function LoginPage() {
   return (
     <PageShell width="compact">
       <div className="surface-panel mx-auto max-w-sm p-6">
-        <h1 className="mb-2 font-headline text-2xl font-bold text-on-surface">管理员登录</h1>
+        <h1 className="mb-2 font-headline text-2xl font-bold text-on-surface">账号登录</h1>
         <p className="text-sm text-on-surface-variant mb-6">
-          登录后才能创建、编辑、删除内容和使用服务端 AI 能力。
+          管理员账号可以维护博客；AI 学科账号只能编辑自己的内容并提交审核。
         </p>
 
         {loading ? (
@@ -59,9 +80,14 @@ export default function LoginPage() {
             <div className="rounded-lg bg-surface-container-high p-4 text-sm text-on-surface-variant">
               <div>当前账号：{user.email}</div>
               <div className={isAdmin ? "text-green-700 mt-1" : "text-red-600 mt-1"}>
-                {isAdmin ? "管理员权限已生效" : "当前账号不在管理员名单中"}
+                {isAdmin ? "管理员权限已生效" : "当前账号不是管理员；如为 AI 学科账号，请进入 AI 内容工作台"}
               </div>
             </div>
+            {!isAdmin && (
+              <Link href="/tools/ai-content" className="control-button control-button-primary inline-flex h-11 w-full items-center justify-center px-4 text-sm">
+                打开 AI 内容工作台
+              </Link>
+            )}
             <button
               onClick={handleLogout}
               disabled={submitting}

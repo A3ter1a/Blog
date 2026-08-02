@@ -4,11 +4,13 @@ import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { AlertTriangle, ArrowLeft, Calendar, Tag, Edit2, Trash2, ChevronDown, ChevronUp, BookOpen, BookMarked, Loader2, Clock, Layers, SlidersHorizontal } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Calendar, Tag, Edit2, Trash2, ChevronDown, ChevronUp, BookOpen, BookMarked, Loader2, Clock, Layers, MessageCircle, PanelLeftClose, PanelLeftOpen, SlidersHorizontal } from "lucide-react";
 import { notesApi } from "@/lib/supabase";
+import type { PublicAiProfile } from "@/lib/ai-profile";
 import { chaptersApi } from "@/lib/chapters-api";
 import { subjectMap, typeMap, Note, Chapter, Problem, type ProblemPracticeStatus } from "@/lib/types";
 import { estimateReadingTime, getDescendantIds } from "@/lib/utils";
+import { getNoteReadPath } from "@/lib/note-routes";
 import { getRootChapters } from "@/lib/chapter-utils";
 import { getPracticeProblemKey, getVisibleNoteTags } from "@/lib/math3-practice";
 import { toPracticeStatusMap } from "@/lib/problem-practice";
@@ -16,6 +18,7 @@ import { problemPracticeApi } from "@/lib/problem-practice-api";
 import { getProblemValidationIssues, normalizeProblem } from "@/lib/problem-utils";
 import { Playlist } from "@/components/video/Playlist";
 import { VideoPlayer } from "@/components/video/VideoPlayer";
+import { AssistantDock } from "@/components/ai-assistant/AssistantDock";
 import { ProblemCard } from "@/components/problems/ProblemCard";
 import { ProblemList } from "@/components/problems/ProblemList";
 import { ChapterFilter } from "@/components/chapters/ChapterFilter";
@@ -68,6 +71,7 @@ export function NoteReaderClient({
   const { isAdmin } = useAdminAuth();
   const toast = useToast();
   const [note, setNote] = useState<Note | null>(initialNote);
+  const [authorProfile, setAuthorProfile] = useState<PublicAiProfile | null>(null);
   const [loading, setLoading] = useState(initialLoadError || !initialNote);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isDeletingNote, setIsDeletingNote] = useState(false);
@@ -84,6 +88,8 @@ export function NoteReaderClient({
   const [visibleProblemCounts, setVisibleProblemCounts] = useState<Record<string, number>>({});
   const [visibleProblemStarts, setVisibleProblemStarts] = useState<Record<string, number>>({});
   const [bookletDriftCount, setBookletDriftCount] = useState<number | null>(null);
+  const [assistantOpen, setAssistantOpen] = useState(false);
+  const [readerDirectoriesHidden, setReaderDirectoriesHidden] = useState(false);
   const skipInitialChapterFetchRef = useRef(initialChaptersLoaded);
   const lastHashScrollRef = useRef("");
 
@@ -99,9 +105,11 @@ export function NoteReaderClient({
       setPracticeStatusLoadState("idle");
       setMarkingProblemKey(null);
       setProblemGroupExpansion({});
-      setVisibleProblemCounts({});
-      setVisibleProblemStarts({});
-      skipInitialChapterFetchRef.current = initialChaptersLoaded;
+       setVisibleProblemCounts({});
+       setVisibleProblemStarts({});
+       setAssistantOpen(false);
+       setReaderDirectoriesHidden(false);
+       skipInitialChapterFetchRef.current = initialChaptersLoaded;
     }, 0);
 
     return () => window.clearTimeout(timer);
@@ -129,6 +137,19 @@ export function NoteReaderClient({
     }, 0);
     return () => window.clearTimeout(timer);
   }, [initialLoadError, initialNote, loadNote]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      if (!note?.id || accessScope !== "public") {
+        setAuthorProfile(null);
+        return;
+      }
+      void notesApi.getAiAuthorProfile(note.id)
+        .then(setAuthorProfile)
+        .catch(() => setAuthorProfile(null));
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [accessScope, note?.id]);
 
   // Load chapters for problem notes
   useEffect(() => {
@@ -463,6 +484,11 @@ export function NoteReaderClient({
     }
   };
 
+  const handleAssistantOpenChange = useCallback((nextOpen: boolean) => {
+    setAssistantOpen(nextOpen);
+    setReaderDirectoriesHidden(nextOpen);
+  }, []);
+
   if (loading) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-surface px-4 pb-20 pt-24 sm:px-6">
@@ -494,7 +520,7 @@ export function NoteReaderClient({
   const isEssay = note.type === "essay";
   const enableEconomicsTerms = note.subject === "economics";
   const enableEconomicsGraphs = note.subject === "economics" && !isProblem;
-  const showReaderSidebar = isProblem ? showProblemTools : preferences.tocPosition !== "hidden";
+  const showReaderSidebar = !readerDirectoriesHidden && (isProblem ? showProblemTools : preferences.tocPosition !== "hidden");
   const readerWidthClass = preferences.contentWidth === "narrow"
     ? "mx-auto max-w-3xl"
     : preferences.contentWidth === "wide"
@@ -521,7 +547,7 @@ export function NoteReaderClient({
   };
 
   return (
-    <main className="page-template-reader min-h-screen pb-20 pt-20" data-page-template="reader">
+    <main className={`page-template-reader min-h-screen pb-20 pt-20 ${assistantOpen ? "note-reader-assistant-open" : ""}`} data-page-template="reader" data-assistant-open={assistantOpen || undefined}>
       {/* Reading Progress Bar */}
       {preferences.showProgressBar && <ReadingProgress />}
 
@@ -536,7 +562,45 @@ export function NoteReaderClient({
             返回
           </Link>
 
+          {readerDirectoriesHidden && !assistantOpen && (
+            <button
+              type="button"
+              onClick={() => setReaderDirectoriesHidden(false)}
+              className="note-reader-directory-reveal"
+              title="显示目录栏"
+              aria-label="显示目录栏"
+            >
+              <PanelLeftOpen className="h-4 w-4" />
+              <span>目录</span>
+            </button>
+          )}
+
           <div className="flex flex-wrap items-center justify-end gap-2">
+            {isAdmin && (
+              <button
+                type="button"
+                onClick={() => handleAssistantOpenChange(true)}
+                className={`control-button h-9 px-3 text-sm ${assistantOpen ? "control-button-selected" : ""}`}
+                title="询问当前笔记的助手"
+                aria-expanded={assistantOpen}
+                aria-controls="assistant-dock"
+              >
+                <MessageCircle className="h-4 w-4" />
+                <span className="hidden sm:inline">问助手</span>
+              </button>
+            )}
+            {showReaderSidebar && !assistantOpen && (
+              <button
+                type="button"
+                onClick={() => setReaderDirectoriesHidden(true)}
+                className="control-button h-9 px-3 text-sm"
+                title="隐藏目录栏"
+                aria-label="隐藏目录栏"
+              >
+                <PanelLeftClose className="h-4 w-4" />
+                <span className="hidden sm:inline">隐藏目录</span>
+              </button>
+            )}
             {isProblem && allProblems.length > 0 && (
               <button
                 onClick={() => setShowProblemTools((value) => !value)}
@@ -670,6 +734,21 @@ export function NoteReaderClient({
             <h1 className="mb-4 font-headline text-2xl font-bold leading-tight text-on-surface sm:text-3xl md:text-4xl">
               {note.title}
             </h1>
+
+            {authorProfile && preferences.showRoleplay && (
+              <Link
+                href={`/ai-profiles/${authorProfile.id}`}
+                className="mb-4 inline-flex min-h-11 items-center gap-3 rounded-xl border border-outline-variant/20 bg-surface-container-low px-3 py-2 transition duration-200 hover:border-primary/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35"
+              >
+                <span className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-primary/10 text-sm font-semibold text-primary">
+                  {authorProfile.avatar_url ? <img src={authorProfile.avatar_url} alt="" className="h-full w-full object-cover" /> : authorProfile.display_name.slice(0, 1)}
+                </span>
+                <span className="text-left">
+                  <strong className="block text-sm text-on-surface">{authorProfile.display_name}</strong>
+                  <span className="block text-xs text-on-surface-variant">{subjectMap[authorProfile.subject]} · 查看资料</span>
+                </span>
+              </Link>
+            )}
 
             <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-on-surface-variant">
               <span className="flex items-center gap-2">
@@ -962,6 +1041,14 @@ export function NoteReaderClient({
           </aside>
         )}
       </div>
+
+      <AssistantDock
+        noteId={note.id}
+        noteTitle={note.title}
+        sourcePath={getNoteReadPath(note)}
+        open={assistantOpen}
+        onOpenChange={handleAssistantOpenChange}
+      />
 
       {/* Immersive Reading Mode */}
       <AnimatePresence>

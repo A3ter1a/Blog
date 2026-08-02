@@ -1,4 +1,5 @@
 export type NoteType = 'note' | 'problem' | 'essay';
+export type NoteAuthorKind = 'human' | 'ai';
 export type Subject = 'math' | 'english' | 'politics' | 'economics';
 
 // 题型
