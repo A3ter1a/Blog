@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import { PageHeader, PageShell } from "@/components/ui/PageScaffold";
 import { ToolHubCard, ToolHubGrid, type ToolHubCardItem } from "@/components/tools/ToolHubCard";
+import { AdminReviewToolCard } from "@/components/tools/AdminReviewToolCard";
 import { createPageMetadata } from "@/lib/site-metadata";
 
 export const metadata = createPageMetadata({
@@ -71,6 +72,7 @@ export default function ToolsPage() {
 
       <PageShell width="normal" topPadding="content" template="training">
         <ToolHubGrid>
+          <AdminReviewToolCard />
           {toolHubs.map((tool) => (
             <ToolHubCard key={tool.href} item={tool} />
           ))}

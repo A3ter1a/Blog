@@ -5,6 +5,7 @@ export const AI_CONTENT_MAX_CHARS = 240_000;
 export const AI_CONTENT_MAX_TITLE_CHARS = 200;
 export const AI_CONTENT_MAX_TAGS = 40;
 export const AI_CONTENT_MAX_TAG_CHARS = 80;
+export const AI_REVIEW_QUEUE_CHANGED_EVENT = "asteroid:review-queue-changed";
 
 export type AiContentReviewStatus =
   | "draft"

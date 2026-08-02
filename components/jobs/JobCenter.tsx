@@ -11,8 +11,11 @@ import {
   type ReactNode,
 } from "react";
 import { usePathname } from "next/navigation";
-import { AlertTriangle, CheckCircle2, CircleX, Clock3, FileScan, Loader2, RotateCcw, X } from "lucide-react";
+import Link from "next/link";
+import { AlertTriangle, ArrowUpRight, CheckCircle2, CircleX, Clock3, FileScan, Loader2, RotateCcw, ShieldCheck, X } from "lucide-react";
 import { buildAuthHeaders } from "@/lib/fetch-with-auth";
+import { useAdminAuth } from "@/hooks/useAdminAuth";
+import { AI_REVIEW_QUEUE_CHANGED_EVENT } from "@/lib/ai-content-contract";
 import {
   CLIENT_JOB_STORAGE_KEY,
   canRetryClientJob,
@@ -88,6 +91,15 @@ type JobMutationResponse = {
   available?: unknown;
 };
 
+type PendingReviewNotice = {
+  id: string;
+  title: string;
+  subject: string;
+  authorName: string;
+  contentVersion: number;
+  updatedAt: string;
+};
+
 const JobCenterContext = createContext<JobCenterContextValue | null>(null);
 const POLL_INTERVAL_MS = 6000;
 const AUTH_RETRY_BACKOFF_MS = 30_000;
@@ -146,10 +158,58 @@ async function fetchRemoteJobLedger(): Promise<ClientJob[]> {
   return normalizeRemoteJobRows(payload.jobs);
 }
 
+async function fetchPendingReviewNotices(): Promise<PendingReviewNotice[]> {
+  const headers = await buildAuthHeaders();
+  if (!headers.has("Authorization")) return [];
+  const response = await fetch("/api/ai/content-review?status=pending_review&limit=40", {
+    headers,
+    cache: "no-store",
+  });
+  if (!response.ok) return [];
+  const payload = await response.json().catch(() => ({})) as { proposals?: unknown };
+  if (!Array.isArray(payload.proposals)) return [];
+
+  return payload.proposals.flatMap((item): PendingReviewNotice[] => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return [];
+    const record = item as Record<string, unknown>;
+    const proposal = record.proposal && typeof record.proposal === "object" && !Array.isArray(record.proposal)
+      ? record.proposal as Record<string, unknown>
+      : null;
+    const profile = record.profile && typeof record.profile === "object" && !Array.isArray(record.profile)
+      ? record.profile as Record<string, unknown>
+      : null;
+    if (
+      !proposal
+      || proposal.review_status !== "pending_review"
+      || typeof proposal.id !== "string"
+      || typeof proposal.title !== "string"
+      || typeof proposal.updated_at !== "string"
+    ) return [];
+    return [{
+      id: proposal.id,
+      title: proposal.title,
+      subject: typeof proposal.subject === "string" ? proposal.subject : "",
+      authorName: typeof profile?.display_name === "string" ? profile.display_name : "AI 学科账号",
+      contentVersion: typeof proposal.content_version === "number" ? proposal.content_version : 1,
+      updatedAt: proposal.updated_at,
+    }];
+  });
+}
+
+function getReviewSubjectLabel(subject: string): string {
+  if (subject === "math") return "数学";
+  if (subject === "english") return "英语";
+  if (subject === "politics") return "政治";
+  if (subject === "economics") return "经济学";
+  return "未分类";
+}
+
 export function JobCenterProvider({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  const { isAdmin } = useAdminAuth();
   const isUiLab = pathname.startsWith("/ui-lab/");
   const [jobs, setJobs] = useState<ClientJob[]>([]);
+  const [reviewNotices, setReviewNotices] = useState<PendingReviewNotice[]>([]);
   const [isOpen, setIsOpen] = useState(false);
   const [activeBucket, setActiveBucket] = useState<JobBucket>("pending");
   const hydratedRef = useRef(false);
@@ -158,6 +218,14 @@ export function JobCenterProvider({ children }: { children: ReactNode }) {
   const cancelledRef = useRef(new Set<string>());
   const resultLoadingRef = useRef(new Set<string>());
   const authRetryAfterRef = useRef(new Map<string, number>());
+
+  const refreshReviewNotices = useCallback(() => {
+    if (!isAdmin || isUiLab) {
+      setReviewNotices([]);
+      return;
+    }
+    void fetchPendingReviewNotices().then(setReviewNotices).catch(() => undefined);
+  }, [isAdmin, isUiLab]);
 
   useEffect(() => {
     jobsRef.current = jobs;
@@ -221,10 +289,21 @@ export function JobCenterProvider({ children }: { children: ReactNode }) {
           if (remoteJobs.length > 0) setJobs((current) => mergeClientJobLedgers(current, remoteJobs));
         })
         .catch(() => undefined);
+      refreshReviewNotices();
     };
     window.addEventListener("focus", refresh);
     return () => window.removeEventListener("focus", refresh);
-  }, [isUiLab]);
+  }, [isUiLab, refreshReviewNotices]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(refreshReviewNotices, 0);
+    return () => window.clearTimeout(timer);
+  }, [pathname, refreshReviewNotices]);
+
+  useEffect(() => {
+    window.addEventListener(AI_REVIEW_QUEUE_CHANGED_EVENT, refreshReviewNotices);
+    return () => window.removeEventListener(AI_REVIEW_QUEUE_CHANGED_EVENT, refreshReviewNotices);
+  }, [refreshReviewNotices]);
 
   useEffect(() => {
     if (isUiLab) return;
@@ -765,10 +844,10 @@ export function JobCenterProvider({ children }: { children: ReactNode }) {
   const activeCount = jobs.filter(isClientJobActive).length;
   const unclaimedCount = jobs.filter((job) => job.status === "succeeded" && !job.resultClaimedAt).length;
   const bucketCounts = useMemo(() => ({
-    pending: jobs.filter((job) => getJobBucket(job) === "pending").length,
+    pending: jobs.filter((job) => getJobBucket(job) === "pending").length + reviewNotices.length,
     running: jobs.filter((job) => getJobBucket(job) === "running").length,
     completed: jobs.filter((job) => getJobBucket(job) === "completed").length,
-  }), [jobs]);
+  }), [jobs, reviewNotices]);
   const displayBucket: JobBucket = bucketCounts[activeBucket] > 0
     ? activeBucket
     : bucketCounts.running > 0
@@ -777,7 +856,8 @@ export function JobCenterProvider({ children }: { children: ReactNode }) {
         ? "pending"
         : "completed";
   const visibleJobs = jobs.filter((job) => getJobBucket(job) === displayBucket);
-  const hasMessages = jobs.length > 0;
+  const hasMessages = jobs.length > 0 || reviewNotices.length > 0;
+  const attentionCount = activeCount + unclaimedCount + reviewNotices.length;
 
   return (
     <JobCenterContext.Provider value={value}>
@@ -794,11 +874,12 @@ export function JobCenterProvider({ children }: { children: ReactNode }) {
                 if (remoteJobs.length > 0) setJobs((current) => mergeClientJobLedgers(current, remoteJobs));
               })
               .catch(() => undefined);
+            refreshReviewNotices();
           }}
-          aria-label={`打开消息中心，${activeCount} 个进行中，${unclaimedCount} 个待领取，${jobs.length} 条消息`}
+          aria-label={`打开消息中心，${reviewNotices.length} 篇文章待审核，${activeCount} 个进行中，${unclaimedCount} 个待领取`}
         >
-          {activeCount > 0 ? <Loader2 className="h-5 w-5 animate-spin" /> : <Clock3 className="h-5 w-5" />}
-          <span>{activeCount + unclaimedCount}</span>
+          {activeCount > 0 ? <Loader2 className="h-5 w-5 animate-spin" /> : reviewNotices.length > 0 ? <ShieldCheck className="h-5 w-5" /> : <Clock3 className="h-5 w-5" />}
+          <span>{attentionCount}</span>
         </button>
       )}
 
@@ -834,6 +915,25 @@ export function JobCenterProvider({ children }: { children: ReactNode }) {
               {visibleJobs.length === 0 && (
                 <p className="job-center-empty">暂无{getJobBucketLabel(displayBucket)}事项。终态消息会保留 3 天后自动清理。</p>
               )}
+              {displayBucket === "pending" && reviewNotices.map((notice) => (
+                <article className="job-center-item job-center-review-item" key={`review-${notice.id}`}>
+                  <div className="job-center-item-icon" data-status="review"><ShieldCheck /></div>
+                  <div className="job-center-item-body">
+                    <div className="job-center-item-title">
+                      <strong>{notice.title}<span className="job-center-status" data-status="review">待审核</span></strong>
+                      <time>{new Date(notice.updatedAt).toLocaleString("zh-CN", { hour12: false })}</time>
+                    </div>
+                    <p>AI 文章等待你的决定</p>
+                    <small>{notice.authorName} · {getReviewSubjectLabel(notice.subject)} · v{notice.contentVersion}</small>
+                    <div className="job-center-actions">
+                      <Link href={`/tools/ai-review?proposal=${encodeURIComponent(notice.id)}`} onClick={() => setIsOpen(false)}>
+                        打开审核
+                        <ArrowUpRight className="h-4 w-4" />
+                      </Link>
+                    </div>
+                  </div>
+                </article>
+              ))}
               {visibleJobs.map((job) => (
                 <article className="job-center-item" key={job.id}>
                   <div className="job-center-item-icon" data-status={job.status}>

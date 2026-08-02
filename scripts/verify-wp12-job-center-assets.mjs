@@ -8,7 +8,8 @@ const required = [
   ["app/api/jobs/[id]/cancel/route.ts", ["getAdminRequestContext", "cancelUserJob", "export async function POST"]],
   ["lib/server-job-ledger.ts", ["cancelUserJob", "cleanupExpiredUserJobs", "TERMINAL_JOB_RETENTION_MS"]],
   ["lib/job-client.ts", ["cancelled", "removeExpiredClientJobs", "isClientJobTerminal"]],
-  ["components/jobs/JobCenter.tsx", ["消息中心", "待处理", "进行中", "已完成", "cancelJob", "取消任务"]],
+  ["components/jobs/JobCenter.tsx", ["消息中心", "待处理", "进行中", "已完成", "cancelJob", "取消任务", "content-review?status=pending_review", "打开审核"]],
+  ["components/tools/AdminReviewToolCard.tsx", ["AI 内容审核", "/tools/ai-review", "useAdminAuth"]],
   ["app/globals.css", ["job-center-bucket-tabs", "job-center-cancel"]],
 ];
 
@@ -49,5 +50,6 @@ console.log(JSON.stringify({
     "owner-scoped cancellation endpoint",
     "best-effort three-day server cleanup plus local expiry cleanup",
     "empty message center hides the floating button",
+    "pending AI proposals surface as administrator review notifications",
   ],
 }, null, 2));

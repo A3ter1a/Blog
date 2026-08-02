@@ -823,6 +823,16 @@ test("消息中心保留失败/取消终态三天，并持续保留进行中任�
   assert.equal(getClientJobProgressLabel({ ...jobs[1], status: "cancelled" }), "任务已取消");
 });
 
+test("消息中心接入真实 AI 待审核提案并提供精确审核入口", () => {
+  const center = readFileSync(resolve("components/jobs/JobCenter.tsx"), "utf8");
+  const reviewEntry = readFileSync(resolve("components/tools/AdminReviewToolCard.tsx"), "utf8");
+  assert.match(center, /content-review\?status=pending_review/);
+  assert.match(center, /\/tools\/ai-review\?proposal=/);
+  assert.match(center, /AI_REVIEW_QUEUE_CHANGED_EVENT/);
+  assert.match(reviewEntry, /useAdminAuth/);
+  assert.match(reviewEntry, /AI 内容审核/);
+});
+
 test("数据库任务账本恢复时按外部任务身份合并且远端状态优先", () => {
   const local = normalizeStoredJobs([{
     id: "local-1",
@@ -1271,10 +1281,21 @@ test("助手记忆只经服务端持久化并由用户决定", () => {
   const dock = readFileSync(resolve("components/ai-assistant/AssistantDock.tsx"), "utf8");
   const route = readFileSync(resolve("app/api/assistant/memories/route.ts"), "utf8");
   assert.equal(dock.includes('fetch("/api/assistant/memories"'), true);
-  assert.equal(dock.includes("localStorage"), false);
+  assert.equal(dock.includes("ASSISTANT_CONVERSATION_STORAGE_PREFIX"), true);
+  assert.equal(dock.includes("memoryStorage"), false);
   assert.equal(route.includes("getAdminRequestContext(req)"), true);
   assert.equal(route.includes("proposeAssistantMemory"), true);
   assert.equal(route.includes("decideAssistantMemoryServer"), true);
+});
+
+test("连续对话只保留有限上下文并拒绝无效角色", () => {
+  const contract = readFileSync(resolve("lib/note-qa.ts"), "utf8");
+  const route = readFileSync(resolve("app/api/ai/note-qa/route.ts"), "utf8");
+  assert.match(contract, /MAX_CONVERSATION_TURNS = 10/);
+  assert.match(contract, /candidate\.role !== "user" && candidate\.role !== "assistant"/);
+  assert.match(contract, /MAX_CONVERSATION_CHARS = 6_000/);
+  assert.match(route, /normalizeNoteQAConversation\(record\.conversation\)/);
+  assert.match(route, /仅用于理解追问指代，不能替代笔记证据/);
 });
 
 test("管理员运行时真源是 admin_users 而不是环境邮箱名单", () => {

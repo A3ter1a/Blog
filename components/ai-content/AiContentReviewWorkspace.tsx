@@ -19,7 +19,7 @@ import { AiKnowledgeQuizReviewPanel } from "@/components/ai-content/AiKnowledgeQ
 import { useToast } from "@/components/ui/Toast";
 import { buildAuthHeaders } from "@/lib/fetch-with-auth";
 import { subjectMap } from "@/lib/types";
-import type { AiContentReviewStatus } from "@/lib/ai-content-contract";
+import { AI_REVIEW_QUEUE_CHANGED_EVENT, type AiContentReviewStatus } from "@/lib/ai-content-contract";
 import type {
   AiContentProposalCommentRow,
   AiContentReviewProposal,
@@ -126,6 +126,16 @@ export function AiContentReviewWorkspace() {
   }, [toast]);
 
   useEffect(() => {
+    const requestedId = new URLSearchParams(window.location.search).get("proposal")?.trim();
+    if (!requestedId) return;
+    const timer = window.setTimeout(() => {
+      setSelectedId(requestedId);
+      void loadDetail(requestedId);
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [loadDetail]);
+
+  useEffect(() => {
     const timer = window.setTimeout(() => {
       void loadQueue();
     }, 0);
@@ -133,6 +143,7 @@ export function AiContentReviewWorkspace() {
   }, [loadQueue]);
 
   useEffect(() => {
+    if (loading) return undefined;
     if (!selectedId && items[0]) {
       const nextId = items[0].proposal.id;
       const timer = window.setTimeout(() => {
@@ -151,7 +162,7 @@ export function AiContentReviewWorkspace() {
       return () => window.clearTimeout(timer);
     }
     return undefined;
-  }, [items, loadDetail, selectedId]);
+  }, [items, loadDetail, loading, selectedId]);
 
   const selectedSummary = useMemo(
     () => items.find((item) => item.proposal.id === selectedId) ?? null,
@@ -183,6 +194,7 @@ export function AiContentReviewWorkspace() {
       if (!response.ok) throw new Error(readError(payload, "审核操作失败"));
       await loadQueue();
       await loadDetail(proposal.id);
+      window.dispatchEvent(new CustomEvent(AI_REVIEW_QUEUE_CHANGED_EVENT));
       toast.success(action === "request_changes" ? "已退回返修" : action === "approve" ? "已批准提案" : action === "publish" || action === "approve_and_publish" ? "已发布到博客" : "已驳回提案");
     } catch (nextError: unknown) {
       toast.error(nextError instanceof Error ? nextError.message : "审核操作失败");

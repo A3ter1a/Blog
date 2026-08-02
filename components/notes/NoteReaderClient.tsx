@@ -89,7 +89,9 @@ export function NoteReaderClient({
   const [visibleProblemStarts, setVisibleProblemStarts] = useState<Record<string, number>>({});
   const [bookletDriftCount, setBookletDriftCount] = useState<number | null>(null);
   const [assistantOpen, setAssistantOpen] = useState(false);
+  const [assistantQuotedText, setAssistantQuotedText] = useState("");
   const [readerDirectoriesHidden, setReaderDirectoriesHidden] = useState(false);
+  const readerDirectoriesBeforeAssistantRef = useRef(false);
   const skipInitialChapterFetchRef = useRef(initialChaptersLoaded);
   const lastHashScrollRef = useRef("");
 
@@ -107,8 +109,9 @@ export function NoteReaderClient({
       setProblemGroupExpansion({});
        setVisibleProblemCounts({});
        setVisibleProblemStarts({});
-       setAssistantOpen(false);
-       setReaderDirectoriesHidden(false);
+        setAssistantOpen(false);
+        setAssistantQuotedText("");
+        setReaderDirectoriesHidden(false);
        skipInitialChapterFetchRef.current = initialChaptersLoaded;
     }, 0);
 
@@ -486,7 +489,29 @@ export function NoteReaderClient({
 
   const handleAssistantOpenChange = useCallback((nextOpen: boolean) => {
     setAssistantOpen(nextOpen);
-    setReaderDirectoriesHidden(nextOpen);
+    if (nextOpen) {
+      if (!assistantOpen) readerDirectoriesBeforeAssistantRef.current = readerDirectoriesHidden;
+      setReaderDirectoriesHidden(true);
+      return;
+    }
+    setReaderDirectoriesHidden(readerDirectoriesBeforeAssistantRef.current);
+  }, [assistantOpen, readerDirectoriesHidden]);
+
+  const captureAssistantSelection = useCallback(() => {
+    const selection = window.getSelection();
+    const selectedText = selection?.toString().replace(/\s+/g, " ").trim() ?? "";
+    const anchorElement = selection?.anchorNode instanceof Element
+      ? selection.anchorNode
+      : selection?.anchorNode?.parentElement;
+    if (!selectedText || !anchorElement?.closest("[data-note-reader-content]")) {
+      setAssistantQuotedText("");
+      return;
+    }
+    setAssistantQuotedText(selectedText.slice(0, 1_600));
+  }, []);
+
+  const handleAssistantQuotedTextConsumed = useCallback(() => {
+    setAssistantQuotedText("");
   }, []);
 
   if (loading) {
@@ -579,6 +604,7 @@ export function NoteReaderClient({
             {isAdmin && (
               <button
                 type="button"
+                onMouseDown={captureAssistantSelection}
                 onClick={() => handleAssistantOpenChange(true)}
                 className={`control-button h-9 px-3 text-sm ${assistantOpen ? "control-button-selected" : ""}`}
                 title="询问当前笔记的助手"
@@ -821,6 +847,7 @@ export function NoteReaderClient({
 
           {/* Article Content */}
           <motion.article
+            data-note-reader-content
             variants={surfaceMotion}
             initial="initial"
             animate="animate"
@@ -1048,6 +1075,8 @@ export function NoteReaderClient({
         sourcePath={getNoteReadPath(note)}
         open={assistantOpen}
         onOpenChange={handleAssistantOpenChange}
+        quotedText={assistantQuotedText}
+        onQuotedTextConsumed={handleAssistantQuotedTextConsumed}
       />
 
       {/* Immersive Reading Mode */}

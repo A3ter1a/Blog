@@ -6,6 +6,11 @@ export type NoteQAScope = "all" | NoteType;
 export type NoteQASubjectScope = "all" | Subject;
 export type NoteQAMode = "answer" | "locate" | "outline" | "quiz";
 
+export type NoteQAConversationTurn = {
+  role: "user" | "assistant";
+  content: string;
+};
+
 export type NoteQASource = {
   id: string;
   noteId: string;
@@ -35,6 +40,9 @@ const MAX_CHUNK_CHARS = 900;
 const CHUNK_OVERLAP_CHARS = 140;
 const MAX_CONTEXT_CHARS = 9000;
 const DEFAULT_CONTEXT_LIMIT = 8;
+const MAX_CONVERSATION_TURNS = 10;
+const MAX_CONVERSATION_TURN_CHARS = 1_600;
+const MAX_CONVERSATION_CHARS = 6_000;
 
 const STOP_TERMS = new Set([
   "这个",
@@ -74,6 +82,29 @@ export function normalizeNoteQAMode(value: unknown): NoteQAMode {
 export function normalizeNoteQAContextLimit(value: unknown): number {
   if (typeof value !== "number" || !Number.isFinite(value)) return DEFAULT_CONTEXT_LIMIT;
   return Math.max(4, Math.min(12, Math.round(value)));
+}
+
+export function normalizeNoteQAConversation(value: unknown): NoteQAConversationTurn[] {
+  if (!Array.isArray(value)) return [];
+
+  const turns = value.flatMap((item): NoteQAConversationTurn[] => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return [];
+    const candidate = item as Partial<NoteQAConversationTurn>;
+    if (candidate.role !== "user" && candidate.role !== "assistant") return [];
+    if (typeof candidate.content !== "string") return [];
+    const content = candidate.content.replace(/\s+/g, " ").trim().slice(0, MAX_CONVERSATION_TURN_CHARS);
+    return content ? [{ role: candidate.role, content }] : [];
+  }).slice(-MAX_CONVERSATION_TURNS);
+
+  let usedChars = 0;
+  const selected: NoteQAConversationTurn[] = [];
+  for (let index = turns.length - 1; index >= 0; index -= 1) {
+    const turn = turns[index];
+    if (usedChars + turn.content.length > MAX_CONVERSATION_CHARS) break;
+    selected.unshift(turn);
+    usedChars += turn.content.length;
+  }
+  return selected;
 }
 
 function stripMarkdown(value: string): string {

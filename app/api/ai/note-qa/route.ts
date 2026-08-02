@@ -3,6 +3,7 @@ import { callDeepSeek } from "@/lib/ai-client";
 import { DEFAULT_DEEPSEEK_MODEL } from "@/lib/ai-config";
 import {
   normalizeNoteQAContextLimit,
+  normalizeNoteQAConversation,
   normalizeNoteQAMode,
   normalizeNoteQAQuestion,
   normalizeNoteQAScope,
@@ -69,6 +70,10 @@ export async function POST(req: NextRequest) {
     const subject = normalizeNoteQASubject(record.subject);
     const mode = normalizeNoteQAMode(record.mode);
     const contextLimit = normalizeNoteQAContextLimit(record.contextLimit);
+    const conversation = normalizeNoteQAConversation(record.conversation);
+    const selectedText = typeof record.selectedText === "string"
+      ? record.selectedText.replace(/\s+/g, " ").trim().slice(0, 2_000)
+      : "";
     const noteId = typeof record.noteId === "string" ? record.noteId.trim().slice(0, 80) : "";
 
     if (!question) {
@@ -123,7 +128,11 @@ export async function POST(req: NextRequest) {
 - 若问题涉及经济学概念，必须同时给出严谨定义和通俗解释；资料没有足够定义或页码时明确指出缺口，不得伪造平狄克教材引用。
 - ${getModeInstruction(mode)}`;
 
-    const userPrompt = `问题：${question}${memoryContext ? `\n\n用户已确认的记忆：\n${memoryContext}` : ""}
+    const conversationContext = conversation.length > 0
+      ? conversation.map((turn) => `${turn.role === "user" ? "用户" : "助手"}：${turn.content}`).join("\n")
+      : "";
+
+    const userPrompt = `${conversationContext ? `此前对话（仅用于理解追问指代，不能替代笔记证据）：\n${conversationContext}\n\n` : ""}当前问题：${question}${selectedText ? `\n\n用户选中的笔记原文：\n${selectedText}` : ""}${memoryContext ? `\n\n用户已确认的记忆：\n${memoryContext}` : ""}
 
 可用片段：
 ${context}`;

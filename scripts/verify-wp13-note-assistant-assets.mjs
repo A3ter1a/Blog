@@ -25,10 +25,12 @@ for (const marker of [
   "type AssistantDockProps",
   "noteId: string",
   "onOpenChange: (open: boolean) => void",
-  "assistant-dock-backdrop",
   "assistant-dock-panel",
   "event.key === \"Escape\"",
-  "aria-modal=\"true\"",
+  "role=\"complementary\"",
+  "ASSISTANT_CONVERSATION_STORAGE_PREFIX",
+  "conversation",
+  "selectedText",
 ]) {
   if (!assistant.includes(marker)) throw new Error(`助手抽屉缺少关键实现：${marker}`);
 }
@@ -46,6 +48,8 @@ for (const marker of [
   "assistantOpen",
   "readerDirectoriesHidden",
   "handleAssistantOpenChange",
+  "captureAssistantSelection",
+  "quotedText={assistantQuotedText}",
   "note-reader-directory-reveal",
   "aria-label=\"显示目录栏\"",
   "aria-label=\"隐藏目录栏\"",
@@ -81,14 +85,20 @@ if (layout.includes("<AssistantDock") || layout.includes("components/ai-assistan
 }
 
 for (const marker of [
-  ".assistant-dock-backdrop",
   ".assistant-dock-panel",
   ".note-reader-assistant-open",
+  "padding-right: var(--assistant-dock-width)",
+  ".assistant-message-list",
+  ".assistant-composer",
   ".note-reader-directory-reveal",
   ".page-template-reader",
   "prefers-reduced-motion",
 ]) {
   if (!css.includes(marker)) throw new Error(`阶段 7 样式缺少：${marker}`);
+}
+
+if (assistant.includes('aria-modal="true"')) {
+  throw new Error("助手是可与正文并行操作的 dock，不应继续声明为 modal。");
 }
 
 console.log(JSON.stringify({
@@ -97,6 +107,8 @@ console.log(JSON.stringify({
   globalMountRemoved: true,
   directoryReveal: true,
   keyboardEscape: true,
+  continuousConversation: true,
+  selectionQuote: true,
   reducedMotion: true,
   overflowGuard: true,
   roleplayToggle: true,
