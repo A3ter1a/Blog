@@ -156,6 +156,13 @@ import {
 } from "../lib/assistant-memory.ts";
 import { resolveAIProviderRoute } from "../lib/ai-provider-routing.ts";
 import {
+  buildMonthlyPlanningSnapshot,
+  computePlanningEtag,
+  DEFAULT_PLANNING_CYCLE_ID,
+  getPlanningCycle,
+  isPlanningMonthKey,
+} from "../lib/planning-monthly.ts";
+import {
   buildTokenHashVector,
   planRagSourceSync,
   splitRagSourceText,
@@ -1774,4 +1781,41 @@ test("笔记目录按人工与 AI 来源原位切换且缓存严格隔离", () =
   assert.equal(notesApi.includes('query.eq("author_kind", options.authorKind)'), true);
   assert.equal(notesApi.includes('q.eq("author_kind", options.authorKind)'), true);
   assert.equal(notesCache.includes("${authorKind}:${selectedType}:${selectedSubject}:${sortOrder}"), true);
+});
+
+test("月度规划快照以备考周期和稳定外部键输出", () => {
+  assert.equal(isPlanningMonthKey("2026-08"), true);
+  assert.equal(isPlanningMonthKey("2026/08"), false);
+  assert.equal(getPlanningCycle(DEFAULT_PLANNING_CYCLE_ID)?.targetExamYear, 2027);
+
+  const snapshot = buildMonthlyPlanningSnapshot(DEFAULT_PLANNING_CYCLE_ID, "2026-08");
+  assert.equal(snapshot.schemaVersion, 1);
+  assert.equal(snapshot.timezone, "Asia/Shanghai");
+  assert.equal(snapshot.month.key, "2026-08");
+  assert.equal(snapshot.month.label, "8月");
+  assert.equal(snapshot.items.length, 15);
+  assert.equal(snapshot.items[0].id, "kaoyan-2027:math-08-first-past-2014-2020");
+  assert.equal(snapshot.items[0].externalKey, "math-08-first-past-2014-2020");
+  assert.equal(snapshot.items[0].order, 1);
+  assert.equal(snapshot.items.at(-1)?.order, snapshot.items.length);
+  assert.equal(snapshot.updatedAt, null);
+  assert.deepEqual(snapshot.capabilities, { taskStatus: false, exactDate: false });
+  assert.equal(computePlanningEtag(snapshot), computePlanningEtag(buildMonthlyPlanningSnapshot(DEFAULT_PLANNING_CYCLE_ID, "2026-08")));
+});
+
+test("月度规划接口契约使用专用只读认证并支持条件请求", () => {
+  const route = readFileSync(resolve("app/api/planning/monthly/route.ts"), "utf8");
+  const envExample = readFileSync(resolve(".env.example"), "utf8");
+  const documentation = readFileSync(resolve("docs/planning-monthly-api.md"), "utf8");
+
+  assert.equal(route.includes("BLOG_PLANNING_READ_TOKEN"), true);
+  assert.equal(route.includes("timingSafeEqual"), true);
+  assert.equal(route.includes("If-None-Match"), true);
+  assert.equal(route.includes("return new NextResponse(null, { status: 304"), true);
+  assert.equal(route.includes("export function OPTIONS"), true);
+  assert.equal(route.includes("requireAdminRequest"), false);
+  assert.equal(envExample.includes("BLOG_PLANNING_READ_TOKEN="), true);
+  assert.equal(envExample.includes("BLOG_PLANNING_ALLOWED_ORIGINS="), true);
+  assert.equal(documentation.includes("planning_task_status"), true);
+  assert.equal(documentation.includes("<REDACTED>"), true);
 });
