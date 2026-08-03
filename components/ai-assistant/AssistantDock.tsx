@@ -110,7 +110,7 @@ export function AssistantDock({
   useEffect(() => {
     const timer = window.setTimeout(() => {
       try {
-        setMessages(normalizeStoredMessages(JSON.parse(localStorage.getItem(getConversationStorageKey(noteId)) ?? "[]")));
+        setMessages(normalizeStoredMessages(JSON.parse(window.sessionStorage.getItem(getConversationStorageKey(noteId)) ?? "[]")));
       } catch {
         setMessages([]);
       } finally {
@@ -123,9 +123,9 @@ export function AssistantDock({
   useEffect(() => {
     if (loadedConversationNoteId !== noteId) return;
     try {
-      localStorage.setItem(getConversationStorageKey(noteId), JSON.stringify(messages.slice(-MAX_STORED_MESSAGES)));
+      window.sessionStorage.setItem(getConversationStorageKey(noteId), JSON.stringify(messages.slice(-MAX_STORED_MESSAGES)));
     } catch {
-      // 对话仍保留在当前页面内；存储空间不足不应中断提问。
+      // 对话仍保留在当前页面内；会话存储不可用时不应中断提问。
     }
   }, [loadedConversationNoteId, messages, noteId]);
 
