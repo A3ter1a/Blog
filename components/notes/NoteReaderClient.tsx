@@ -73,6 +73,8 @@ export function NoteReaderClient({
   const [note, setNote] = useState<Note | null>(initialNote);
   const [authorProfile, setAuthorProfile] = useState<PublicAiProfile | null>(null);
   const [loading, setLoading] = useState(initialLoadError || !initialNote);
+  const [loadError, setLoadError] = useState<string | null>(initialLoadError ? "暂时无法加载这篇笔记，请检查网络或 Supabase 配置，然后重试。" : null);
+  const [retryToken, setRetryToken] = useState(0);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isDeletingNote, setIsDeletingNote] = useState(false);
   const [isCoverExpanded, setIsCoverExpanded] = useState(Boolean(initialNote?.coverImage));
@@ -92,8 +94,33 @@ export function NoteReaderClient({
   const [assistantQuotedText, setAssistantQuotedText] = useState("");
   const [readerDirectoriesHidden, setReaderDirectoriesHidden] = useState(false);
   const readerDirectoriesBeforeAssistantRef = useRef(false);
+  const immersiveCloseButtonRef = useRef<HTMLButtonElement>(null);
+  const immersivePreviousFocusRef = useRef<HTMLElement | null>(null);
   const skipInitialChapterFetchRef = useRef(initialChaptersLoaded);
   const lastHashScrollRef = useRef("");
+
+  useEffect(() => {
+    if (!isImmersiveMode) return;
+
+    immersivePreviousFocusRef.current = document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null;
+    const focusTimer = window.requestAnimationFrame(() => immersiveCloseButtonRef.current?.focus());
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      event.stopPropagation();
+      setIsImmersiveMode(false);
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.cancelAnimationFrame(focusTimer);
+      document.removeEventListener("keydown", handleKeyDown);
+      immersivePreviousFocusRef.current?.focus();
+      immersivePreviousFocusRef.current = null;
+    };
+  }, [isImmersiveMode]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -126,20 +153,22 @@ export function NoteReaderClient({
         : await notesApi.getPublishedById(noteId);
       setNote(data);
       setIsCoverExpanded(Boolean(data?.coverImage));
+      setLoadError(null);
     } catch (error) {
       console.error("Failed to load note:", error);
+      setLoadError("暂时无法加载这篇笔记，请检查网络或 Supabase 配置，然后重试。");
     } finally {
       setLoading(false);
     }
   }, [accessScope, noteId]);
 
   useEffect(() => {
-    if (initialNote && !initialLoadError) return;
+    if (initialNote && !initialLoadError && retryToken === 0) return;
     const timer = window.setTimeout(() => {
       void loadNote();
     }, 0);
     return () => window.clearTimeout(timer);
-  }, [initialLoadError, initialNote, loadNote]);
+  }, [initialLoadError, initialNote, loadNote, retryToken]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -514,12 +543,30 @@ export function NoteReaderClient({
     setAssistantQuotedText("");
   }, []);
 
+  const handleRetryLoadNote = () => {
+    setLoadError(null);
+    setRetryToken((value) => value + 1);
+  };
+
   if (loading) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-surface px-4 pb-20 pt-24 sm:px-6">
         <div className="flex items-center gap-3">
           <Loader2 className="w-8 h-8 animate-spin text-primary" />
           <span className="text-on-surface-variant">加载笔记中...</span>
+        </div>
+      </main>
+    );
+  }
+
+  if (!note && loadError) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-surface px-4 pb-20 pt-24 sm:px-6">
+        <div className="surface-panel max-w-lg p-6 text-center" role="alert">
+          <AlertTriangle className="mx-auto h-8 w-8 text-error" />
+          <h1 className="mt-4 text-2xl font-bold text-on-surface">暂时无法加载笔记</h1>
+          <p className="mt-2 text-sm leading-6 text-on-surface-variant">请检查网络或 Supabase 配置，然后重试。若问题持续存在，可以稍后再试。</p>
+          <button type="button" onClick={handleRetryLoadNote} className="control-button control-button-primary mt-5 min-h-11 px-5 text-sm">重试</button>
         </div>
       </main>
     );
@@ -1089,6 +1136,16 @@ export function NoteReaderClient({
             exit="exit"
             transition={{ duration: uiMotion.duration.page, ease: uiMotion.ease.standard }}
             className="fixed inset-0 z-[100] bg-surface-container-lowest overflow-y-auto"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="immersive-note-title"
+            tabIndex={-1}
+            onKeyDown={(event) => {
+              if (event.key !== "Escape") return;
+              event.preventDefault();
+              event.stopPropagation();
+              setIsImmersiveMode(false);
+            }}
             onClick={() => setIsImmersiveMode(false)}
           >
             {/* Immersive Header */}
@@ -1101,6 +1158,13 @@ export function NoteReaderClient({
             >
               <div className="max-w-3xl mx-auto px-6 py-4 flex items-center justify-between">
                 <button
+                  type="button"
+                  ref={immersiveCloseButtonRef}
+                  aria-label="退出沉浸模式"
+                  onPointerDown={(event) => {
+                    event.stopPropagation();
+                    setIsImmersiveMode(false);
+                  }}
                   onClick={() => setIsImmersiveMode(false)}
                   className="motion-ui inline-flex items-center gap-2 text-on-surface-variant hover:text-primary"
                 >
@@ -1133,6 +1197,7 @@ export function NoteReaderClient({
                 initial="initial"
                 animate="animate"
                 transition={{ delay: 0.1, duration: uiMotion.duration.page, ease: uiMotion.ease.emphasized }}
+                id="immersive-note-title"
                 className="text-4xl md:text-5xl font-bold text-on-surface mb-8 font-headline leading-tight"
               >
                 {note.title}

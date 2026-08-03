@@ -214,6 +214,9 @@ export function JobCenterProvider({ children }: { children: ReactNode }) {
   const [activeBucket, setActiveBucket] = useState<JobBucket>("pending");
   const hydratedRef = useRef(false);
   const jobsRef = useRef<ClientJob[]>([]);
+  const drawerRef = useRef<HTMLElement>(null);
+  const drawerCloseRef = useRef<HTMLButtonElement>(null);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
   const pollingRef = useRef(new Set<string>());
   const cancelledRef = useRef(new Set<string>());
   const resultLoadingRef = useRef(new Set<string>());
@@ -848,16 +851,48 @@ export function JobCenterProvider({ children }: { children: ReactNode }) {
     running: jobs.filter((job) => getJobBucket(job) === "running").length,
     completed: jobs.filter((job) => getJobBucket(job) === "completed").length,
   }), [jobs, reviewNotices]);
-  const displayBucket: JobBucket = bucketCounts[activeBucket] > 0
-    ? activeBucket
-    : bucketCounts.running > 0
-      ? "running"
-      : bucketCounts.pending > 0
-        ? "pending"
-        : "completed";
+  const displayBucket: JobBucket = activeBucket;
   const visibleJobs = jobs.filter((job) => getJobBucket(job) === displayBucket);
   const hasMessages = jobs.length > 0 || reviewNotices.length > 0;
   const attentionCount = activeCount + unclaimedCount + reviewNotices.length;
+
+  useEffect(() => {
+    if (!isOpen || !hasMessages) return;
+
+    previousFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const focusTimer = window.requestAnimationFrame(() => drawerCloseRef.current?.focus());
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        setIsOpen(false);
+        return;
+      }
+
+      if (event.key !== "Tab" || !drawerRef.current) return;
+      const focusable = Array.from(drawerRef.current.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ));
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.cancelAnimationFrame(focusTimer);
+      document.removeEventListener("keydown", handleKeyDown);
+      previousFocusRef.current?.focus();
+      previousFocusRef.current = null;
+    };
+  }, [hasMessages, isOpen]);
 
   return (
     <JobCenterContext.Provider value={value}>
@@ -885,14 +920,20 @@ export function JobCenterProvider({ children }: { children: ReactNode }) {
 
       {!isUiLab && isOpen && hasMessages && (
         <div className="job-center-overlay" role="presentation" onClick={() => setIsOpen(false)}>
-          <aside className="job-center-drawer" role="dialog" aria-modal="true" aria-label="消息中心" onClick={(event) => event.stopPropagation()}>
+          <aside ref={drawerRef} className="job-center-drawer" role="dialog" aria-modal="true" aria-label="消息中心" onClick={(event) => event.stopPropagation()} onKeyDown={(event) => {
+            if (event.key === "Escape") {
+              event.preventDefault();
+              event.stopPropagation();
+              setIsOpen(false);
+            }
+          }}>
             <header className="job-center-header">
               <div>
                 <span>任务通知</span>
                 <h2>消息中心</h2>
                 <p>需要你决策、编辑或留意的事项会保留在这里。</p>
               </div>
-              <button type="button" onClick={() => setIsOpen(false)} aria-label="关闭消息中心"><X className="h-5 w-5" /></button>
+              <button ref={drawerCloseRef} type="button" onClick={() => setIsOpen(false)} aria-label="关闭消息中心"><X className="h-5 w-5" /></button>
             </header>
 
             <div className="job-center-bucket-tabs" role="tablist" aria-label="消息状态分组">

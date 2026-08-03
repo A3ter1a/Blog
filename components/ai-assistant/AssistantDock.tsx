@@ -297,6 +297,13 @@ export function AssistantDock({
       className="assistant-dock-panel"
       role="complementary"
       aria-labelledby="assistant-dock-title"
+      onKeyDown={(event) => {
+        if (event.key === "Escape") {
+          event.preventDefault();
+          event.stopPropagation();
+          onOpenChange(false);
+        }
+      }}
     >
       <header className="assistant-dock-header">
         <div className="flex min-w-0 items-start gap-3">

@@ -1,6 +1,7 @@
 import { profileApi } from "@/lib/supabase";
 import { AboutClient } from "@/components/about/AboutClient";
 import { createPageMetadata } from "@/lib/site-metadata";
+import { DEFAULT_PROFILE } from "@/lib/profile";
 
 export const metadata = createPageMetadata({
   title: "关于",
@@ -11,8 +12,30 @@ export const metadata = createPageMetadata({
 
 export const revalidate = 0;
 
+const PROFILE_REQUEST_TIMEOUT_MS = 2_500;
+
+async function getPublicProfileWithTimeout() {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      profileApi.get(),
+      new Promise<never>((_, reject) => {
+        timeoutId = setTimeout(
+          () => reject(new Error("公开资料加载超时")),
+          PROFILE_REQUEST_TIMEOUT_MS,
+        );
+      }),
+    ]);
+  } catch (error) {
+    console.warn("Falling back to the default public profile:", error);
+    return DEFAULT_PROFILE;
+  } finally {
+    if (timeoutId !== undefined) clearTimeout(timeoutId);
+  }
+}
+
 export default async function About() {
-  const profile = await profileApi.get();
+  const profile = await getPublicProfileWithTimeout();
 
   return <AboutClient profile={profile} />;
 }

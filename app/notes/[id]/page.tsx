@@ -82,7 +82,19 @@ export async function generateMetadata(
   parent: ResolvingMetadata,
 ): Promise<Metadata> {
   const { id } = await params;
-  const note = await getPublishedNote(id);
+  let note: Note | null;
+  try {
+    note = await getPublishedNote(id);
+  } catch (error) {
+    // Metadata must not turn a temporary data-source failure into a route-level
+    // error page. The reader itself has a recoverable loading state and retry.
+    console.error("Failed to preload note metadata:", error);
+    return createNoIndexMetadata({
+      title: "笔记",
+      description: "Asteroid 学习笔记。",
+      path: `/notes/${id}`,
+    });
+  }
 
   if (!note) {
     return createNoIndexMetadata({

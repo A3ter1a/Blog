@@ -15,6 +15,7 @@ export function SearchBar({ value, onChange }: SearchBarProps) {
         type="text"
         value={value}
         onChange={(e) => onChange(e.target.value)}
+        aria-label="搜索笔记标题或标签"
         placeholder="搜索笔记标题或标签..."
         className="field-control w-full py-4 pl-12 pr-6 text-on-surface placeholder:text-on-surface-variant/40"
       />

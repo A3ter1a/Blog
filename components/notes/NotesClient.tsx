@@ -20,6 +20,27 @@ import { collapsibleMotion, surfaceMotion, uiMotion } from "@/lib/motion";
 import { CollectionCard } from "@/components/collections/CollectionCard";
 import type { CollectionSummary } from "@/lib/collections-contract";
 
+const NOTES_REQUEST_TIMEOUT_MS = 8_000;
+
+function withNotesRequestTimeout<T>(promise: Promise<T>): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timeoutId = window.setTimeout(() => {
+      reject(new Error("请求笔记超时，请检查网络或 Supabase 配置。"));
+    }, NOTES_REQUEST_TIMEOUT_MS);
+
+    promise.then(
+      (value) => {
+        window.clearTimeout(timeoutId);
+        resolve(value);
+      },
+      (error: unknown) => {
+        window.clearTimeout(timeoutId);
+        reject(error);
+      },
+    );
+  });
+}
+
 interface NotesClientProps {
   initialNotes?: Note[];
   initialHasMoreNotes?: boolean;
@@ -50,6 +71,8 @@ export function NotesClient({
   const [hasMoreNotes, setHasMoreNotes] = useState(initialHasMoreNotes);
   const [isRefreshingNotes, setIsRefreshingNotes] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(initialLoadError ? "暂时无法加载笔记，请检查网络或 Supabase 配置，然后重试。" : null);
+  const [retryToken, setRetryToken] = useState(0);
   
   // Selection state
   const [selectMode, setSelectMode] = useState(false);
@@ -90,23 +113,26 @@ export function NotesClient({
         setIsRefreshingNotes(true);
       }
 
-      const data = query
-        ? await notesApi.searchSummaries(query, typeFilter, subjectFilter, sortOrder, {
-          limit: NOTES_SEARCH_RESULT_LIMIT,
-          includeCoverImage: false,
-          authorKind: directoryKind,
-        })
-        : await notesApi.getSummaries({
-          type: typeFilter,
-          subject: subjectFilter,
-          authorKind: directoryKind,
-          sortOrder,
-          limit: NOTES_PAGE_SIZE + 1,
-          offset,
-          includeCoverImage: false,
-        });
+      const data = await withNotesRequestTimeout(
+        query
+          ? notesApi.searchSummaries(query, typeFilter, subjectFilter, sortOrder, {
+            limit: NOTES_SEARCH_RESULT_LIMIT,
+            includeCoverImage: false,
+            authorKind: directoryKind,
+          })
+          : notesApi.getSummaries({
+            type: typeFilter,
+            subject: subjectFilter,
+            authorKind: directoryKind,
+            sortOrder,
+            limit: NOTES_PAGE_SIZE + 1,
+            offset,
+            includeCoverImage: false,
+          }),
+      );
 
       if (latestLoadId.current === loadId) {
+        setLoadError(null);
         if (query) {
           setVisibleNotes(data);
           setHasMoreNotes(false);
@@ -122,6 +148,7 @@ export function NotesClient({
     } catch (error) {
       if (latestLoadId.current === loadId) {
         console.error("Failed to load notes:", error);
+        setLoadError("暂时无法加载笔记，请检查网络或 Supabase 配置，然后重试。");
       }
     } finally {
       if (latestLoadId.current === loadId) {
@@ -182,7 +209,7 @@ export function NotesClient({
         window.clearTimeout(fetchTimer);
       }
     };
-  }, [directoryKind, fetchNotesPage, initialHasMoreNotes, searchQuery, selectedSubject, selectedType, sortOrder, setVisibleNotes]);
+  }, [directoryKind, fetchNotesPage, initialHasMoreNotes, retryToken, searchQuery, selectedSubject, selectedType, sortOrder, setVisibleNotes]);
 
   useEffect(() => {
     const ids = visibleNoteIdsKey ? visibleNoteIdsKey.split("|") : [];
@@ -257,6 +284,11 @@ export function NotesClient({
     setSelectedType("all");
     setSelectedSubject("all");
     setSortOrder("desc");
+  };
+
+  const handleRetryNotes = () => {
+    setLoadError(null);
+    setRetryToken((value) => value + 1);
   };
 
   const handleToggleSelect = (noteId: string) => {
@@ -552,10 +584,29 @@ export function NotesClient({
               正在刷新
             </div>
           )}
+          {!loading && loadError && filteredNotes.length > 0 && (
+            <div className="mb-4 flex flex-col gap-3 rounded-xl border border-error/20 bg-error/5 px-4 py-3 text-sm text-on-surface sm:flex-row sm:items-center sm:justify-between" role="alert">
+              <div>
+                <p className="font-medium">暂时无法刷新笔记</p>
+                <p className="mt-1 text-xs text-on-surface-variant">请检查网络或 Supabase 配置，当前仍显示上一次成功加载的内容。</p>
+              </div>
+              <button type="button" onClick={handleRetryNotes} className="control-button min-h-10 shrink-0 px-4 text-sm">
+                重试
+              </button>
+            </div>
+          )}
           {loading ? (
             <div className="flex items-center justify-center py-20">
               <Loader2 className="w-8 h-8 animate-spin text-primary" />
               <span className="ml-3 text-on-surface-variant">加载笔记中...</span>
+            </div>
+          ) : loadError ? (
+            <div className="surface-panel border border-error/20 bg-error/5 px-6 py-14 text-center" role="alert">
+              <p className="text-lg font-medium text-on-surface">暂时无法加载笔记</p>
+              <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-on-surface-variant">请检查网络或 Supabase 配置，然后重试。若问题持续存在，可以稍后再试。</p>
+              <button type="button" onClick={handleRetryNotes} className="control-button control-button-primary mt-5 min-h-11 px-5 text-sm">
+                重试
+              </button>
             </div>
           ) : filteredNotes.length > 0 ? (
             <>
