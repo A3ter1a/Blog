@@ -7,7 +7,7 @@ import { FileText, BookOpen, Calendar, Check, Clock } from "lucide-react";
 import { estimateReadingTime } from "@/lib/utils";
 import { getVisibleNoteTags } from "@/lib/math3-practice";
 import { getNoteReadPath } from "@/lib/note-routes";
-import { getListItemTransition, surfaceMotion, uiMotion } from "@/lib/motion";
+import { getListItemTransition, surfaceMotion } from "@/lib/motion";
 
 interface NoteCardProps {
   note: Note;

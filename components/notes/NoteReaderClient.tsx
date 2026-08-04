@@ -278,16 +278,6 @@ export function NoteReaderClient({
     return groups.length > 1 ? groups : null;
   }, [allProblems, chapters, selectedChapterId]);
 
-  const expandProblemGroupForProblem = useCallback((problemId: string) => {
-    if (!chapterGroups) return;
-    const group = chapterGroups.find((candidate) => candidate.problems.some((problem) => problem.id === problemId));
-    if (!group) return;
-    const groupKey = getProblemGroupKey(group);
-    setProblemGroupExpansion((current) => current[groupKey] === true
-      ? current
-      : { ...current, [groupKey]: true });
-  }, [chapterGroups]);
-
   const ensureProblemRendered = useCallback((problemId: string) => {
     const group = chapterGroups?.find((candidate) => candidate.problems.some((problem) => problem.id === problemId));
     if (group) {
@@ -814,7 +804,10 @@ export function NoteReaderClient({
                 className="mb-4 inline-flex min-h-11 items-center gap-3 rounded-xl border border-outline-variant/20 bg-surface-container-low px-3 py-2 transition duration-200 hover:border-primary/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35"
               >
                 <span className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-primary/10 text-sm font-semibold text-primary">
-                  {authorProfile.avatar_url ? <img src={authorProfile.avatar_url} alt="" className="h-full w-full object-cover" /> : authorProfile.display_name.slice(0, 1)}
+                  {authorProfile.avatar_url ? <>
+                    {/* eslint-disable-next-line @next/next/no-img-element -- Profile avatars may be arbitrary Supabase or user-provided URLs. */}
+                    <img src={authorProfile.avatar_url} alt="" className="h-full w-full object-cover" />
+                  </> : authorProfile.display_name.slice(0, 1)}
                 </span>
                 <span className="text-left">
                   <strong className="block text-sm text-on-surface">{authorProfile.display_name}</strong>

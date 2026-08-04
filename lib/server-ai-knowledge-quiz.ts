@@ -9,7 +9,6 @@ import {
   runAiKnowledgeQuizSelfCheck,
   toPublicAiKnowledgeQuizItem,
   type AiKnowledgeQuizItem,
-  type AiKnowledgeQuizItemDraft,
   type AiKnowledgeQuizItemPublic,
   type AiKnowledgeQuizSelfCheck,
   type AiKnowledgeQuizStatus,

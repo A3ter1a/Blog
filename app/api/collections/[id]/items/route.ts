@@ -3,7 +3,6 @@ import { getCollectionRequestContext } from "@/lib/server-collection-auth";
 import {
   addNoteToCollection,
   CollectionWorkflowError,
-  getNoteCollection,
   removeNoteFromCollection,
   updateCollectionItemOrder,
 } from "@/lib/server-note-collections";

@@ -67,7 +67,9 @@ function sanitizeJobSummaryPayload(value: Json): Json {
 }
 
 export function sanitizeJobSummaryRow(row: JobRow): JobSummaryRow {
-  const { result: _result, ...summary } = row;
+  const summary = Object.fromEntries(
+    Object.entries(row).filter(([key]) => key !== "result"),
+  ) as JobSummaryRow;
   return {
     ...summary,
     payload: sanitizeJobSummaryPayload(row.payload),

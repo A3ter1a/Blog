@@ -18,9 +18,7 @@ import type {
   EnglishTrainingData,
 } from "./english-training";
 import type {
-  EnglishAttemptAnswerInsert,
   EnglishAttemptAnswerRow,
-  EnglishAttemptInsert,
   EnglishAttemptRow,
   EnglishPaperRow,
   EnglishPassageRow,

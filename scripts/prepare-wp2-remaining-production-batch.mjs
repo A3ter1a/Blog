@@ -19,10 +19,6 @@ function sha256(value) {
   return createHash("sha256").update(value, "utf8").digest("hex");
 }
 
-function readJson(path) {
-  return JSON.parse(readFileSync(path, "utf8"));
-}
-
 function assert(condition, message) {
   if (!condition) throw new Error(message);
 }

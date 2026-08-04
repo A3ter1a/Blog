@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { Check, FileText, ListChecks, Loader2, RefreshCcw, Send, ShieldCheck, Sparkles } from "lucide-react";
+import { FileText, ListChecks, Loader2, RefreshCcw, Send, ShieldCheck, Sparkles } from "lucide-react";
 import { ContentPreview } from "@/components/ui/ContentPreview";
 import { useToast } from "@/components/ui/Toast";
 import { buildAuthHeaders } from "@/lib/fetch-with-auth";

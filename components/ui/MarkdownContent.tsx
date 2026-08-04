@@ -406,19 +406,11 @@ export function MarkdownContent({
   const containerRef = useRef<HTMLDivElement>(null);
   const htmlContent = useMemo(() => renderMarkdownToHtml(content), [content]);
 
-  const processRenderedContent = () => {
-    if (containerRef.current) {
-      if (enableEconomicsGraphs) {
-        processEconomicsGraphs(containerRef.current);
-      }
-      if (enableEconomicsTerms) {
-        processEconomicsTerms(containerRef.current);
-      }
-    }
-  };
-
   useLayoutEffect(() => {
-    processRenderedContent();
+    const container = containerRef.current;
+    if (!container) return;
+    if (enableEconomicsGraphs) processEconomicsGraphs(container);
+    if (enableEconomicsTerms) processEconomicsTerms(container);
   }, [enableEconomicsGraphs, enableEconomicsTerms, htmlContent]);
 
   return (

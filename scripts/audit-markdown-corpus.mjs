@@ -208,7 +208,9 @@ writeFileSync(manifestPath, `${JSON.stringify({
   scenarioCounts,
   candidateScenarioCounts,
   localCorpusPath: ".local-backups/wp2-markdown-corpus/historical-cases.json",
-  cases: cases.map(({ input: _input, ...metadata }) => metadata),
+  cases: cases.map((item) => Object.fromEntries(
+    Object.entries(item).filter(([key]) => key !== "input"),
+  )),
 }, null, 2)}\n`);
 
 console.log(`PASS 公开笔记：${notes.length} 篇`);

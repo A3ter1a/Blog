@@ -30,7 +30,7 @@ for (const [relative, markers] of required) {
 }
 
 const contract = fs.readFileSync(path.join(root, "lib/ai-knowledge-quiz-contract.ts"), "utf8");
-if (!contract.includes('const { answer: _answer, explanation: _explanation')) {
+if (!contract.includes('key !== "answer" && key !== "explanation"')) {
   failures.push("public quiz projection must strip answer and explanation");
 }
 const migration = fs.readFileSync(path.join(root, "supabase/migrations/0027_ai_knowledge_quizzes.sql"), "utf8");

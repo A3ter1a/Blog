@@ -212,8 +212,9 @@ export function runAiKnowledgeQuizSelfCheck(value: unknown): AiKnowledgeQuizSelf
 }
 
 export function toPublicAiKnowledgeQuizItem(item: AiKnowledgeQuizItem): AiKnowledgeQuizItemPublic {
-  const { answer: _answer, explanation: _explanation, ...publicItem } = item;
-  return publicItem;
+  return Object.fromEntries(
+    Object.entries(item).filter(([key]) => key !== "answer" && key !== "explanation"),
+  ) as AiKnowledgeQuizItemPublic;
 }
 
 export function canonicalAiKnowledgeQuizPayload(items: AiKnowledgeQuizItem[]): string {

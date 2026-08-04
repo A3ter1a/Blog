@@ -126,10 +126,15 @@ writeFileSync(manifestPath, `${JSON.stringify({
   requiresReviewCount: reviewItems.length,
   unchangedRiskFreeFieldsOmitted: true,
   localPlanPath: `.local-backups/wp2-markdown-migration/${batchId}.json`,
-  items: snapshots.map(({ beforeText: _before, afterText: _after, noteTitle, ...item }) => ({
-    ...item,
-    noteTitleSha256: sha256(noteTitle ?? ""),
-  })),
+  items: snapshots.map((item) => {
+    const metadata = Object.fromEntries(
+      Object.entries(item).filter(([key]) => key !== "beforeText" && key !== "afterText" && key !== "noteTitle"),
+    );
+    return {
+      ...metadata,
+      noteTitleSha256: sha256(typeof item.noteTitle === "string" ? item.noteTitle : ""),
+    };
+  }),
 }, null, 2)}\n`);
 
 console.log(`PASS 只读扫描公开笔记：${(data ?? []).length} 篇`);

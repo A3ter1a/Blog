@@ -224,7 +224,9 @@ export function MathPaperOcrReview() {
   useEffect(() => {
     pagesRef.current = pages;
     if (hydratedRef.current) {
-      writeJsonStorage(MATH_PAPER_OCR_SESSION_KEY, pages.map(({ file: _file, previewUrl: _previewUrl, ...page }) => page));
+      writeJsonStorage(MATH_PAPER_OCR_SESSION_KEY, pages.map((page) => Object.fromEntries(
+        Object.entries(page).filter(([key]) => key !== "file" && key !== "previewUrl"),
+      )));
     }
   }, [pages]);
   useEffect(() => () => pagesRef.current.forEach((page) => {

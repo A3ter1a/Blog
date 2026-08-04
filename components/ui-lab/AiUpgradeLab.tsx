@@ -17,13 +17,11 @@ import {
   Clock,
   FileText,
   Layers,
-  LayoutDashboard,
   MessageCircle,
   MoreHorizontal,
   Orbit,
   PanelLeftClose,
   PanelLeftOpen,
-  PanelRight,
   Pause,
   Play,
   Quote,
@@ -33,7 +31,6 @@ import {
   SlidersHorizontal,
   Sparkles,
   StepForward,
-  UserRound,
   Users,
   X,
 } from "lucide-react";
@@ -219,10 +216,6 @@ const reviewItems = [
   { id: "review-politics", title: "近代中国革命的主线", meta: "砚知 · v3", detail: "已通过自检", tone: "done" },
 ];
 
-function initials(name: string) {
-  return name.slice(0, 1);
-}
-
 function KnowledgeGraphCard({
   favorite,
   step,
@@ -374,7 +367,6 @@ export default function AiUpgradeLab() {
   const visibleNotes = useMemo(() => noteFilter === "all" ? notes : notes.filter((note) => note.type === noteFilter), [noteFilter]);
   const currentRole = roles.find((role) => role.profile === selectedRole) ?? roles[3];
   const pendingCount = Object.values(messageState).filter((status) => status === "pending").length;
-  const runningCount = Object.values(messageState).filter((status) => status === "running").length;
   const memoryCounts = useMemo(() => ({
     pending: Object.values(memoryState).filter((state) => state === "待审核").length,
     enabled: Object.values(memoryState).filter((state) => state === "已启用").length,

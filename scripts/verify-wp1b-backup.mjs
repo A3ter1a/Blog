@@ -27,8 +27,7 @@ function sha256(path) {
 }
 
 function normalizeAudit(audit) {
-  const { capturedAt: _capturedAt, ...stable } = audit;
-  return stable;
+  return Object.fromEntries(Object.entries(audit).filter(([key]) => key !== "capturedAt"));
 }
 
 function stableJson(value) {

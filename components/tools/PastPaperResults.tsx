@@ -19,7 +19,6 @@ import { findUnreconciledEnglishLocalHistory, type EnglishTrainingPersistenceMod
 import {
   ENGLISH_ROUND_HISTORY_CHANGE_EVENT,
   getEffectiveEnglishRoundResult,
-  getLatestEnglishRoundRevision,
   importLegacyEnglishAttempt,
   readEnglishRoundLedgers,
   upsertEnglishRoundLedger,
