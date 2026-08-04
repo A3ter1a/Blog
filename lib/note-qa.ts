@@ -23,6 +23,14 @@ export type NoteQASource = {
   score: number;
 };
 
+export type NoteQARetrievalSummary = {
+  confidence: "high" | "medium" | "low";
+  matchedChunks: number;
+  totalChunks: number;
+  topScore: number;
+  averageScore: number;
+};
+
 type NoteQAChunk = NoteQASource & {
   content: string;
 };
@@ -34,6 +42,32 @@ export type NoteQAContextResult = {
   sources: NoteQASource[];
   totalChunks: number;
 };
+
+export function summarizeNoteQARetrieval(
+  sources: NoteQASource[],
+  totalChunks: number,
+): NoteQARetrievalSummary {
+  const scores = sources
+    .map((source) => source.score)
+    .filter((score) => Number.isFinite(score))
+    .map((score) => Math.max(0, Math.min(1, score)));
+  const topScore = scores.length > 0 ? Math.max(...scores) : 0;
+  const averageScore = scores.length > 0
+    ? scores.reduce((sum, score) => sum + score, 0) / scores.length
+    : 0;
+
+  return {
+    confidence: topScore >= 0.62 && averageScore >= 0.38
+      ? "high"
+      : topScore >= 0.34 && averageScore >= 0.16
+        ? "medium"
+        : "low",
+    matchedChunks: sources.length,
+    totalChunks: Math.max(0, totalChunks),
+    topScore: Number(topScore.toFixed(3)),
+    averageScore: Number(averageScore.toFixed(3)),
+  };
+}
 
 const MAX_QUESTION_LENGTH = 500;
 const MAX_CHUNK_CHARS = 900;

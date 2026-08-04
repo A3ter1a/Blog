@@ -168,7 +168,7 @@ import {
   splitRagSourceText,
   toPgVectorLiteral,
 } from "../lib/rag-source-adapter.ts";
-import { scoreEnglishObjectiveAnswers } from "../lib/english-scoring.ts";
+import { encodeEnglishManualScore, scoreEnglishObjectiveAnswers } from "../lib/english-scoring.ts";
 import { normalizeEnglishSubjectiveGradeSuggestion } from "../lib/english-subjective-grade.ts";
 import {
   buildProblemOcrJobResult,
@@ -1333,6 +1333,18 @@ test("英语客观题由可信共享逻辑评分且主观题拒绝 system score"
       { questionId: "q2", isCorrect: false, score: 0 },
     ],
     score: 2,
+    maxScore: 4,
+  });
+  const manuallyRecorded = scoreEnglishObjectiveAnswers("reading", [
+    { id: "q1", standardAnswer: "A", score: 2 },
+    { id: "q2", standardAnswer: "B", score: 2 },
+  ], { q1: encodeEnglishManualScore(1.5), q2: encodeEnglishManualScore(0) });
+  assert.deepEqual(manuallyRecorded, {
+    grades: [
+      { questionId: "q1", isManual: true, score: 1.5 },
+      { questionId: "q2", isManual: true, score: 0 },
+    ],
+    score: 1.5,
     maxScore: 4,
   });
   assert.throws(() => scoreEnglishObjectiveAnswers("translation", [], {}));

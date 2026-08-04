@@ -53,7 +53,9 @@ assert(/sync_private_note_rag/.test(ragServer) && /search_private_note_rag/.test
 assert(/buildTokenHashVector/.test(vectorAdapter) && /RAG_TOKEN_HASH_DIMENSIONS = 256/.test(vectorAdapter), "本地向量契约不完整");
 assert(/propose_assistant_memory/.test(memoryServer) && /decide_assistant_memory/.test(memoryServer), "服务端记忆 RPC 接线不完整");
 assert(/fetch\("\/api\/assistant\/memories"/.test(assistantDock), "助手 Dock 未接持久记忆 API");
-assert(!/localStorage/.test(assistantDock), "助手记忆不得继续写 localStorage");
+assert(/ASSISTANT_CONVERSATION_STORAGE_PREFIX/.test(assistantDock), "助手对话缺少版本化本地缓存键");
+assert(/localStorage\.setItem\(getConversationStorageKey/.test(assistantDock), "助手对话未写入版本化 localStorage");
+assert(!/memoryStorage|memoryCandidates|assistantMemories/.test(assistantDock), "助手记忆不得写入本地存储");
 assert(/PREVIEW \$ShadowProjectRef WP7 0021 ROLLBACK/.test(shadowRunner), "WP7 Shadow runner 缺少回滚预演门");
 assert(/default_transaction_read_only=on/.test(shadowRunner), "WP7 Shadow pre/postflight 未强制只读");
 assert(/READ \$ShadowProjectRef WP7 TYPES/.test(shadowTypegen), "WP7 typegen 缺少精确 fixed Shadow 读取门");

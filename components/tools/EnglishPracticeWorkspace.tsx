@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ArrowLeft, ArrowRight, Check, ChevronRight, ClipboardCheck, Loader2, PenLine, Save, X } from "lucide-react";
 import type { EnglishAttemptAnswerInput } from "@/lib/english-training-api";
+import { parseEnglishManualScore } from "@/lib/english-scoring";
 import type { EnglishTrainingPersistenceMode } from "@/lib/english-training-core";
 import type { EnglishSubjectiveGradeSuggestion } from "@/lib/english-subjective-grade";
 import {
@@ -158,7 +159,7 @@ export function getPassageDisplayTitle(passage: EnglishPassage): string {
 
 export function EnglishPracticeWorkspace({
   passage, questions, attempt, ledger, activeRound, roundRecord, roundRevision, editingSubmitted,
-  answers, saving, subjectiveBusy, startingNext, persistenceMode, loading, articlePage, onArticlePageChange, onBack, onAnswerChange, onRoundChange,
+  answers, saving, subjectiveBusy, startingNext, persistenceMode, loading, articlePage, onArticlePageChange, directScoreMode, onDirectScoreModeChange, onDirectScoreChange, onBack, onAnswerChange, onRoundChange,
   onStartNextRound, onStartEditingSubmitted, onCancelEditingSubmitted, onSave, onSubmit, onConfirmSubjectiveGrade,
 }: {
   passage: EnglishPassage | null;
@@ -177,6 +178,9 @@ export function EnglishPracticeWorkspace({
   loading: boolean;
   articlePage: number;
   onArticlePageChange: (page: number) => void;
+  directScoreMode: boolean;
+  onDirectScoreModeChange: (enabled: boolean) => void;
+  onDirectScoreChange: (questionId: string, value: string) => void;
   onBack: () => void;
   onAnswerChange: (questionId: string, answer: string) => void;
   onRoundChange: (round: 1 | 2 | 3) => void;
@@ -192,6 +196,11 @@ export function EnglishPracticeWorkspace({
     suggestion: EnglishSubjectiveGradeSuggestion,
   ) => void;
 }) {
+  const articlePageRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    articlePageRef.current?.scrollTo({ top: 0, behavior: "auto" });
+  }, [articlePage]);
+
   if (loading) return <WorkspaceMessage icon={<Loader2 className="h-6 w-6 animate-spin text-primary" />} text="正在加载英语真题训练。" />;
   if (!passage) return <WorkspaceMessage text="没有找到当前题组。" />;
 
@@ -213,7 +222,7 @@ export function EnglishPracticeWorkspace({
     suggestions: Array.isArray(suggestionBreakdown.suggestions) ? suggestionBreakdown.suggestions.filter((item): item is string => typeof item === "string") : [],
     confidence: typeof suggestionBreakdown.confidence === "number" ? suggestionBreakdown.confidence : 0,
   } : null;
-  const articlePages = paginatePassageContent(passage.content);
+  const articlePages = paginatePassageContent(passage.content, 280);
   const currentPage = Math.min(articlePage, Math.max(articlePages.length - 1, 0));
   const latestRound = ledger?.rounds.reduce((latest, round) => Math.max(latest, round.round) as 1 | 2 | 3, 1) ?? 1;
   const hasFormalSubjectiveGrade = objective || roundRevision?.gradeOrigin !== "ai_suggested";
@@ -232,12 +241,16 @@ export function EnglishPracticeWorkspace({
         <div className="flex shrink-0 flex-wrap gap-2">
           {submitted ? editingSubmitted ? <>
             <button type="button" onClick={onCancelEditingSubmitted} disabled={busy} className="control-button h-10 px-3 text-sm"><X className="h-4 w-4" />取消修改</button>
-            <button type="button" onClick={onSubmit} disabled={busy || questions.length === 0 || (!objective && persistenceMode === "legacy")} className="control-button control-button-primary h-10 px-3 text-sm">{saving === "submit" || subjectiveBusy === "suggest" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}{objective ? "保存修改" : "重新获取 AI 建议"}</button>
-          </> : <button type="button" onClick={onStartEditingSubmitted} disabled={busy || questions.length === 0 || (!objective && persistenceMode === "legacy")} className="control-button control-button-primary h-10 px-3 text-sm"><PenLine className="h-4 w-4" />{objective ? "修改结果" : "修改答案"}</button> : <>
+            <button type="button" onClick={onSubmit} disabled={busy || questions.length === 0 || (!directScoreMode && !objective && persistenceMode === "legacy")} className="control-button control-button-primary h-10 px-3 text-sm">{saving === "submit" || subjectiveBusy === "suggest" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}{directScoreMode ? "保存得分" : objective ? "保存修改" : "重新获取 AI 建议"}</button>
+          </> : <button type="button" onClick={onStartEditingSubmitted} disabled={busy || questions.length === 0 || (!directScoreMode && !objective && persistenceMode === "legacy")} className="control-button control-button-primary h-10 px-3 text-sm"><PenLine className="h-4 w-4" />{directScoreMode ? "修改得分" : objective ? "修改结果" : "修改答案"}</button> : <>
             <button type="button" onClick={onSave} disabled={busy} className="control-button h-10 px-3 text-sm">{saving === "save" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}保存</button>
-            <button type="button" onClick={onSubmit} disabled={busy || questions.length === 0 || (!objective && persistenceMode === "legacy")} className="control-button control-button-primary h-10 px-3 text-sm">{saving === "submit" || subjectiveBusy === "suggest" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}{objective ? "提交本篇" : "获取 AI 建议"}</button>
+            <button type="button" onClick={onSubmit} disabled={busy || questions.length === 0 || (!directScoreMode && !objective && persistenceMode === "legacy")} className="control-button control-button-primary h-10 px-3 text-sm">{saving === "submit" || subjectiveBusy === "suggest" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}{directScoreMode ? "记录得分" : objective ? "提交本篇" : "获取 AI 建议"}</button>
           </>}
         </div>
+        {questions.length > 0 && <div className="english-direct-score-card">
+          <div><strong>已有纸笔结果？</strong><span>按题记录得分，无需重新输入答案。</span></div>
+          <button type="button" className="english-direct-score-toggle" aria-pressed={directScoreMode} onClick={() => onDirectScoreModeChange(!directScoreMode)}>{directScoreMode ? "返回作答" : "直接记分"}</button>
+        </div>}
       </div>
 
       {!objective && suggestion && !editingSubmitted && (
@@ -269,25 +282,28 @@ export function EnglishPracticeWorkspace({
       </div>
 
       <div className="english-practice-grid">
-        <article className="english-article-pane">{articlePages.length > 0 ? <>
-          <div className="mb-4 flex items-center justify-between gap-3 text-xs text-on-surface-variant">
+        <article className="english-article-pane" aria-label="英语真题原文">{articlePages.length > 0 ? <>
+          <div className="english-article-pager flex items-center justify-between gap-3 text-xs text-on-surface-variant">
             <span>文章 {currentPage + 1} / {articlePages.length}</span>
             <div className="flex gap-2">
-              <button type="button" onClick={() => onArticlePageChange(Math.max(currentPage - 1, 0))} disabled={currentPage === 0} className="control-button h-8 min-h-0 px-2 text-xs"><ArrowLeft className="h-3.5 w-3.5" /></button>
-              <button type="button" onClick={() => onArticlePageChange(Math.min(currentPage + 1, articlePages.length - 1))} disabled={currentPage >= articlePages.length - 1} className="control-button h-8 min-h-0 px-2 text-xs"><ArrowRight className="h-3.5 w-3.5" /></button>
+              <button type="button" onClick={() => onArticlePageChange(Math.max(currentPage - 1, 0))} disabled={currentPage === 0} aria-label="上一页文章" className="control-button english-article-nav-button min-h-11 px-3 text-xs"><ArrowLeft className="h-3.5 w-3.5" /><span className="sr-only">上一页</span></button>
+              <button type="button" onClick={() => onArticlePageChange(Math.min(currentPage + 1, articlePages.length - 1))} disabled={currentPage >= articlePages.length - 1} aria-label="下一页文章" className="control-button english-article-nav-button min-h-11 px-3 text-xs"><ArrowRight className="h-3.5 w-3.5" /><span className="sr-only">下一页</span></button>
             </div>
           </div>
-          <div className="english-article-page"><PassagePageContent content={articlePages[currentPage]} cloze={passage.section === "cloze"} /></div>
+          <div ref={articlePageRef} className="english-article-page"><PassagePageContent content={articlePages[currentPage]} cloze={passage.section === "cloze"} /></div>
         </> : <div className="flex min-h-[28rem] items-center justify-center rounded-lg border border-dashed border-outline-variant/30 text-sm text-on-surface-variant">这篇真题原文还未导入。</div>}</article>
 
         <aside className="english-question-pane">{questions.length === 0 ? <p className="py-4 text-sm text-on-surface-variant">这篇的题目和评分来源还未导入。</p> : <div className="grid gap-4">{questions.map((question) => {
           const submittedAnswer = roundRevision?.answers[question.id] ?? "";
-          const correct = Boolean(normalizeEnglishObjectiveAnswer(question.standardAnswer) && normalizeEnglishObjectiveAnswer(submittedAnswer)
-            && normalizeEnglishObjectiveAnswer(question.standardAnswer) === normalizeEnglishObjectiveAnswer(submittedAnswer));
-          const savedAnswer = objective
-            ? roundRevision ? { isCorrect: correct, score: correct ? question.score : 0 } : attempt?.answers.find((answer) => answer.questionId === question.id)
-            : undefined;
-          return <QuestionBlock key={question.id} passage={passage} question={question} value={answers[question.id] ?? ""} savedAnswer={savedAnswer} submitted={submitted && !editingSubmitted} readOnly={submitted && !editingSubmitted} objective={objective} onChange={(answer) => onAnswerChange(question.id, answer)} />;
+           const manualScore = parseEnglishManualScore(submittedAnswer, question.score);
+           const correct = Boolean(manualScore === null && normalizeEnglishObjectiveAnswer(question.standardAnswer) && normalizeEnglishObjectiveAnswer(submittedAnswer)
+             && normalizeEnglishObjectiveAnswer(question.standardAnswer) === normalizeEnglishObjectiveAnswer(submittedAnswer));
+           const savedAnswer = manualScore !== null
+             ? { isManual: true, score: manualScore }
+             : objective
+               ? roundRevision ? { isCorrect: correct, score: correct ? question.score : 0 } : attempt?.answers.find((answer) => answer.questionId === question.id)
+               : undefined;
+           return <QuestionBlock key={question.id} passage={passage} question={question} value={answers[question.id] ?? ""} savedAnswer={savedAnswer} submitted={submitted && !editingSubmitted} readOnly={submitted && !editingSubmitted} objective={objective} directScoreMode={directScoreMode} onChange={(answer) => onAnswerChange(question.id, answer)} onScoreChange={(score) => onDirectScoreChange(question.id, score)} />;
         })}</div>}</aside>
       </div>
     </section>
@@ -324,23 +340,27 @@ function SubjectiveGradeReview({ revisionId, suggestion, finalGrade, busy, confi
   </section>;
 }
 
-function QuestionBlock({ passage, question, value, savedAnswer, submitted, readOnly, objective, onChange }: {
+function QuestionBlock({ passage, question, value, savedAnswer, submitted, readOnly, objective, directScoreMode, onChange, onScoreChange }: {
   passage: EnglishPassage;
   question: EnglishQuestion;
   value: string;
-  savedAnswer?: { isCorrect?: boolean; score: number };
+  savedAnswer?: { isCorrect?: boolean; isManual?: boolean; score: number };
   submitted: boolean;
   readOnly: boolean;
   objective: boolean;
+  directScoreMode: boolean;
   onChange: (value: string) => void;
+  onScoreChange: (value: string) => void;
 }) {
-  const correct = submitted && savedAnswer?.isCorrect === true;
-  const wrong = submitted && savedAnswer?.isCorrect === false;
+  const manualScore = parseEnglishManualScore(value, question.score);
+  const directScore = savedAnswer?.isManual === true || manualScore !== null;
+  const correct = submitted && !directScore && savedAnswer?.isCorrect === true;
+  const wrong = submitted && !directScore && savedAnswer?.isCorrect === false;
   const questionTitle = passage.section === "cloze" ? `Blank ${question.questionNo}` : question.stem || `第 ${question.questionNo} 题`;
   return <div className={`english-question-card ${correct ? "english-question-card-correct" : ""} ${wrong ? "english-question-card-wrong" : ""}`}>
-    <div className="english-question-meta"><span>第 {question.questionNo} 题</span>{(correct || wrong) && <span className={correct ? "text-green-700" : "text-red-700"}>{correct ? "正确" : "错误"} · {savedAnswer?.score ?? 0}/{question.score}</span>}</div>
+    <div className="english-question-meta"><span>第 {question.questionNo} 题</span>{directScore && submitted ? <span className="text-primary">已记分 · {savedAnswer?.score ?? manualScore ?? 0}/{question.score}</span> : (correct || wrong) && <span className={correct ? "text-green-700" : "text-red-700"}>{correct ? "正确" : "错误"} · {savedAnswer?.score ?? 0}/{question.score}</span>}</div>
     {questionTitle.trim() && <p className="english-question-stem">{questionTitle}</p>}
-    {question.options.length > 0 ? <div className="mt-4 grid gap-2.5">{question.options.map((option) => <button key={`${question.id}-${option.label}`} type="button" onClick={() => { if (!readOnly) onChange(option.label); }} aria-disabled={readOnly} className={`english-option-button ${value === option.label ? "english-option-button-selected" : ""} ${readOnly ? "english-option-button-readonly" : ""}`}><span className="english-option-label">{option.label}</span><span className="english-option-content">{option.content}</span></button>)}</div> : <textarea value={value} onChange={(event) => onChange(event.target.value)} readOnly={readOnly} rows={objective ? 2 : 8} className="field-control english-written-answer mt-3 w-full resize-y px-3 py-2" placeholder={objective ? "填写答案" : "记录你的作答"} />}
+    {(directScoreMode || directScore) ? <label className="english-question-score-entry"><span>本题得分<small className="ml-1 font-normal">（满分 {question.score}）</small></span><input type="number" min={0} max={question.score} step={0.5} value={manualScore === null ? "" : manualScore} onChange={(event) => onScoreChange(event.target.value)} readOnly={readOnly} className="field-control english-question-score-input px-3 py-2 text-sm" placeholder="0" /></label> : question.options.length > 0 ? <div className="mt-4 grid gap-2.5">{question.options.map((option) => <button key={`${question.id}-${option.label}`} type="button" onClick={() => { if (!readOnly) onChange(option.label); }} aria-disabled={readOnly} className={`english-option-button ${value === option.label ? "english-option-button-selected" : ""} ${readOnly ? "english-option-button-readonly" : ""}`}><span className="english-option-label">{option.label}</span><span className="english-option-content">{option.content}</span></button>)}</div> : <textarea value={value} onChange={(event) => onChange(event.target.value)} readOnly={readOnly} rows={objective ? 2 : 8} className="field-control english-written-answer mt-3 w-full resize-y px-3 py-2" placeholder={objective ? "填写答案" : "记录你的作答"} />}
     {submitted && objective && <div className="mt-3 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-900"><span className="font-semibold">标准答案：</span>{question.standardAnswer || "未导入"}</div>}
   </div>;
 }

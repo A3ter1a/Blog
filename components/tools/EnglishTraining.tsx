@@ -16,6 +16,7 @@ import {
 import { PageHeader, PageShell } from "@/components/ui/PageScaffold";
 import { useToast } from "@/components/ui/Toast";
 import { englishTrainingApi, type EnglishAttemptAnswerInput } from "@/lib/english-training-api";
+import { encodeEnglishManualScore, parseEnglishManualScore } from "@/lib/english-scoring";
 import { findUnreconciledEnglishLocalHistory, type EnglishTrainingPersistenceMode } from "@/lib/english-training-core";
 import type { EnglishSubjectiveGradeSuggestion } from "@/lib/english-subjective-grade";
 import {
@@ -147,6 +148,7 @@ export function EnglishTraining() {
   const [startingNext, setStartingNext] = useState(false);
   const [subjectiveBusy, setSubjectiveBusy] = useState<"suggest" | "confirm" | null>(null);
   const [articlePage, setArticlePage] = useState(0);
+  const [directScoreModeByRoundKey, setDirectScoreModeByRoundKey] = useState<Record<string, boolean>>({});
   const [routeApplied, setRouteApplied] = useState(false);
 
   useEffect(() => {
@@ -281,6 +283,10 @@ export function EnglishTraining() {
       ?? activeRoundRevision?.answers
       ?? (activeRoundNo === 1 ? buildAnswerMap(activeAttempt) : {})
     : {};
+  const hasSavedDirectScores = Boolean(activeRoundRevision && Object.values(activeRoundRevision.answers).some((answer) => (
+    parseEnglishManualScore(answer, Number.MAX_SAFE_INTEGER) !== null
+  )));
+  const directScoreMode = directScoreModeByRoundKey[activeRoundKey] ?? hasSavedDirectScores;
 
   const persistLedger = (ledger: EnglishPassageRoundLedger, writeLocal = persistenceMode === "legacy") => {
     setRoundLedgers((current) => {
@@ -358,7 +364,47 @@ export function EnglishTraining() {
     }
   };
 
-  const handleSaveAttempt = async (submitted: boolean) => {
+  const handleToggleDirectScore = (enabled: boolean) => {
+    if (!activePassage) return;
+    setDirectScoreModeByRoundKey((current) => ({ ...current, [activeRoundKey]: enabled }));
+    setDraftAnswersByPassageId((current) => {
+      const next = { ...current };
+      const existing = { ...(current[activeRoundKey] ?? activeAnswers) };
+      if (!enabled) {
+        for (const question of activeQuestions) {
+          if (parseEnglishManualScore(existing[question.id], question.score) !== null) existing[question.id] = "";
+        }
+      } else {
+        for (const question of activeQuestions) {
+          if (parseEnglishManualScore(existing[question.id], question.score) === null) existing[question.id] = "";
+        }
+      }
+      next[activeRoundKey] = existing;
+      return next;
+    });
+  };
+
+  const handleDirectScoreChange = (questionId: string, rawValue: string) => {
+    if (!activePassage) return;
+    const question = activeQuestions.find((item) => item.id === questionId);
+    if (!question) return;
+    const nextValue = rawValue.trim() === "" ? "" : String(Math.min(question.score, Math.max(0, Number(rawValue))));
+    if (nextValue !== "" && !Number.isFinite(Number(nextValue))) return;
+    setDraftAnswersByPassageId((current) => ({
+      ...current,
+      [activeRoundKey]: {
+        ...(current[activeRoundKey] ?? activeAnswers),
+        [questionId]: nextValue === "" ? "" : encodeEnglishManualScore(Number(nextValue)),
+      },
+    }));
+  };
+
+  const getDirectScores = (): Record<string, number> => Object.fromEntries(activeQuestions.map((question) => [
+    question.id,
+    parseEnglishManualScore(activeAnswers[question.id], question.score) ?? 0,
+  ]));
+
+  const handleSaveAttempt = async (submitted: boolean, manualScores?: Record<string, number>) => {
     if (!activePassage || saving) return;
     const now = new Date().toISOString();
     const ledger = activeLedger ?? createEmptyEnglishLedger(activePassage.id, now);
@@ -372,7 +418,33 @@ export function EnglishTraining() {
     try {
       let nextLedger: EnglishPassageRoundLedger;
       let nextMode = persistenceMode;
-      if (submitted) {
+      if (submitted && manualScores) {
+        const result = await englishTrainingApi.saveManualScore({
+          passage: activePassage,
+          scores: manualScores,
+          round: activeRoundNo,
+        });
+        nextMode = result.mode;
+        setPersistenceMode(result.mode);
+        if (result.attempt) {
+          const saved = result.attempt;
+          setData((current) => ({
+            ...current,
+            attempts: [saved, ...current.attempts.filter((attempt) => attempt.id !== saved.id && attempt.passageId !== saved.passageId)],
+          }));
+          nextLedger = submitEnglishRoundRevision(ledger, activeRoundNo, {
+            answers: activeAnswers,
+            score: saved.score,
+            maxScore: saved.maxScore,
+            gradeOrigin: "user_final",
+            now,
+          });
+        } else {
+          const serverLedger = result.ledgers.find((item) => item.passageId === activePassage.id);
+          if (!serverLedger) throw new Error("共享训练核未返回直接记分结果");
+          nextLedger = serverLedger;
+        }
+      } else if (submitted) {
         const result = await englishTrainingApi.saveAttempt({
           passage: activePassage,
           answers: activeAnswers,
@@ -439,7 +511,7 @@ export function EnglishTraining() {
         return next;
       });
       if (submitted) setEditingSubmittedRoundKey(null);
-      toast.success(updatingSubmittedResult ? `已追加 R${activeRoundNo} 纠正记录` : submitted ? `已提交 R${activeRoundNo}` : `已保存 R${activeRoundNo} 草稿`);
+      toast.success(manualScores ? `已记录 R${activeRoundNo} 得分` : updatingSubmittedResult ? `已追加 R${activeRoundNo} 纠正记录` : submitted ? `已提交 R${activeRoundNo}` : `已保存 R${activeRoundNo} 草稿`);
     } catch (error) {
       const message = error instanceof Error ? error.message : "未知错误";
       toast.error(`${submitted ? "提交" : "保存"}失败：${message}`);
@@ -603,8 +675,11 @@ export function EnglishTraining() {
           startingNext={startingNext}
           persistenceMode={persistenceMode}
           loading={isLoading}
-          articlePage={articlePage}
-          onArticlePageChange={setArticlePage}
+           articlePage={articlePage}
+           onArticlePageChange={setArticlePage}
+           directScoreMode={directScoreMode}
+           onDirectScoreModeChange={handleToggleDirectScore}
+           onDirectScoreChange={handleDirectScoreChange}
           onBack={handleBack}
           onAnswerChange={(questionId, answer) => {
             if (!activePassage) return;
@@ -621,9 +696,11 @@ export function EnglishTraining() {
           onStartEditingSubmitted={handleStartEditingSubmittedAttempt}
           onCancelEditingSubmitted={handleCancelEditingSubmittedAttempt}
           onSave={() => handleSaveAttempt(false)}
-          onSubmit={() => activePassage && isEnglishObjectiveSection(activePassage.section)
-            ? handleSaveAttempt(true)
-            : handleRequestSubjectiveSuggestion()}
+           onSubmit={() => directScoreMode
+             ? handleSaveAttempt(true, getDirectScores())
+             : activePassage && isEnglishObjectiveSection(activePassage.section)
+               ? handleSaveAttempt(true)
+               : handleRequestSubjectiveSuggestion()}
           onConfirmSubjectiveGrade={handleConfirmSubjectiveGrade}
         />
       )}

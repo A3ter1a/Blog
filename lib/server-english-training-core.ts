@@ -93,6 +93,27 @@ export async function runEnglishTrainingCoreCommand(
   return data;
 }
 
+export async function runEnglishManualScoreCommand(
+  supabase: SupabaseClient<Database>,
+  input: {
+    passageId: string;
+    round: 1 | 2 | 3;
+    scores: Record<string, number>;
+    commandId: string;
+    writeLegacy: boolean;
+  },
+): Promise<unknown> {
+  const { data, error } = await (supabase as unknown as RpcClient).rpc("record_english_manual_score", {
+    p_passage_id: input.passageId,
+    p_round: input.round,
+    p_scores: input.scores,
+    p_command_id: input.commandId,
+    p_write_legacy: input.writeLegacy,
+  });
+  if (error) throw error;
+  return data;
+}
+
 export async function runEnglishSubjectiveSubmission(
   supabase: SupabaseClient<Database>,
   input: {

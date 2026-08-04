@@ -74,11 +74,12 @@ export function AiContentReviewWorkspace() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detail, setDetail] = useState<AiContentReviewProposal | null>(null);
   const [filter, setFilter] = useState<"" | AiContentReviewStatus>("pending_review");
+  const [selectedProposalIds, setSelectedProposalIds] = useState<Set<string>>(() => new Set());
   const [selection, setSelection] = useState<Selection>(null);
   const [commentBody, setCommentBody] = useState("");
   const [loading, setLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
-  const [busyAction, setBusyAction] = useState<ReviewAction | "comment" | "refresh" | null>(null);
+  const [busyAction, setBusyAction] = useState<ReviewAction | "comment" | "refresh" | "batch_approve" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const bodyRef = useRef<HTMLTextAreaElement | null>(null);
 
@@ -95,6 +96,8 @@ export function AiContentReviewWorkspace() {
         throw new Error(readError(payload, "审核队列读取失败"));
       }
       setItems(payload.proposals as AiContentReviewProposal[]);
+      const currentIds = new Set((payload.proposals as AiContentReviewProposal[]).map((item) => item.proposal.id));
+      setSelectedProposalIds((current) => new Set([...current].filter((id) => currentIds.has(id))));
       setError(null);
     } catch (nextError: unknown) {
       const message = nextError instanceof Error ? nextError.message : "审核队列读取失败";
@@ -172,6 +175,15 @@ export function AiContentReviewWorkspace() {
   const comments = detail?.comments ?? [];
   const canReview = proposal?.review_status === "pending_review";
   const canPublish = proposal?.review_status === "approved";
+  const selectableItems = useMemo(
+    () => items.filter((item) => item.proposal.review_status === "pending_review"),
+    [items],
+  );
+  const selectedPendingIds = useMemo(
+    () => selectableItems.map((item) => item.proposal.id).filter((id) => selectedProposalIds.has(id)),
+    [selectableItems, selectedProposalIds],
+  );
+  const allPendingSelected = selectableItems.length > 0 && selectedPendingIds.length === selectableItems.length;
 
   const refresh = async () => {
     setBusyAction("refresh");
@@ -198,6 +210,38 @@ export function AiContentReviewWorkspace() {
       toast.success(action === "request_changes" ? "已退回返修" : action === "approve" ? "已批准提案" : action === "publish" || action === "approve_and_publish" ? "已发布到博客" : "已驳回提案");
     } catch (nextError: unknown) {
       toast.error(nextError instanceof Error ? nextError.message : "审核操作失败");
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
+  const runBatchApprove = async () => {
+    if (busyAction || selectedPendingIds.length === 0) return;
+    if (!window.confirm(`确定批准选中的 ${selectedPendingIds.length} 篇 AI 文章吗？只会改变审核状态，不会自动发布。`)) return;
+    setBusyAction("batch_approve");
+    try {
+      const response = await fetch("/api/ai/content-review", {
+        method: "PATCH",
+        headers: await buildAuthHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify({ action: "approve", proposalIds: selectedPendingIds }),
+      });
+      const payload: unknown = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(readError(payload, "批量批准失败"));
+      const approvedIds = isRecord(payload) && Array.isArray(payload.approvedIds)
+        ? payload.approvedIds.filter((id): id is string => typeof id === "string")
+        : [];
+      const failedCount = isRecord(payload) && Array.isArray(payload.failed) ? payload.failed.length : 0;
+      setSelectedProposalIds(new Set());
+      await loadQueue();
+      if (selectedId) await loadDetail(selectedId);
+      window.dispatchEvent(new CustomEvent(AI_REVIEW_QUEUE_CHANGED_EVENT));
+      if (failedCount > 0) {
+        toast.error(`已批准 ${approvedIds.length} 篇，${failedCount} 篇未完成，请检查队列。`);
+      } else {
+        toast.success(`已批量批准 ${approvedIds.length} 篇文章`);
+      }
+    } catch (nextError: unknown) {
+      toast.error(nextError instanceof Error ? nextError.message : "批量批准失败");
     } finally {
       setBusyAction(null);
     }
@@ -297,16 +341,35 @@ export function AiContentReviewWorkspace() {
         <aside className="surface-panel min-w-0 p-4">
           <div className="mb-3 flex items-center justify-between gap-2"><div className="flex items-center gap-2"><FileText className="h-4 w-4 text-primary" /><h3 className="font-semibold text-on-surface">提案队列</h3></div><span className="text-xs text-on-surface-variant">{items.length}</span></div>
           <label className="field-label" htmlFor="review-filter">筛选状态</label>
-          <select id="review-filter" value={filter} onChange={(event) => { const next = event.target.value as "" | AiContentReviewStatus; setFilter(next); setSelectedId(null); setDetail(null); void loadQueue(next); }} className="field-control mt-1 h-11 w-full px-3 text-sm">
+          <select id="review-filter" value={filter} onChange={(event) => { const next = event.target.value as "" | AiContentReviewStatus; setFilter(next); setSelectedId(null); setDetail(null); setSelectedProposalIds(new Set()); void loadQueue(next); }} className="field-control mt-1 h-11 w-full px-3 text-sm">
             {FILTERS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
           </select>
+          {selectableItems.length > 0 && (
+            <div className="mt-3 rounded-xl border border-primary/15 bg-primary/[0.04] p-3">
+              <label className="flex min-h-11 cursor-pointer items-center gap-2 text-xs font-semibold text-on-surface">
+                <input type="checkbox" checked={allPendingSelected} onChange={(event) => setSelectedProposalIds(event.target.checked ? new Set(selectableItems.map((item) => item.proposal.id)) : new Set())} className="h-4 w-4 accent-[var(--color-primary)]" />
+                全选当前待审核
+              </label>
+              <button type="button" className="control-button control-button-primary mt-2 inline-flex min-h-11 w-full items-center justify-center gap-2 px-3 text-sm" disabled={busyAction !== null || selectedPendingIds.length === 0} onClick={() => void runBatchApprove()}>
+                {busyAction === "batch_approve" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                批准选中 · {selectedPendingIds.length}
+              </button>
+              <p className="mt-2 text-[11px] leading-5 text-on-surface-variant">只批准审核状态，不会自动发布。</p>
+            </div>
+          )}
           <div className="mt-4 space-y-2">
             {loading ? <div className="flex items-center justify-center gap-2 py-10 text-sm text-on-surface-variant"><Loader2 className="h-4 w-4 animate-spin text-primary" />读取中</div> : items.length === 0 ? <div className="rounded-xl border border-dashed border-outline-variant/30 px-3 py-8 text-center text-sm leading-6 text-on-surface-variant">当前筛选没有提案。<br />AI 提交后会出现在这里。</div> : items.map((item) => {
-              const active = item.proposal.id === selectedId;
-              return <button key={item.proposal.id} type="button" onClick={() => { setSelectedId(item.proposal.id); void loadDetail(item.proposal.id); }} className={`w-full rounded-xl border px-3 py-3 text-left transition duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35 ${active ? "border-primary/45 bg-primary/5" : "border-outline-variant/20 bg-surface-container-low hover:border-primary/25"}`}>
-                <span className="flex items-start justify-between gap-2"><strong className="line-clamp-2 text-sm text-on-surface">{item.proposal.title}</strong><span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] ${statusTone(item.proposal.review_status)}`}>{STATUS_LABELS[item.proposal.review_status as AiContentReviewStatus] ?? item.proposal.review_status}</span></span>
-                <span className="mt-2 block truncate text-xs text-on-surface-variant">{item.profile?.display_name ?? "未知 AI 资料"} · v{item.proposal.content_version}</span>
-              </button>;
+               const active = item.proposal.id === selectedId;
+               const selectable = item.proposal.review_status === "pending_review";
+               return <div key={item.proposal.id} className={`flex gap-2 rounded-xl border px-3 py-3 transition duration-200 ${active ? "border-primary/45 bg-primary/5" : "border-outline-variant/20 bg-surface-container-low hover:border-primary/25"}`}>
+                 {selectable && <label className="flex shrink-0 cursor-pointer items-start pt-0.5" aria-label={`选择 ${item.proposal.title}`}>
+                   <input type="checkbox" checked={selectedProposalIds.has(item.proposal.id)} onChange={(event) => setSelectedProposalIds((current) => { const next = new Set(current); if (event.target.checked) next.add(item.proposal.id); else next.delete(item.proposal.id); return next; })} className="mt-1 h-4 w-4 accent-[var(--color-primary)]" />
+                 </label>}
+                 <button type="button" onClick={() => { setSelectedId(item.proposal.id); void loadDetail(item.proposal.id); }} className="min-w-0 flex-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35">
+                   <span className="flex items-start justify-between gap-2"><strong className="line-clamp-2 text-sm text-on-surface">{item.proposal.title}</strong><span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] ${statusTone(item.proposal.review_status)}`}>{STATUS_LABELS[item.proposal.review_status as AiContentReviewStatus] ?? item.proposal.review_status}</span></span>
+                   <span className="mt-2 block truncate text-xs text-on-surface-variant">{item.profile?.display_name ?? "未知 AI 资料"} · v{item.proposal.content_version}</span>
+                 </button>
+               </div>;
             })}
           </div>
         </aside>

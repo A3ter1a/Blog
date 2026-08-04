@@ -1,5 +1,4 @@
 import {
-  Bot,
   BookOpenText,
   Calculator,
   GraduationCap,
@@ -7,7 +6,6 @@ import {
 } from "lucide-react";
 import { PageHeader, PageShell } from "@/components/ui/PageScaffold";
 import { ToolHubCard, ToolHubGrid, type ToolHubCardItem } from "@/components/tools/ToolHubCard";
-import { AdminReviewToolCard } from "@/components/tools/AdminReviewToolCard";
 import { createPageMetadata } from "@/lib/site-metadata";
 
 export const metadata = createPageMetadata({
@@ -18,14 +16,6 @@ export const metadata = createPageMetadata({
 });
 
 const toolHubs: ToolHubCardItem[] = [
-  {
-    id: "ai-content",
-    title: "AI 内容工作台",
-    description: "AI 学科账号提交 Markdown，自动自检后进入人工审核。",
-    href: "/tools/ai-content",
-    icon: Bot,
-    tone: "border-primary/20 bg-primary/10 text-primary",
-  },
   {
     id: "collections",
     title: "合集工作台",
@@ -72,7 +62,6 @@ export default function ToolsPage() {
 
       <PageShell width="normal" topPadding="content" template="training">
         <ToolHubGrid>
-          <AdminReviewToolCard />
           {toolHubs.map((tool) => (
             <ToolHubCard key={tool.href} item={tool} />
           ))}

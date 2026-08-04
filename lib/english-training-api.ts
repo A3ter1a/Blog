@@ -281,6 +281,40 @@ export const englishTrainingApi = {
     };
   },
 
+  async saveManualScore({
+    passage,
+    scores,
+    round,
+  }: {
+    passage: EnglishPassage;
+    scores: Record<string, number>;
+    round: 1 | 2 | 3;
+  }): Promise<EnglishTrainingCommandResult> {
+    const response = await fetch("/api/english/manual-score", {
+      method: "POST",
+      headers: await buildAuthHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify({
+        passageId: passage.id,
+        scores,
+        round,
+        commandId: crypto.randomUUID(),
+      }),
+    });
+    const payload = await response.json().catch(() => ({})) as {
+      attempt?: EnglishAttemptRow | null;
+      answers?: EnglishAttemptAnswerRow[];
+      mode?: EnglishTrainingPersistenceMode;
+      ledgers?: EnglishPassageRoundLedger[];
+      error?: string;
+    };
+    if (!response.ok) throw new Error(payload.error || "英语直接记分保存失败");
+    return {
+      mode: payload.mode === "dual" || payload.mode === "shared" ? payload.mode : "legacy",
+      ledgers: Array.isArray(payload.ledgers) ? payload.ledgers : [],
+      ...(payload.attempt ? { attempt: mapAttempt(payload.attempt, (payload.answers ?? []).map(mapAttemptAnswer)) } : {}),
+    };
+  },
+
   async startNextRound(
     passage: EnglishPassage,
     round: 1 | 2 | 3,
