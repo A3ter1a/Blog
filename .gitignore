@@ -61,6 +61,11 @@ scripts/__pycache__/
 /data/english-papers/*.sql
 /data/english-papers/sql-chunks/
 
+# local math III past-paper imports (generated from user-provided PDFs)
+/data/math-papers/*.json
+/data/math-papers/*.sql
+/data/math-papers/sql-chunks/
+
 # local database backups and temporary PostgreSQL tools
 /.local-backups/
 /.tools/postgresql/

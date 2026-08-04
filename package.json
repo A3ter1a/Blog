@@ -10,6 +10,8 @@
     "lint": "eslint",
     "test:run": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types --test tests/domain-contracts.test.mjs",
     "import:english-papers": "node scripts/import-english-papers.mjs",
+    "import:math3-papers": "node scripts/import-math3-papers.mjs",
+    "verify:math3-papers": "node scripts/import-math3-papers.mjs",
     "audit:markdown-corpus": "node scripts/audit-markdown-corpus.mjs",
     "plan:markdown-migration": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types scripts/plan-markdown-migration.mjs",
     "review:markdown-migration": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types scripts/generate-wp2-markdown-review.mjs",
