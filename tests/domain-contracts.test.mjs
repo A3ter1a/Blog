@@ -48,6 +48,10 @@ import {
   resolveCurrentTimelineMonthId,
 } from "../lib/study-timeline.ts";
 import {
+  cleanEnglishPassageContent,
+  cleanEnglishQuestionStem,
+  getEnglishNewTypeKind,
+  hasEnglishPassageOriginal,
   isEnglishObjectiveSection,
   normalizeEnglishObjectiveAnswer,
   normalizeEnglishQuestionOptions,
@@ -520,6 +524,52 @@ test("现有英语题型与客观答案规范化保持稳定", () => {
     { label: "B" },
     "invalid",
   ]), [{ label: "A", content: "正确选项" }]);
+});
+
+test("英语题型正文清洗与新题型模式识别保持稳定", () => {
+  assert.equal(getEnglishNewTypeKind("Choose the most suitable subheading for each paragraph."), "heading");
+  assert.equal(getEnglishNewTypeKind("Reorganize these paragraphs in the wrong order."), "ordering");
+  assert.equal(getEnglishNewTypeKind("Choose the best statement from the list for each numbered name."), "statement_matching");
+  assert.equal(getEnglishNewTypeKind("One sentence has been removed from the text."), "insertion");
+  assert.equal(
+    cleanEnglishPassageContent("cloze", "Directions: Choose the best answer for each blank. (10 points)\n\nText 1"),
+    "Text 1",
+  );
+  assert.equal(
+    cleanEnglishPassageContent("cloze", "Directions: Mark A, B, C or D on ANSWER SHEET"),
+    "",
+  );
+  assert.equal(
+    cleanEnglishPassageContent(
+      "translation",
+      "Read the following text and translate it. Mark your answers on ANSWER SHEET 2. (10 points)\n\nThe passage.",
+    ),
+    "The passage.",
+  );
+  assert.equal(
+    cleanEnglishPassageContent(
+      "new_type",
+      "In the following text, some sentences have been removed. Mark your answers on ANSWER SHEET 1. (10 points)\n\nThe passage.",
+    ),
+    "The passage.",
+  );
+  assert.equal(hasEnglishPassageOriginal("cloze", "Directions: Mark A, B, C or D on ANSWER SHEET"), false);
+  assert.equal(hasEnglishPassageOriginal("cloze", "Text 1 2 3 4 5 6 7 8 9 10"), true);
+  assert.equal(
+    cleanEnglishPassageContent(
+      "new_type",
+      "Directions: Match each paragraph with a heading. (10 points)\n\nParagraph text\n41. A 42. B 43. C 44. D 45. E",
+    ),
+    "Paragraph text",
+  );
+  assert.equal(
+    cleanEnglishQuestionStem("writing", "51", "51. Directions: Write an email to your friend. Part B"),
+    "Directions: Write an email to your friend.",
+  );
+  assert.equal(
+    cleanEnglishPassageContent("writing", "51. Directions: Write an email to your friend. Part B"),
+    "Directions: Write an email to your friend.",
+  );
 });
 
 test("三刷做题本必须同时具备题目、答案、详细解析和方法总结", () => {

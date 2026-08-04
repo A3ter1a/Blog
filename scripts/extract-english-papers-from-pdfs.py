@@ -110,6 +110,35 @@ def prose(text: str) -> str:
     return "\n\n".join(paragraphs).strip()
 
 
+def strip_exam_directions(text: str) -> str:
+    """Keep the passage body while removing the PDF's instruction paragraph."""
+    cleaned = prose(text)
+    return re.sub(
+        r"^(?:directions?|read the following|(?:in\s+)?the following|for questions|you are going to read)"
+        r"[\s\S]*?(?:\(\s*\d+\s+points?\s*\)|on\s+answer\s+sheet(?:\s+\d+)?\.?(?:\s*\(\s*\d+\s+points?\s*\))?)\s*",
+        "",
+        cleaned,
+        count=1,
+        flags=re.I,
+    ).strip()
+
+
+def strip_new_type_answer_key(text: str) -> str:
+    return re.sub(
+        r"\s+41\.\s*(?:[A-H]\s*)?42\.\s*(?:[A-H]\s*)?43\.\s*(?:[A-H]\s*)?"
+        r"44\.\s*(?:[A-H]\s*)?45\.\s*(?:[A-H]\s*)?$",
+        "",
+        text.strip(),
+        flags=re.I,
+    ).strip()
+
+
+def clean_writing_prompt(text: str) -> str:
+    cleaned = prose(text)
+    cleaned = re.sub(r"^\s*\d{2}\.\s*", "", cleaned)
+    return re.sub(r"\s+Part\s+[AB]\s*$", "", cleaned, flags=re.I).strip()
+
+
 def find_required(pattern: str, text: str, label: str, flags: int = re.I | re.S) -> re.Match[str]:
     match = re.search(pattern, text, flags)
     if not match:
@@ -189,7 +218,7 @@ def parse_cloze(text: str, answers: dict[int, str]) -> dict[str, Any]:
     )
     q_blocks = numbered_blocks(block, range(1, 21))
     first_question = min((block.find(f"{number}.") for number in q_blocks), default=-1)
-    content = prose(block[:first_question] if first_question >= 0 else block)
+    content = strip_exam_directions(block[:first_question] if first_question >= 0 else block)
     questions: list[dict[str, Any]] = []
     for number in range(1, 21):
         stem, options = parse_options(q_blocks.get(number, ""))
@@ -284,7 +313,7 @@ def parse_new_type(text: str, answers: dict[int, str]) -> dict[str, Any]:
         "section": "new_type",
         "passageNo": "new_type",
         "title": "Part B",
-        "content": prose(block),
+        "content": strip_new_type_answer_key(strip_exam_directions(block)),
         "totalScore": 10,
         "sortOrder": 40,
         "questions": questions,
@@ -315,7 +344,7 @@ def parse_translation(text: str) -> dict[str, Any]:
         "section": "translation",
         "passageNo": "translation",
         "title": "Part C",
-        "content": prose(block),
+        "content": strip_exam_directions(block),
         "totalScore": 10,
         "sortOrder": 50,
         "questions": questions,
@@ -344,8 +373,8 @@ def parse_writing(text: str, pdf_path: Path, embed_image: bool, image_scale: flo
 
     q51 = find_required(r"51\.\s*Directions:", block, "Writing question 51", re.I | re.S)
     q52 = find_required(r"52\.\s*Directions:", block, "Writing question 52", re.I | re.S)
-    small = prose(block[q51.start() : q52.start()])
-    big = prose(block[q52.start() :])
+    small = clean_writing_prompt(block[q51.start() : q52.start()])
+    big = clean_writing_prompt(block[q52.start() :])
 
     if embed_image:
         data_uri = render_writing_page_data_uri(pdf_path, image_scale)
@@ -431,9 +460,37 @@ def validate_paper(paper: dict[str, Any]) -> list[str]:
             warnings.append(f"{paper['year']} {passage_no}: expected {expected} questions, got {actual}")
 
     for passage in paper["passages"]:
+        if not passage["content"].strip():
+            warnings.append(f"{paper['year']} {passage['passageNo']}: passage content is empty after cleaning")
+        if re.match(
+            r"^(?:directions?|read the following|the following|for questions|you are going to read|in the following)\b",
+            passage["content"],
+            flags=re.I,
+        ):
+            warnings.append(f"{paper['year']} {passage['passageNo']}: exam directions remain after cleaning")
+        if re.search(r"\(\s*\)\s*-?\s*11\s*-\s*\(\s*14\s*\)|-\s*11\s*-\s*\(\s*14\s*\)", passage["content"], flags=re.I):
+            warnings.append(f"{paper['year']} {passage['passageNo']}: OCR footer remains after cleaning")
+        if passage["section"] == "cloze":
+            blank_numbers = {
+                int(match.group(1))
+                for match in re.finditer(r"(?<!\w)(\d{1,2})(?!\w)", passage["content"])
+                if 1 <= int(match.group(1)) <= 20
+            }
+            if len(blank_numbers) < 10:
+                warnings.append(
+                    f"{paper['year']} cloze: cleaned passage has only {len(blank_numbers)} numbered blanks; "
+                    "restore the original passage before importing",
+                )
         for question in passage["questions"]:
             if not question["stem"]:
                 warnings.append(f"{paper['year']} {passage['passageNo']} {question['questionNo']}: empty stem")
+            if passage["section"] == "writing" and (
+                re.match(r"^\d{2}\.\s*", question["stem"])
+                or re.search(r"\s+Part\s+[AB]\s*$", question["stem"], flags=re.I)
+            ):
+                warnings.append(
+                    f"{paper['year']} {passage['passageNo']} {question['questionNo']}: writing markers remain after cleaning",
+                )
             if passage["section"] in {"cloze", "reading", "new_type"} and not question["standardAnswer"]:
                 warnings.append(f"{paper['year']} {passage['passageNo']} {question['questionNo']}: empty answer")
             if passage["section"] in {"cloze", "reading"} and len(question["options"]) != 4:

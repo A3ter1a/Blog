@@ -661,6 +661,7 @@ export function EnglishTraining() {
       )}
       {stage === "practice" && (
         <EnglishPracticeWorkspace
+          key={activePassage?.id ?? "empty-practice"}
           passage={activePassage}
           questions={activeQuestions}
           attempt={activeAttempt}

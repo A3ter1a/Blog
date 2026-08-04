@@ -15,6 +15,8 @@ export const metadata = createPageMetadata({
 
 export const revalidate = 60;
 
+const INITIAL_PRELOAD_TIMEOUT_MS = 2_000;
+
 type InitialNotesPayload = {
   notes: Note[];
   hasMoreNotes: boolean;
@@ -22,38 +24,70 @@ type InitialNotesPayload = {
   collections: CollectionSummary[];
 };
 
+type PreloadResult<T> = {
+  value: T;
+  failed: boolean;
+};
+
+function preloadWithTimeout<T>(
+  task: Promise<T>,
+  fallback: T,
+  label: string,
+): Promise<PreloadResult<T>> {
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (result: PreloadResult<T>) => {
+      if (settled) return;
+      settled = true;
+      resolve(result);
+    };
+    const timeoutId = setTimeout(() => finish({ value: fallback, failed: true }), INITIAL_PRELOAD_TIMEOUT_MS);
+
+    task.then(
+      (value) => {
+        clearTimeout(timeoutId);
+        finish({ value, failed: false });
+      },
+      (error: unknown) => {
+        clearTimeout(timeoutId);
+        if (!settled) console.error(`Failed to preload ${label}:`, error);
+        finish({ value: fallback, failed: true });
+      },
+    );
+  });
+}
+
 async function getInitialNotes(): Promise<InitialNotesPayload> {
   if (process.env.ASTEROID_OFFLINE_BUILD === "1") {
     return { notes: [], hasMoreNotes: false, loadError: true, collections: [] };
   }
 
-  let data: Note[] = [];
-  let loadError = false;
-  try {
-    data = await notesApi.getSummaries({
-      authorKind: "human",
-      sortOrder: "desc",
-      limit: NOTES_PAGE_SIZE + 1,
-      offset: 0,
-      includeCoverImage: false,
-    });
-  } catch (error) {
-    console.error("Failed to preload notes:", error);
-    loadError = true;
-  }
+  const [notesResult, collectionsResult] = await Promise.all([
+    preloadWithTimeout(
+      notesApi.getSummaries({
+        authorKind: "human",
+        sortOrder: "desc",
+        limit: NOTES_PAGE_SIZE + 1,
+        offset: 0,
+        includeCoverImage: false,
+      }),
+      [],
+      "notes",
+    ),
+    preloadWithTimeout(
+      collectionsApi.getPublishedSummaries(),
+      [],
+      "collections",
+    ),
+  ]);
 
-  let collections: CollectionSummary[] = [];
-  try {
-    collections = await collectionsApi.getPublishedSummaries();
-  } catch (error) {
-    // The collection migration is additive; an older deployment must keep its note directory usable.
-    console.warn("Failed to preload collections:", error);
-  }
+  const data = notesResult.value;
+  const collections = collectionsResult.value;
 
   return {
     notes: data.slice(0, NOTES_PAGE_SIZE),
     hasMoreNotes: data.length > NOTES_PAGE_SIZE,
-    loadError,
+    loadError: notesResult.failed,
     collections,
   };
 }

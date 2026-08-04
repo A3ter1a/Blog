@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
+import { AnimatePresence, motion } from "framer-motion";
 import { ArrowLeft, ArrowRight, Check, ChevronRight, ClipboardCheck, Loader2, PenLine, Save, X } from "lucide-react";
 import type { EnglishAttemptAnswerInput } from "@/lib/english-training-api";
 import { parseEnglishManualScore } from "@/lib/english-scoring";
@@ -8,8 +10,13 @@ import type { EnglishTrainingPersistenceMode } from "@/lib/english-training-core
 import type { EnglishSubjectiveGradeSuggestion } from "@/lib/english-subjective-grade";
 import {
   isEnglishObjectiveSection,
+  cleanEnglishPassageContent,
+  cleanEnglishQuestionStem,
+  getEnglishNewTypeKind,
+  hasEnglishPassageOriginal,
   normalizeEnglishObjectiveAnswer,
   type EnglishAttempt,
+  type EnglishNewTypeKind,
   type EnglishPassage,
   type EnglishQuestion,
 } from "@/lib/english-training";
@@ -121,7 +128,181 @@ function paginatePassageContent(content: string, targetWords = 380): string[] {
   return pages;
 }
 
-function renderClozeParagraph(content: string): ReactNode[] {
+function getSelectedOption(question: EnglishQuestion, value: string) {
+  const normalized = normalizeEnglishObjectiveAnswer(value);
+  return question.options.find((option) => normalizeEnglishObjectiveAnswer(option.label) === normalized);
+}
+
+function InlineChoiceBlank({
+  question,
+  value,
+  open,
+  readOnly,
+  compact = false,
+  directScoreMode = false,
+  onToggle,
+  onChange,
+  onScoreChange,
+}: {
+  question: EnglishQuestion;
+  value: string;
+  open: boolean;
+  readOnly: boolean;
+  compact?: boolean;
+  directScoreMode?: boolean;
+  onToggle: () => void;
+  onChange: (value: string) => void;
+  onScoreChange?: (value: string) => void;
+}) {
+  if (directScoreMode) {
+    const score = parseEnglishManualScore(value, question.score);
+    return (
+      <span className="english-inline-score" data-inline-question={question.id}>
+        <span className="english-inline-score-number">{question.questionNo}</span>
+        <input
+          type="number"
+          min={0}
+          max={question.score}
+          step={0.5}
+          value={score === null ? "" : score}
+          onChange={(event) => onScoreChange?.(event.target.value)}
+          readOnly={readOnly}
+          className="field-control english-inline-score-input px-2 py-1 text-sm"
+          placeholder="得分"
+          aria-label={`${question.questionNo} 题得分`}
+        />
+      </span>
+    );
+  }
+
+  const selected = getSelectedOption(question, value);
+  const display = selected ? (compact ? selected.label : selected.content) : `空 ${question.questionNo}`;
+
+  return (
+    <span className={`english-inline-answer ${open ? "is-open" : ""}`} data-inline-question={question.id}>
+      <button
+        type="button"
+        className={`english-inline-answer-trigger ${selected ? "has-value" : ""}`}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-label={`${question.questionNo} 题${selected ? `，已选 ${selected.label}` : "，选择答案"}`}
+        onClick={() => {
+          if (!readOnly) onToggle();
+        }}
+      >
+        <span className="english-inline-answer-number">{question.questionNo}</span>
+        <span className="english-inline-answer-value">{display}</span>
+      </button>
+      {open && !readOnly && (
+        <span className="english-inline-answer-menu" role="listbox" aria-label={`${question.questionNo} 题选项`}>
+          {question.options.map((option) => (
+            <button
+              key={`${question.id}-${option.label}`}
+              type="button"
+              role="option"
+              aria-selected={option.label === selected?.label}
+              className={option.label === selected?.label ? "is-selected" : ""}
+              onClick={() => {
+                onChange(option.label);
+                onToggle();
+              }}
+            >
+              <strong>{option.label}</strong>
+              <span>{option.content}</span>
+            </button>
+          ))}
+        </span>
+      )}
+    </span>
+  );
+}
+
+function InlineTextAnswer({
+  question,
+  value,
+  open,
+  readOnly,
+  directScoreMode = false,
+  onToggle,
+  onChange,
+  onScoreChange,
+}: {
+  question: EnglishQuestion;
+  value: string;
+  open: boolean;
+  readOnly: boolean;
+  directScoreMode?: boolean;
+  onToggle: () => void;
+  onChange: (value: string) => void;
+  onScoreChange?: (value: string) => void;
+}) {
+  if (directScoreMode) {
+    const score = parseEnglishManualScore(value, question.score);
+    return (
+      <span className="english-inline-score" data-inline-question={question.id}>
+        <span className="english-inline-score-number">{question.questionNo}</span>
+        <input
+          type="number"
+          min={0}
+          max={question.score}
+          step={0.5}
+          value={score === null ? "" : score}
+          onChange={(event) => onScoreChange?.(event.target.value)}
+          readOnly={readOnly}
+          className="field-control english-inline-score-input px-2 py-1 text-sm"
+          placeholder="得分"
+          aria-label={`${question.questionNo} 题得分`}
+        />
+      </span>
+    );
+  }
+
+  return (
+    <span className={`english-inline-answer english-inline-text-answer ${open ? "is-open" : ""}`} data-inline-question={question.id}>
+      <button
+        type="button"
+        className={`english-inline-answer-trigger ${value.trim() ? "has-value" : ""}`}
+        aria-expanded={open}
+        aria-label={`${question.questionNo} 题${value.trim() ? "，已填写翻译" : "，填写翻译"}`}
+        onClick={() => {
+          if (!readOnly) onToggle();
+        }}
+      >
+        <span className="english-inline-answer-number">({question.questionNo})</span>
+        <span className="english-inline-answer-value">{value.trim() || "点击填写译文"}</span>
+      </button>
+      {open && !readOnly && (
+        <span className="english-inline-text-editor">
+          <textarea
+            autoFocus
+            value={value}
+            onChange={(event) => onChange(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Escape") onToggle();
+            }}
+            rows={3}
+            className="field-control w-full resize-y px-3 py-2 text-sm leading-6"
+            placeholder="输入这处划线句的中文翻译"
+            aria-label={`${question.questionNo} 题翻译`}
+          />
+          <span className="english-inline-text-hint">点击文章其他位置收起</span>
+        </span>
+      )}
+    </span>
+  );
+}
+
+function renderClozeParagraph(
+  content: string,
+  questionsByNo: Map<string, EnglishQuestion>,
+  answers: Record<string, string>,
+  openQuestionId: string | null,
+  readOnly: boolean,
+  directScoreMode: boolean,
+  onToggle: (questionId: string) => void,
+  onChange: (questionId: string, answer: string) => void,
+  onScoreChange: (questionId: string, score: string) => void,
+): ReactNode[] {
   const nodes: ReactNode[] = [];
   const pattern = /(?<!\w)(\d{1,2})(?!\w)/g;
   let lastIndex = 0;
@@ -131,8 +312,19 @@ function renderClozeParagraph(content: string): ReactNode[] {
     const value = Number(blankNo);
     const nextText = content.slice(index + match[0].length).trimStart().toLowerCase();
     if (index > lastIndex) nodes.push(content.slice(lastIndex, index));
-    nodes.push(value >= 1 && value <= 20 && !nextText.startsWith("point")
-      ? <span key={`${index}-${blankNo}`} className="cloze-blank">{blankNo}</span>
+    const question = value >= 1 && value <= 20 ? questionsByNo.get(blankNo) : undefined;
+    nodes.push(question && !nextText.startsWith("point")
+      ? <InlineChoiceBlank
+          key={`${index}-${blankNo}`}
+          question={question}
+          value={answers[question.id] ?? ""}
+          open={openQuestionId === question.id}
+          readOnly={readOnly}
+          directScoreMode={directScoreMode}
+          onToggle={() => onToggle(question.id)}
+          onChange={(answer) => onChange(question.id, answer)}
+          onScoreChange={(score) => onScoreChange(question.id, score)}
+        />
       : match[0]);
     lastIndex = index + match[0].length;
   }
@@ -140,11 +332,253 @@ function renderClozeParagraph(content: string): ReactNode[] {
   return nodes;
 }
 
-function PassagePageContent({ content, cloze }: { content: string; cloze: boolean }) {
+function renderMarkedParagraph(
+  content: string,
+  pattern: RegExp,
+  getQuestion: (questionNo: string) => EnglishQuestion | undefined,
+  renderQuestion: (question: EnglishQuestion) => ReactNode,
+): ReactNode[] {
+  const nodes: ReactNode[] = [];
+  let lastIndex = 0;
+  for (const match of content.matchAll(pattern)) {
+    const index = match.index ?? 0;
+    const questionNo = match[1];
+    const question = getQuestion(questionNo);
+    if (!question) continue;
+    if (index > lastIndex) nodes.push(content.slice(lastIndex, index));
+    nodes.push(renderQuestion(question));
+    lastIndex = index + match[0].length;
+  }
+  if (lastIndex < content.length) nodes.push(content.slice(lastIndex));
+  return nodes;
+}
+
+function PassagePageContent({
+  passage,
+  content,
+  questions,
+  answers,
+  openQuestionId,
+  readOnly,
+  directScoreMode,
+  onToggleQuestion,
+  onAnswerChange,
+  onScoreChange,
+}: {
+  passage: EnglishPassage;
+  content: string;
+  questions: EnglishQuestion[];
+  answers: Record<string, string>;
+  openQuestionId: string | null;
+  readOnly: boolean;
+  directScoreMode: boolean;
+  onToggleQuestion: (questionId: string) => void;
+  onAnswerChange: (questionId: string, answer: string) => void;
+  onScoreChange: (questionId: string, score: string) => void;
+}) {
   const paragraphs = content.split(/\n{2,}/).map((paragraph) => paragraph.trim()).filter(Boolean);
+  const questionsByNo = new Map(questions.map((question) => [question.questionNo, question]));
   return <div className="english-passage-content text-on-surface">{paragraphs.map((paragraph, index) => (
-    <p key={`${index}-${paragraph.slice(0, 12)}`}>{cloze ? renderClozeParagraph(paragraph) : paragraph}</p>
+    <p key={`${index}-${paragraph.slice(0, 12)}`}>
+      {passage.section === "cloze"
+        ? renderClozeParagraph(paragraph, questionsByNo, answers, openQuestionId, readOnly, directScoreMode, onToggleQuestion, onAnswerChange, onScoreChange)
+        : passage.section === "translation"
+          ? renderMarkedParagraph(
+              paragraph,
+              /\((4[6-9]|50)\)/g,
+              (questionNo) => questionsByNo.get(questionNo),
+              (question) => <InlineTextAnswer
+                key={`${index}-${question.id}`}
+                question={question}
+                value={answers[question.id] ?? ""}
+                open={openQuestionId === question.id}
+                readOnly={readOnly}
+                directScoreMode={directScoreMode}
+                onToggle={() => onToggleQuestion(question.id)}
+                onChange={(answer) => onAnswerChange(question.id, answer)}
+                onScoreChange={(score) => onScoreChange(question.id, score)}
+              />,
+            )
+          : passage.section === "new_type"
+            ? paragraph
+            : paragraph}
+    </p>
   ))}</div>;
+}
+
+function NewTypeAnswerStrip({
+  kind,
+  questions,
+  answers,
+  openQuestionId,
+  readOnly,
+  directScoreMode,
+  onToggleQuestion,
+  onAnswerChange,
+  onScoreChange,
+}: {
+  kind: EnglishNewTypeKind;
+  questions: EnglishQuestion[];
+  answers: Record<string, string>;
+  openQuestionId: string | null;
+  readOnly: boolean;
+  directScoreMode: boolean;
+  onToggleQuestion: (questionId: string) => void;
+  onAnswerChange: (questionId: string, answer: string) => void;
+  onScoreChange: (questionId: string, score: string) => void;
+}) {
+  const labels = {
+    heading: "段落匹配标题",
+    insertion: "句子插入",
+    ordering: "段落排序",
+    statement_matching: "观点匹配",
+  } as const;
+
+  return (
+    <section className="english-new-type-answer-strip" aria-label="新题型作答区">
+      <div className="english-new-type-answer-heading">
+        <div>
+          <strong>{labels[kind]}</strong>
+          <span>点击题号选择答案，已选答案会直接显示在题号上。</span>
+        </div>
+        <span className="english-answer-mode-chip">{readOnly ? "已提交" : "可作答"}</span>
+      </div>
+      <div className="english-new-type-answer-slots">
+        {questions.map((question) => (
+          <InlineChoiceBlank
+            key={question.id}
+            question={question}
+            value={answers[question.id] ?? ""}
+            compact
+            open={openQuestionId === question.id}
+            readOnly={readOnly}
+            directScoreMode={directScoreMode}
+            onToggle={() => onToggleQuestion(question.id)}
+            onChange={(answer) => onAnswerChange(question.id, answer)}
+            onScoreChange={(score) => onScoreChange(question.id, score)}
+          />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function WritingPracticeContent({
+  passage,
+  question,
+  value,
+  directScoreMode,
+  readOnly,
+  onAnswerChange,
+  onScoreChange,
+}: {
+  passage: EnglishPassage;
+  question?: EnglishQuestion;
+  value: string;
+  directScoreMode: boolean;
+  readOnly: boolean;
+  onAnswerChange: (value: string) => void;
+  onScoreChange: (value: string) => void;
+}) {
+  const questionNo = question?.questionNo ?? (passage.passageNo === "small_writing" ? "51" : "52");
+  const prompt = cleanEnglishQuestionStem("writing", questionNo, question?.stem || passage.content);
+  const paragraphs = prompt.split(/\n{2,}/).map((item) => item.trim()).filter(Boolean);
+  const score = question?.score ?? passage.totalScore;
+  const manualScore = parseEnglishManualScore(value, score);
+
+  return (
+    <div className="english-writing-workspace">
+      <section className="english-writing-prompt" aria-labelledby="english-writing-prompt-title">
+        <div className="english-writing-prompt-meta">
+          <span id="english-writing-prompt-title">写作题目 · {questionNo}</span>
+          <span>{score} 分</span>
+        </div>
+        <div className="english-writing-prompt-content">
+          {paragraphs.map((paragraph, index) => <p key={`${index}-${paragraph.slice(0, 16)}`}>{paragraph}</p>)}
+        </div>
+      </section>
+      <section className="english-writing-answer" aria-label="作文作答区">
+        <div className="english-writing-answer-heading">
+          <div>
+            <strong>{directScoreMode ? "直接记录纸笔得分" : "我的作文"}</strong>
+            <span>{directScoreMode ? `本题满分 ${score} 分` : "写完后可保存草稿，提交时再获取 AI 建议。"}</span>
+          </div>
+          {!directScoreMode && <span className="english-writing-word-hint">建议按题目要求完成字数</span>}
+        </div>
+        {directScoreMode ? (
+          <label className="english-writing-score-entry">
+            <span>本题得分</span>
+            <input
+              type="number"
+              min={0}
+              max={score}
+              step={0.5}
+              value={manualScore === null ? "" : manualScore}
+              onChange={(event) => onScoreChange(event.target.value)}
+              readOnly={readOnly}
+              className="field-control english-question-score-input px-3 py-2 text-sm"
+              placeholder="0"
+            />
+          </label>
+        ) : (
+          <textarea
+            value={value}
+            onChange={(event) => onAnswerChange(event.target.value)}
+            readOnly={readOnly}
+            rows={16}
+            className="field-control english-writing-textarea w-full resize-y px-4 py-3 text-base leading-8"
+            placeholder="在这里输入你的作文……"
+          />
+        )}
+      </section>
+    </div>
+  );
+}
+
+function MissingPassageContent({
+  questions,
+  directScoreMode,
+  readOnly,
+  answers,
+  onScoreChange,
+}: {
+  questions: EnglishQuestion[];
+  directScoreMode: boolean;
+  readOnly: boolean;
+  answers: Record<string, string>;
+  onScoreChange: (questionId: string, score: string) => void;
+}) {
+  return (
+    <div className="english-missing-passage" role="status">
+      <strong>这篇真题原文还未导入</strong>
+      <span>当前数据只包含题目和选项，未补录原文前不会显示空白文章。</span>
+      {directScoreMode && questions.length > 0 && (
+        <div className="english-missing-score-list">
+          <strong>仍可按题记录纸笔得分</strong>
+          {questions.map((question) => {
+            const score = parseEnglishManualScore(answers[question.id] ?? "", question.score);
+            return (
+              <label key={question.id} className="english-question-score-entry">
+                <span>第 {question.questionNo} 题<small>（满分 {question.score}）</small></span>
+                <input
+                  type="number"
+                  min={0}
+                  max={question.score}
+                  step={0.5}
+                  value={score === null ? "" : score}
+                  onChange={(event) => onScoreChange(question.id, event.target.value)}
+                  readOnly={readOnly}
+                  className="field-control english-question-score-input px-3 py-2 text-sm"
+                  placeholder="0"
+                  aria-label={`${question.questionNo} 题得分`}
+                />
+              </label>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export function getPassageDisplayTitle(passage: EnglishPassage): string {
@@ -197,9 +631,70 @@ export function EnglishPracticeWorkspace({
   ) => void;
 }) {
   const articlePageRef = useRef<HTMLDivElement | null>(null);
+  const questionDockRef = useRef<HTMLElement | null>(null);
+  const questionDockCloseRef = useRef<HTMLButtonElement | null>(null);
+  const questionDockTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const [questionDockOpen, setQuestionDockOpen] = useState(false);
+  const [openInlineQuestionId, setOpenInlineQuestionId] = useState<string | null>(null);
+
   useEffect(() => {
     articlePageRef.current?.scrollTo({ top: 0, behavior: "auto" });
   }, [articlePage]);
+
+  useEffect(() => {
+    if (!questionDockOpen || passage?.section !== "reading") return;
+
+    const focusTimer = window.setTimeout(() => questionDockCloseRef.current?.focus(), 0);
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setQuestionDockOpen(false);
+        return;
+      }
+      if (event.key !== "Tab" || !questionDockRef.current) return;
+      const focusable = questionDockRef.current.querySelectorAll<HTMLElement>(
+        "button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), a[href]",
+      );
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.clearTimeout(focusTimer);
+      document.removeEventListener("keydown", handleKeyDown);
+      questionDockTriggerRef.current?.focus();
+    };
+  }, [passage?.section, questionDockOpen]);
+
+  useEffect(() => {
+    if (!openInlineQuestionId) return;
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Element) || !target.closest(`[data-inline-question="${openInlineQuestionId}"]`)) {
+        setOpenInlineQuestionId(null);
+      }
+    };
+    document.addEventListener("pointerdown", handlePointerDown);
+    return () => document.removeEventListener("pointerdown", handlePointerDown);
+  }, [openInlineQuestionId]);
+
+  useEffect(() => {
+    if (!questionDockOpen || !window.matchMedia("(max-width: 760px)").matches) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [questionDockOpen]);
 
   if (loading) return <WorkspaceMessage icon={<Loader2 className="h-6 w-6 animate-spin text-primary" />} text="正在加载英语真题训练。" />;
   if (!passage) return <WorkspaceMessage text="没有找到当前题组。" />;
@@ -222,8 +717,14 @@ export function EnglishPracticeWorkspace({
     suggestions: Array.isArray(suggestionBreakdown.suggestions) ? suggestionBreakdown.suggestions.filter((item): item is string => typeof item === "string") : [],
     confidence: typeof suggestionBreakdown.confidence === "number" ? suggestionBreakdown.confidence : 0,
   } : null;
-  const articlePages = paginatePassageContent(passage.content, 280);
+  const cleanedContent = cleanEnglishPassageContent(passage.section, passage.content);
+  const hasOriginalContent = hasEnglishPassageOriginal(passage.section, passage.content);
+  const articlePages = paginatePassageContent(cleanedContent, passage.section === "writing" ? 720 : 280);
   const currentPage = Math.min(articlePage, Math.max(articlePages.length - 1, 0));
+  const isReading = passage.section === "reading";
+  const isWriting = passage.section === "writing";
+  const newTypeKind = passage.section === "new_type" ? getEnglishNewTypeKind(passage.content) : null;
+  const readOnly = submitted && !editingSubmitted;
   const latestRound = ledger?.rounds.reduce((latest, round) => Math.max(latest, round.round) as 1 | 2 | 3, 1) ?? 1;
   const hasFormalSubjectiveGrade = objective || roundRevision?.gradeOrigin !== "ai_suggested";
   const canStartNextRound = activeRound === latestRound && activeRound < 3
@@ -238,7 +739,21 @@ export function EnglishPracticeWorkspace({
           <h2 className="english-practice-title">{getPassageDisplayTitle(passage)}</h2>
           {submitted && <p className="english-practice-score">{editingSubmitted ? "正在修改 · 原得分" : roundRevision?.gradeOrigin === "ai_suggested" ? "AI 建议" : "正式得分"} {roundRevision?.score ?? attempt?.score ?? 0}/{roundRevision?.maxScore ?? attempt?.maxScore ?? 0}</p>}
         </div>
-        <div className="flex shrink-0 flex-wrap gap-2">
+        {questions.length > 0 && <div className="english-direct-score-card">
+          <div><strong>已有纸笔结果？</strong><span>按题记录得分，无需重新输入答案。</span></div>
+          <button type="button" className="english-direct-score-toggle" aria-pressed={directScoreMode} onClick={() => onDirectScoreModeChange(!directScoreMode)}>{directScoreMode ? "返回作答" : "直接记分"}</button>
+        </div>}
+        <div className="english-practice-actions">
+          {isReading && questions.length > 0 && <button
+            ref={questionDockTriggerRef}
+            type="button"
+            onClick={() => setQuestionDockOpen(true)}
+            className="control-button h-10 px-3 text-sm"
+            aria-controls="english-question-dock"
+            aria-expanded={questionDockOpen}
+          >
+            <ClipboardCheck className="h-4 w-4" />答题栏
+          </button>}
           {submitted ? editingSubmitted ? <>
             <button type="button" onClick={onCancelEditingSubmitted} disabled={busy} className="control-button h-10 px-3 text-sm"><X className="h-4 w-4" />取消修改</button>
             <button type="button" onClick={onSubmit} disabled={busy || questions.length === 0 || (!directScoreMode && !objective && persistenceMode === "legacy")} className="control-button control-button-primary h-10 px-3 text-sm">{saving === "submit" || subjectiveBusy === "suggest" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}{directScoreMode ? "保存得分" : objective ? "保存修改" : "重新获取 AI 建议"}</button>
@@ -247,10 +762,6 @@ export function EnglishPracticeWorkspace({
             <button type="button" onClick={onSubmit} disabled={busy || questions.length === 0 || (!directScoreMode && !objective && persistenceMode === "legacy")} className="control-button control-button-primary h-10 px-3 text-sm">{saving === "submit" || subjectiveBusy === "suggest" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}{directScoreMode ? "记录得分" : objective ? "提交本篇" : "获取 AI 建议"}</button>
           </>}
         </div>
-        {questions.length > 0 && <div className="english-direct-score-card">
-          <div><strong>已有纸笔结果？</strong><span>按题记录得分，无需重新输入答案。</span></div>
-          <button type="button" className="english-direct-score-toggle" aria-pressed={directScoreMode} onClick={() => onDirectScoreModeChange(!directScoreMode)}>{directScoreMode ? "返回作答" : "直接记分"}</button>
-        </div>}
       </div>
 
       {!objective && suggestion && !editingSubmitted && (
@@ -281,30 +792,120 @@ export function EnglishPracticeWorkspace({
             : "共享三轮历史已开启跨设备同步；所有新记录只写入共享训练核。"}</p>
       </div>
 
-      <div className="english-practice-grid">
-        <article className="english-article-pane" aria-label="英语真题原文">{articlePages.length > 0 ? <>
-          <div className="english-article-pager flex items-center justify-between gap-3 text-xs text-on-surface-variant">
-            <span>文章 {currentPage + 1} / {articlePages.length}</span>
-            <div className="flex gap-2">
-              <button type="button" onClick={() => onArticlePageChange(Math.max(currentPage - 1, 0))} disabled={currentPage === 0} aria-label="上一页文章" className="control-button english-article-nav-button min-h-11 px-3 text-xs"><ArrowLeft className="h-3.5 w-3.5" /><span className="sr-only">上一页</span></button>
-              <button type="button" onClick={() => onArticlePageChange(Math.min(currentPage + 1, articlePages.length - 1))} disabled={currentPage >= articlePages.length - 1} aria-label="下一页文章" className="control-button english-article-nav-button min-h-11 px-3 text-xs"><ArrowRight className="h-3.5 w-3.5" /><span className="sr-only">下一页</span></button>
+      <div className={`english-practice-grid ${isReading ? "english-practice-grid-reading" : "english-practice-grid-single"}`}>
+        <article className="english-article-pane" aria-label={isWriting ? "英语作文题目与作答" : "英语真题原文"}>
+          {isWriting ? (
+            <div ref={articlePageRef} className="english-article-page">
+              <WritingPracticeContent
+                passage={passage}
+                question={questions[0]}
+                value={questions[0] ? answers[questions[0].id] ?? "" : ""}
+                directScoreMode={directScoreMode}
+                readOnly={readOnly}
+                onAnswerChange={(value) => {
+                  if (questions[0]) onAnswerChange(questions[0].id, value);
+                }}
+                onScoreChange={(value) => {
+                  if (questions[0]) onDirectScoreChange(questions[0].id, value);
+                }}
+              />
             </div>
-          </div>
-          <div ref={articlePageRef} className="english-article-page"><PassagePageContent content={articlePages[currentPage]} cloze={passage.section === "cloze"} /></div>
-        </> : <div className="flex min-h-[28rem] items-center justify-center rounded-lg border border-dashed border-outline-variant/30 text-sm text-on-surface-variant">这篇真题原文还未导入。</div>}</article>
+          ) : hasOriginalContent && articlePages.length > 0 ? (
+            <>
+              <div className="english-article-pager flex items-center justify-between gap-3 text-xs text-on-surface-variant">
+                <span>文章 {currentPage + 1} / {articlePages.length}</span>
+                <div className="flex gap-2">
+                  <button type="button" onClick={() => onArticlePageChange(Math.max(currentPage - 1, 0))} disabled={currentPage === 0} aria-label="上一页文章" className="control-button english-article-nav-button min-h-11 px-3 text-xs"><ArrowLeft className="h-3.5 w-3.5" /><span className="sr-only">上一页</span></button>
+                  <button type="button" onClick={() => onArticlePageChange(Math.min(currentPage + 1, articlePages.length - 1))} disabled={currentPage >= articlePages.length - 1} aria-label="下一页文章" className="control-button english-article-nav-button min-h-11 px-3 text-xs"><ArrowRight className="h-3.5 w-3.5" /><span className="sr-only">下一页</span></button>
+                </div>
+              </div>
+              <div ref={articlePageRef} className="english-article-page">
+                {passage.section === "new_type" && newTypeKind && <NewTypeAnswerStrip
+                  kind={newTypeKind}
+                  questions={questions}
+                  answers={answers}
+                  openQuestionId={openInlineQuestionId}
+                  readOnly={readOnly}
+                  directScoreMode={directScoreMode}
+                  onToggleQuestion={(questionId) => setOpenInlineQuestionId((current) => current === questionId ? null : questionId)}
+                  onAnswerChange={onAnswerChange}
+                  onScoreChange={onDirectScoreChange}
+                />}
+                <PassagePageContent
+                  passage={passage}
+                  content={articlePages[currentPage]}
+                  questions={questions}
+                  answers={answers}
+                  openQuestionId={openInlineQuestionId}
+                  readOnly={readOnly}
+                  directScoreMode={directScoreMode}
+                  onToggleQuestion={(questionId) => setOpenInlineQuestionId((current) => current === questionId ? null : questionId)}
+                  onAnswerChange={onAnswerChange}
+                  onScoreChange={onDirectScoreChange}
+                />
+              </div>
+            </>
+          ) : (
+            <MissingPassageContent
+              questions={questions}
+              directScoreMode={directScoreMode}
+              readOnly={readOnly}
+              answers={answers}
+              onScoreChange={onDirectScoreChange}
+            />
+          )}
+        </article>
 
-        <aside className="english-question-pane">{questions.length === 0 ? <p className="py-4 text-sm text-on-surface-variant">这篇的题目和评分来源还未导入。</p> : <div className="grid gap-4">{questions.map((question) => {
-          const submittedAnswer = roundRevision?.answers[question.id] ?? "";
-           const manualScore = parseEnglishManualScore(submittedAnswer, question.score);
-           const correct = Boolean(manualScore === null && normalizeEnglishObjectiveAnswer(question.standardAnswer) && normalizeEnglishObjectiveAnswer(submittedAnswer)
-             && normalizeEnglishObjectiveAnswer(question.standardAnswer) === normalizeEnglishObjectiveAnswer(submittedAnswer));
-           const savedAnswer = manualScore !== null
-             ? { isManual: true, score: manualScore }
-             : objective
-               ? roundRevision ? { isCorrect: correct, score: correct ? question.score : 0 } : attempt?.answers.find((answer) => answer.questionId === question.id)
-               : undefined;
-           return <QuestionBlock key={question.id} passage={passage} question={question} value={answers[question.id] ?? ""} savedAnswer={savedAnswer} submitted={submitted && !editingSubmitted} readOnly={submitted && !editingSubmitted} objective={objective} directScoreMode={directScoreMode} onChange={(answer) => onAnswerChange(question.id, answer)} onScoreChange={(score) => onDirectScoreChange(question.id, score)} />;
-        })}</div>}</aside>
+        {typeof document !== "undefined" && createPortal(
+          <AnimatePresence initial={false}>
+          {isReading && questionDockOpen && (
+            <motion.div
+              key="english-question-dock-overlay"
+              className="english-question-dock-overlay"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.18, ease: "easeOut" }}
+            >
+              <button type="button" className="english-question-dock-scrim" aria-label="关闭答题栏" onClick={() => setQuestionDockOpen(false)} />
+              <motion.aside
+                id="english-question-dock"
+                ref={questionDockRef}
+                className="english-question-dock"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="english-question-dock-title"
+                initial={{ x: "100%" }}
+                animate={{ x: 0 }}
+                exit={{ x: "100%" }}
+                transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
+              >
+                <header className="english-question-dock-header">
+                  <div>
+                    <p className="english-question-dock-eyebrow">阅读作答</p>
+                    <h3 id="english-question-dock-title">{getPassageDisplayTitle(passage)}</h3>
+                    <span>{questions.length} 题 · 选择后自动保存到当前草稿</span>
+                  </div>
+                  <button ref={questionDockCloseRef} type="button" className="english-question-dock-close" onClick={() => setQuestionDockOpen(false)} aria-label="关闭答题栏"><X className="h-5 w-5" /></button>
+                </header>
+                <div className="english-question-dock-body">
+                  {questions.length === 0 ? <p className="py-4 text-sm text-on-surface-variant">这篇的题目和评分来源还未导入。</p> : <div className="grid gap-4">{questions.map((question) => {
+                    const submittedAnswer = roundRevision?.answers[question.id] ?? "";
+                    const manualScore = parseEnglishManualScore(submittedAnswer, question.score);
+                    const correct = Boolean(manualScore === null && normalizeEnglishObjectiveAnswer(question.standardAnswer) && normalizeEnglishObjectiveAnswer(submittedAnswer)
+                      && normalizeEnglishObjectiveAnswer(question.standardAnswer) === normalizeEnglishObjectiveAnswer(submittedAnswer));
+                    const savedAnswer = manualScore !== null
+                      ? { isManual: true, score: manualScore }
+                      : roundRevision ? { isCorrect: correct, score: correct ? question.score : 0 } : attempt?.answers.find((answer) => answer.questionId === question.id);
+                    return <QuestionBlock key={question.id} passage={passage} question={question} value={answers[question.id] ?? ""} savedAnswer={savedAnswer} submitted={submitted} readOnly={readOnly} objective directScoreMode={directScoreMode} onChange={(answer) => onAnswerChange(question.id, answer)} onScoreChange={(score) => onDirectScoreChange(question.id, score)} />;
+                  })}</div>}
+                </div>
+              </motion.aside>
+            </motion.div>
+          )}
+          </AnimatePresence>,
+          document.body,
+        )}
       </div>
     </section>
   );

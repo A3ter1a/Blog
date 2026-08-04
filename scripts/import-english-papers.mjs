@@ -160,6 +160,46 @@ function asNumber(value) {
   return undefined;
 }
 
+function cleanPassageContent(section, content) {
+  let cleaned = asString(content)
+    .replace(/\r\n?/g, "\n")
+    .replace(/\(\s*\)\s*-?\s*11\s*-\s*\(\s*14\s*\)/gi, "")
+    .replace(/-\s*11\s*-\s*\(\s*14\s*\)/gi, "")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+
+  if (["cloze", "new_type", "translation"].includes(section)) {
+    cleaned = cleaned.replace(
+      /^(?:directions?|read the following|(?:in\s+)?the following|for questions|you are going to read)[\s\S]*?(?:\(\s*\d+\s+points?\s*\)|on\s+answer\s+sheet(?:\s+\d+)?\.?(?:\s*\(\s*\d+\s+points?\s*\))?)\s*/i,
+      "",
+    );
+  }
+  if (section === "new_type") {
+    cleaned = cleaned.replace(
+      /\s+41\.\s*(?:[A-H]\s*)?42\.\s*(?:[A-H]\s*)?43\.\s*(?:[A-H]\s*)?44\.\s*(?:[A-H]\s*)?45\.\s*(?:[A-H]\s*)?$/i,
+      "",
+    );
+  }
+  if (section === "writing") {
+    cleaned = cleaned
+      .replace(/^\s*\d{2}\.\s*/i, "")
+      .replace(/\s+Part\s+[AB]\s*$/i, "")
+      .trim();
+  }
+
+  return cleaned.replace(/\n{3,}/g, "\n\n").trim();
+}
+
+function cleanQuestionStem(section, questionNo, stem) {
+  let cleaned = asString(stem).replace(/\r\n?/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
+  if (section === "writing") {
+    cleaned = cleaned.replace(new RegExp(`^${questionNo}\\.\\s*`, "i"), "");
+    cleaned = cleaned.replace(/\s+Part\s+[AB]\s*$/i, "").trim();
+  }
+  return cleaned;
+}
+
 function questionSortOrder(questionNo, fallback) {
   const numeric = Number(String(questionNo).replace(/[^\d]/g, ""));
   return Number.isFinite(numeric) && numeric > 0 ? numeric : fallback;
@@ -235,7 +275,7 @@ function normalizeQuestion(rawQuestion, section, questionIndex, path, errors) {
   }
 
   const questionNo = asString(getField(rawQuestion, "questionNo", "question_no"));
-  const stem = asString(getField(rawQuestion, "stem"));
+  const stem = cleanQuestionStem(section, questionNo, getField(rawQuestion, "stem"));
   const options = normalizeOptions(getField(rawQuestion, "options") ?? [], path, errors);
   const standardAnswer = asString(getField(rawQuestion, "standardAnswer", "standard_answer"));
   const score = asNumber(getField(rawQuestion, "score")) ?? defaultQuestionScore(section);
@@ -271,7 +311,7 @@ function normalizePassage(rawPassage, year, passageIndex, options, path, errors,
   const section = asString(getField(rawPassage, "section"));
   const passageNo = asString(getField(rawPassage, "passageNo", "passage_no"));
   const title = asString(getField(rawPassage, "title"));
-  const content = asString(getField(rawPassage, "content"));
+  const content = cleanPassageContent(section, getField(rawPassage, "content"));
   const questionsRaw = getField(rawPassage, "questions") ?? [];
   const sortOrder = asNumber(getField(rawPassage, "sortOrder", "sort_order"))
     ?? defaultPassageSortOrder(section, passageNo)
@@ -286,7 +326,8 @@ function normalizePassage(rawPassage, year, passageIndex, options, path, errors,
   if (VALID_SECTIONS.has(section) && VALID_PASSAGE_NOS.has(passageNo) && !PASSAGE_NOS_BY_SECTION[section].has(passageNo)) {
     errors.push(`${path}.passageNo: ${passageNo} 不属于 ${section}`);
   }
-  if (!content && !options.allowEmptyContent) {
+  const knownMissingClozeOriginal = section === "cloze" && !content;
+  if (!content && !options.allowEmptyContent && !knownMissingClozeOriginal) {
     errors.push(`${path}.content: 不能为空。若只是分批占位，使用 --allow-empty-content`);
   }
   if (!Array.isArray(questionsRaw)) {
@@ -317,6 +358,26 @@ function normalizePassage(rawPassage, year, passageIndex, options, path, errors,
   }
   if (section === "new_type" && questions.length !== 5) {
     warnings.push(`${year} new_type: 新题型通常应为 5 题，当前 ${questions.length} 题`);
+  }
+  if (["cloze", "new_type", "translation"].includes(section)
+    && /^(?:directions?|read the following|the following|for questions|you are going to read|in the following)\b/i.test(content)) {
+    warnings.push(`${year} ${passageNo}: 清洗后仍残留答题说明，请检查原始 OCR`);
+  }
+  if (/\(\s*\)\s*-?\s*11\s*-\s*\(\s*14\s*\)|-\s*11\s*-\s*\(\s*14\s*\)/i.test(content)) {
+    warnings.push(`${year} ${passageNo}: 清洗后仍残留页脚 OCR`);
+  }
+  if (section === "writing" && questions.some((question) => /^\d{2}\.\s*/.test(question.stem) || /\s+Part\s+[AB]\s*$/i.test(question.stem))) {
+    warnings.push(`${year} ${passageNo}: 作文题干仍残留题号或 Part 标记`);
+  }
+  if (section === "cloze") {
+    const blankNumbers = new Set(
+      [...content.matchAll(/(?<!\w)(\d{1,2})(?!\w)/g)]
+        .map((match) => Number(match[1]))
+        .filter((number) => number >= 1 && number <= 20),
+    );
+    if (blankNumbers.size < 10) {
+      warnings.push(`${year} cloze: 清洗后只找到 ${blankNumbers.size} 个编号空，原文可能缺失，暂不应导入生产`);
+    }
   }
 
   return {

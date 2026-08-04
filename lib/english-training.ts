@@ -1,5 +1,6 @@
 export type EnglishPaperType = "english1";
 export type EnglishSection = "reading" | "cloze" | "new_type" | "translation" | "writing";
+export type EnglishNewTypeKind = "heading" | "insertion" | "ordering" | "statement_matching";
 export type EnglishPassageNo =
   | "text1"
   | "text2"
@@ -122,6 +123,83 @@ export const englishPassageLabels: Record<EnglishPassageNo, string> = {
 
 export function isEnglishObjectiveSection(section: EnglishSection): boolean {
   return section === "reading" || section === "cloze" || section === "new_type";
+}
+
+/**
+ * The database keeps the original exam section name for compatibility. The
+ * three new-question formats are therefore inferred from the imported
+ * directions instead of adding another database column.
+ */
+export function getEnglishNewTypeKind(content: string): EnglishNewTypeKind {
+  const normalized = content.toLowerCase().replace(/\s+/g, " ");
+  if (/comments on an article|statements summarizing the comments|choose the best statement .* numbered name/.test(normalized)) return "statement_matching";
+  if (/wrong order|reorganize (?:these )?paragraphs|paragraphs .* order/.test(normalized)) return "ordering";
+  if (/subheading|list of headings|choose a heading|most suitable heading/.test(normalized)) return "heading";
+  return "insertion";
+}
+
+function stripImportedDirections(content: string): string {
+  return content.replace(
+    /^(?:directions?|read the following|(?:in\s+)?the following|for questions|you are going to read)[\s\S]*?(?:\(\s*\d+\s+points?\s*\)|on\s+answer\s+sheet(?:\s+\d+)?\.?(?:\s*\(\s*\d+\s+points?\s*\))?)\s*/i,
+    "",
+  );
+}
+
+function stripImportedAnswerKey(content: string): string {
+  return content.replace(
+    /\s+41\.\s*(?:[A-H]\s*)?42\.\s*(?:[A-H]\s*)?43\.\s*(?:[A-H]\s*)?44\.\s*(?:[A-H]\s*)?45\.\s*(?:[A-H]\s*)?$/i,
+    "",
+  );
+}
+
+/** Remove OCR instructions, page footers and answer-key tails before display. */
+export function cleanEnglishPassageContent(section: EnglishSection, content: string): string {
+  let cleaned = content
+    .replace(/\r\n?/g, "\n")
+    .replace(/\(\s*\)\s*-?\s*11\s*-\s*\(\s*14\s*\)/gi, "")
+    .replace(/-\s*11\s*-\s*\(\s*14\s*\)/gi, "")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+
+  if (section === "cloze" || section === "new_type" || section === "translation") {
+    cleaned = stripImportedDirections(cleaned);
+  }
+  if (section === "new_type") {
+    cleaned = stripImportedAnswerKey(cleaned);
+  }
+  if (section === "writing") {
+    cleaned = cleaned
+      .replace(/^\s*\d{2}\.\s*/i, "")
+      .replace(/\s+Part\s+[AB]\s*$/i, "")
+      .trim();
+  }
+
+  return cleaned
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+export function hasEnglishPassageOriginal(section: EnglishSection, content: string): boolean {
+  const cleaned = cleanEnglishPassageContent(section, content);
+  if (!cleaned) return false;
+  if (section !== "cloze") return true;
+
+  const blankNumbers = new Set(
+    [...cleaned.matchAll(/(?<!\w)(\d{1,2})(?!\w)/g)]
+      .map((match) => Number(match[1]))
+      .filter((number) => number >= 1 && number <= 20),
+  );
+  return blankNumbers.size >= 10;
+}
+
+export function cleanEnglishQuestionStem(section: EnglishSection, questionNo: string, stem: string): string {
+  let cleaned = stem.replace(/\r\n?/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
+  if (section === "writing") {
+    cleaned = cleaned.replace(new RegExp(`^${questionNo}\\.\\s*`, "i"), "");
+    cleaned = cleaned.replace(/\s+Part\s+[AB]\s*$/i, "").trim();
+  }
+  return cleaned;
 }
 
 export function normalizeEnglishObjectiveAnswer(answer: string): string {
