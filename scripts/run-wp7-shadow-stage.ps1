@@ -163,7 +163,15 @@ function Assert-BaseCountsStable([object]$Before, [object]$After, [string]$Label
   }
 }
 
-$ActualHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $Migration0021).Hash.ToLowerInvariant()
+function Get-ReviewedMigrationHash([string]$Path) {
+  $Text = Get-Content -Raw -Encoding UTF8 -LiteralPath $Path
+  $CanonicalText = $Text.Replace("`r`n", "`n").Replace("`r", "`n")
+  $Bytes = [System.Text.UTF8Encoding]::new($false).GetBytes($CanonicalText)
+  $Sha256 = [System.Security.Cryptography.SHA256]::Create()
+  try { return [System.Convert]::ToHexString($Sha256.ComputeHash($Bytes)).ToLowerInvariant() } finally { $Sha256.Dispose() }
+}
+
+$ActualHash = Get-ReviewedMigrationHash $Migration0021
 if ($ActualHash -cne $Expected0021Hash) { throw "0021 SHA-256 漂移：expected=$Expected0021Hash actual=$ActualHash" }
 
 $PreviousPgPassword = $env:PGPASSWORD

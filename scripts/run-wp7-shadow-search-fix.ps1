@@ -9,7 +9,14 @@ $RepositoryRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $Migration = Join-Path $RepositoryRoot 'supabase\migrations\0022_private_note_rag_operator_fix.sql'
 $TempRoot = Join-Path $RepositoryRoot '.local-backups\wp7-search-fix-preview'
 if ($ShadowProjectRef -eq $ProductionProjectRef) { throw '拒绝执行：Shadow 与生产 ref 相同。' }
-if ((Get-FileHash -Algorithm SHA256 -LiteralPath $Migration).Hash.ToLowerInvariant() -cne $ExpectedHash) { throw '0022 SHA-256 漂移。' }
+function Get-ReviewedMigrationHash([string]$Path) {
+  $Text = Get-Content -Raw -Encoding UTF8 -LiteralPath $Path
+  $CanonicalText = $Text.Replace("`r`n", "`n").Replace("`r", "`n")
+  $Bytes = [System.Text.UTF8Encoding]::new($false).GetBytes($CanonicalText)
+  $Sha256 = [System.Security.Cryptography.SHA256]::Create()
+  try { return [System.Convert]::ToHexString($Sha256.ComputeHash($Bytes)).ToLowerInvariant() } finally { $Sha256.Dispose() }
+}
+if ((Get-ReviewedMigrationHash $Migration) -cne $ExpectedHash) { throw '0022 SHA-256 漂移。' }
 $Credential = Get-Content -Raw -Encoding UTF8 -LiteralPath (Resolve-Path $CredentialPath).Path | ConvertFrom-Json
 if ([string]$Credential.projectName -cne 'Blog-shadow-wp1b' -or [string]$Credential.region -cne 'ap-southeast-1') { throw 'Shadow 凭据标记无效。' }
 $Psql = (Resolve-Path (Join-Path $RepositoryRoot '.tools\postgresql\17.10\pgsql\bin\psql.exe')).Path

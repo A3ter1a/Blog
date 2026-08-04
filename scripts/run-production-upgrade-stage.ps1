@@ -42,6 +42,14 @@ $ExpectedMigrationHashes = [ordered]@{
   '0022' = 'b40918f65d9f4019da23293f1d0c60916aca59a5a9fb8874fff6a0b6350aa327'
 }
 
+function Get-ReviewedMigrationHash([string]$Path) {
+  $Text = Get-Content -Raw -Encoding UTF8 -LiteralPath $Path
+  $CanonicalText = $Text.Replace("`r`n", "`n").Replace("`r", "`n")
+  $Bytes = [System.Text.UTF8Encoding]::new($false).GetBytes($CanonicalText)
+  $Sha256 = [System.Security.Cryptography.SHA256]::Create()
+  try { return [System.Convert]::ToHexString($Sha256.ComputeHash($Bytes)).ToLowerInvariant() } finally { $Sha256.Dispose() }
+}
+
 if ($ProductionProjectRef -ceq $ShadowProjectRef) {
   throw 'Refusing to run: production ref equals the fixed shadow ref.'
 }
@@ -112,7 +120,7 @@ foreach ($MigrationId in $MigrationOrder) {
   if (-not (Test-Path -LiteralPath $MigrationPath -PathType Leaf)) {
     throw "Reviewed migration file is missing: $MigrationPath"
   }
-  $ActualHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $MigrationPath).Hash.ToLowerInvariant()
+  $ActualHash = Get-ReviewedMigrationHash $MigrationPath
   if ($ActualHash -cne $ExpectedMigrationHashes[$MigrationId]) {
     throw "Production migration $MigrationId differs from the reviewed artifact."
   }
