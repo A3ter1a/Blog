@@ -12,9 +12,12 @@ import {
   isEnglishObjectiveSection,
   cleanEnglishPassageContent,
   cleanEnglishQuestionStem,
+  extractEnglishPromptImages,
   getEnglishNewTypeKind,
+  getEnglishNewTypePresentation,
   hasEnglishPassageOriginal,
   normalizeEnglishObjectiveAnswer,
+  removeEnglishPromptImages,
   type EnglishAttempt,
   type EnglishNewTypeKind,
   type EnglishPassage,
@@ -364,6 +367,7 @@ function PassagePageContent({
   onToggleQuestion,
   onAnswerChange,
   onScoreChange,
+  translationMarkerMode = "interactive",
 }: {
   passage: EnglishPassage;
   content: string;
@@ -375,6 +379,7 @@ function PassagePageContent({
   onToggleQuestion: (questionId: string) => void;
   onAnswerChange: (questionId: string, answer: string) => void;
   onScoreChange: (questionId: string, score: string) => void;
+  translationMarkerMode?: "interactive" | "anchor";
 }) {
   const paragraphs = content.split(/\n{2,}/).map((paragraph) => paragraph.trim()).filter(Boolean);
   const questionsByNo = new Map(questions.map((question) => [question.questionNo, question]));
@@ -382,6 +387,13 @@ function PassagePageContent({
     <p key={`${index}-${paragraph.slice(0, 12)}`}>
       {passage.section === "cloze"
         ? renderClozeParagraph(paragraph, questionsByNo, answers, openQuestionId, readOnly, directScoreMode, onToggleQuestion, onAnswerChange, onScoreChange)
+        : passage.section === "translation" && translationMarkerMode === "anchor"
+          ? renderMarkedParagraph(
+              paragraph,
+              /\((4[6-9]|50)\)/g,
+              (questionNo) => questionsByNo.get(questionNo),
+              (question) => <span key={`${index}-${question.id}`} className="english-translation-anchor">第 {question.questionNo} 题</span>,
+            )
         : passage.section === "translation"
           ? renderMarkedParagraph(
               paragraph,
@@ -463,6 +475,152 @@ function NewTypeAnswerStrip({
   );
 }
 
+function NewTypeChoiceBank({
+  kind,
+  choices,
+}: {
+  kind: EnglishNewTypeKind;
+  choices: { label: string; content: string }[];
+}) {
+  const labels = {
+    heading: "标题备选",
+    insertion: "待插入句段",
+    ordering: "待排序段落",
+    statement_matching: "观点选项",
+  } as const;
+
+  if (choices.length === 0) return null;
+
+  return (
+    <section className="english-new-type-choice-bank" aria-label={labels[kind]}>
+      <div className="english-new-type-choice-bank-heading">
+        <div>
+          <strong>{labels[kind]}</strong>
+          <span>候选内容独立展示，答题时点击上方题号进行选择。</span>
+        </div>
+        <span>{choices.length} 个选项</span>
+      </div>
+      <div className="english-new-type-choice-grid">
+        {choices.map((choice) => (
+          <article key={choice.label} className="english-new-type-choice-card">
+            <span className="english-new-type-choice-label">{choice.label}</span>
+            <p>{choice.content}</p>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function TranslationTaskCard({
+  question,
+  value,
+  open,
+  readOnly,
+  directScoreMode,
+  onToggle,
+  onChange,
+  onScoreChange,
+}: {
+  question: EnglishQuestion;
+  value: string;
+  open: boolean;
+  readOnly: boolean;
+  directScoreMode: boolean;
+  onToggle: () => void;
+  onChange: (value: string) => void;
+  onScoreChange: (value: string) => void;
+}) {
+  const sourceSentence = question.stem.replace(/\s+/g, " ").trim();
+  return (
+    <article className="english-translation-task-card">
+      <div className="english-translation-task-heading">
+        <span>第 {question.questionNo} 题</span>
+        <small>{question.score} 分</small>
+      </div>
+      <p className="english-translation-source">{sourceSentence}</p>
+      <div className="english-translation-answer-label">{directScoreMode ? "纸笔得分" : "你的译文"}</div>
+      <InlineTextAnswer
+        question={question}
+        value={value}
+        open={open}
+        readOnly={readOnly}
+        directScoreMode={directScoreMode}
+        onToggle={onToggle}
+        onChange={onChange}
+        onScoreChange={onScoreChange}
+      />
+    </article>
+  );
+}
+
+function TranslationPracticeContent({
+  passage,
+  content,
+  questions,
+  answers,
+  openQuestionId,
+  readOnly,
+  directScoreMode,
+  onToggleQuestion,
+  onAnswerChange,
+  onScoreChange,
+}: {
+  passage: EnglishPassage;
+  content: string;
+  questions: EnglishQuestion[];
+  answers: Record<string, string>;
+  openQuestionId: string | null;
+  readOnly: boolean;
+  directScoreMode: boolean;
+  onToggleQuestion: (questionId: string) => void;
+  onAnswerChange: (questionId: string, value: string) => void;
+  onScoreChange: (questionId: string, value: string) => void;
+}) {
+  return (
+    <div className="english-translation-workspace">
+      <section className="english-translation-intro">
+        <strong>划线句逐题翻译</strong>
+        <span>题目原句已单独列出，不需要重新寻找；点击“你的译文”填写，点击其他位置收起。</span>
+      </section>
+      <div className="english-translation-task-grid">
+        {questions.map((question) => (
+          <TranslationTaskCard
+            key={question.id}
+            question={question}
+            value={answers[question.id] ?? ""}
+            open={openQuestionId === question.id}
+            readOnly={readOnly}
+            directScoreMode={directScoreMode}
+            onToggle={() => onToggleQuestion(question.id)}
+            onChange={(value) => onAnswerChange(question.id, value)}
+            onScoreChange={(value) => onScoreChange(question.id, value)}
+          />
+        ))}
+      </div>
+      <section className="english-translation-context" aria-label="翻译原文上下文">
+        <div className="english-translation-context-heading">
+          <strong>原文上下文</strong>
+          <span>题号已标注在对应位置</span>
+        </div>
+        <PassagePageContent
+          passage={passage}
+          content={content}
+          questions={questions}
+          answers={answers}
+          openQuestionId={openQuestionId}
+          readOnly={readOnly}
+          directScoreMode={directScoreMode}
+          translationMarkerMode="anchor"
+          onToggleQuestion={onToggleQuestion}
+          onAnswerChange={onAnswerChange}
+          onScoreChange={onScoreChange}
+        />
+      </section>
+    </div>
+  );
+}
+
 function WritingPracticeContent({
   passage,
   question,
@@ -481,7 +639,9 @@ function WritingPracticeContent({
   onScoreChange: (value: string) => void;
 }) {
   const questionNo = question?.questionNo ?? (passage.passageNo === "small_writing" ? "51" : "52");
-  const prompt = cleanEnglishQuestionStem("writing", questionNo, question?.stem || passage.content);
+  const promptSource = question?.stem || passage.content;
+  const promptImages = extractEnglishPromptImages(promptSource);
+  const prompt = cleanEnglishQuestionStem("writing", questionNo, removeEnglishPromptImages(promptSource));
   const paragraphs = prompt.split(/\n{2,}/).map((item) => item.trim()).filter(Boolean);
   const score = question?.score ?? passage.totalScore;
   const manualScore = parseEnglishManualScore(value, score);
@@ -493,6 +653,15 @@ function WritingPracticeContent({
           <span id="english-writing-prompt-title">写作题目 · {questionNo}</span>
           <span>{score} 分</span>
         </div>
+        {promptImages.length > 0 ? (
+          <figure className="english-writing-prompt-visuals">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={promptImages[0].src} alt={promptImages[0].alt} loading="eager" decoding="async" />
+            <figcaption>原题图表</figcaption>
+          </figure>
+        ) : passage.passageNo === "big_writing" ? (
+          <div className="english-writing-image-missing" role="status">当前题目没有随数据导入原图；重新抽取时请使用解析版 PDF。</div>
+        ) : null}
         <div className="english-writing-prompt-content">
           {paragraphs.map((paragraph, index) => <p key={`${index}-${paragraph.slice(0, 16)}`}>{paragraph}</p>)}
         </div>
@@ -719,11 +888,15 @@ export function EnglishPracticeWorkspace({
   } : null;
   const cleanedContent = cleanEnglishPassageContent(passage.section, passage.content);
   const hasOriginalContent = hasEnglishPassageOriginal(passage.section, passage.content);
-  const articlePages = paginatePassageContent(cleanedContent, passage.section === "writing" ? 720 : 280);
-  const currentPage = Math.min(articlePage, Math.max(articlePages.length - 1, 0));
   const isReading = passage.section === "reading";
   const isWriting = passage.section === "writing";
-  const newTypeKind = passage.section === "new_type" ? getEnglishNewTypeKind(passage.content) : null;
+  const newTypeKind = passage.section === "new_type" ? getEnglishNewTypeKind(passage.content, passage.title, passage.year) : null;
+  const newTypePresentation = passage.section === "new_type" && newTypeKind
+    ? getEnglishNewTypePresentation(cleanedContent, newTypeKind, questions[0]?.options ?? [])
+    : null;
+  const displayContent = newTypePresentation?.body ?? cleanedContent;
+  const articlePages = paginatePassageContent(displayContent, passage.section === "writing" ? 720 : 280);
+  const currentPage = Math.min(articlePage, Math.max(articlePages.length - 1, 0));
   const readOnly = submitted && !editingSubmitted;
   const latestRound = ledger?.rounds.reduce((latest, round) => Math.max(latest, round.round) as 1 | 2 | 3, 1) ?? 1;
   const hasFormalSubjectiveGrade = objective || roundRevision?.gradeOrigin !== "ai_suggested";
@@ -810,6 +983,70 @@ export function EnglishPracticeWorkspace({
                 }}
               />
             </div>
+          ) : passage.section === "new_type" && newTypeKind && newTypePresentation ? (
+            <>
+              {articlePages.length > 0 && <div className="english-article-pager flex items-center justify-between gap-3 text-xs text-on-surface-variant">
+                <span>文章 {currentPage + 1} / {articlePages.length}</span>
+                <div className="flex gap-2">
+                  <button type="button" onClick={() => onArticlePageChange(Math.max(currentPage - 1, 0))} disabled={currentPage === 0} aria-label="上一页文章" className="control-button english-article-nav-button min-h-11 px-3 text-xs"><ArrowLeft className="h-3.5 w-3.5" /><span className="sr-only">上一页</span></button>
+                  <button type="button" onClick={() => onArticlePageChange(Math.min(currentPage + 1, articlePages.length - 1))} disabled={currentPage >= articlePages.length - 1} aria-label="下一页文章" className="control-button english-article-nav-button min-h-11 px-3 text-xs"><ArrowRight className="h-3.5 w-3.5" /><span className="sr-only">下一页</span></button>
+                </div>
+              </div>}
+              <div ref={articlePageRef} className="english-article-page">
+                <NewTypeAnswerStrip
+                  kind={newTypeKind}
+                  questions={questions}
+                  answers={answers}
+                  openQuestionId={openInlineQuestionId}
+                  readOnly={readOnly}
+                  directScoreMode={directScoreMode}
+                  onToggleQuestion={(questionId) => setOpenInlineQuestionId((current) => current === questionId ? null : questionId)}
+                  onAnswerChange={onAnswerChange}
+                  onScoreChange={onDirectScoreChange}
+                />
+                <NewTypeChoiceBank kind={newTypeKind} choices={newTypePresentation.choices} />
+                {articlePages.length > 0 ? (
+                  <PassagePageContent
+                    passage={passage}
+                    content={articlePages[currentPage]}
+                    questions={questions}
+                    answers={answers}
+                    openQuestionId={openInlineQuestionId}
+                    readOnly={readOnly}
+                    directScoreMode={directScoreMode}
+                    onToggleQuestion={(questionId) => setOpenInlineQuestionId((current) => current === questionId ? null : questionId)}
+                    onAnswerChange={onAnswerChange}
+                    onScoreChange={onDirectScoreChange}
+                  />
+                ) : (
+                  <div className="english-new-type-context-empty">这类题型以候选段落直接组成题面，已将所有段落移到上方候选区。</div>
+                )}
+              </div>
+            </>
+          ) : passage.section === "translation" && hasOriginalContent && articlePages.length > 0 ? (
+            <>
+              <div className="english-article-pager flex items-center justify-between gap-3 text-xs text-on-surface-variant">
+                <span>原文 {currentPage + 1} / {articlePages.length}</span>
+                <div className="flex gap-2">
+                  <button type="button" onClick={() => onArticlePageChange(Math.max(currentPage - 1, 0))} disabled={currentPage === 0} aria-label="上一页原文" className="control-button english-article-nav-button min-h-11 px-3 text-xs"><ArrowLeft className="h-3.5 w-3.5" /><span className="sr-only">上一页</span></button>
+                  <button type="button" onClick={() => onArticlePageChange(Math.min(currentPage + 1, articlePages.length - 1))} disabled={currentPage >= articlePages.length - 1} aria-label="下一页原文" className="control-button english-article-nav-button min-h-11 px-3 text-xs"><ArrowRight className="h-3.5 w-3.5" /><span className="sr-only">下一页</span></button>
+                </div>
+              </div>
+              <div ref={articlePageRef} className="english-article-page">
+                <TranslationPracticeContent
+                  passage={passage}
+                  content={articlePages[currentPage]}
+                  questions={questions}
+                  answers={answers}
+                  openQuestionId={openInlineQuestionId}
+                  readOnly={readOnly}
+                  directScoreMode={directScoreMode}
+                  onToggleQuestion={(questionId) => setOpenInlineQuestionId((current) => current === questionId ? null : questionId)}
+                  onAnswerChange={onAnswerChange}
+                  onScoreChange={onDirectScoreChange}
+                />
+              </div>
+            </>
           ) : hasOriginalContent && articlePages.length > 0 ? (
             <>
               <div className="english-article-pager flex items-center justify-between gap-3 text-xs text-on-surface-variant">
@@ -820,17 +1057,6 @@ export function EnglishPracticeWorkspace({
                 </div>
               </div>
               <div ref={articlePageRef} className="english-article-page">
-                {passage.section === "new_type" && newTypeKind && <NewTypeAnswerStrip
-                  kind={newTypeKind}
-                  questions={questions}
-                  answers={answers}
-                  openQuestionId={openInlineQuestionId}
-                  readOnly={readOnly}
-                  directScoreMode={directScoreMode}
-                  onToggleQuestion={(questionId) => setOpenInlineQuestionId((current) => current === questionId ? null : questionId)}
-                  onAnswerChange={onAnswerChange}
-                  onScoreChange={onDirectScoreChange}
-                />}
                 <PassagePageContent
                   passage={passage}
                   content={articlePages[currentPage]}

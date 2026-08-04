@@ -50,11 +50,14 @@ import {
 import {
   cleanEnglishPassageContent,
   cleanEnglishQuestionStem,
+  extractEnglishPromptImages,
   getEnglishNewTypeKind,
+  getEnglishNewTypePresentation,
   hasEnglishPassageOriginal,
   isEnglishObjectiveSection,
   normalizeEnglishObjectiveAnswer,
   normalizeEnglishQuestionOptions,
+  removeEnglishPromptImages,
 } from "../lib/english-training.ts";
 import {
   BOOKLET_REFLECTION_START,
@@ -531,6 +534,7 @@ test("英语题型正文清洗与新题型模式识别保持稳定", () => {
   assert.equal(getEnglishNewTypeKind("Reorganize these paragraphs in the wrong order."), "ordering");
   assert.equal(getEnglishNewTypeKind("Choose the best statement from the list for each numbered name."), "statement_matching");
   assert.equal(getEnglishNewTypeKind("One sentence has been removed from the text."), "insertion");
+  assert.equal(getEnglishNewTypeKind("Part B", "", 2010), "ordering");
   assert.equal(
     cleanEnglishPassageContent("cloze", "Directions: Choose the best answer for each blank. (10 points)\n\nText 1"),
     "Text 1",
@@ -570,6 +574,34 @@ test("英语题型正文清洗与新题型模式识别保持稳定", () => {
     cleanEnglishPassageContent("writing", "51. Directions: Write an email to your friend. Part B"),
     "Directions: Write an email to your friend.",
   );
+
+  const headingPresentation = getEnglishNewTypePresentation(
+    "Article paragraph one.\n\nArticle paragraph two.\n\n[A] First heading [B] Second heading [C] Third heading [D] Fourth heading [E] Fifth heading [F] Sixth heading [G] Seventh heading",
+    "heading",
+    [
+      { label: "A", content: "First heading" },
+      { label: "B", content: "Second heading" },
+      { label: "C", content: "Third heading" },
+      { label: "D", content: "Fourth heading" },
+      { label: "E", content: "Fifth heading" },
+      { label: "F", content: "Sixth heading" },
+      { label: "G", content: "Seventh heading" },
+    ],
+  );
+  assert.equal(headingPresentation.choices.length, 7);
+  assert.equal(headingPresentation.choices[6].content, "Seventh heading");
+  assert.equal(headingPresentation.body, "Article paragraph one.\n\nArticle paragraph two.");
+
+  const orderingPresentation = getEnglishNewTypePresentation(
+    "[A] Paragraph A [B] Paragraph B [C] Paragraph C [D] Paragraph D [E] Paragraph E [F] Paragraph F [G] Paragraph G",
+    "ordering",
+  );
+  assert.equal(orderingPresentation.body, "");
+  assert.equal(orderingPresentation.choices.length, 7);
+
+  const prompt = "Directions: write.\n\n![原题图](data:image/png;base64,AAAA)";
+  assert.deepEqual(extractEnglishPromptImages(prompt), [{ alt: "原题图", src: "data:image/png;base64,AAAA" }]);
+  assert.equal(removeEnglishPromptImages(prompt), "Directions: write.");
 });
 
 test("三刷做题本必须同时具备题目、答案、详细解析和方法总结", () => {

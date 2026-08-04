@@ -13,12 +13,12 @@ npm.cmd run import:english-papers -- --input data/english-papers/english1-2007-2
 完整 JSON 会被 `.gitignore` 忽略，不要提交真题正文。
 
 ```bash
-python scripts/extract-english-papers-from-pdfs.py --source "C:\Users\phoen\Downloads\Compressed" --output data/english-papers/english1-2007-2026.json
+python scripts/extract-english-papers-from-pdfs.py --source "C:\Users\phoen\Downloads\Compressed" --analysis-source "C:\Users\phoen\Downloads\Compressed\analysis" --answers-input data/english-papers/english1-2007-2026.json --output data/english-papers/english1-2007-2026.json --embed-writing-page-images
 ```
 
-PDF 中文参考译文的文本层有字体编码问题，脚本不会把乱码作为标准答案导入。翻译和写作不需要标准答案，`standardAnswer` 留空，后续统一走 AI 评分；客观题答案从答案页导入。
+站点整卷 PDF 主要提供题面，不一定附客观题答案页；`--answers-input` 用已有答案映射补齐客观题，避免把题目页误当答案页。脚本会删除站点重复页脚、保留完整原文和候选段落，并从同站解析版 PDF 中裁出作文原图。翻译题卡会从题号标记后的上下文中提取完整句子，原文上下文仍单独保留；翻译和写作不需要标准答案，`standardAnswer` 留空，后续统一走 AI 评分。
 
-不建议把作文页图片用 base64 直接写入数据库。若后续需要保留图表原图，优先上传到 Supabase Storage 后在题组里保存图片 URL。
+当前 `--embed-writing-page-images` 适合本地导入和视觉校验；生产环境不建议把作文图表用 base64 直接写入数据库，后续可上传到 Supabase Storage 后保存图片 URL。
 
 ## 直接写入 Supabase
 

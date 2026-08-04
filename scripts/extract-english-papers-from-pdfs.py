@@ -49,6 +49,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--source", required=True, help="Folder containing YYYY*.pdf files.")
     parser.add_argument("--output", required=True, help="Output JSON path.")
     parser.add_argument(
+        "--answers-input",
+        help="Existing JSON containing objective answer letters when the source PDFs are question-only.",
+    )
+    parser.add_argument(
+        "--analysis-source",
+        help="Optional folder containing YYYY analysis PDFs with the original writing image.",
+    )
+    parser.add_argument(
         "--embed-writing-page-images",
         action="store_true",
         help="Embed each writing source page as a data URI in the big-writing content.",
@@ -97,6 +105,22 @@ def ascii_clean(text: str) -> str:
     text = "\n".join(cleaned_lines)
     text = re.sub(r"\n{3,}", "\n\n", text)
     return text.strip()
+
+
+def strip_source_footer(text: str) -> str:
+    """Remove the repeated source URL while keeping the actual page content."""
+    return re.sub(r"https?://english-exam\.lazynote\.cn/\S*", "", text, flags=re.I)
+
+
+def classify_new_type_kind(text: str) -> str:
+    normalized = re.sub(r"\s+", " ", text).lower()
+    if re.search(r"comments on an article|statements summarizing the comments|choose the best statement .* numbered name", normalized):
+        return "statement_matching"
+    if re.search(r"wrong order|reorganize (?:these )?paragraphs|paragraphs .* order|most suitable paragraphs .* form a coherent text", normalized):
+        return "ordering"
+    if re.search(r"subheading|list of headings|choose a heading|most suitable heading", normalized):
+        return "heading"
+    return "insertion"
 
 
 def prose(text: str) -> str:
@@ -291,6 +315,13 @@ def parse_reading(text: str, answers: dict[int, str]) -> list[dict[str, Any]]:
 
 def parse_new_type(text: str, answers: dict[int, str]) -> dict[str, Any]:
     block = section_slice(text, r"Part\s+B\s+Directions:", r"Part\s+C\s+Directions:", "Reading Part B")
+    kind = classify_new_type_kind(block)
+    kind_titles = {
+        "heading": "段落匹配标题（heading）",
+        "insertion": "句子插入（insertion）",
+        "ordering": "段落排序（ordering）",
+        "statement_matching": "观点匹配（statement matching）",
+    }
     options_block = re.split(r"\n\s*(?:[A-H]\s+)?41\.\s*(?:42\.|[A-H]\b)", block, maxsplit=1)[0]
     _, options = parse_options(options_block)
     if not options:
@@ -312,12 +343,36 @@ def parse_new_type(text: str, answers: dict[int, str]) -> dict[str, Any]:
     return {
         "section": "new_type",
         "passageNo": "new_type",
-        "title": "Part B",
+        "title": f"Part B · {kind_titles[kind]}",
         "content": strip_new_type_answer_key(strip_exam_directions(block)),
         "totalScore": 10,
         "sortOrder": 40,
         "questions": questions,
     }
+
+
+def extract_translation_segment(value: str) -> str:
+    """Keep the marked sentence for the answer card, not the whole context block."""
+    # Answer cards should be a single readable sentence even when the PDF wraps
+    # one sentence into multiple text paragraphs/columns.
+    cleaned = " ".join(prose(value).split())
+    if not cleaned:
+        return ""
+
+    # The PDF text stream does not retain underline ranges. In the source paper,
+    # each translation item is one complete sentence, so the first real sentence
+    # boundary after the marker is the stable extraction boundary. Ignore common
+    # abbreviations that otherwise look like a sentence end.
+    abbreviation_pattern = re.compile(
+        r"(?:\b(?:e\.g|i\.e|etc|Mr|Mrs|Ms|Dr|Prof|U\.S|No)\.)$",
+        re.I,
+    )
+    for match in re.finditer(r"[.!?](?:[\"'”’»)]*)?(?=\s|$)", cleaned):
+        candidate = cleaned[: match.end()].strip()
+        if cleaned[match.start()] == "." and abbreviation_pattern.search(candidate):
+            continue
+        return candidate
+    return cleaned
 
 
 def parse_translation(text: str) -> dict[str, Any]:
@@ -327,7 +382,7 @@ def parse_translation(text: str) -> dict[str, Any]:
     for index, match in enumerate(segment_matches):
         number = int(match.group(1))
         next_start = segment_matches[index + 1].start() if index + 1 < len(segment_matches) else len(block)
-        segment = prose(block[match.end() : next_start])
+        segment = extract_translation_segment(block[match.end() : next_start])
         questions.append(
             {
                 "questionNo": str(number),
@@ -351,22 +406,58 @@ def parse_translation(text: str) -> dict[str, Any]:
     }
 
 
-def render_writing_page_data_uri(pdf_path: Path, scale: float) -> str:
+def find_writing_image_page(pdf_path: Path) -> tuple[int, tuple[float, float, float, float] | None, float, float] | None:
+    with pdfplumber.open(pdf_path) as pdf:
+        for index, page in enumerate(pdf.pages):
+            if not page.images:
+                continue
+            image = page.images[0]
+            return (
+                index,
+                (float(image["x0"]), float(image["top"]), float(image["x1"]), float(image["bottom"])),
+                float(page.width),
+                float(page.height),
+            )
+    return None
+
+
+def render_writing_page_data_uri(pdf_path: Path, scale: float) -> str | None:
     try:
         import pypdfium2 as pdfium
     except ImportError as exc:  # pragma: no cover - environment guard
         raise SystemExit("Missing dependency for image embedding: pypdfium2") from exc
 
+    image_page = find_writing_image_page(pdf_path)
+    if image_page is None:
+        return None
+    page_index, bounds, page_width, page_height = image_page
     document = pdfium.PdfDocument(str(pdf_path))
-    page = document[len(document) - 2]
+    page = document[page_index]
     image = page.render(scale=scale).to_pil().convert("RGB")
+    if bounds:
+        x0, top, x1, bottom = bounds
+        x_scale = image.width / page_width
+        y_scale = image.height / page_height
+        padding = max(4, round(8 * scale))
+        image = image.crop((
+            max(0, round(x0 * x_scale) - padding),
+            max(0, round(top * y_scale) - padding),
+            min(image.width, round(x1 * x_scale) + padding),
+            min(image.height, round(bottom * y_scale) + padding),
+        ))
     buffer = io.BytesIO()
     image.save(buffer, format="JPEG", quality=72, optimize=True)
     encoded = base64.b64encode(buffer.getvalue()).decode("ascii")
     return f"data:image/jpeg;base64,{encoded}"
 
 
-def parse_writing(text: str, pdf_path: Path, embed_image: bool, image_scale: float) -> list[dict[str, Any]]:
+def parse_writing(
+    text: str,
+    pdf_path: Path,
+    embed_image: bool,
+    image_scale: float,
+    image_pdf_path: Path | None = None,
+) -> list[dict[str, Any]]:
     match = find_required(r"Section\s+(?:III\s+)?Writing", text, "Writing section", re.I | re.S)
     block = text[match.end() :].strip()
     block = re.split(r"\n\s*\d{4}\s*\n\s*Section\s+(?:I|)\s*Use of English", block, maxsplit=1, flags=re.I | re.S)[0]
@@ -377,8 +468,9 @@ def parse_writing(text: str, pdf_path: Path, embed_image: bool, image_scale: flo
     big = clean_writing_prompt(block[q52.start() :])
 
     if embed_image:
-        data_uri = render_writing_page_data_uri(pdf_path, image_scale)
-        big = f"{big}\n\n![Writing page image]({data_uri})"
+        data_uri = render_writing_page_data_uri(image_pdf_path or pdf_path, image_scale)
+        if data_uri:
+            big = f"{big}\n\n![Writing page image]({data_uri})"
 
     return [
         {
@@ -423,12 +515,14 @@ def parse_writing(text: str, pdf_path: Path, embed_image: bool, image_scale: flo
 def extract_pdf_text(pdf_path: Path) -> tuple[str, str]:
     with pdfplumber.open(pdf_path) as pdf:
         page_texts = [
-            page.extract_text(x_tolerance=1, y_tolerance=3) or ""
+            strip_source_footer(page.extract_text(x_tolerance=1, y_tolerance=3) or "")
             for page in pdf.pages
         ]
     if len(page_texts) < 2:
         raise ValueError(f"{pdf_path.name}: PDF has too few pages")
-    question_text = ascii_clean("\n".join(page_texts[:-1]))
+    # The site's "整卷" files are question-only PDFs. The final page may be a
+    # continuation of the writing prompt, so never drop it as an answer page.
+    question_text = ascii_clean("\n".join(page_texts))
     answer_text = page_texts[-1]
     return question_text, answer_text
 
@@ -436,8 +530,38 @@ def extract_pdf_text(pdf_path: Path) -> tuple[str, str]:
 def expected_pdf(source_dir: Path, year: int) -> Path:
     matches = sorted(source_dir.glob(f"{year}*.pdf"))
     if len(matches) != 1:
+        preferred = source_dir / f"english1-{year}.pdf"
+        if preferred.exists():
+            matches = [preferred]
+    if len(matches) != 1:
         raise FileNotFoundError(f"Expected exactly one PDF for {year}, found {len(matches)}")
     return matches[0]
+
+
+def load_fallback_answers(path: str | None) -> dict[int, dict[int, str]]:
+    if not path:
+        return {}
+    source_path = Path(path)
+    if not source_path.exists():
+        raise FileNotFoundError(f"Answers input not found: {source_path}")
+    payload = json.loads(source_path.read_text(encoding="utf-8"))
+    answers_by_year: dict[int, dict[int, str]] = {}
+    for paper in payload.get("papers", []):
+        year = int(paper["year"])
+        answers: dict[int, str] = {}
+        for passage in paper.get("passages", []):
+            if passage.get("section") not in {"cloze", "reading", "new_type"}:
+                continue
+            for question in passage.get("questions", []):
+                try:
+                    number = int(question["questionNo"])
+                except (KeyError, TypeError, ValueError):
+                    continue
+                answer = str(question.get("standardAnswer", "")).strip().upper()
+                if 1 <= number <= 45 and answer:
+                    answers[number] = answer
+        answers_by_year[year] = answers
+    return answers_by_year
 
 
 def validate_paper(paper: dict[str, Any]) -> list[str]:
@@ -462,7 +586,7 @@ def validate_paper(paper: dict[str, Any]) -> list[str]:
     for passage in paper["passages"]:
         if not passage["content"].strip():
             warnings.append(f"{paper['year']} {passage['passageNo']}: passage content is empty after cleaning")
-        if re.match(
+        if passage["section"] != "writing" and re.match(
             r"^(?:directions?|read the following|the following|for questions|you are going to read|in the following)\b",
             passage["content"],
             flags=re.I,
@@ -506,9 +630,18 @@ def validate_paper(paper: dict[str, Any]) -> list[str]:
     return warnings
 
 
-def parse_paper(pdf_path: Path, year: int, embed_image: bool, image_scale: float) -> tuple[dict[str, Any], list[str]]:
+def parse_paper(
+    pdf_path: Path,
+    year: int,
+    embed_image: bool,
+    image_scale: float,
+    fallback_answers: dict[int, str] | None = None,
+    image_pdf_path: Path | None = None,
+) -> tuple[dict[str, Any], list[str]]:
     question_text, answer_text = extract_pdf_text(pdf_path)
     answers = parse_answer_key(answer_text)
+    for number, answer in (fallback_answers or {}).items():
+        answers.setdefault(number, answer)
     missing_answers = [number for number in range(1, 46) if number not in answers]
     if missing_answers:
         raise ValueError(f"{year}: missing objective answers {missing_answers}")
@@ -518,7 +651,7 @@ def parse_paper(pdf_path: Path, year: int, embed_image: bool, image_scale: float
         *parse_reading(question_text, answers),
         parse_new_type(question_text, answers),
         parse_translation(question_text),
-        *parse_writing(question_text, pdf_path, embed_image, image_scale),
+        *parse_writing(question_text, pdf_path, embed_image, image_scale, image_pdf_path),
     ]
     paper = {
         "year": year,
@@ -532,15 +665,24 @@ def parse_paper(pdf_path: Path, year: int, embed_image: bool, image_scale: float
 def main() -> int:
     args = parse_args()
     source_dir = Path(args.source)
+    analysis_dir = Path(args.analysis_source) if args.analysis_source else source_dir / "analysis"
     output_path = Path(args.output)
     if not source_dir.exists():
         raise SystemExit(f"Source folder not found: {source_dir}")
 
+    fallback_answers_by_year = load_fallback_answers(args.answers_input)
     papers: list[dict[str, Any]] = []
     all_warnings: list[str] = []
     for year in VALID_YEARS:
         pdf_path = expected_pdf(source_dir, year)
-        paper, warnings = parse_paper(pdf_path, year, args.embed_writing_page_images, args.image_scale)
+        paper, warnings = parse_paper(
+            pdf_path,
+            year,
+            args.embed_writing_page_images,
+            args.image_scale,
+            fallback_answers_by_year.get(year),
+            analysis_dir / f"english1-{year}-analysis.pdf" if (analysis_dir / f"english1-{year}-analysis.pdf").exists() else None,
+        )
         papers.append(paper)
         all_warnings.extend(warnings)
         print(f"{year}: passages={len(paper['passages'])}, questions={sum(len(p['questions']) for p in paper['passages'])}")
