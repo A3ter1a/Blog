@@ -88,6 +88,7 @@ import {
   toPublicAiKnowledgeQuizItem,
 } from "../lib/ai-knowledge-quiz-contract.ts";
 import { validateReviewSelection } from "../lib/ai-review-contract.ts";
+import { parseAiProfileUpdate } from "../lib/ai-profile.ts";
 import { normalizeLatexForKatex } from "../lib/utils.ts";
 import { repairAIJsonText } from "../lib/ai-json-repair.ts";
 import {
@@ -1633,6 +1634,36 @@ test("当前标签页槽位从 URL 初始化、跨站内导航保留并可独立
   }
 });
 
+test("浏览器重启后仅有一个持久 AI 会话时可安全恢复槽位", () => {
+  const previousWindow = globalThis.window;
+  const sessionValues = new Map();
+  const persistedValues = new Map([["asteroid-project-auth-math", JSON.stringify({ refresh_token: "<REDACTED>" })]]);
+  const fakeWindow = {
+    location: { search: "" },
+    sessionStorage: {
+      getItem: (key) => sessionValues.get(key) ?? null,
+      setItem: (key, value) => sessionValues.set(key, value),
+      removeItem: (key) => sessionValues.delete(key),
+    },
+    localStorage: {
+      get length() { return persistedValues.size; },
+      key: (index) => [...persistedValues.keys()][index] ?? null,
+      getItem: (key) => persistedValues.get(key) ?? null,
+    },
+  };
+
+  Object.defineProperty(globalThis, "window", { configurable: true, writable: true, value: fakeWindow });
+  try {
+    assert.equal(getActiveAiAccountSlot(), "math");
+    persistedValues.set("asteroid-project-auth-english", JSON.stringify({ refresh_token: "<REDACTED>" }));
+    sessionValues.clear();
+    assert.equal(getActiveAiAccountSlot(), null);
+  } finally {
+    if (previousWindow === undefined) delete globalThis.window;
+    else Object.defineProperty(globalThis, "window", { configurable: true, writable: true, value: previousWindow });
+  }
+});
+
 test("登录页和 Supabase client 强制执行管理员与学科会话隔离", () => {
   const slotContract = readFileSync(resolve("lib/auth-session-slot.ts"), "utf8");
   const supabaseClient = readFileSync(resolve("lib/supabase.ts"), "utf8");
@@ -1641,11 +1672,14 @@ test("登录页和 Supabase client 强制执行管理员与学科会话隔离", 
   const login = readFileSync(resolve("app/login/page.tsx"), "utf8");
 
   assert.match(slotContract, /window\.sessionStorage\.setItem\(ACTIVE_AI_ACCOUNT_SLOT_SESSION_KEY, querySlot\)/);
+  assert.match(slotContract, /getPersistedSingleAiAccountSlot/);
   assert.match(supabaseClient, /storageKey: getAiAccountAuthStorageKey\(supabaseUrl, activeSlot\)/);
   assert.match(supabaseClient, /persistSession: true/);
   assert.match(supabaseClient, /autoRefreshToken: true/);
   assert.match(authHook, /if \(aiAccountSlot\) \{[\s\S]*isAdmin: false/);
   assert.match(workspaceHook, /if \(!activeSlot\)[\s\S]*doesAiProfileMatchSlot\(activeSlot, record\.profile\)/);
+  assert.match(workspaceHook, /fetchWithAuth/);
+  assert.match(workspaceHook, /refreshIfExpiring/);
   assert.match(login, /getAiAccountSlotForEmail\(normalizedEmail\)/);
   assert.match(login, /doesAiProfileMatchSlot\(accountSlot, profile\)/);
   assert.match(login, /router\.push\(getAiAccountSlotPath\("\/tools\/ai-content", accountSlot\)\)/);
@@ -1750,6 +1784,33 @@ test("AI 内容提案接口只接受 AI 学科账号，不复用管理员写入�
   assert.equal(workspace.includes("/api/ai/content-proposals"), true);
   assert.equal(workspace.includes("ContentPreview"), true);
   assert.equal(workspace.includes("保存并提交审核"), true);
+});
+
+test("AI 角色资料只开放白名单字段并拒绝身份篡改", () => {
+  const valid = parseAiProfileUpdate({
+    display_name: "守岸人",
+    avatar_url: "https://example.com/avatar.png",
+    bio: "负责数学学习内容。",
+    academic_affiliation: "数学",
+    focus_tags: ["高等数学", "真题分析", "高等数学"],
+  });
+  assert.equal(valid.ok, true);
+  if (valid.ok) assert.deepEqual(valid.value.focus_tags, ["高等数学", "真题分析"]);
+
+  const immutable = parseAiProfileUpdate({ subject: "math", display_name: "守岸人" });
+  assert.equal(immutable.ok, false);
+  if (!immutable.ok) assert.match(immutable.error, /不允许修改字段/);
+
+  const unsafeAvatar = parseAiProfileUpdate({ avatar_url: "javascript:alert(1)" });
+  assert.equal(unsafeAvatar.ok, false);
+
+  const route = readFileSync(resolve("app/api/ai/profile/route.ts"), "utf8");
+  const migration = readFileSync(resolve("supabase/migrations/0032_ai_profile_self_edit.sql"), "utf8");
+  const editor = readFileSync(resolve("components/ai-content/AiProfileEditor.tsx"), "utf8");
+  assert.equal(route.includes("getAiRequestContext(req)"), true);
+  assert.equal(route.includes("parseAiProfileUpdate"), true);
+  assert.equal(migration.includes("grant update (display_name, avatar_url, bio, academic_affiliation, focus_tags)"), true);
+  assert.equal(editor.includes("编辑角色资料"), true);
 });
 
 test("AI 内容提案先按 RLS 要求写入草稿，再由同一账号提升为已自检", () => {

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { buildAuthHeaders } from "@/lib/fetch-with-auth";
+import { fetchWithAuth, getCachedAuthSession, refreshAuthSession } from "@/lib/fetch-with-auth";
 import { getSupabase } from "@/lib/supabase";
 import { doesAiProfileMatchSlot, getActiveAiAccountSlot } from "@/lib/auth-session-slot";
 import type { AiContentProposalSummaryRow } from "@/lib/server-ai-content";
@@ -25,6 +25,8 @@ type WorkspaceState = {
   error: string | null;
 };
 
+const SESSION_EXPIRED_MESSAGE = "AI 学科会话已失效。系统已尝试自动恢复；如果该学科会话已被浏览器清除，请从对应专属入口登录一次。";
+
 function parseError(value: unknown, fallback: string): string {
   if (!value || typeof value !== "object" || Array.isArray(value)) return fallback;
   const record = value as Record<string, unknown>;
@@ -39,6 +41,7 @@ export function useAiContentWorkspace() {
     proposals: [],
     error: null,
   });
+  const [recovering, setRecovering] = useState(false);
 
   const reload = useCallback(() => {
     if (reloadInFlightRef.current) return reloadInFlightRef.current;
@@ -51,13 +54,12 @@ export function useAiContentWorkspace() {
           throw new Error("请从对应学科的专属入口进入 AI 内容工作台");
         }
 
-        const response = await fetch("/api/ai/content-proposals?limit=60", {
-          headers: await buildAuthHeaders(),
+        const response = await fetchWithAuth("/api/ai/content-proposals?limit=60", {
           cache: "no-store",
         });
         const payload: unknown = await response.json().catch(() => ({}));
         if (!response.ok) {
-          throw new Error(parseError(payload, response.status === 401 ? "请先登录 AI 学科账号" : "当前账号无权使用 AI 内容工作台"));
+          throw new Error(parseError(payload, response.status === 401 ? SESSION_EXPIRED_MESSAGE : "当前账号无权使用 AI 内容工作台"));
         }
         const record = payload && typeof payload === "object" && !Array.isArray(payload)
           ? payload as Record<string, unknown>
@@ -86,6 +88,22 @@ export function useAiContentWorkspace() {
     });
   }, []);
 
+  const recoverSession = useCallback(async () => {
+    if (recovering) return false;
+    setRecovering(true);
+    try {
+      const session = await refreshAuthSession();
+      if (!session) {
+        setState((current) => ({ ...current, loading: false, error: SESSION_EXPIRED_MESSAGE }));
+        return false;
+      }
+      await reload();
+      return true;
+    } finally {
+      setRecovering(false);
+    }
+  }, [recovering, reload]);
+
   useEffect(() => {
     const supabase = (() => {
       try {
@@ -97,6 +115,21 @@ export function useAiContentWorkspace() {
     let initialSessionPending = true;
     void reload();
     if (!supabase) return undefined;
+
+    let disposed = false;
+    const refreshIfExpiring = () => {
+      if (document.visibilityState === "hidden") return;
+      void (async () => {
+        const session = await getCachedAuthSession();
+        if (!session?.expires_at || session.expires_at * 1000 - Date.now() > 90_000) return;
+        const refreshed = await refreshAuthSession();
+        if (refreshed && !disposed) void reload();
+      })();
+    };
+
+    window.addEventListener("focus", refreshIfExpiring);
+    window.addEventListener("online", refreshIfExpiring);
+    document.addEventListener("visibilitychange", refreshIfExpiring);
     const { data } = supabase.auth.onAuthStateChange((event) => {
       // Supabase emits INITIAL_SESSION during client hydration. The explicit
       // first load above already covers it, so do not fetch the same payload
@@ -108,10 +141,14 @@ export function useAiContentWorkspace() {
       void reload();
     });
     return () => {
+      disposed = true;
       initialSessionPending = false;
+      window.removeEventListener("focus", refreshIfExpiring);
+      window.removeEventListener("online", refreshIfExpiring);
+      document.removeEventListener("visibilitychange", refreshIfExpiring);
       data.subscription.unsubscribe();
     };
   }, [reload]);
 
-  return { ...state, reload };
+  return { ...state, reload, recoverSession, recovering };
 }

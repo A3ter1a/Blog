@@ -36,6 +36,36 @@ function canUseSessionStorage(): boolean {
   return typeof window !== "undefined" && typeof window.sessionStorage !== "undefined";
 }
 
+function getPersistedSingleAiAccountSlot(): AiAccountSlot | null {
+  if (typeof window === "undefined" || typeof window.localStorage === "undefined") return null;
+
+  try {
+    const persistedSlots = AI_ACCOUNT_SLOTS.filter((slot) => {
+      const suffix = `-auth-${slot}`;
+      for (let index = 0; index < window.localStorage.length; index += 1) {
+        const key = window.localStorage.key(index);
+        if (!key?.startsWith("asteroid-") || !key.endsWith(suffix)) continue;
+        const value = window.localStorage.getItem(key);
+        if (!value || !value.trim()) continue;
+        try {
+          const session = JSON.parse(value) as { refresh_token?: unknown };
+          if (typeof session.refresh_token === "string" && session.refresh_token.length > 0) return true;
+        } catch {
+          // Ignore unrelated values that happen to use a similar key suffix.
+        }
+      }
+      return false;
+    });
+
+    // With one persisted slot it is safe to recover the marker after a
+    // browser restart. Multiple slots require the URL/sessionStorage marker
+    // so independent subject windows can never guess each other.
+    return persistedSlots.length === 1 ? persistedSlots[0] : null;
+  } catch {
+    return null;
+  }
+}
+
 export function getActiveAiAccountSlot(): AiAccountSlot | null {
   if (!canUseSessionStorage()) return null;
 
@@ -48,9 +78,10 @@ export function getActiveAiAccountSlot(): AiAccountSlot | null {
       return querySlot;
     }
 
-    return normalizeAiAccountSlot(
+    const sessionSlot = normalizeAiAccountSlot(
       window.sessionStorage.getItem(ACTIVE_AI_ACCOUNT_SLOT_SESSION_KEY),
     );
+    return sessionSlot ?? getPersistedSingleAiAccountSlot();
   } catch {
     return null;
   }

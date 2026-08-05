@@ -17,7 +17,7 @@ import {
 import { ContentPreview } from "@/components/ui/ContentPreview";
 import { AiKnowledgeQuizReviewPanel } from "@/components/ai-content/AiKnowledgeQuizReviewPanel";
 import { useToast } from "@/components/ui/Toast";
-import { buildAuthHeaders } from "@/lib/fetch-with-auth";
+import { fetchWithAuth } from "@/lib/fetch-with-auth";
 import { subjectMap } from "@/lib/types";
 import { AI_REVIEW_QUEUE_CHANGED_EVENT, type AiContentReviewStatus } from "@/lib/ai-content-contract";
 import type {
@@ -90,8 +90,7 @@ export function AiContentReviewWorkspace() {
     setLoading(true);
     try {
       const suffix = nextFilter ? `?status=${encodeURIComponent(nextFilter)}` : "";
-      const response = await fetch(`/api/ai/content-review${suffix}`, {
-        headers: await buildAuthHeaders(),
+      const response = await fetchWithAuth(`/api/ai/content-review${suffix}`, {
         cache: "no-store",
       });
       const payload: unknown = await response.json().catch(() => ({}));
@@ -116,8 +115,7 @@ export function AiContentReviewWorkspace() {
     setDetailLoading(true);
     setSelection(null);
     try {
-      const response = await fetch(`/api/ai/content-review/${encodeURIComponent(proposalId)}`, {
-        headers: await buildAuthHeaders(),
+      const response = await fetchWithAuth(`/api/ai/content-review/${encodeURIComponent(proposalId)}`, {
         cache: "no-store",
       });
       const payload: unknown = await response.json().catch(() => ({}));
@@ -213,9 +211,9 @@ export function AiContentReviewWorkspace() {
     if (action === "reject" && !window.confirm("确定驳回这篇提案吗？驳回后 AI 账号不能继续编辑。")) return;
     setBusyAction(action);
     try {
-      const response = await fetch(`/api/ai/content-review/${encodeURIComponent(proposal.id)}`, {
+      const response = await fetchWithAuth(`/api/ai/content-review/${encodeURIComponent(proposal.id)}`, {
         method: "PATCH",
-        headers: await buildAuthHeaders({ "Content-Type": "application/json" }),
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action }),
       });
       const payload: unknown = await response.json().catch(() => ({}));
@@ -236,9 +234,9 @@ export function AiContentReviewWorkspace() {
     if (!window.confirm(`确定批准选中的 ${selectedPendingIds.length} 篇 AI 文章吗？只会改变审核状态，不会自动发布。`)) return;
     setBusyAction("batch_approve");
     try {
-      const response = await fetch("/api/ai/content-review", {
+      const response = await fetchWithAuth("/api/ai/content-review", {
         method: "PATCH",
-        headers: await buildAuthHeaders({ "Content-Type": "application/json" }),
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "approve", proposalIds: selectedPendingIds }),
       });
       const payload: unknown = await response.json().catch(() => ({}));
@@ -268,9 +266,9 @@ export function AiContentReviewWorkspace() {
     if (!window.confirm(`确定发布选中的 ${selectedApprovedIds.length} 篇 AI 文章吗？发布后会进入博客公开笔记。`)) return;
     setBusyAction("batch_publish");
     try {
-      const response = await fetch("/api/ai/content-review", {
+      const response = await fetchWithAuth("/api/ai/content-review", {
         method: "PATCH",
-        headers: await buildAuthHeaders({ "Content-Type": "application/json" }),
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "publish", proposalIds: selectedApprovedIds }),
       });
       const payload: unknown = await response.json().catch(() => ({}));
@@ -311,9 +309,9 @@ export function AiContentReviewWorkspace() {
     if (!proposal || !selection || !commentBody.trim() || busyAction) return;
     setBusyAction("comment");
     try {
-      const response = await fetch(`/api/ai/content-review/${encodeURIComponent(proposal.id)}`, {
+      const response = await fetchWithAuth(`/api/ai/content-review/${encodeURIComponent(proposal.id)}`, {
         method: "POST",
-        headers: await buildAuthHeaders({ "Content-Type": "application/json" }),
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           proposalContentVersion: proposal.content_version,
           selectionStart: selection.start,
@@ -339,9 +337,9 @@ export function AiContentReviewWorkspace() {
     if (!proposal || busyAction) return;
     setBusyAction("comment");
     try {
-      const response = await fetch(`/api/ai/content-review/${encodeURIComponent(proposal.id)}/comments/${encodeURIComponent(comment.id)}`, {
+      const response = await fetchWithAuth(`/api/ai/content-review/${encodeURIComponent(proposal.id)}/comments/${encodeURIComponent(comment.id)}`, {
         method: "PATCH",
-        headers: await buildAuthHeaders({ "Content-Type": "application/json" }),
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status }),
       });
       const payload: unknown = await response.json().catch(() => ({}));

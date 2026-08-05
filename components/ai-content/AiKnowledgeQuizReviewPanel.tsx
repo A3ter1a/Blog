@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Check, FileQuestion, Loader2, RefreshCcw, RotateCcw, Send, X } from "lucide-react";
 import { useToast } from "@/components/ui/Toast";
-import { buildAuthHeaders } from "@/lib/fetch-with-auth";
+import { fetchWithAuth } from "@/lib/fetch-with-auth";
 import type { AiKnowledgeQuizItemType, AiKnowledgeQuizStatus } from "@/lib/ai-knowledge-quiz-contract";
 
 type QuizRow = {
@@ -78,8 +78,7 @@ export function AiKnowledgeQuizReviewPanel() {
   const loadRows = useCallback(async () => {
     setLoading(true);
     try {
-      const response = await fetch("/api/ai/knowledge-quiz-review", {
-        headers: await buildAuthHeaders(),
+      const response = await fetchWithAuth("/api/ai/knowledge-quiz-review", {
         cache: "no-store",
       });
       const payload: unknown = await response.json().catch(() => ({}));
@@ -105,8 +104,7 @@ export function AiKnowledgeQuizReviewPanel() {
   const loadDetail = useCallback(async (quizId: string) => {
     setDetailLoading(true);
     try {
-      const response = await fetch(`/api/ai/knowledge-quiz-review/${encodeURIComponent(quizId)}`, {
-        headers: await buildAuthHeaders(),
+      const response = await fetchWithAuth(`/api/ai/knowledge-quiz-review/${encodeURIComponent(quizId)}`, {
         cache: "no-store",
       });
       const payload: unknown = await response.json().catch(() => ({}));
@@ -150,9 +148,9 @@ export function AiKnowledgeQuizReviewPanel() {
     if (action === "reject" && !window.confirm("确定驳回这份知识点快测吗？")) return;
     setBusyAction(action);
     try {
-      const response = await fetch(`/api/ai/knowledge-quiz-review/${encodeURIComponent(quiz.id)}`, {
+      const response = await fetchWithAuth(`/api/ai/knowledge-quiz-review/${encodeURIComponent(quiz.id)}`, {
         method: "PATCH",
-        headers: await buildAuthHeaders({ "Content-Type": "application/json" }),
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action, noteId: quiz.note_id }),
       });
       const payload: unknown = await response.json().catch(() => ({}));

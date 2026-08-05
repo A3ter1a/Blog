@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { buildAuthHeaders } from "@/lib/fetch-with-auth";
+import { fetchWithAuth } from "@/lib/fetch-with-auth";
 import { getSupabase } from "@/lib/supabase";
 import type { CollectionAvailableNote, CollectionDetail, CollectionSummary } from "@/lib/collections-contract";
 
@@ -27,9 +27,8 @@ async function requestJson(url: string, init?: RequestInit): Promise<Record<stri
   const controller = new AbortController();
   const timeoutId = window.setTimeout(() => controller.abort(), COLLECTION_REQUEST_TIMEOUT_MS);
   try {
-    const response = await fetch(url, {
+    const response = await fetchWithAuth(url, {
       ...init,
-      headers: await buildAuthHeaders(init?.headers),
       cache: "no-store",
       signal: controller.signal,
     });

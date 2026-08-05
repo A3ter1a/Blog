@@ -4,8 +4,9 @@ import { useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { FileText, ListChecks, Loader2, RefreshCcw, Send, ShieldCheck, Sparkles } from "lucide-react";
 import { ContentPreview } from "@/components/ui/ContentPreview";
+import { AiProfileEditor } from "@/components/ai-content/AiProfileEditor";
 import { useToast } from "@/components/ui/Toast";
-import { buildAuthHeaders } from "@/lib/fetch-with-auth";
+import { fetchWithAuth } from "@/lib/fetch-with-auth";
 import {
   normalizeAiContentTags,
   type AiContentReviewStatus,
@@ -51,7 +52,7 @@ function statusTone(status: string): string {
 
 export function AiContentWorkspace() {
   const toast = useToast();
-  const { loading, profile, proposals, error, reload } = useAiContentWorkspace();
+  const { loading, profile, proposals, error, reload, recoverSession, recovering } = useAiContentWorkspace();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedProposal, setSelectedProposal] = useState<AiContentProposalRow | null>(null);
   const [proposalLoading, setProposalLoading] = useState(false);
@@ -71,8 +72,7 @@ export function AiContentWorkspace() {
 
   const loadQuizSummary = async (proposalId: string) => {
     try {
-      const response = await fetch("/api/ai/knowledge-quizzes", {
-        headers: await buildAuthHeaders(),
+      const response = await fetchWithAuth("/api/ai/knowledge-quizzes", {
         cache: "no-store",
       });
       const payload: unknown = await response.json().catch(() => ({}));
@@ -108,8 +108,7 @@ export function AiContentWorkspace() {
     setLastSelfCheck(null);
     setQuizSummary(null);
     try {
-      const response = await fetch(`/api/ai/content-proposals/${encodeURIComponent(proposal.id)}`, {
-        headers: await buildAuthHeaders(),
+      const response = await fetchWithAuth(`/api/ai/content-proposals/${encodeURIComponent(proposal.id)}`, {
         cache: "no-store",
       });
       const payload: unknown = await response.json().catch(() => ({}));
@@ -134,9 +133,9 @@ export function AiContentWorkspace() {
   };
 
   const requestProposal = async (url: string, method: "POST" | "PATCH", body: Record<string, unknown>) => {
-    const response = await fetch(url, {
+    const response = await fetchWithAuth(url, {
       method,
-      headers: await buildAuthHeaders({ "Content-Type": "application/json" }),
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
     const payload: unknown = await response.json().catch(() => ({}));
@@ -150,9 +149,9 @@ export function AiContentWorkspace() {
     if (!selectedId || quizBusy) return;
     setQuizBusy(true);
     try {
-      const response = await fetch(`/api/ai/knowledge-quizzes/${encodeURIComponent(selectedId)}/generate`, {
+      const response = await fetchWithAuth(`/api/ai/knowledge-quizzes/${encodeURIComponent(selectedId)}/generate`, {
         method: "POST",
-        headers: await buildAuthHeaders({ "Content-Type": "application/json" }),
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({}),
       });
       const payload: unknown = await response.json().catch(() => ({}));
@@ -178,9 +177,9 @@ export function AiContentWorkspace() {
     if (!quizSummary?.id || quizBusy) return;
     setQuizBusy(true);
     try {
-      const response = await fetch(`/api/ai/knowledge-quizzes/${encodeURIComponent(quizSummary.id)}/submit`, {
+      const response = await fetchWithAuth(`/api/ai/knowledge-quizzes/${encodeURIComponent(quizSummary.id)}/submit`, {
         method: "POST",
-        headers: await buildAuthHeaders({ "Content-Type": "application/json" }),
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({}),
       });
       const payload: unknown = await response.json().catch(() => ({}));
@@ -256,7 +255,19 @@ export function AiContentWorkspace() {
         <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary"><ShieldCheck className="h-6 w-6" /></div>
         <h2 className="font-headline text-xl font-semibold text-on-surface">需要 AI 学科账号</h2>
         <p className="text-sm leading-6 text-on-surface-variant">{error ?? "当前账号不是已启用的 AI 学科账号。"}</p>
-        <Link href="/login" className="control-button control-button-primary inline-flex px-5 py-2.5 text-sm">前往账号登录</Link>
+        <div className="flex flex-wrap items-center justify-center gap-2">
+          <button
+            type="button"
+            className="control-button control-button-primary inline-flex items-center gap-2 px-5 py-2.5 text-sm"
+            onClick={() => void recoverSession()}
+            disabled={recovering}
+          >
+            {recovering && <Loader2 className="h-4 w-4 animate-spin" />}
+            {recovering ? "正在自动恢复…" : "自动恢复会话"}
+          </button>
+          <Link href="/login" className="control-button inline-flex px-5 py-2.5 text-sm">前往对应学科登录</Link>
+        </div>
+        <p className="text-xs leading-5 text-on-surface-variant/75">自动恢复只使用当前浏览器保存的该学科 refresh session，不会读取或保存密码。若浏览器资料已被清空，才需要重新登录一次。</p>
       </section>
     );
   }
@@ -274,6 +285,10 @@ export function AiContentWorkspace() {
         </div>
         <button type="button" className="control-button inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm" disabled={busyAction !== null} onClick={async () => { setBusyAction("reload"); await reload(); setBusyAction(null); }}><RefreshCcw className="h-4 w-4" />刷新提案</button>
       </section>
+
+      <div className="flex justify-end">
+        <AiProfileEditor profile={profile} onSaved={() => reload()} />
+      </div>
 
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_21rem]">
         <section className="surface-panel min-w-0 p-5">
