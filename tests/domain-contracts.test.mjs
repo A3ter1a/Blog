@@ -1813,6 +1813,24 @@ test("AI 角色资料只开放白名单字段并拒绝身份篡改", () => {
   assert.equal(editor.includes("编辑角色资料"), true);
 });
 
+test("合集工作台使用单次快照、按槽位缓存并在后台重新可见时刷新", () => {
+  const hook = readFileSync(resolve("hooks/useCollectionWorkspace.ts"), "utf8");
+  const route = readFileSync(resolve("app/api/collections/workspace/route.ts"), "utf8");
+  const cache = readFileSync(resolve("lib/collection-workspace-cache.ts"), "utf8");
+
+  assert.equal(hook.includes("/api/collections/workspace"), true);
+  assert.equal(hook.includes("COLLECTION_REQUEST_TIMEOUT_MS = 30_000"), true);
+  assert.equal(hook.includes("readCollectionWorkspaceCache"), true);
+  assert.equal(hook.includes("visibilitychange"), true);
+  assert.equal(hook.includes("TOKEN_REFRESHED"), true);
+  assert.equal(route.includes("getCollectionRequestContext(req)"), true);
+  assert.equal(route.includes("listCollectionAvailableNotes"), true);
+  assert.equal(cache.includes("asteroid-collection-workspace:"), true);
+  assert.equal(cache.includes("getActiveAiAccountSlot"), true);
+  assert.equal(cache.includes("localStorage"), true);
+  assert.equal(cache.includes("sessionStorage"), true);
+});
+
 test("AI 内容提案先按 RLS 要求写入草稿，再由同一账号提升为已自检", () => {
   const workflow = readFileSync(resolve("lib/server-ai-content.ts"), "utf8");
   const createStart = workflow.indexOf("export async function createAiContentProposal");

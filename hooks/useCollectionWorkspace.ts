@@ -4,6 +4,14 @@ import { useCallback, useEffect, useState } from "react";
 import { fetchWithAuth } from "@/lib/fetch-with-auth";
 import { getSupabase } from "@/lib/supabase";
 import type { CollectionAvailableNote, CollectionDetail, CollectionSummary } from "@/lib/collections-contract";
+import {
+  COLLECTION_WORKSPACE_CACHE_TTL_MS,
+  clearCollectionWorkspaceCache,
+  getCollectionWorkspaceCacheKey,
+  readCollectionWorkspaceCache,
+  type CollectionWorkspaceSnapshot,
+  writeCollectionWorkspaceCache,
+} from "@/lib/collection-workspace-cache";
 
 type WorkspaceState = {
   loading: boolean;
@@ -13,7 +21,9 @@ type WorkspaceState = {
   error: string | null;
 };
 
-const COLLECTION_REQUEST_TIMEOUT_MS = 12_000;
+const COLLECTION_REQUEST_TIMEOUT_MS = 30_000;
+
+let workspaceRequest: { key: string; promise: Promise<CollectionWorkspaceSnapshot> } | null = null;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -45,38 +55,107 @@ async function requestJson(url: string, init?: RequestInit): Promise<Record<stri
   }
 }
 
+function snapshotFromPayload(payload: Record<string, unknown>): CollectionWorkspaceSnapshot {
+  if (!Array.isArray(payload.collections) || !Array.isArray(payload.notes)) {
+    throw new Error("合集工作台响应格式不完整");
+  }
+  return {
+    collections: payload.collections as CollectionSummary[],
+    availableNotes: payload.notes as CollectionAvailableNote[],
+    role: payload.role === "admin" || payload.role === "ai" ? payload.role : null,
+    cachedAt: Date.now(),
+  };
+}
+
+function loadWorkspaceSnapshot(): Promise<CollectionWorkspaceSnapshot> {
+  const key = getCollectionWorkspaceCacheKey();
+  if (workspaceRequest?.key === key) return workspaceRequest.promise;
+
+  const promise = requestJson("/api/collections/workspace")
+    .then((payload) => {
+      const snapshot = snapshotFromPayload(payload);
+      writeCollectionWorkspaceCache(snapshot);
+      return snapshot;
+    })
+    .finally(() => {
+      if (workspaceRequest?.promise === promise) workspaceRequest = null;
+    });
+
+  workspaceRequest = { key, promise };
+  return promise;
+}
+
+function stateFromSnapshot(snapshot: CollectionWorkspaceSnapshot): WorkspaceState {
+  return {
+    loading: false,
+    collections: snapshot.collections,
+    availableNotes: snapshot.availableNotes,
+    role: snapshot.role,
+    error: null,
+  };
+}
+
 export function useCollectionWorkspace() {
   const [state, setState] = useState<WorkspaceState>({ loading: true, collections: [], availableNotes: [], role: null, error: null });
 
-  const reload = useCallback(async () => {
-    setState((current) => ({ ...current, loading: true, error: null }));
+  const reload = useCallback(async (options: { background?: boolean } = {}) => {
+    const cached = readCollectionWorkspaceCache();
+    if (!options.background) {
+      if (cached) setState(stateFromSnapshot(cached));
+      else setState((current) => ({ ...current, loading: true, error: null }));
+    }
+
     try {
-      const [collectionPayload, notePayload] = await Promise.all([
-        requestJson("/api/collections?scope=manage&limit=100"),
-        requestJson("/api/collections/notes?limit=200"),
-      ]);
-      setState({
-        loading: false,
-        collections: Array.isArray(collectionPayload.collections) ? collectionPayload.collections as CollectionSummary[] : [],
-        availableNotes: Array.isArray(notePayload.notes) ? notePayload.notes as CollectionAvailableNote[] : [],
-        role: collectionPayload.role === "admin" || collectionPayload.role === "ai" ? collectionPayload.role : null,
-        error: null,
-      });
+      const snapshot = await loadWorkspaceSnapshot();
+      setState(stateFromSnapshot(snapshot));
     } catch (error: unknown) {
+      if (options.background && cached) {
+        // A stale snapshot is still more useful than replacing the workspace
+        // with an error screen while an inactive browser tab is throttled.
+        setState((current) => ({ ...current, loading: false, error: null }));
+        return;
+      }
       setState((current) => ({ ...current, loading: false, error: error instanceof Error ? error.message : "合集工作台加载失败" }));
     }
   }, []);
 
   useEffect(() => {
-    void reload();
+    const cached = readCollectionWorkspaceCache();
+    if (cached) setState(stateFromSnapshot(cached));
+    void reload({ background: true });
+
     let unsubscribe: (() => void) | undefined;
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "hidden") return;
+      const latest = readCollectionWorkspaceCache();
+      if (!latest || Date.now() - latest.cachedAt > COLLECTION_WORKSPACE_CACHE_TTL_MS) {
+        void reload({ background: true });
+      }
+    };
+
+    window.addEventListener("focus", refreshWhenVisible);
+    window.addEventListener("online", refreshWhenVisible);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
     try {
-      const { data } = getSupabase().auth.onAuthStateChange(() => void reload());
+      const { data } = getSupabase().auth.onAuthStateChange((event) => {
+        if (event === "SIGNED_OUT") {
+          clearCollectionWorkspaceCache();
+          setState({ loading: false, collections: [], availableNotes: [], role: null, error: "登录状态已退出" });
+          return;
+        }
+        if (event === "INITIAL_SESSION" || event === "TOKEN_REFRESHED") return;
+        void reload();
+      });
       unsubscribe = () => data.subscription.unsubscribe();
     } catch {
       // Missing local Supabase config is rendered as the normal workspace error state.
     }
-    return () => unsubscribe?.();
+    return () => {
+      window.removeEventListener("focus", refreshWhenVisible);
+      window.removeEventListener("online", refreshWhenVisible);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+      unsubscribe?.();
+    };
   }, [reload]);
 
   const getDetail = useCallback(async (id: string): Promise<CollectionDetail> => {
