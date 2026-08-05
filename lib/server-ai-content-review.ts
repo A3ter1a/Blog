@@ -39,6 +39,16 @@ const REVIEW_PROPOSAL_FIELDS = [
   "updated_at",
 ].join(",");
 
+const REVIEW_PROPOSAL_SUMMARY_FIELDS = [
+  "id",
+  "ai_profile_id",
+  "title",
+  "subject",
+  "review_status",
+  "content_version",
+  "updated_at",
+].join(",");
+
 const REVIEW_PROFILE_FIELDS = [
   "id",
   "account_key",
@@ -73,6 +83,16 @@ export type AiContentReviewProposal = {
   proposal: AiContentProposalRow;
   profile: AiProfileRow | null;
   comments: AiContentProposalCommentRow[];
+};
+
+export type AiContentProposalSummaryRow = Pick<
+  AiContentProposalRow,
+  "id" | "ai_profile_id" | "title" | "subject" | "review_status" | "content_version" | "updated_at"
+>;
+
+export type AiContentReviewSummary = {
+  proposal: AiContentProposalSummaryRow;
+  profile: AiProfileRow | null;
 };
 
 export type ReviewCommentStatus = "open" | "resolved" | "dismissed";
@@ -130,11 +150,11 @@ export async function listAiContentReviewProposals(
   supabase: SupabaseClient<Database>,
   status?: AiContentReviewStatus,
   limit = 80,
-): Promise<AiContentReviewProposal[]> {
+): Promise<AiContentReviewSummary[]> {
   const safeLimit = Math.max(1, Math.min(Math.trunc(limit), 100));
   let query = supabase
     .from("ai_content_proposals")
-    .select(REVIEW_PROPOSAL_FIELDS)
+    .select(REVIEW_PROPOSAL_SUMMARY_FIELDS)
     .order("updated_at", { ascending: false })
     .limit(safeLimit);
 
@@ -142,7 +162,7 @@ export async function listAiContentReviewProposals(
   const { data, error } = await query;
   if (error) throw error;
 
-  const proposals = (data ?? []) as unknown as AiContentProposalRow[];
+  const proposals = (data ?? []) as unknown as AiContentProposalSummaryRow[];
   const profileIds = [...new Set(proposals.map((proposal) => proposal.ai_profile_id))];
   const profileMap = new Map<string, AiProfileRow>();
   if (profileIds.length > 0) {
@@ -159,7 +179,6 @@ export async function listAiContentReviewProposals(
   return proposals.map((proposal) => ({
     proposal,
     profile: profileMap.get(proposal.ai_profile_id) ?? null,
-    comments: [],
   }));
 }
 

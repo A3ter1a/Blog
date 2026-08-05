@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { cache } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, GraduationCap, Hash, UserRound } from "lucide-react";
@@ -13,7 +14,7 @@ export const revalidate = 0;
 
 type ProfilePageProps = { params: Promise<{ id: string }> };
 
-async function getProfile(id: string): Promise<PublicAiProfile | null> {
+const getProfile = cache(async (id: string): Promise<PublicAiProfile | null> => {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   if (!url || !key) return null;
@@ -27,7 +28,7 @@ async function getProfile(id: string): Promise<PublicAiProfile | null> {
     .maybeSingle();
   if (error) throw error;
   return data as PublicAiProfile | null;
-}
+});
 
 export async function generateMetadata({ params }: ProfilePageProps): Promise<Metadata> {
   const { id } = await params;

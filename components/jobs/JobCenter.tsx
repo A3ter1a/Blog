@@ -15,6 +15,7 @@ import Link from "next/link";
 import { AlertTriangle, ArrowUpRight, CheckCircle2, CircleX, Clock3, FileScan, Loader2, RotateCcw, ShieldCheck, X } from "lucide-react";
 import { buildAuthHeaders } from "@/lib/fetch-with-auth";
 import { useAdminAuth } from "@/hooks/useAdminAuth";
+import { useAiAccountSlot } from "@/hooks/useAiAccountSlot";
 import { AI_REVIEW_QUEUE_CHANGED_EVENT } from "@/lib/ai-content-contract";
 import {
   CLIENT_JOB_STORAGE_KEY,
@@ -207,7 +208,9 @@ function getReviewSubjectLabel(subject: string): string {
 export function JobCenterProvider({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const { isAdmin } = useAdminAuth();
+  const aiAccountSlot = useAiAccountSlot();
   const isUiLab = pathname.startsWith("/ui-lab/");
+  const skipRemoteLedger = isUiLab || Boolean(aiAccountSlot);
   const [jobs, setJobs] = useState<ClientJob[]>([]);
   const [reviewNotices, setReviewNotices] = useState<PendingReviewNotice[]>([]);
   const [isOpen, setIsOpen] = useState(false);
@@ -235,7 +238,7 @@ export function JobCenterProvider({ children }: { children: ReactNode }) {
   }, [jobs]);
 
   useEffect(() => {
-    if (isUiLab) {
+    if (skipRemoteLedger) {
       hydratedRef.current = true;
       return;
     }
@@ -269,10 +272,10 @@ export function JobCenterProvider({ children }: { children: ReactNode }) {
         hydratedRef.current = true;
       }
     });
-  }, [isUiLab]);
+  }, [skipRemoteLedger]);
 
   useEffect(() => {
-    if (isUiLab) return;
+    if (skipRemoteLedger) return;
 
     const cleanup = () => {
       setJobs((current) => removeExpiredClientJobs(current));
@@ -280,10 +283,10 @@ export function JobCenterProvider({ children }: { children: ReactNode }) {
     cleanup();
     const timer = window.setInterval(cleanup, 60 * 60 * 1000);
     return () => window.clearInterval(timer);
-  }, [isUiLab]);
+  }, [skipRemoteLedger]);
 
   useEffect(() => {
-    if (isUiLab) return;
+    if (skipRemoteLedger) return;
 
     const refresh = () => {
       authRetryAfterRef.current.clear();
@@ -296,7 +299,7 @@ export function JobCenterProvider({ children }: { children: ReactNode }) {
     };
     window.addEventListener("focus", refresh);
     return () => window.removeEventListener("focus", refresh);
-  }, [isUiLab, refreshReviewNotices]);
+  }, [skipRemoteLedger, refreshReviewNotices]);
 
   useEffect(() => {
     const timer = window.setTimeout(refreshReviewNotices, 0);
@@ -309,7 +312,7 @@ export function JobCenterProvider({ children }: { children: ReactNode }) {
   }, [refreshReviewNotices]);
 
   useEffect(() => {
-    if (isUiLab) return;
+    if (skipRemoteLedger) return;
 
     if (!hydratedRef.current) return;
     try {
@@ -320,10 +323,10 @@ export function JobCenterProvider({ children }: { children: ReactNode }) {
     } catch {
       // 云端已同步结果不会重复塞进 localStorage；本机存储满时保留当前内存状态。
     }
-  }, [isUiLab, jobs]);
+  }, [skipRemoteLedger, jobs]);
 
   useEffect(() => {
-    if (isUiLab) return;
+    if (skipRemoteLedger) return;
 
     const sync = (event: StorageEvent) => {
       if (event.key !== CLIENT_JOB_STORAGE_KEY || !event.newValue) return;
@@ -339,7 +342,7 @@ export function JobCenterProvider({ children }: { children: ReactNode }) {
     };
     window.addEventListener("storage", sync);
     return () => window.removeEventListener("storage", sync);
-  }, [isUiLab]);
+  }, [skipRemoteLedger]);
 
   const updateJob = useCallback((id: string, patch: Partial<ClientJob>) => {
     setJobs((current) => current.map((job) => (
@@ -511,7 +514,7 @@ export function JobCenterProvider({ children }: { children: ReactNode }) {
   );
 
   useEffect(() => {
-    if (isUiLab) return;
+    if (skipRemoteLedger) return;
     if (!activeJobPollKey) return;
 
     const pollAll = () => jobsRef.current
@@ -520,7 +523,7 @@ export function JobCenterProvider({ children }: { children: ReactNode }) {
     pollAll();
     const timer = window.setInterval(pollAll, POLL_INTERVAL_MS);
     return () => window.clearInterval(timer);
-  }, [activeJobPollKey, isUiLab, pollJob]);
+  }, [activeJobPollKey, skipRemoteLedger, pollJob]);
 
   const createDocumentOcrJob = useCallback((input: CreateDocumentOcrJobInput) => {
     const now = new Date().toISOString();
@@ -904,11 +907,13 @@ export function JobCenterProvider({ children }: { children: ReactNode }) {
           onClick={() => {
             setIsOpen(true);
             authRetryAfterRef.current.clear();
-            void fetchRemoteJobLedger()
-              .then((remoteJobs) => {
-                if (remoteJobs.length > 0) setJobs((current) => mergeClientJobLedgers(current, remoteJobs));
-              })
-              .catch(() => undefined);
+            if (!skipRemoteLedger) {
+              void fetchRemoteJobLedger()
+                .then((remoteJobs) => {
+                  if (remoteJobs.length > 0) setJobs((current) => mergeClientJobLedgers(current, remoteJobs));
+                })
+                .catch(() => undefined);
+            }
             refreshReviewNotices();
           }}
           aria-label={`打开消息中心，${reviewNotices.length} 篇文章待审核，${activeCount} 个进行中，${unclaimedCount} 个待领取`}

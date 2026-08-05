@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import type { User } from "@supabase/supabase-js";
 import { getSupabase } from "@/lib/supabase";
+import { getCachedAuthSession } from "@/lib/fetch-with-auth";
 import { readJsonStorage, removeStorage, writeJsonStorage } from "@/lib/browser-storage";
 import { getActiveAiAccountSlot, getAuthCacheKey } from "@/lib/auth-session-slot";
 
@@ -233,13 +234,21 @@ export function useAdminAuth(): AdminAuthState {
     try {
       const supabase = getSupabase();
 
-      supabase.auth.getSession().then(({ data, error }) => {
-        resolveAdminState(
-          data.session?.user ?? null,
-          data.session?.access_token ?? null,
-          error?.message ?? null
-        );
-      });
+      getCachedAuthSession()
+        .then((session) => {
+          resolveAdminState(
+            session?.user ?? null,
+            session?.access_token ?? null,
+            null,
+          );
+        })
+        .catch((error: unknown) => {
+          resolveAdminState(
+            null,
+            null,
+            error instanceof Error ? error.message : "Auth unavailable",
+          );
+        });
 
       const { data } = supabase.auth.onAuthStateChange((_event, session) => {
         resolveAdminState(session?.user ?? null, session?.access_token ?? null, null);

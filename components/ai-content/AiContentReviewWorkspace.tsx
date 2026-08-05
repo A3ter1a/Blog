@@ -23,6 +23,7 @@ import { AI_REVIEW_QUEUE_CHANGED_EVENT, type AiContentReviewStatus } from "@/lib
 import type {
   AiContentProposalCommentRow,
   AiContentReviewProposal,
+  AiContentReviewSummary,
 } from "@/lib/server-ai-content-review";
 
 const STATUS_LABELS: Record<AiContentReviewStatus, string> = {
@@ -70,18 +71,20 @@ function commentTone(status: string): string {
 
 export function AiContentReviewWorkspace() {
   const toast = useToast();
-  const [items, setItems] = useState<AiContentReviewProposal[]>([]);
+  const [items, setItems] = useState<AiContentReviewSummary[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detail, setDetail] = useState<AiContentReviewProposal | null>(null);
   const [filter, setFilter] = useState<"" | AiContentReviewStatus>("pending_review");
   const [selectedProposalIds, setSelectedProposalIds] = useState<Set<string>>(() => new Set());
+  const [selectedPublishIds, setSelectedPublishIds] = useState<Set<string>>(() => new Set());
   const [selection, setSelection] = useState<Selection>(null);
   const [commentBody, setCommentBody] = useState("");
   const [loading, setLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
-  const [busyAction, setBusyAction] = useState<ReviewAction | "comment" | "refresh" | "batch_approve" | null>(null);
+  const [busyAction, setBusyAction] = useState<ReviewAction | "comment" | "refresh" | "batch_approve" | "batch_publish" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const bodyRef = useRef<HTMLTextAreaElement | null>(null);
+  const detailRequestRef = useRef(0);
 
   const loadQueue = useCallback(async (nextFilter = filter) => {
     setLoading(true);
@@ -95,9 +98,10 @@ export function AiContentReviewWorkspace() {
       if (!response.ok || !isRecord(payload) || !Array.isArray(payload.proposals)) {
         throw new Error(readError(payload, "审核队列读取失败"));
       }
-      setItems(payload.proposals as AiContentReviewProposal[]);
-      const currentIds = new Set((payload.proposals as AiContentReviewProposal[]).map((item) => item.proposal.id));
+      setItems(payload.proposals as AiContentReviewSummary[]);
+      const currentIds = new Set((payload.proposals as AiContentReviewSummary[]).map((item) => item.proposal.id));
       setSelectedProposalIds((current) => new Set([...current].filter((id) => currentIds.has(id))));
+      setSelectedPublishIds((current) => new Set([...current].filter((id) => currentIds.has(id))));
       setError(null);
     } catch (nextError: unknown) {
       const message = nextError instanceof Error ? nextError.message : "审核队列读取失败";
@@ -108,6 +112,7 @@ export function AiContentReviewWorkspace() {
   }, [filter]);
 
   const loadDetail = useCallback(async (proposalId: string) => {
+    const requestId = ++detailRequestRef.current;
     setDetailLoading(true);
     setSelection(null);
     try {
@@ -119,12 +124,15 @@ export function AiContentReviewWorkspace() {
       if (!response.ok || !isRecord(payload) || !isRecord(payload.proposal)) {
         throw new Error(readError(payload, "审核正文读取失败"));
       }
+      if (detailRequestRef.current !== requestId) return;
       setDetail(payload.proposal as AiContentReviewProposal);
     } catch (nextError: unknown) {
-      toast.error(nextError instanceof Error ? nextError.message : "审核正文读取失败");
-      setDetail(null);
+      if (detailRequestRef.current === requestId) {
+        toast.error(nextError instanceof Error ? nextError.message : "审核正文读取失败");
+        setDetail(null);
+      }
     } finally {
-      setDetailLoading(false);
+      if (detailRequestRef.current === requestId) setDetailLoading(false);
     }
   }, [toast]);
 
@@ -167,11 +175,10 @@ export function AiContentReviewWorkspace() {
     return undefined;
   }, [items, loadDetail, loading, selectedId]);
 
-  const selectedSummary = useMemo(
-    () => items.find((item) => item.proposal.id === selectedId) ?? null,
-    [items, selectedId],
-  );
-  const proposal = detail?.proposal ?? selectedSummary?.proposal ?? null;
+  // Queue responses intentionally contain summary fields only. The full
+  // Markdown is fetched after a proposal is selected, keeping the first paint
+  // fast even when the account has many long drafts.
+  const proposal = detail?.proposal ?? null;
   const comments = detail?.comments ?? [];
   const canReview = proposal?.review_status === "pending_review";
   const canPublish = proposal?.review_status === "approved";
@@ -183,7 +190,16 @@ export function AiContentReviewWorkspace() {
     () => selectableItems.map((item) => item.proposal.id).filter((id) => selectedProposalIds.has(id)),
     [selectableItems, selectedProposalIds],
   );
+  const publishableItems = useMemo(
+    () => items.filter((item) => item.proposal.review_status === "approved"),
+    [items],
+  );
+  const selectedApprovedIds = useMemo(
+    () => publishableItems.map((item) => item.proposal.id).filter((id) => selectedPublishIds.has(id)),
+    [publishableItems, selectedPublishIds],
+  );
   const allPendingSelected = selectableItems.length > 0 && selectedPendingIds.length === selectableItems.length;
+  const allApprovedSelected = publishableItems.length > 0 && selectedApprovedIds.length === publishableItems.length;
 
   const refresh = async () => {
     setBusyAction("refresh");
@@ -242,6 +258,38 @@ export function AiContentReviewWorkspace() {
       }
     } catch (nextError: unknown) {
       toast.error(nextError instanceof Error ? nextError.message : "批量批准失败");
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
+  const runBatchPublish = async () => {
+    if (busyAction || selectedApprovedIds.length === 0) return;
+    if (!window.confirm(`确定发布选中的 ${selectedApprovedIds.length} 篇 AI 文章吗？发布后会进入博客公开笔记。`)) return;
+    setBusyAction("batch_publish");
+    try {
+      const response = await fetch("/api/ai/content-review", {
+        method: "PATCH",
+        headers: await buildAuthHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify({ action: "publish", proposalIds: selectedApprovedIds }),
+      });
+      const payload: unknown = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(readError(payload, "批量发布失败"));
+      const publishedIds = isRecord(payload) && Array.isArray(payload.publishedIds)
+        ? payload.publishedIds.filter((id): id is string => typeof id === "string")
+        : [];
+      const failedCount = isRecord(payload) && Array.isArray(payload.failed) ? payload.failed.length : 0;
+      setSelectedPublishIds(new Set());
+      await loadQueue();
+      if (selectedId) await loadDetail(selectedId);
+      window.dispatchEvent(new CustomEvent(AI_REVIEW_QUEUE_CHANGED_EVENT));
+      if (failedCount > 0) {
+        toast.error(`已发布 ${publishedIds.length} 篇，${failedCount} 篇未完成，请检查队列。`);
+      } else {
+        toast.success(`已批量发布 ${publishedIds.length} 篇文章`);
+      }
+    } catch (nextError: unknown) {
+      toast.error(nextError instanceof Error ? nextError.message : "批量发布失败");
     } finally {
       setBusyAction(null);
     }
@@ -341,7 +389,7 @@ export function AiContentReviewWorkspace() {
         <aside className="surface-panel min-w-0 p-4">
           <div className="mb-3 flex items-center justify-between gap-2"><div className="flex items-center gap-2"><FileText className="h-4 w-4 text-primary" /><h3 className="font-semibold text-on-surface">提案队列</h3></div><span className="text-xs text-on-surface-variant">{items.length}</span></div>
           <label className="field-label" htmlFor="review-filter">筛选状态</label>
-          <select id="review-filter" value={filter} onChange={(event) => { const next = event.target.value as "" | AiContentReviewStatus; setFilter(next); setSelectedId(null); setDetail(null); setSelectedProposalIds(new Set()); void loadQueue(next); }} className="field-control mt-1 h-11 w-full px-3 text-sm">
+          <select id="review-filter" value={filter} onChange={(event) => { const next = event.target.value as "" | AiContentReviewStatus; setFilter(next); setSelectedId(null); setDetail(null); setSelectedProposalIds(new Set()); setSelectedPublishIds(new Set()); void loadQueue(next); }} className="field-control mt-1 h-11 w-full px-3 text-sm">
             {FILTERS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
           </select>
           {selectableItems.length > 0 && (
@@ -357,14 +405,31 @@ export function AiContentReviewWorkspace() {
               <p className="mt-2 text-[11px] leading-5 text-on-surface-variant">只批准审核状态，不会自动发布。</p>
             </div>
           )}
+          {publishableItems.length > 0 && (
+            <div className="mt-3 rounded-xl border border-emerald-500/20 bg-emerald-500/[0.04] p-3">
+              <label className="flex min-h-11 cursor-pointer items-center gap-2 text-xs font-semibold text-on-surface">
+                <input type="checkbox" checked={allApprovedSelected} onChange={(event) => setSelectedPublishIds(event.target.checked ? new Set(publishableItems.map((item) => item.proposal.id)) : new Set())} className="h-4 w-4 accent-[var(--color-primary)]" />
+                全选已批准提案
+              </label>
+              <button type="button" className="control-button control-button-primary mt-2 inline-flex min-h-11 w-full items-center justify-center gap-2 px-3 text-sm" disabled={busyAction !== null || selectedApprovedIds.length === 0} onClick={() => void runBatchPublish()}>
+                {busyAction === "batch_publish" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                发布选中 · {selectedApprovedIds.length}
+              </button>
+              <p className="mt-2 text-[11px] leading-5 text-on-surface-variant">只处理已批准提案；发布后会进入公开笔记。</p>
+            </div>
+          )}
           <div className="mt-4 space-y-2">
             {loading ? <div className="flex items-center justify-center gap-2 py-10 text-sm text-on-surface-variant"><Loader2 className="h-4 w-4 animate-spin text-primary" />读取中</div> : items.length === 0 ? <div className="rounded-xl border border-dashed border-outline-variant/30 px-3 py-8 text-center text-sm leading-6 text-on-surface-variant">当前筛选没有提案。<br />AI 提交后会出现在这里。</div> : items.map((item) => {
                const active = item.proposal.id === selectedId;
                const selectable = item.proposal.review_status === "pending_review";
+               const publishable = item.proposal.review_status === "approved";
                return <div key={item.proposal.id} className={`flex gap-2 rounded-xl border px-3 py-3 transition duration-200 ${active ? "border-primary/45 bg-primary/5" : "border-outline-variant/20 bg-surface-container-low hover:border-primary/25"}`}>
-                 {selectable && <label className="flex shrink-0 cursor-pointer items-start pt-0.5" aria-label={`选择 ${item.proposal.title}`}>
+                  {selectable && <label className="flex shrink-0 cursor-pointer items-start pt-0.5" aria-label={`选择 ${item.proposal.title}`}>
                    <input type="checkbox" checked={selectedProposalIds.has(item.proposal.id)} onChange={(event) => setSelectedProposalIds((current) => { const next = new Set(current); if (event.target.checked) next.add(item.proposal.id); else next.delete(item.proposal.id); return next; })} className="mt-1 h-4 w-4 accent-[var(--color-primary)]" />
-                 </label>}
+                  </label>}
+                  {publishable && <label className="flex shrink-0 cursor-pointer items-start pt-0.5" aria-label={`选择发布 ${item.proposal.title}`}>
+                    <input type="checkbox" checked={selectedPublishIds.has(item.proposal.id)} onChange={(event) => setSelectedPublishIds((current) => { const next = new Set(current); if (event.target.checked) next.add(item.proposal.id); else next.delete(item.proposal.id); return next; })} className="mt-1 h-4 w-4 accent-[var(--color-primary)]" />
+                  </label>}
                  <button type="button" onClick={() => { setSelectedId(item.proposal.id); void loadDetail(item.proposal.id); }} className="min-w-0 flex-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35">
                    <span className="flex items-start justify-between gap-2"><strong className="line-clamp-2 text-sm text-on-surface">{item.proposal.title}</strong><span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] ${statusTone(item.proposal.review_status)}`}>{STATUS_LABELS[item.proposal.review_status as AiContentReviewStatus] ?? item.proposal.review_status}</span></span>
                    <span className="mt-2 block truncate text-xs text-on-surface-variant">{item.profile?.display_name ?? "未知 AI 资料"} · v{item.proposal.content_version}</span>
@@ -385,7 +450,7 @@ export function AiContentReviewWorkspace() {
             </div>
 
             <div className="mb-4 flex flex-wrap gap-2" aria-label="审核操作">
-              {canReview && <><button type="button" className="control-button min-h-11 inline-flex items-center gap-2 px-3 text-sm" disabled={busyAction !== null} onClick={() => void runAction("request_changes")}><MessageSquarePlus className="h-4 w-4" />退回返修</button><button type="button" className="control-button control-button-primary min-h-11 inline-flex items-center gap-2 px-3 text-sm" disabled={busyAction !== null} onClick={() => void runAction("approve")}><Check className="h-4 w-4" />批准</button><button type="button" className="control-button control-button-danger min-h-11 inline-flex items-center gap-2 px-3 text-sm" disabled={busyAction !== null} onClick={() => void runAction("reject")}><X className="h-4 w-4" />驳回</button><button type="button" className="control-button min-h-11 inline-flex items-center gap-2 px-3 text-sm" disabled={busyAction !== null} onClick={() => void runAction("approve_and_publish")}><Send className="h-4 w-4" />批准并发布</button></>}
+              {canReview && <><button type="button" className="control-button min-h-11 inline-flex items-center gap-2 px-3 text-sm" disabled={busyAction !== null} onClick={() => void runAction("request_changes")}><MessageSquarePlus className="h-4 w-4" />退回返修</button><button type="button" className="control-button min-h-11 inline-flex items-center gap-2 px-3 text-sm" disabled={busyAction !== null} onClick={() => void runAction("approve")}><Check className="h-4 w-4" />仅批准</button><button type="button" className="control-button control-button-danger min-h-11 inline-flex items-center gap-2 px-3 text-sm" disabled={busyAction !== null} onClick={() => void runAction("reject")}><X className="h-4 w-4" />驳回</button><button type="button" className="control-button control-button-primary min-h-11 inline-flex items-center gap-2 px-3 text-sm" title="批准后立即发布到博客" disabled={busyAction !== null} onClick={() => void runAction("approve_and_publish")}><Send className="h-4 w-4" />一键批准并发布</button></>}
               {canPublish && <button type="button" className="control-button control-button-primary min-h-11 inline-flex items-center gap-2 px-3 text-sm" disabled={busyAction !== null} onClick={() => void runAction("publish")}><Send className="h-4 w-4" />发布到博客</button>}
             </div>
 

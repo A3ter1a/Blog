@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { FileText, ListChecks, Loader2, RefreshCcw, Send, ShieldCheck, Sparkles } from "lucide-react";
 import { ContentPreview } from "@/components/ui/ContentPreview";
@@ -14,7 +14,10 @@ import {
 import type { AiKnowledgeQuizStatus } from "@/lib/ai-knowledge-quiz-contract";
 import { subjectMap } from "@/lib/types";
 import { useAiContentWorkspace } from "@/hooks/useAiContentWorkspace";
-import type { AiContentProposalRow } from "@/lib/server-ai-content";
+import type {
+  AiContentProposalRow,
+  AiContentProposalSummaryRow,
+} from "@/lib/server-ai-content";
 
 const STATUS_LABELS: Record<AiContentReviewStatus, string> = {
   draft: "草稿",
@@ -50,6 +53,8 @@ export function AiContentWorkspace() {
   const toast = useToast();
   const { loading, profile, proposals, error, reload } = useAiContentWorkspace();
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedProposal, setSelectedProposal] = useState<AiContentProposalRow | null>(null);
+  const [proposalLoading, setProposalLoading] = useState(false);
   const [title, setTitle] = useState("");
   const [tags, setTags] = useState("");
   const [content, setContent] = useState("");
@@ -57,8 +62,9 @@ export function AiContentWorkspace() {
   const [busyAction, setBusyAction] = useState<"save" | "submit" | "reload" | null>(null);
   const [quizBusy, setQuizBusy] = useState(false);
   const [quizSummary, setQuizSummary] = useState<{ id: string; count: number; status: AiKnowledgeQuizStatus } | null>(null);
+  const proposalRequestRef = useRef(0);
 
-  const selectedProposal = useMemo(
+  const selectedSummary = useMemo(
     () => proposals.find((proposal) => proposal.id === selectedId) ?? null,
     [proposals, selectedId],
   );
@@ -91,14 +97,40 @@ export function AiContentWorkspace() {
     }
   };
 
-  const selectProposal = (proposal: AiContentProposalRow) => {
+  const selectProposal = async (proposal: AiContentProposalSummaryRow) => {
+    const requestId = ++proposalRequestRef.current;
     setSelectedId(proposal.id);
+    setSelectedProposal(null);
+    setProposalLoading(true);
     setTitle(proposal.title);
-    setTags(proposal.tags.join(", "));
-    setContent(proposal.content);
-    setLastSelfCheck(readSelfCheck(proposal.self_check));
+    setTags("");
+    setContent("");
+    setLastSelfCheck(null);
     setQuizSummary(null);
-    void loadQuizSummary(proposal.id);
+    try {
+      const response = await fetch(`/api/ai/content-proposals/${encodeURIComponent(proposal.id)}`, {
+        headers: await buildAuthHeaders(),
+        cache: "no-store",
+      });
+      const payload: unknown = await response.json().catch(() => ({}));
+      if (!response.ok || !isRecord(payload) || !isRecord(payload.proposal)) {
+        throw new Error(parseResponseError(payload, "AI 提案读取失败"));
+      }
+      const detail = payload.proposal as AiContentProposalRow;
+      if (proposalRequestRef.current !== requestId) return;
+      setSelectedProposal(detail);
+      setTitle(detail.title);
+      setTags(detail.tags.join(", "));
+      setContent(detail.content);
+      setLastSelfCheck(readSelfCheck(detail.self_check));
+      void loadQuizSummary(detail.id);
+    } catch (error: unknown) {
+      if (proposalRequestRef.current === requestId) {
+        toast.error(error instanceof Error ? error.message : "AI 提案读取失败");
+      }
+    } finally {
+      if (proposalRequestRef.current === requestId) setProposalLoading(false);
+    }
   };
 
   const requestProposal = async (url: string, method: "POST" | "PATCH", body: Record<string, unknown>) => {
@@ -183,6 +215,7 @@ export function AiContentWorkspace() {
         ? await requestProposal(`/api/ai/content-proposals/${encodeURIComponent(selectedId)}`, "PATCH", body)
         : await requestProposal("/api/ai/content-proposals", "POST", body);
       setSelectedId(proposal.id);
+      setSelectedProposal(proposal);
       setTitle(proposal.title);
       setTags(proposal.tags.join(", "));
       setContent(proposal.content);
@@ -246,16 +279,16 @@ export function AiContentWorkspace() {
         <section className="surface-panel min-w-0 p-5">
           <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
             <div><p className="text-xs font-semibold uppercase tracking-[0.16em] text-primary">Markdown proposal</p><h2 className="mt-1 font-headline text-xl font-semibold text-on-surface">{selectedProposal ? "编辑自己的提案" : "新建文章或讲义"}</h2></div>
-            {selectedProposal && <span className={`rounded-full border px-2.5 py-1 text-xs font-medium ${statusTone(selectedProposal.review_status)}`}>{STATUS_LABELS[selectedProposal.review_status as AiContentReviewStatus] ?? selectedProposal.review_status}</span>}
+            {selectedSummary && <span className={`rounded-full border px-2.5 py-1 text-xs font-medium ${statusTone(selectedSummary.review_status)}`}>{STATUS_LABELS[selectedSummary.review_status as AiContentReviewStatus] ?? selectedSummary.review_status}</span>}
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="block"><span className="field-label">文章标题</span><input value={title} onChange={(event) => setTitle(event.target.value)} className="field-control h-11 w-full px-3 text-sm" placeholder="例如：微观经济学 · 第 1 章" /></label>
             <label className="block"><span className="field-label">标签</span><input value={tags} onChange={(event) => setTags(event.target.value)} className="field-control h-11 w-full px-3 text-sm" placeholder="讲义, 重点, 第1章" /></label>
           </div>
-          <label className="mt-4 block"><span className="field-label">Markdown 正文</span><textarea value={content} onChange={(event) => setContent(event.target.value)} className="field-control min-h-[30rem] w-full resize-y px-3 py-3 font-mono text-sm leading-6" placeholder="# 第一章\n\n把 Codex 输出的规范 Markdown 放在这里…" spellCheck={false} /></label>
+          <label className="mt-4 block"><span className="field-label">Markdown 正文</span><textarea value={content} onChange={(event) => setContent(event.target.value)} disabled={proposalLoading} className="field-control min-h-[30rem] w-full resize-y px-3 py-3 font-mono text-sm leading-6 disabled:opacity-60" placeholder={proposalLoading ? "正在读取提案正文…" : "# 第一章\n\n把 Codex 输出的规范 Markdown 放在这里…"} spellCheck={false} /></label>
           <div className="mt-4 flex flex-wrap justify-end gap-2">
-            <button type="button" className="control-button inline-flex items-center gap-2 px-4 py-2.5 text-sm" disabled={busyAction !== null} onClick={() => void saveProposal(false)}><Sparkles className="h-4 w-4" />保存并自检</button>
-            <button type="button" className="control-button control-button-primary inline-flex items-center gap-2 px-4 py-2.5 text-sm" disabled={busyAction !== null} onClick={() => void saveProposal(true)}><Send className="h-4 w-4" />保存并提交审核</button>
+            <button type="button" className="control-button inline-flex items-center gap-2 px-4 py-2.5 text-sm" disabled={busyAction !== null || proposalLoading} onClick={() => void saveProposal(false)}><Sparkles className="h-4 w-4" />保存并自检</button>
+            <button type="button" className="control-button control-button-primary inline-flex items-center gap-2 px-4 py-2.5 text-sm" disabled={busyAction !== null || proposalLoading} onClick={() => void saveProposal(true)}><Send className="h-4 w-4" />保存并提交审核</button>
           </div>
         </section>
 

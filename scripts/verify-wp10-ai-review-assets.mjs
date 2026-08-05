@@ -65,8 +65,8 @@ for (const route of [collectionRoute, detailRoute, commentRoute]) {
   if (route.includes("getAiRequestContext(req)")) throw new Error("审核接口不应使用 AI 账号鉴权");
 }
 
-for (const marker of ["proposalIds", "批量审核目前只支持批准"]) {
-  if (!collectionRoute.includes(marker)) throw new Error(`审核集合接口缺少批量批准：${marker}`);
+for (const marker of ["proposalIds", "publishedIds", "attachAiKnowledgeQuizzesToPublishedNote"]) {
+  if (!collectionRoute.includes(marker)) throw new Error(`审核集合接口缺少批量审核/发布：${marker}`);
 }
 
 for (const marker of [
@@ -77,6 +77,7 @@ for (const marker of [
   "退回返修",
   "批准并发布",
   "批准选中",
+  "发布选中",
   "查看作者资料",
 ]) {
   if (!workspace.includes(marker)) throw new Error(`审核工作台缺少：${marker}`);

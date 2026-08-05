@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Loader2, LogIn, LogOut } from "lucide-react";
 import { getSupabase } from "@/lib/supabase";
+import { getCachedAuthSession, invalidateCachedAuthSession } from "@/lib/fetch-with-auth";
 import { useAdminAuth } from "@/hooks/useAdminAuth";
 import { PageShell } from "@/components/ui/PageScaffold";
 import { useAiAccountSlot } from "@/hooks/useAiAccountSlot";
@@ -64,7 +65,8 @@ export default function LoginPage() {
         return;
       }
 
-      const session = (await supabase.auth.getSession()).data.session;
+      invalidateCachedAuthSession();
+      const session = await getCachedAuthSession();
       const token = session?.access_token;
       if (!token) {
         setMessage("登录成功，但没有取得有效会话，请重新登录。");
@@ -78,7 +80,7 @@ export default function LoginPage() {
           return;
         }
 
-        const aiResponse = await fetch("/api/ai/content-proposals?limit=1", {
+        const aiResponse = await fetch("/api/ai/account", {
           headers: { Authorization: `Bearer ${token}` },
           cache: "no-store",
         });
@@ -120,6 +122,7 @@ export default function LoginPage() {
   const handleLogout = async () => {
     setSubmitting(true);
     const { error } = await getSupabase().auth.signOut({ scope: "local" });
+    invalidateCachedAuthSession();
     setSubmitting(false);
     if (error) {
       setMessage(`退出登录失败：${error.message}`);

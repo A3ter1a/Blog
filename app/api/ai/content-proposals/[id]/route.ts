@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { AiContentWorkflowError, updateAiContentProposal } from "@/lib/server-ai-content";
+import { AiContentWorkflowError, getAiContentProposal, updateAiContentProposal } from "@/lib/server-ai-content";
 import { getAiRequestContext } from "@/lib/server-ai-auth";
 
 export const runtime = "nodejs";
@@ -11,6 +11,27 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isUuid(value: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
+export async function GET(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const auth = await getAiRequestContext(req);
+  if (!auth.ok) return auth.response;
+  const { id } = await params;
+  if (!isUuid(id)) return NextResponse.json({ error: "提案 ID 无效", success: false }, { status: 400 });
+
+  try {
+    const proposal = await getAiContentProposal(auth.context.supabase, auth.context.user.id, id);
+    if (!proposal) return NextResponse.json({ error: "提案不存在或无权访问", success: false }, { status: 404 });
+    return NextResponse.json(
+      { success: true, proposal },
+      { headers: { "Cache-Control": "no-store" } },
+    );
+  } catch (error: unknown) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : "AI 提案读取失败", success: false }, { status: 500 });
+  }
 }
 
 export async function PATCH(

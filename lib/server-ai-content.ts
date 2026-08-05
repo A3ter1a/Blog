@@ -33,8 +33,22 @@ const AI_PROPOSAL_FIELDS = [
   "updated_at",
 ].join(",");
 
+const AI_PROPOSAL_SUMMARY_FIELDS = [
+  "id",
+  "title",
+  "subject",
+  "review_status",
+  "content_version",
+  "created_at",
+  "updated_at",
+].join(",");
+
 export type AiContentProposalRow = Tables<"ai_content_proposals">;
 export type AiProfileRow = Tables<"ai_profiles">;
+export type AiContentProposalSummaryRow = Pick<
+  AiContentProposalRow,
+  "id" | "title" | "subject" | "review_status" | "content_version" | "created_at" | "updated_at"
+>;
 
 export class AiContentWorkflowError extends Error {
   status: number;
@@ -87,16 +101,16 @@ export async function listAiContentProposals(
   supabase: SupabaseClient<Database>,
   userId: string,
   limit = 40,
-): Promise<AiContentProposalRow[]> {
+): Promise<AiContentProposalSummaryRow[]> {
   const safeLimit = Math.max(1, Math.min(Math.trunc(limit), 100));
   const { data, error } = await supabase
     .from("ai_content_proposals")
-    .select(AI_PROPOSAL_FIELDS)
+    .select(AI_PROPOSAL_SUMMARY_FIELDS)
     .eq("owner_user_id", userId)
     .order("updated_at", { ascending: false })
     .limit(safeLimit);
   if (error) throw error;
-  return (data ?? []) as unknown as AiContentProposalRow[];
+  return (data ?? []) as unknown as AiContentProposalSummaryRow[];
 }
 
 export async function getAiContentProposal(
