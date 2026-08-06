@@ -10,7 +10,11 @@ export async function GET(req: NextRequest) {
   if (!auth.ok) return auth.response;
   try {
     const parsed = Number(req.nextUrl.searchParams.get("limit") ?? 120);
-    const rows = await listCollectionAvailableNotes(auth.context.supabase, Number.isFinite(parsed) ? parsed : 120);
+    const rows = await listCollectionAvailableNotes(
+      auth.context.supabase,
+      Number.isFinite(parsed) ? parsed : 120,
+      { ownerUserId: auth.context.actor.role === "ai" ? auth.context.user.id : undefined },
+    );
     const notes = rows.map((note) => ({
       id: note.id,
       type: note.type,

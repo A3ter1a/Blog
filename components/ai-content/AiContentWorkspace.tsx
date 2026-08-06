@@ -2,7 +2,7 @@
 
 import { useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { FileText, ListChecks, Loader2, RefreshCcw, Send, ShieldCheck, Sparkles } from "lucide-react";
+import { FileText, Layers3, ListChecks, Loader2, RefreshCcw, Send, ShieldCheck, Sparkles } from "lucide-react";
 import { ContentPreview } from "@/components/ui/ContentPreview";
 import { AiProfileEditor } from "@/components/ai-content/AiProfileEditor";
 import { useToast } from "@/components/ui/Toast";
@@ -15,6 +15,8 @@ import {
 import type { AiKnowledgeQuizStatus } from "@/lib/ai-knowledge-quiz-contract";
 import { subjectMap } from "@/lib/types";
 import { useAiContentWorkspace } from "@/hooks/useAiContentWorkspace";
+import { useAiAccountSlot } from "@/hooks/useAiAccountSlot";
+import { getAiAccountSlotPath } from "@/lib/auth-session-slot";
 import type {
   AiContentProposalRow,
   AiContentProposalSummaryRow,
@@ -52,6 +54,7 @@ function statusTone(status: string): string {
 
 export function AiContentWorkspace() {
   const toast = useToast();
+  const accountSlot = useAiAccountSlot();
   const { loading, profile, proposals, error, reload, recoverSession, recovering } = useAiContentWorkspace();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedProposal, setSelectedProposal] = useState<AiContentProposalRow | null>(null);
@@ -64,6 +67,7 @@ export function AiContentWorkspace() {
   const [quizBusy, setQuizBusy] = useState(false);
   const [quizSummary, setQuizSummary] = useState<{ id: string; count: number; status: AiKnowledgeQuizStatus } | null>(null);
   const proposalRequestRef = useRef(0);
+  const collectionsHref = getAiAccountSlotPath("/tools/collections", accountSlot);
 
   const selectedSummary = useMemo(
     () => proposals.find((proposal) => proposal.id === selectedId) ?? null,
@@ -265,7 +269,7 @@ export function AiContentWorkspace() {
             {recovering && <Loader2 className="h-4 w-4 animate-spin" />}
             {recovering ? "正在自动恢复…" : "自动恢复会话"}
           </button>
-          <Link href="/login" className="control-button inline-flex px-5 py-2.5 text-sm">前往对应学科登录</Link>
+          <Link href={getAiAccountSlotPath("/login", accountSlot)} className="control-button inline-flex px-5 py-2.5 text-sm">前往对应学科登录</Link>
         </div>
         <p className="text-xs leading-5 text-on-surface-variant/75">自动恢复只使用当前浏览器保存的该学科 refresh session，不会读取或保存密码。若浏览器资料已被清空，才需要重新登录一次。</p>
       </section>
@@ -283,7 +287,10 @@ export function AiContentWorkspace() {
             <p className="mt-1 text-sm text-on-surface-variant">只接收已经由 Codex Skill 规范化的 Markdown；正文不会写入人工文章区。</p>
           </div>
         </div>
-        <button type="button" className="control-button inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm" disabled={busyAction !== null} onClick={async () => { setBusyAction("reload"); await reload(); setBusyAction(null); }}><RefreshCcw className="h-4 w-4" />刷新提案</button>
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <Link href={collectionsHref} className="control-button inline-flex min-h-11 items-center justify-center gap-2 px-3 py-2.5 text-sm"><Layers3 className="h-4 w-4" />管理我的合集</Link>
+          <button type="button" className="control-button inline-flex min-h-11 items-center justify-center gap-2 px-4 py-2.5 text-sm" disabled={busyAction !== null} onClick={async () => { setBusyAction("reload"); await reload(); setBusyAction(null); }}><RefreshCcw className="h-4 w-4" />刷新提案</button>
+        </div>
       </section>
 
       <div className="flex justify-end">

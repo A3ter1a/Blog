@@ -238,7 +238,13 @@ export async function createNoteCollection(
     ai_profile_id: aiProfileId,
     title: normalizeCollectionTitle(input.title),
     description: normalizeCollectionDescription(input.description),
-    subject: normalizeCollectionSubject(input.subject) ?? actor.subject ?? null,
+    // An AI account represents exactly one subject. Do not let a client-side
+    // payload make (for example) the economics account create a mathematics
+    // collection; the server remains the source of truth even if the UI is
+    // stale or bypassed.
+    subject: actor.role === "ai"
+      ? actor.subject ?? null
+      : normalizeCollectionSubject(input.subject) ?? actor.subject ?? null,
     cover_image: normalizeCollectionCoverImage(input.coverImage),
     is_published: actor.role === "admin" ? normalizeCollectionPublished(input.isPublished) : false,
   };
@@ -267,7 +273,11 @@ export async function updateNoteCollection(
   const update: TablesUpdate<"note_collections"> = {};
   if (input.title !== undefined) update.title = normalizeCollectionTitle(input.title);
   if (input.description !== undefined) update.description = normalizeCollectionDescription(input.description);
-  if (input.subject !== undefined) update.subject = normalizeCollectionSubject(input.subject);
+  if (input.subject !== undefined) {
+    update.subject = actor.role === "ai"
+      ? actor.subject ?? null
+      : normalizeCollectionSubject(input.subject);
+  }
   if (input.coverImage !== undefined) update.cover_image = normalizeCollectionCoverImage(input.coverImage);
   if (actor.role === "admin" && input.isPublished !== undefined) {
     update.is_published = normalizeCollectionPublished(input.isPublished);
@@ -336,13 +346,30 @@ export async function updateCollectionItemOrder(
   collectionId: string,
   itemId: string,
   sortOrder: unknown,
+  swap?: { itemId: string; sortOrder: unknown },
 ): Promise<CollectionDetail | null> {
-  const { error } = await supabase
-    .from("note_collection_items")
-    .update({ sort_order: normalizeCollectionSortOrder(sortOrder) })
-    .eq("id", itemId)
-    .eq("collection_id", collectionId);
-  if (error) throw error;
+  if (swap?.itemId === itemId) throw new CollectionWorkflowError("合集排序项目不能相同。", 400);
+
+  const updates = [
+    supabase
+      .from("note_collection_items")
+      .update({ sort_order: normalizeCollectionSortOrder(sortOrder) })
+      .eq("id", itemId)
+      .eq("collection_id", collectionId),
+  ];
+  if (swap) {
+    updates.push(
+      supabase
+        .from("note_collection_items")
+        .update({ sort_order: normalizeCollectionSortOrder(swap.sortOrder) })
+        .eq("id", swap.itemId)
+        .eq("collection_id", collectionId),
+    );
+  }
+
+  const results = await Promise.all(updates);
+  const failed = results.find((result) => result.error);
+  if (failed?.error) throw failed.error;
   return getNoteCollection(supabase, collectionId);
 }
 
@@ -364,13 +391,20 @@ export async function removeNoteFromCollection(
 export async function listCollectionAvailableNotes(
   supabase: ServerSupabase,
   limit = 120,
+  options: { ownerUserId?: string } = {},
 ): Promise<Array<Pick<NoteRow, "id" | "type" | "title" | "subject" | "tags" | "cover_image" | "created_at" | "updated_at" | "is_published">>> {
   const safeLimit = Math.max(1, Math.min(Math.trunc(limit), 200));
-  const { data, error } = await supabase
+  let query = supabase
     .from("notes")
     .select(NOTE_FIELDS)
     .order("updated_at", { ascending: false })
     .limit(safeLimit);
+  // RLS remains the authority, but the explicit predicate lets Postgres use
+  // the AI-owner index instead of scanning every note for an AI account.
+  if (options.ownerUserId) {
+    query = query.eq("author_kind", "ai").eq("owner_user_id", options.ownerUserId);
+  }
+  const { data, error } = await query;
   if (error) throw error;
   return (data ?? []) as unknown as Array<Pick<NoteRow, "id" | "type" | "title" | "subject" | "tags" | "cover_image" | "created_at" | "updated_at" | "is_published">>;
 }

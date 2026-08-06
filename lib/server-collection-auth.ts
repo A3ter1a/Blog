@@ -37,32 +37,40 @@ export async function getCollectionRequestContext(req: NextRequest): Promise<Col
 
   const user = userData.user;
   const email = user.email?.trim();
-  if (email) {
-    const { data: adminRow, error: adminError } = await supabase
-      .from("admin_users")
-      .select("email")
-      .ilike("email", email)
-      .limit(1)
-      .maybeSingle();
-    if (!adminError && adminRow?.email?.trim().toLowerCase() === email.toLowerCase()) {
-      return {
-        ok: true,
-        context: {
-          supabase,
-          user,
-          actor: { userId: user.id, role: "admin" },
-          profile: null,
-        },
-      };
-    }
+  // The admin and AI profile checks are independent authority lookups. Run
+  // them together so an AI request does not pay for two sequential database
+  // round trips before it can even start the collection query.
+  const [adminResult, profileResult] = await Promise.all([
+    email
+      ? supabase
+          .from("admin_users")
+          .select("email")
+          .ilike("email", email)
+          .limit(1)
+          .maybeSingle()
+      : Promise.resolve({ data: null, error: null }),
+    supabase
+      .from("ai_profiles")
+      .select("id, account_key, subject, display_name, avatar_url, bio, academic_affiliation, focus_tags, is_active, created_at, updated_at")
+      .eq("id", user.id)
+      .eq("is_active", true)
+      .maybeSingle(),
+  ]);
+
+  const adminRow = adminResult.data as { email?: string | null } | null;
+  if (!adminResult.error && adminRow?.email?.trim().toLowerCase() === email?.toLowerCase()) {
+    return {
+      ok: true,
+      context: {
+        supabase,
+        user,
+        actor: { userId: user.id, role: "admin" },
+        profile: null,
+      },
+    };
   }
 
-  const { data: profile, error: profileError } = await supabase
-    .from("ai_profiles")
-    .select("id, account_key, subject, display_name, avatar_url, bio, academic_affiliation, focus_tags, is_active, created_at, updated_at")
-    .eq("id", user.id)
-    .eq("is_active", true)
-    .maybeSingle();
+  const { data: profile, error: profileError } = profileResult;
   if (profileError) {
     return { ok: false, response: NextResponse.json({ error: "账号资料暂时不可用", success: false }, { status: 503 }) };
   }

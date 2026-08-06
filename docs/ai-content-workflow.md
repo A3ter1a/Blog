@@ -50,7 +50,9 @@ AI 直接写入 `notes` 时只能写未发布的、自身学科对应的草稿�
 
 ## 合集
 
-`note_collections` / `note_collection_items` 是通用合集模型，不新增特殊的 note type。合集可以容纳讲义、普通文章或知识点笔记，并支持逐篇追加、排序、移除和重命名。AI 只能维护自己的 AI 合集及自己的 AI 文章成员；管理员可维护全部合集。
+`note_collections` / `note_collection_items` 是通用合集模型，不新增特殊的 note type。合集可以容纳讲义、普通文章或知识点笔记，并支持逐篇追加、排序、移除和重命名。AI 只能维护自己的 AI 合集及自己的 AI 文章成员；管理员可维护全部合集。AI 窗口从 `/tools/ai-content` 顶部的“管理我的合集”进入，入口会保留 `?account=math|english|politics|economics` 槽位，避免回到默认管理员会话。
+
+当前发布边界仍由 `0025_ai_collection_publish_boundary.sql` 保持：AI 可以创建、追加和排序自己的未发布合集；合集一旦由管理员公开，AI 账号不能直接改动已公开目录，避免修改未经复审就立即出现在读者页面。若后续要支持“公开后继续由 AI 增量维护”，需要另建合集版本/变更审核链，不能直接放宽现有 RLS。
 
 ## 应用迁移顺序
 

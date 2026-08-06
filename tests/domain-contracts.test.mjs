@@ -1816,19 +1816,47 @@ test("AI 角色资料只开放白名单字段并拒绝身份篡改", () => {
 test("合集工作台使用单次快照、按槽位缓存并在后台重新可见时刷新", () => {
   const hook = readFileSync(resolve("hooks/useCollectionWorkspace.ts"), "utf8");
   const route = readFileSync(resolve("app/api/collections/workspace/route.ts"), "utf8");
+  const detailRoute = readFileSync(resolve("app/api/collections/[id]/route.ts"), "utf8");
+  const auth = readFileSync(resolve("lib/server-collection-auth.ts"), "utf8");
+  const server = readFileSync(resolve("lib/server-note-collections.ts"), "utf8");
   const cache = readFileSync(resolve("lib/collection-workspace-cache.ts"), "utf8");
 
   assert.equal(hook.includes("/api/collections/workspace"), true);
   assert.equal(hook.includes("COLLECTION_REQUEST_TIMEOUT_MS = 30_000"), true);
+  assert.equal(hook.includes("current.collections.length > 0"), true);
   assert.equal(hook.includes("readCollectionWorkspaceCache"), true);
   assert.equal(hook.includes("visibilitychange"), true);
   assert.equal(hook.includes("TOKEN_REFRESHED"), true);
   assert.equal(route.includes("getCollectionRequestContext(req)"), true);
   assert.equal(route.includes("listCollectionAvailableNotes"), true);
+  assert.equal(route.includes("ownerUserId: auth.context.actor.role === \"ai\""), true);
+  assert.equal(detailRoute.includes("getBearerToken(req)"), true);
+  assert.equal(detailRoute.indexOf("getCollectionRequestContext(req)") < detailRoute.indexOf("createPublicServerClient()"), true);
+  assert.equal(auth.includes("Promise.all"), true);
+  assert.equal(server.includes('.eq("author_kind", "ai").eq("owner_user_id", options.ownerUserId)'), true);
   assert.equal(cache.includes("asteroid-collection-workspace:"), true);
   assert.equal(cache.includes("getActiveAiAccountSlot"), true);
   assert.equal(cache.includes("localStorage"), true);
   assert.equal(cache.includes("sessionStorage"), true);
+});
+
+test("AI 学科账号可从内容工作台进入自己的合集，并固定学科边界与单次排序交换", () => {
+  const aiWorkspace = readFileSync(resolve("components/ai-content/AiContentWorkspace.tsx"), "utf8");
+  const collectionWorkspace = readFileSync(resolve("components/collections/CollectionWorkspace.tsx"), "utf8");
+  const collectionHook = readFileSync(resolve("hooks/useCollectionWorkspace.ts"), "utf8");
+  const server = readFileSync(resolve("lib/server-note-collections.ts"), "utf8");
+  const itemRoute = readFileSync(resolve("app/api/collections/[id]/items/route.ts"), "utf8");
+
+  assert.equal(aiWorkspace.includes("管理我的合集"), true);
+  assert.equal(aiWorkspace.includes("getAiAccountSlotPath(\"/tools/collections\", accountSlot)"), true);
+  assert.equal(collectionWorkspace.includes("所属学科（账号固定）"), true);
+  assert.equal(collectionWorkspace.includes("aria-label={`将${item.note?.title ?? \"当前内容\"}上移`}"), true);
+  assert.equal(collectionWorkspace.includes("await refreshDetail()"), false);
+  assert.equal(collectionWorkspace.includes("applyDetail(next)"), true);
+  assert.equal(collectionHook.includes("swapItemId"), true);
+  assert.equal(itemRoute.includes("swapSortOrder"), true);
+  assert.equal(server.includes("actor.role === \"ai\""), true);
+  assert.equal(server.includes("合集排序项目不能相同"), true);
 });
 
 test("AI 内容提案先按 RLS 要求写入草稿，再由同一账号提升为已自检", () => {

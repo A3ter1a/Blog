@@ -109,10 +109,16 @@ export function useCollectionWorkspace() {
       const snapshot = await loadWorkspaceSnapshot();
       setState(stateFromSnapshot(snapshot));
     } catch (error: unknown) {
-      if (options.background && cached) {
-        // A stale snapshot is still more useful than replacing the workspace
-        // with an error screen while an inactive browser tab is throttled.
-        setState((current) => ({ ...current, loading: false, error: null }));
+      if (options.background) {
+        // A current in-memory workspace is still more useful than replacing
+        // it with an error screen while an inactive browser tab is throttled
+        // or a post-mutation refresh is temporarily slow.
+        setState((current) => {
+          const keptUsableState = Boolean(cached || current.role || current.collections.length > 0);
+          return keptUsableState
+            ? { ...current, loading: false, error: null }
+            : { ...current, loading: false, error: error instanceof Error ? error.message : "合集工作台加载失败" };
+        });
         return;
       }
       setState((current) => ({ ...current, loading: false, error: error instanceof Error ? error.message : "合集工作台加载失败" }));
@@ -170,7 +176,10 @@ export function useCollectionWorkspace() {
       headers: { "Content-Type": "application/json" },
       body: body ? JSON.stringify(body) : undefined,
     });
-    await reload();
+    // Mutations must not be reported as failed just because the optional
+    // aggregate snapshot is slow. Callers refresh the selected detail; the
+    // list snapshot is refreshed opportunistically in the background.
+    void reload({ background: true });
     return payload;
   }, [reload]);
 
@@ -182,7 +191,16 @@ export function useCollectionWorkspace() {
     update: (id: string, body: Record<string, unknown>) => mutate(`/api/collections/${encodeURIComponent(id)}`, "PATCH", body),
     remove: (id: string) => mutate(`/api/collections/${encodeURIComponent(id)}`, "DELETE"),
     addNote: (id: string, noteId: string) => mutate(`/api/collections/${encodeURIComponent(id)}/items`, "POST", { noteId }),
-    reorder: (id: string, itemId: string, sortOrder: number) => mutate(`/api/collections/${encodeURIComponent(id)}/items`, "PATCH", { itemId, sortOrder }),
+    reorder: (
+      id: string,
+      itemId: string,
+      sortOrder: number,
+      swap?: { itemId: string; sortOrder: number },
+    ) => mutate(`/api/collections/${encodeURIComponent(id)}/items`, "PATCH", {
+      itemId,
+      sortOrder,
+      ...(swap ? { swapItemId: swap.itemId, swapSortOrder: swap.sortOrder } : {}),
+    }),
     removeNote: (id: string, itemId: string) => mutate(`/api/collections/${encodeURIComponent(id)}/items`, "DELETE", { itemId }),
   };
 }

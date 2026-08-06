@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCollectionRequestContext } from "@/lib/server-collection-auth";
+import { getBearerToken } from "@/lib/server-admin-auth";
 import { createPublicServerClient } from "@/lib/server-supabase-public";
 import {
   CollectionWorkflowError,
@@ -27,13 +28,20 @@ export async function GET(
   const id = await readId(params);
   if (!id) return NextResponse.json({ success: false, error: "合集 ID 无效" }, { status: 400 });
   try {
-    const publicClient = createPublicServerClient();
-    let collection = await getNoteCollection(publicClient, id);
-    if (!collection) {
+    // Workspace requests carry a bearer token. Resolve them through the
+    // authenticated client first so a private AI collection does not incur an
+    // anonymous query followed by a second auth handshake.
+    if (getBearerToken(req)) {
       const auth = await getCollectionRequestContext(req);
-      if (!auth.ok) return auth.response;
-      collection = await getNoteCollection(auth.context.supabase, id);
+      if (auth.ok) {
+        const collection = await getNoteCollection(auth.context.supabase, id);
+        if (!collection) return NextResponse.json({ success: false, error: "合集不存在或无权访问" }, { status: 404 });
+        return NextResponse.json({ success: true, collection }, { headers: { "Cache-Control": "no-store" } });
+      }
     }
+
+    const publicClient = createPublicServerClient();
+    const collection = await getNoteCollection(publicClient, id);
     if (!collection) return NextResponse.json({ success: false, error: "合集不存在或暂不可见" }, { status: 404 });
     return NextResponse.json({ success: true, collection }, { headers: { "Cache-Control": collection.isPublished ? "public, max-age=60, stale-while-revalidate=300" : "no-store" } });
   } catch (error: unknown) {

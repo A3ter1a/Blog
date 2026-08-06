@@ -16,8 +16,13 @@ export async function GET(req: NextRequest) {
 
   try {
     const [collections, rows] = await Promise.all([
-      listNoteCollections(auth.context.supabase, { limit: 100 }),
-      listCollectionAvailableNotes(auth.context.supabase, 200),
+      listNoteCollections(auth.context.supabase, {
+        limit: 100,
+        ownerUserId: auth.context.actor.role === "ai" ? auth.context.user.id : undefined,
+      }),
+      listCollectionAvailableNotes(auth.context.supabase, 200, {
+        ownerUserId: auth.context.actor.role === "ai" ? auth.context.user.id : undefined,
+      }),
     ]);
     const notes = rows.map((note) => ({
       id: note.id,

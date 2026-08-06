@@ -55,7 +55,20 @@ export async function PATCH(
     const body = isRecord(rawBody) ? rawBody : {};
     const itemId = typeof body.itemId === "string" ? body.itemId : "";
     if (!isUuid(itemId)) return NextResponse.json({ success: false, error: "合集项目 ID 无效" }, { status: 400 });
-    const collection = await updateCollectionItemOrder(auth.context.supabase, collectionId, itemId, body.sortOrder);
+    const swapItemId = typeof body.swapItemId === "string" ? body.swapItemId : undefined;
+    if (swapItemId && !isUuid(swapItemId)) {
+      return NextResponse.json({ success: false, error: "交换项目 ID 无效" }, { status: 400 });
+    }
+    if (swapItemId && typeof body.swapSortOrder !== "number") {
+      return NextResponse.json({ success: false, error: "交换项目顺序无效" }, { status: 400 });
+    }
+    const collection = await updateCollectionItemOrder(
+      auth.context.supabase,
+      collectionId,
+      itemId,
+      body.sortOrder,
+      swapItemId ? { itemId: swapItemId, sortOrder: body.swapSortOrder } : undefined,
+    );
     if (!collection) return NextResponse.json({ success: false, error: "合集不存在或无权访问" }, { status: 404 });
     return NextResponse.json({ success: true, collection });
   } catch (error: unknown) {
