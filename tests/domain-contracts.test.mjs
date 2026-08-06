@@ -37,6 +37,7 @@ import {
   selectCurrentSourceVersion,
   shouldCreateSourceVersion,
 } from "../lib/source-version-contract.ts";
+import { groupNotesByCollection } from "../lib/note-collection-directory.ts";
 import { validatePendingAction } from "../lib/ai-action-contract.ts";
 import {
   getBeijingMonth,
@@ -1970,6 +1971,8 @@ test("笔记目录按人工与 AI 来源原位切换且缓存严格隔离", () =
   const notesPage = readFileSync(resolve("app/notes/page.tsx"), "utf8");
   const notesClient = readFileSync(resolve("components/notes/NotesClient.tsx"), "utf8");
   const notesApi = readFileSync(resolve("lib/supabase.ts"), "utf8");
+  const collectionsApi = readFileSync(resolve("lib/collections-api.ts"), "utf8");
+  const directory = readFileSync(resolve("lib/note-collection-directory.ts"), "utf8");
   const notesCache = readFileSync(resolve("lib/notes-list-cache.ts"), "utf8");
 
   assert.equal(notesPage.includes('authorKind: "human"'), true);
@@ -1981,7 +1984,33 @@ test("笔记目录按人工与 AI 来源原位切换且缓存严格隔离", () =
   assert.equal(notesClient.includes("authorKind: directoryKind"), true);
   assert.equal(notesApi.includes('query.eq("author_kind", options.authorKind)'), true);
   assert.equal(notesApi.includes('q.eq("author_kind", options.authorKind)'), true);
+  assert.equal(collectionsApi.includes("orderedNoteIds"), true);
+  assert.equal(collectionsApi.includes("sort_order"), true);
+  assert.equal(directory.includes("groupNotesByCollection"), true);
+  assert.equal(notesClient.includes('data-ai-directory-order="collection"'), true);
+  assert.equal(notesClient.includes("未归入合集"), true);
   assert.equal(notesCache.includes("${authorKind}:${selectedType}:${selectedSubject}:${sortOrder}"), true);
+});
+
+test("AI 笔记目录按合集成员顺序展示并把未归入合集的文章放在最后", () => {
+  const notes = [
+    { id: "note-3" },
+    { id: "note-free" },
+    { id: "note-1" },
+    { id: "note-2" },
+  ];
+  const collections = [
+    { id: "collection-a", orderedNoteIds: ["note-1", "note-2"] },
+    { id: "collection-b", orderedNoteIds: ["note-3"] },
+  ];
+
+  const directory = groupNotesByCollection(notes, collections);
+
+  assert.deepEqual(directory.groups.map((group) => group.notes.map((note) => note.id)), [
+    ["note-1", "note-2"],
+    ["note-3"],
+  ]);
+  assert.deepEqual(directory.ungrouped.map((note) => note.id), ["note-free"]);
 });
 
 test("月度规划快照以备考周期和稳定外部键输出", () => {

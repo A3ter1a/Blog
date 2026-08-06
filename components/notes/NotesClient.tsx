@@ -19,6 +19,7 @@ import { NOTES_PAGE_SIZE, NOTES_SEARCH_RESULT_LIMIT } from "@/lib/notes-query";
 import { collapsibleMotion, surfaceMotion, uiMotion } from "@/lib/motion";
 import { CollectionCard } from "@/components/collections/CollectionCard";
 import type { CollectionSummary } from "@/lib/collections-contract";
+import { groupNotesByCollection } from "@/lib/note-collection-directory";
 
 const NOTES_REQUEST_TIMEOUT_MS = 8_000;
 
@@ -271,6 +272,13 @@ export function NotesClient({
     () => collections.filter((collection) => collection.ownerKind === directoryKind),
     [collections, directoryKind],
   );
+  const aiDirectory = useMemo(
+    () => groupNotesByCollection(filteredNotes, visibleCollections),
+    [filteredNotes, visibleCollections],
+  );
+  const showGroupedAiDirectory = directoryKind === "ai"
+    && !hasActiveFilters
+    && aiDirectory.groups.length > 0;
 
   const handleDirectoryChange = (nextKind: NoteAuthorKind) => {
     if (nextKind === directoryKind) return;
@@ -610,18 +618,66 @@ export function NotesClient({
             </div>
           ) : filteredNotes.length > 0 ? (
             <>
-              <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-3">
-                {filteredNotes.map((note, index) => (
-                  <NoteCard
-                    key={note.id}
-                    note={note}
-                    index={index}
-                    isSelected={selectedNoteIds.has(note.id)}
-                    onToggleSelect={selectMode ? handleToggleSelect : undefined}
-                    selectMode={selectMode}
-                  />
-                ))}
-              </div>
+              {showGroupedAiDirectory ? (
+                <div className="space-y-8" data-ai-directory-order="collection">
+                  {aiDirectory.groups.map((group) => (
+                    <section key={group.collection.id} aria-labelledby={`ai-collection-${group.collection.id}`}>
+                      <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
+                        <div>
+                          <p className="eyebrow-chip w-fit px-2.5 py-1 text-[11px]">按合集顺序</p>
+                          <h3 id={`ai-collection-${group.collection.id}`} className="mt-2 font-headline text-xl font-bold text-on-surface">{group.collection.title}</h3>
+                        </div>
+                        <Link href={`/collections/${encodeURIComponent(group.collection.id)}`} className="control-button px-3 py-2 text-xs">查看合集</Link>
+                      </div>
+                      <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-3">
+                        {group.notes.map((note, index) => (
+                          <NoteCard
+                            key={note.id}
+                            note={note}
+                            index={index}
+                            isSelected={selectedNoteIds.has(note.id)}
+                            onToggleSelect={selectMode ? handleToggleSelect : undefined}
+                            selectMode={selectMode}
+                          />
+                        ))}
+                      </div>
+                    </section>
+                  ))}
+                  {aiDirectory.ungrouped.length > 0 && (
+                    <section aria-labelledby="ai-ungrouped-heading">
+                      <div className="mb-3">
+                        <p className="eyebrow-chip w-fit px-2.5 py-1 text-[11px]">其他内容</p>
+                        <h3 id="ai-ungrouped-heading" className="mt-2 font-headline text-xl font-bold text-on-surface">未归入合集</h3>
+                      </div>
+                      <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-3">
+                        {aiDirectory.ungrouped.map((note, index) => (
+                          <NoteCard
+                            key={note.id}
+                            note={note}
+                            index={index}
+                            isSelected={selectedNoteIds.has(note.id)}
+                            onToggleSelect={selectMode ? handleToggleSelect : undefined}
+                            selectMode={selectMode}
+                          />
+                        ))}
+                      </div>
+                    </section>
+                  )}
+                </div>
+              ) : (
+                <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-3">
+                  {filteredNotes.map((note, index) => (
+                    <NoteCard
+                      key={note.id}
+                      note={note}
+                      index={index}
+                      isSelected={selectedNoteIds.has(note.id)}
+                      onToggleSelect={selectMode ? handleToggleSelect : undefined}
+                      selectMode={selectMode}
+                    />
+                  ))}
+                </div>
+              )}
               {hasMoreNotes && !searchQuery.trim() && (
                 <div className="flex justify-center pt-10">
                   <button

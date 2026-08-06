@@ -13,6 +13,8 @@ export type CollectionSummary = {
   coverImage: string | null;
   isPublished: boolean;
   itemCount: number;
+  /** Public directory payloads may include the ordered member note IDs. */
+  orderedNoteIds?: string[];
   createdAt: string;
   updatedAt: string;
 };
