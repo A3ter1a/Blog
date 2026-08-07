@@ -1,6 +1,6 @@
 "use client";
 
-import { useLayoutEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import katex from "katex";
 import { renderMarkdownToHtml } from "@/lib/markdown";
 import {
@@ -406,11 +406,43 @@ export function MarkdownContent({
   const containerRef = useRef<HTMLDivElement>(null);
   const htmlContent = useMemo(() => renderMarkdownToHtml(content), [content]);
 
-  useLayoutEffect(() => {
+  useEffect(() => {
+    let frame: number | null = null;
+    let observer: MutationObserver | null = null;
+
+    const processEnhancements = () => {
+      const container = containerRef.current;
+      if (!container) return;
+      if (enableEconomicsGraphs) processEconomicsGraphs(container);
+      if (enableEconomicsTerms) processEconomicsTerms(container);
+    };
+
+    // The reader can arrive as server-rendered HTML and hydrate after the
+    // initial DOM commit. Run once after hydration, then once more on the next
+    // frame so React cannot overwrite the generated graph with the raw code
+    // block during the hydration pass.
+    processEnhancements();
+    frame = window.requestAnimationFrame(processEnhancements);
+
     const container = containerRef.current;
-    if (!container) return;
-    if (enableEconomicsGraphs) processEconomicsGraphs(container);
-    if (enableEconomicsTerms) processEconomicsTerms(container);
+    if (container && typeof MutationObserver !== "undefined") {
+      observer = new MutationObserver(() => {
+        // React can reconcile the server-rendered code block back into this
+        // container after the first effect (especially during hydration).
+        // Re-run only when raw econgraph code is present so our own SVG
+        // replacement cannot create an observer loop.
+        if (enableEconomicsGraphs && container.querySelector("pre > code.language-econgraph, pre > code[class~='language-econgraph']")) {
+          processEconomicsGraphs(container);
+        }
+        if (enableEconomicsTerms) processEconomicsTerms(container);
+      });
+      observer.observe(container, { childList: true, subtree: true });
+    }
+
+    return () => {
+      if (frame !== null) window.cancelAnimationFrame(frame);
+      observer?.disconnect();
+    };
   }, [enableEconomicsGraphs, enableEconomicsTerms, htmlContent]);
 
   return (
