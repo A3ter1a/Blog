@@ -19,6 +19,7 @@ import { NOTES_PAGE_SIZE, NOTES_SEARCH_RESULT_LIMIT } from "@/lib/notes-query";
 import { collapsibleMotion, surfaceMotion, uiMotion } from "@/lib/motion";
 import { CollectionCard } from "@/components/collections/CollectionCard";
 import type { CollectionSummary } from "@/lib/collections-contract";
+import { collectionsApi } from "@/lib/collections-api";
 import { groupNotesByCollection } from "@/lib/note-collection-directory";
 
 const NOTES_REQUEST_TIMEOUT_MS = 8_000;
@@ -55,7 +56,7 @@ export function NotesClient({
   initialLoadError = false,
   initialCollections = [],
 }: NotesClientProps) {
-  const { isAdmin } = useAdminAuth();
+  const { isAdmin, user } = useAdminAuth();
   const toast = useToast();
   const initialRouteReadyRef = useRef(!initialLoadError);
   const [directoryKind, setDirectoryKind] = useState<NoteAuthorKind>("human");
@@ -67,7 +68,10 @@ export function NotesClient({
   
   // Data state
   const [notes, setNotes] = useState<Note[]>(initialNotes);
-  const [collections] = useState<CollectionSummary[]>(initialCollections);
+  const [collections, setCollections] = useState<CollectionSummary[]>(initialCollections);
+  const [collectionsStatus, setCollectionsStatus] = useState<"loading" | "ready" | "failed">(
+    initialCollections.length > 0 ? "ready" : "loading",
+  );
   const [loading, setLoading] = useState(initialLoadError);
   const [hasMoreNotes, setHasMoreNotes] = useState(initialHasMoreNotes);
   const [isRefreshingNotes, setIsRefreshingNotes] = useState(false);
@@ -85,6 +89,7 @@ export function NotesClient({
   const [isDeletingNotes, setIsDeletingNotes] = useState(false);
   const latestLoadId = useRef(0);
   const latestCoverLoadId = useRef(0);
+  const latestCollectionsLoadId = useRef(0);
   const notesRef = useRef<Note[]>(initialNotes);
 
   const setVisibleNotes = useCallback((nextNotes: Note[]) => {
@@ -93,6 +98,40 @@ export function NotesClient({
   }, []);
 
   const visibleNoteIdsKey = useMemo(() => notes.map((note) => note.id).join("|"), [notes]);
+
+  const refreshCollections = useCallback(async () => {
+    const loadId = latestCollectionsLoadId.current + 1;
+    latestCollectionsLoadId.current = loadId;
+    // A server render can only preload public collections. Once the active
+    // session is known, the AI directory must revalidate through the same
+    // Supabase session so an admin or AI account can see its private draft
+    // collections and their ordered members.
+    setCollectionsStatus("loading");
+
+    try {
+      const canReadPrivateAiCollections = directoryKind === "ai" && Boolean(user);
+      const nextCollections = await withNotesRequestTimeout(
+        canReadPrivateAiCollections
+          ? collectionsApi.getAuthenticatedSummaries()
+          : collectionsApi.getPublishedSummaries(),
+      );
+      if (latestCollectionsLoadId.current !== loadId) return;
+      setCollections(nextCollections);
+      setCollectionsStatus("ready");
+    } catch (error: unknown) {
+      if (latestCollectionsLoadId.current !== loadId) return;
+      console.warn("Failed to refresh published collections:", error);
+      setCollectionsStatus(initialCollections.length > 0 ? "ready" : "failed");
+    }
+  }, [directoryKind, initialCollections.length, user]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      void refreshCollections();
+    }, 0);
+
+    return () => window.clearTimeout(timer);
+  }, [refreshCollections]);
 
   const fetchNotesPage = useCallback(async (
     offset: number,
@@ -276,9 +315,10 @@ export function NotesClient({
     () => groupNotesByCollection(filteredNotes, visibleCollections),
     [filteredNotes, visibleCollections],
   );
-  const showGroupedAiDirectory = directoryKind === "ai"
+  const showCollectionOnlyAiDirectory = directoryKind === "ai"
     && !hasActiveFilters
-    && aiDirectory.groups.length > 0;
+    && collectionsStatus === "ready"
+    && visibleCollections.length > 0;
 
   const handleDirectoryChange = (nextKind: NoteAuthorKind) => {
     if (nextKind === directoryKind) return;
@@ -618,32 +658,9 @@ export function NotesClient({
             </div>
           ) : filteredNotes.length > 0 ? (
             <>
-              {showGroupedAiDirectory ? (
-                <div className="space-y-8" data-ai-directory-order="collection">
-                  {aiDirectory.groups.map((group) => (
-                    <section key={group.collection.id} aria-labelledby={`ai-collection-${group.collection.id}`}>
-                      <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
-                        <div>
-                          <p className="eyebrow-chip w-fit px-2.5 py-1 text-[11px]">按合集顺序</p>
-                          <h3 id={`ai-collection-${group.collection.id}`} className="mt-2 font-headline text-xl font-bold text-on-surface">{group.collection.title}</h3>
-                        </div>
-                        <Link href={`/collections/${encodeURIComponent(group.collection.id)}`} className="control-button px-3 py-2 text-xs">查看合集</Link>
-                      </div>
-                      <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-3">
-                        {group.notes.map((note, index) => (
-                          <NoteCard
-                            key={note.id}
-                            note={note}
-                            index={index}
-                            isSelected={selectedNoteIds.has(note.id)}
-                            onToggleSelect={selectMode ? handleToggleSelect : undefined}
-                            selectMode={selectMode}
-                          />
-                        ))}
-                      </div>
-                    </section>
-                  ))}
-                  {aiDirectory.ungrouped.length > 0 && (
+              {showCollectionOnlyAiDirectory ? (
+                <div className="space-y-6" data-ai-directory-order="collection-card">
+                  {aiDirectory.ungrouped.length > 0 ? (
                     <section aria-labelledby="ai-ungrouped-heading">
                       <div className="mb-3">
                         <p className="eyebrow-chip w-fit px-2.5 py-1 text-[11px]">其他内容</p>
@@ -662,6 +679,10 @@ export function NotesClient({
                         ))}
                       </div>
                     </section>
+                  ) : (
+                    <div className="surface-panel border-dashed px-5 py-8 text-center text-sm text-on-surface-variant">
+                      合集内容已收拢到上方卡片，点击合集即可按顺序阅读。
+                    </div>
                   )}
                 </div>
               ) : (

@@ -52,42 +52,57 @@ function toItem(row: CollectionItemRow, note: NoteRow | null): CollectionItem {
   };
 }
 
+async function getCollectionSummaries(limit = 100, publishedOnly = true): Promise<CollectionSummary[]> {
+  const safeLimit = Math.max(1, Math.min(Math.trunc(limit), 100));
+  const supabase = getSupabase();
+  let query = supabase
+    .from("note_collections")
+    .select(COLLECTION_FIELDS)
+    .order("updated_at", { ascending: false })
+    .limit(safeLimit);
+  if (publishedOnly) query = query.eq("is_published", true);
+
+  const { data, error } = await query;
+  if (error) throw error;
+  const rows = (data ?? []) as unknown as CollectionRow[];
+  if (rows.length === 0) return [];
+
+  const { data: items, error: itemError } = await supabase
+    .from("note_collection_items")
+    .select("collection_id,note_id,sort_order,created_at")
+    .in("collection_id", rows.map((row) => row.id))
+    .order("sort_order", { ascending: true })
+    .order("created_at", { ascending: true })
+    .order("note_id", { ascending: true });
+  if (itemError) throw itemError;
+
+  const counts = new Map<string, number>();
+  const orderedNoteIds = new Map<string, string[]>();
+  for (const item of (items ?? []) as Array<Pick<CollectionItemRow, "collection_id" | "note_id">>) {
+    counts.set(item.collection_id, (counts.get(item.collection_id) ?? 0) + 1);
+    const noteIds = orderedNoteIds.get(item.collection_id) ?? [];
+    noteIds.push(item.note_id);
+    orderedNoteIds.set(item.collection_id, noteIds);
+  }
+
+  return rows.map((row) => ({
+    ...toSummary(row, counts.get(row.id) ?? 0),
+    orderedNoteIds: orderedNoteIds.get(row.id) ?? [],
+  }));
+}
+
 export const collectionsApi = {
   async getPublishedSummaries(limit = 100): Promise<CollectionSummary[]> {
-    const safeLimit = Math.max(1, Math.min(Math.trunc(limit), 100));
-    const supabase = getSupabase();
-    const { data, error } = await supabase
-      .from("note_collections")
-      .select(COLLECTION_FIELDS)
-      .eq("is_published", true)
-      .order("updated_at", { ascending: false })
-      .limit(safeLimit);
-    if (error) throw error;
-    const rows = (data ?? []) as unknown as CollectionRow[];
-    if (rows.length === 0) return [];
-    const { data: items, error: itemError } = await supabase
-      .from("note_collection_items")
-      .select("collection_id,note_id,sort_order,created_at")
-      .in("collection_id", rows.map((row) => row.id))
-      // The directory consumes this flat response as the collection order.
-      // Keep the database ordering explicit; Supabase does not guarantee row
-      // order unless an order clause is present.
-      .order("sort_order", { ascending: true })
-      .order("created_at", { ascending: true })
-      .order("note_id", { ascending: true });
-    if (itemError) throw itemError;
-    const counts = new Map<string, number>();
-    const orderedNoteIds = new Map<string, string[]>();
-    for (const item of (items ?? []) as Array<Pick<CollectionItemRow, "collection_id" | "note_id">>) {
-      counts.set(item.collection_id, (counts.get(item.collection_id) ?? 0) + 1);
-      const noteIds = orderedNoteIds.get(item.collection_id) ?? [];
-      noteIds.push(item.note_id);
-      orderedNoteIds.set(item.collection_id, noteIds);
-    }
-    return rows.map((row) => ({
-      ...toSummary(row, counts.get(row.id) ?? 0),
-      orderedNoteIds: orderedNoteIds.get(row.id) ?? [],
-    }));
+    return getCollectionSummaries(limit, true);
+  },
+
+  /**
+   * Read collections visible to the current authenticated Supabase session.
+   * RLS limits this to the user's own collections or all collections for an
+   * administrator; anonymous callers still see only public rows.
+   */
+  async getAuthenticatedSummaries(limit = 100): Promise<CollectionSummary[]> {
+    return getCollectionSummaries(limit, false);
   },
 
   async getPublishedById(id: string): Promise<CollectionDetail | null> {

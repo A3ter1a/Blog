@@ -1941,6 +1941,20 @@ test("WP4 四类页面模板共用统一版心与语义契约", () => {
   assert.equal(scaffold.includes("<dl"), true);
 });
 
+test("econgraph 阅读页在 hydration 后延迟执行可重复的 SVG 后处理", () => {
+  const markdownContent = readFileSync(resolve("components/ui/MarkdownContent.tsx"), "utf8");
+
+  assert.equal(markdownContent.includes('import { useEffect, useMemo, useRef } from "react";'), true);
+  assert.equal(markdownContent.includes("useLayoutEffect"), false);
+  assert.equal(markdownContent.includes("processEnhancements();"), true);
+  assert.equal(markdownContent.includes("window.requestAnimationFrame(processEnhancements)"), true);
+  assert.equal(markdownContent.includes("new MutationObserver"), true);
+  assert.equal(markdownContent.includes("observer.observe(container, { childList: true, subtree: true })"), true);
+  assert.equal(markdownContent.includes("observer?.disconnect()"), true);
+  assert.equal(markdownContent.includes("window.cancelAnimationFrame(frame)"), true);
+  assert.equal(markdownContent.includes("processEconomicsGraphs(container)"), true);
+});
+
 test("WP4 主题令牌在运行时解析且普通打印不再被题册规则隐藏", () => {
   const css = readFileSync(resolve("app/globals.css"), "utf8");
   const reader = readFileSync(resolve("components/notes/NoteReaderClient.tsx"), "utf8");
@@ -1986,8 +2000,13 @@ test("笔记目录按人工与 AI 来源原位切换且缓存严格隔离", () =
   assert.equal(notesApi.includes('q.eq("author_kind", options.authorKind)'), true);
   assert.equal(collectionsApi.includes("orderedNoteIds"), true);
   assert.equal(collectionsApi.includes("sort_order"), true);
+  assert.equal(collectionsApi.includes("getAuthenticatedSummaries"), true);
   assert.equal(directory.includes("groupNotesByCollection"), true);
-  assert.equal(notesClient.includes('data-ai-directory-order="collection"'), true);
+  assert.equal(notesClient.includes('data-ai-directory-order="collection-card"'), true);
+  assert.equal(notesClient.includes("collectionsApi.getPublishedSummaries"), true);
+  assert.equal(notesClient.includes("collectionsApi.getAuthenticatedSummaries"), true);
+  assert.equal(notesClient.includes("canReadPrivateAiCollections"), true);
+  assert.equal(notesClient.includes("合集内容已收拢到上方卡片"), true);
   assert.equal(notesClient.includes("未归入合集"), true);
   assert.equal(notesCache.includes("${authorKind}:${selectedType}:${selectedSubject}:${sortOrder}"), true);
 });
