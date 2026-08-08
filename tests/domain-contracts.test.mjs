@@ -1841,6 +1841,19 @@ test("合集工作台使用单次快照、按槽位缓存并在后台重新可�
   assert.equal(cache.includes("sessionStorage"), true);
 });
 
+test("AI 私有合集点击后通过会话读取详情，公开合集仍保留公开 SSR 路径", () => {
+  const page = readFileSync(resolve("app/collections/[id]/page.tsx"), "utf8");
+  const client = readFileSync(resolve("components/collections/CollectionDetailClient.tsx"), "utf8");
+
+  assert.equal(page.includes("collectionsApi.getPublishedById"), true);
+  assert.equal(page.includes("CollectionDetailClient"), true);
+  assert.equal(client.includes("fetchWithAuth"), true);
+  assert.equal(client.includes("/api/collections/"), true);
+  assert.equal(client.includes("initialCollection"), true);
+  assert.equal(client.includes('collection.isPublished ? "/collections" : "/notes"'), true);
+  assert.equal(client.includes("RLS"), true);
+});
+
 test("AI 学科账号可从内容工作台进入自己的合集，并固定学科边界与单次排序交换", () => {
   const aiWorkspace = readFileSync(resolve("components/ai-content/AiContentWorkspace.tsx"), "utf8");
   const collectionWorkspace = readFileSync(resolve("components/collections/CollectionWorkspace.tsx"), "utf8");
