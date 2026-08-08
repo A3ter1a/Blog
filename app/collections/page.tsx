@@ -1,9 +1,9 @@
 import { Layers3 } from "lucide-react";
 import { CollectionCard } from "@/components/collections/CollectionCard";
 import { PageHeader, PageShell } from "@/components/ui/PageScaffold";
-import { collectionsApi } from "@/lib/collections-api";
 import { createPageMetadata } from "@/lib/site-metadata";
 import type { CollectionSummary } from "@/lib/collections-contract";
+import { getCachedPublishedCollectionSummaries } from "@/lib/server-public-cache";
 
 export const metadata = createPageMetadata({
   title: "合集",
@@ -18,7 +18,7 @@ export default async function CollectionsPage() {
   let collections: CollectionSummary[] = [];
   if (process.env.ASTEROID_OFFLINE_BUILD !== "1") {
     try {
-      collections = await collectionsApi.getPublishedSummaries();
+      collections = await getCachedPublishedCollectionSummaries();
     } catch (error) {
       console.warn("Failed to load collections:", error);
     }

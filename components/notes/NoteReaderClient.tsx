@@ -31,6 +31,16 @@ import { useAdminAuth } from "@/hooks/useAdminAuth";
 import { useToast } from "@/components/ui/Toast";
 import { overlayMotion, surfaceMotion, uiMotion } from "@/lib/motion";
 import { detectBookletSourceDrift, extractBookletSourceManifest, type BookletProblemSnapshot } from "@/lib/booklet-contract";
+import {
+  clearPublicNoteCache,
+  noteReaderValuesEqual,
+  readPublicAuthorProfileCache,
+  readPublicChaptersCache,
+  readPublicNoteCache,
+  writePublicAuthorProfileCache,
+  writePublicChaptersCache,
+  writePublicNoteCache,
+} from "@/lib/note-reader-cache";
 
 type NoteReaderClientProps = {
   noteId: string;
@@ -70,9 +80,11 @@ export function NoteReaderClient({
   const { preferences } = useReadingPreferences();
   const { isAdmin } = useAdminAuth();
   const toast = useToast();
-  const [note, setNote] = useState<Note | null>(initialNote);
+  const cachedInitialNote = accessScope === "public" && !initialNote ? readPublicNoteCache(noteId) : null;
+  const cachedInitialChapters = accessScope === "public" && !initialChaptersLoaded ? readPublicChaptersCache(noteId) : null;
+  const [note, setNote] = useState<Note | null>(initialNote ?? cachedInitialNote?.value ?? null);
   const [authorProfile, setAuthorProfile] = useState<PublicAiProfile | null>(null);
-  const [loading, setLoading] = useState(initialLoadError || !initialNote);
+  const [loading, setLoading] = useState(initialLoadError || (!initialNote && !cachedInitialNote));
   const [loadError, setLoadError] = useState<string | null>(initialLoadError ? "暂时无法加载这篇笔记，请检查网络或 Supabase 配置，然后重试。" : null);
   const [retryToken, setRetryToken] = useState(0);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -80,7 +92,7 @@ export function NoteReaderClient({
   const [isCoverExpanded, setIsCoverExpanded] = useState(Boolean(initialNote?.coverImage));
   const [isImmersiveMode, setIsImmersiveMode] = useState(false);
   const [inlineVideoIndex, setInlineVideoIndex] = useState<number | null>(null);
-  const [chapters, setChapters] = useState<Chapter[]>(initialChapters);
+  const [chapters, setChapters] = useState<Chapter[]>(initialChapters.length > 0 ? initialChapters : (cachedInitialChapters?.value ?? []));
   const [selectedChapterId, setSelectedChapterId] = useState<string | undefined>(undefined);
   const [showProblemTools, setShowProblemTools] = useState(false);
   const [practiceStatusMap, setPracticeStatusMap] = useState<Record<string, ProblemPracticeStatus>>({});
@@ -124,9 +136,11 @@ export function NoteReaderClient({
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
-      setNote(initialNote);
-      setLoading(initialLoadError || !initialNote);
-      setChapters(initialChapters);
+      const cachedNote = accessScope === "public" && !initialNote ? readPublicNoteCache(noteId)?.value ?? null : null;
+      const cachedChapters = accessScope === "public" && initialChapters.length === 0 ? readPublicChaptersCache(noteId)?.value ?? [] : [];
+      setNote(initialNote ?? cachedNote);
+      setLoading(initialLoadError || (!initialNote && !cachedNote));
+      setChapters(initialChapters.length > 0 ? initialChapters : cachedChapters);
       setSelectedChapterId(undefined);
       setIsCoverExpanded(Boolean(initialNote?.coverImage));
       setShowProblemTools(false);
@@ -147,11 +161,19 @@ export function NoteReaderClient({
 
   const loadNote = useCallback(async () => {
     try {
-      setLoading(true);
+      const cached = accessScope === "public" ? readPublicNoteCache(noteId) : null;
+      if (cached) {
+        setNote((current) => noteReaderValuesEqual(current, cached.value) ? current : cached.value);
+        setIsCoverExpanded(Boolean(cached.value.coverImage));
+        setLoading(false);
+      } else {
+        setLoading(true);
+      }
       const data = accessScope === "owner"
         ? await notesApi.getEditableById(noteId)
         : await notesApi.getPublishedById(noteId);
-      setNote(data);
+      if (data && accessScope === "public") writePublicNoteCache(data);
+      setNote((current) => noteReaderValuesEqual(current, data) ? current : data);
       setIsCoverExpanded(Boolean(data?.coverImage));
       setLoadError(null);
     } catch (error) {
@@ -163,12 +185,16 @@ export function NoteReaderClient({
   }, [accessScope, noteId]);
 
   useEffect(() => {
-    if (initialNote && !initialLoadError && retryToken === 0) return;
+    if (initialNote && !initialLoadError && retryToken === 0) {
+      if (accessScope === "public") writePublicNoteCache(initialNote);
+      const cached = accessScope === "public" ? readPublicNoteCache(noteId) : null;
+      if (!cached?.stale) return;
+    }
     const timer = window.setTimeout(() => {
       void loadNote();
     }, 0);
     return () => window.clearTimeout(timer);
-  }, [initialLoadError, initialNote, loadNote, retryToken]);
+  }, [accessScope, initialLoadError, initialNote, loadNote, noteId, retryToken]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -176,9 +202,17 @@ export function NoteReaderClient({
         setAuthorProfile(null);
         return;
       }
+      const cached = readPublicAuthorProfileCache(note.id);
+      if (cached) setAuthorProfile(cached.value);
+      if (cached && !cached.stale) return;
       void notesApi.getAiAuthorProfile(note.id)
-        .then(setAuthorProfile)
-        .catch(() => setAuthorProfile(null));
+        .then((profile) => {
+          writePublicAuthorProfileCache(note.id, profile);
+          setAuthorProfile((current) => noteReaderValuesEqual(current, profile) ? current : profile);
+        })
+        .catch(() => {
+          if (!cached) setAuthorProfile(null);
+        });
     }, 0);
     return () => window.clearTimeout(timer);
   }, [accessScope, note?.id]);
@@ -193,15 +227,30 @@ export function NoteReaderClient({
       return () => window.clearTimeout(timer);
     }
 
+    if (initialChaptersLoaded && accessScope === "public" && initialChapters.length > 0) {
+      writePublicChaptersCache(noteId, initialChapters);
+    }
+
     if (skipInitialChapterFetchRef.current) {
       skipInitialChapterFetchRef.current = false;
       return;
     }
 
+    const cached = accessScope === "public" ? readPublicChaptersCache(noteId) : null;
+    if (cached && !initialChaptersLoaded) {
+      queueMicrotask(() => {
+        setChapters((current) => noteReaderValuesEqual(current, cached.value) ? current : cached.value);
+      });
+    }
+    if (cached && !cached.stale && !initialChaptersLoaded) return;
+
     chaptersApi.getByNoteId(noteId)
-      .then(setChapters)
+      .then((nextChapters) => {
+        if (accessScope === "public") writePublicChaptersCache(noteId, nextChapters);
+        setChapters((current) => noteReaderValuesEqual(current, nextChapters) ? current : nextChapters);
+      })
       .catch(() => setChapters([]));
-  }, [note?.type, noteId]);
+  }, [accessScope, initialChaptersLoaded, note?.type, noteId]);
 
   useEffect(() => {
     const manifest = extractBookletSourceManifest(note?.content ?? "");
@@ -422,6 +471,7 @@ export function NoteReaderClient({
     setIsDeletingNote(true);
     try {
       await notesApi.delete(noteId);
+      clearPublicNoteCache(noteId);
       setShowDeleteConfirm(false);
       toast.success("笔记已删除");
       router.push("/notes");
@@ -457,6 +507,10 @@ export function NoteReaderClient({
         previousNote.id,
         { problems: updatedProblems },
       );
+      clearPublicNoteCache(previousNote.id);
+      if (previousNote.isPublished) {
+        writePublicNoteCache({ ...previousNote, problems: updatedProblems, updatedAt: savedNote.updatedAt, contentVersion: savedNote.contentVersion });
+      }
       setNote(current => current?.id === previousNote.id
         ? { ...current, updatedAt: savedNote.updatedAt, contentVersion: savedNote.contentVersion }
         : current

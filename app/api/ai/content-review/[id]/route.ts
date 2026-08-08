@@ -12,6 +12,7 @@ import {
   type ReviewTransition,
 } from "@/lib/server-ai-content-review";
 import { attachAiKnowledgeQuizzesToPublishedNote } from "@/lib/server-ai-knowledge-quiz";
+import { revalidatePublicContent } from "@/lib/server-public-cache";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -125,6 +126,9 @@ export async function PATCH(
     if (!proposal) return NextResponse.json({ error: "提案不存在", success: false }, { status: 404 });
     if (proposal.note_id) {
       await attachAiKnowledgeQuizzesToPublishedNote(auth.context.supabase, id, proposal.note_id);
+    }
+    if (action === "publish" || action === "approve_and_publish") {
+      revalidatePublicContent();
     }
     const detail = await getAiContentReviewProposal(auth.context.supabase, id);
     return NextResponse.json({ success: true, proposal: detail ?? { proposal, profile: null, comments: [] } });

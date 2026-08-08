@@ -1,4 +1,4 @@
-import { assertAdminWrite, getSupabase, type ChapterInsert, type ChapterRow, type ChapterUpdate } from './supabase';
+import { assertAdminWrite, getSupabase, notifyPublicCacheInvalidation, type ChapterInsert, type ChapterRow, type ChapterUpdate } from './supabase';
 import type { Chapter } from './types';
 
 const CHAPTER_FIELDS = 'id,note_id,name,parent_id,sort_order,description,color,created_at,updated_at';
@@ -82,6 +82,7 @@ export const chaptersApi = {
       .single();
 
     if (error) throw error;
+    notifyPublicCacheInvalidation();
     return mapChapter(data);
   },
 
@@ -104,6 +105,7 @@ export const chaptersApi = {
       .single();
 
     if (error) throw error;
+    notifyPublicCacheInvalidation();
     return mapChapter(data);
   },
 
@@ -113,6 +115,7 @@ export const chaptersApi = {
     const supabase = getSupabase();
     const { error } = await supabase.from('chapters').delete().eq('id', id);
     if (error) throw error;
+    notifyPublicCacheInvalidation();
   },
 
   // Reorder chapters (batch update sortOrder)
@@ -154,5 +157,6 @@ export const chaptersApi = {
 
     const { error } = await supabase.from('chapters').upsert(updates);
     if (error) throw error;
+    notifyPublicCacheInvalidation();
   },
 };

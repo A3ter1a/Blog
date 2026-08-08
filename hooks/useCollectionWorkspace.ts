@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { fetchWithAuth } from "@/lib/fetch-with-auth";
+import { getActiveAiAccountSlot } from "@/lib/auth-session-slot";
 import { getSupabase } from "@/lib/supabase";
 import type { CollectionAvailableNote, CollectionDetail, CollectionSummary } from "@/lib/collections-contract";
 import {
@@ -12,6 +13,12 @@ import {
   type CollectionWorkspaceSnapshot,
   writeCollectionWorkspaceCache,
 } from "@/lib/collection-workspace-cache";
+import {
+  clearCollectionDetailCache,
+  readCollectionDetailCache,
+  writeCollectionDetailCache,
+} from "@/lib/collection-detail-cache";
+import { clearCollectionListCache } from "@/lib/collection-list-cache";
 
 type WorkspaceState = {
   loading: boolean;
@@ -165,12 +172,37 @@ export function useCollectionWorkspace() {
   }, [reload]);
 
   const getDetail = useCallback(async (id: string): Promise<CollectionDetail> => {
+    // The workspace can contain private admin collections. Only AI slots have
+    // a synchronous, stable browser scope here; admin details stay network-
+    // backed so they can never be mistaken for public collection data.
+    const cacheEnabled = Boolean(getActiveAiAccountSlot());
+    const cached = cacheEnabled ? readCollectionDetailCache(id) : null;
+    if (cached) {
+      // Paint the cached detail immediately, then quietly replace it with the
+      // authenticated snapshot. The workspace caller can keep its current
+      // editor stable if the response is unchanged.
+      void requestJson(`/api/collections/${encodeURIComponent(id)}`)
+        .then((payload) => {
+          if (!isRecord(payload.collection)) return;
+          if (cacheEnabled) writeCollectionDetailCache(payload.collection as unknown as CollectionDetail);
+        })
+        .catch(() => undefined);
+      return cached.value;
+    }
+
     const payload = await requestJson(`/api/collections/${encodeURIComponent(id)}`);
     if (!isRecord(payload.collection)) throw new Error("合集详情不可用");
-    return payload.collection as unknown as CollectionDetail;
+    const detail = payload.collection as unknown as CollectionDetail;
+    if (cacheEnabled) writeCollectionDetailCache(detail);
+    return detail;
   }, []);
 
   const mutate = useCallback(async (url: string, method: string, body?: Record<string, unknown>) => {
+    const collectionMatch = url.match(/^\/api\/collections\/([^/]+)/);
+    if (collectionMatch?.[1] && collectionMatch[1] !== "workspace") {
+      clearCollectionDetailCache(decodeURIComponent(collectionMatch[1]));
+    }
+    clearCollectionListCache();
     const payload = await requestJson(url, {
       method,
       headers: { "Content-Type": "application/json" },

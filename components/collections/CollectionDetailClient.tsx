@@ -8,6 +8,11 @@ import type { CollectionDetail } from "@/lib/collections-contract";
 import { fetchWithAuth } from "@/lib/fetch-with-auth";
 import { subjectMap, typeMap } from "@/lib/types";
 import { getNoteReadPath } from "@/lib/note-routes";
+import {
+  collectionDetailsEqual,
+  readCollectionDetailCache,
+  writeCollectionDetailCache,
+} from "@/lib/collection-detail-cache";
 
 type CollectionDetailClientProps = {
   id: string;
@@ -22,18 +27,23 @@ export function CollectionDetailClient({
   id,
   initialCollection,
 }: CollectionDetailClientProps) {
-  const [fetchedCollection, setFetchedCollection] = useState<CollectionDetail | null>(null);
-  const [loading, setLoading] = useState(!initialCollection);
+  const cachedInitial = initialCollection ? null : readCollectionDetailCache(id);
+  const [fetchedCollection, setFetchedCollection] = useState<CollectionDetail | null>(cachedInitial?.value ?? null);
+  const [loading, setLoading] = useState(!initialCollection && !cachedInitial);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const collection = initialCollection ?? fetchedCollection;
+  const collection = fetchedCollection ?? initialCollection;
 
   useEffect(() => {
-    if (initialCollection) return;
-
     let cancelled = false;
+    const cached = readCollectionDetailCache(id);
+    if (initialCollection) writeCollectionDetailCache(initialCollection);
+    const shouldRefresh = !initialCollection || !cached || cached.stale;
+
+    if (!shouldRefresh) return () => { cancelled = true; };
+
     const timer = window.setTimeout(() => {
       void (async () => {
-        setLoading(true);
+        if (!initialCollection && !cached) setLoading(true);
         try {
           // The API applies Supabase RLS to the active browser session. This
           // lets an AI account read its own private collection without making
@@ -46,11 +56,13 @@ export function CollectionDetailClient({
             throw new Error("合集不存在或尚未发布");
           }
           if (cancelled) return;
-          setFetchedCollection(payload.collection);
+          const next = payload.collection;
+          writeCollectionDetailCache(next);
+          setFetchedCollection((current) => collectionDetailsEqual(current, next) ? current : next);
           setLoadError(null);
         } catch (error: unknown) {
           if (cancelled) return;
-          setFetchedCollection(null);
+          if (!initialCollection && !cached) setFetchedCollection(null);
           setLoadError(error instanceof Error ? error.message : "合集加载失败");
         } finally {
           if (!cancelled) setLoading(false);

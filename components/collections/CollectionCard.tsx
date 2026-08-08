@@ -5,12 +5,19 @@ import { Layers3, ListOrdered } from "lucide-react";
 import type { CollectionSummary } from "@/lib/collections-contract";
 import { subjectMap } from "@/lib/types";
 
-export function CollectionCard({ collection }: { collection: CollectionSummary }) {
-  return (
-    <Link
-      href={`/collections/${encodeURIComponent(collection.id)}`}
-      className="surface-card group flex min-h-[13.5rem] flex-col overflow-hidden"
-    >
+export function CollectionCard({
+  collection,
+  onOpen,
+  isExpanded = false,
+}: {
+  collection: CollectionSummary;
+  /** AI directory uses an in-place disclosure; public directory keeps its URL. */
+  onOpen?: () => void;
+  isExpanded?: boolean;
+}) {
+  const className = "surface-card group flex min-h-[13.5rem] flex-col overflow-hidden text-left";
+  const content = (
+    <>
       <div className="relative flex h-28 items-end overflow-hidden bg-surface-container-low px-5 pb-4">
         {collection.coverImage ? (
           // eslint-disable-next-line @next/next/no-img-element -- cover images are user-provided persisted URLs.
@@ -35,9 +42,15 @@ export function CollectionCard({ collection }: { collection: CollectionSummary }
         {collection.description && <p className="mt-2 line-clamp-2 text-sm leading-6 text-on-surface-variant">{collection.description}</p>}
         <div className="mt-auto flex items-center gap-3 pt-4 text-xs text-on-surface-variant">
           <span className="inline-flex items-center gap-1.5"><ListOrdered className="h-3.5 w-3.5" />{collection.itemCount} 篇内容</span>
-          <span className="ml-auto text-primary transition-transform group-hover:translate-x-1">查看 →</span>
+          <span className="ml-auto text-primary transition-transform group-hover:translate-x-1">{isExpanded ? "收起 ↑" : onOpen ? "原位展开 →" : "查看 →"}</span>
         </div>
       </div>
-    </Link>
+    </>
   );
+
+  if (onOpen) {
+    return <button type="button" aria-expanded={isExpanded} onClick={onOpen} className={className}>{content}</button>;
+  }
+
+  return <Link href={`/collections/${encodeURIComponent(collection.id)}`} className={className}>{content}</Link>;
 }

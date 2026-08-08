@@ -1,10 +1,12 @@
 import { NotesClient } from "@/components/notes/NotesClient";
 import { NOTES_PAGE_SIZE } from "@/lib/notes-query";
 import { createPageMetadata } from "@/lib/site-metadata";
-import { notesApi } from "@/lib/supabase";
 import type { Note } from "@/lib/types";
-import { collectionsApi } from "@/lib/collections-api";
 import type { CollectionSummary } from "@/lib/collections-contract";
+import {
+  getCachedPublishedCollectionSummaries,
+  getCachedPublishedNoteSummaries,
+} from "@/lib/server-public-cache";
 
 export const metadata = createPageMetadata({
   title: "文章与题集",
@@ -64,18 +66,17 @@ async function getInitialNotes(): Promise<InitialNotesPayload> {
 
   const [notesResult, collectionsResult] = await Promise.all([
     preloadWithTimeout(
-      notesApi.getSummaries({
+      getCachedPublishedNoteSummaries({
         authorKind: "human",
         sortOrder: "desc",
         limit: NOTES_PAGE_SIZE + 1,
         offset: 0,
-        includeCoverImage: false,
       }),
       [],
       "notes",
     ),
     preloadWithTimeout(
-      collectionsApi.getPublishedSummaries(),
+      getCachedPublishedCollectionSummaries(),
       [],
       "collections",
     ),

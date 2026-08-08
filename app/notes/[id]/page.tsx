@@ -1,10 +1,11 @@
 import type { Metadata, ResolvingMetadata } from "next";
 import { notFound } from "next/navigation";
-import { cache } from "react";
-import { chaptersApi } from "@/lib/chapters-api";
-import { notesApi } from "@/lib/supabase";
 import type { Chapter, Note } from "@/lib/types";
 import { NoteReaderClient } from "@/components/notes/NoteReaderClient";
+import {
+  getCachedPublicChapters,
+  getCachedPublishedNote,
+} from "@/lib/server-public-cache";
 import {
   SITE_NAME,
   createNoIndexMetadata,
@@ -12,7 +13,10 @@ import {
   getShareableImageUrl,
 } from "@/lib/site-metadata";
 
-export const revalidate = 0;
+// Public note pages are ISR-friendly. The client reader still performs a
+// stale-while-revalidate refresh so a returning reader can paint immediately
+// from its local snapshot while newly published content propagates.
+export const revalidate = 60;
 
 type NoteReaderPageProps = {
   params: Promise<{ id: string }>;
@@ -25,7 +29,7 @@ type InitialNotePayload = {
   loadError: boolean;
 };
 
-const getPublishedNote = cache(async (noteId: string) => notesApi.getPublishedById(noteId));
+const getPublishedNote = getCachedPublishedNote;
 
 async function getInitialNote(noteId: string): Promise<InitialNotePayload> {
   try {
@@ -50,7 +54,7 @@ async function getInitialNote(noteId: string): Promise<InitialNotePayload> {
     }
 
     try {
-      const chapters = await chaptersApi.getByNoteId(noteId);
+      const chapters = await getCachedPublicChapters(noteId);
       return {
         note,
         chapters,

@@ -7,6 +7,7 @@ import {
   updateCollectionItemOrder,
 } from "@/lib/server-note-collections";
 import { isUuid } from "@/lib/collections-contract";
+import { revalidatePublicContent } from "@/lib/server-public-cache";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -34,6 +35,7 @@ export async function POST(
     if (!isUuid(noteId)) return NextResponse.json({ success: false, error: "笔记 ID 无效" }, { status: 400 });
     const collection = await addNoteToCollection(auth.context.supabase, auth.context.actor, collectionId, noteId, body.sortOrder);
     if (!collection) return NextResponse.json({ success: false, error: "合集不存在或无权访问" }, { status: 404 });
+    revalidatePublicContent();
     return NextResponse.json({ success: true, collection });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "合集项目添加失败";
@@ -70,6 +72,7 @@ export async function PATCH(
       swapItemId ? { itemId: swapItemId, sortOrder: body.swapSortOrder } : undefined,
     );
     if (!collection) return NextResponse.json({ success: false, error: "合集不存在或无权访问" }, { status: 404 });
+    revalidatePublicContent();
     return NextResponse.json({ success: true, collection });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "合集排序更新失败";
@@ -92,6 +95,7 @@ export async function DELETE(
     const noteId = typeof body.noteId === "string" ? body.noteId : undefined;
     const collection = await removeNoteFromCollection(auth.context.supabase, collectionId, itemId, noteId);
     if (!collection) return NextResponse.json({ success: false, error: "合集不存在或无权访问" }, { status: 404 });
+    revalidatePublicContent();
     return NextResponse.json({ success: true, collection });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "合集项目移除失败";

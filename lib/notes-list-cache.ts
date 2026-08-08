@@ -1,10 +1,11 @@
 "use client";
 
-import { readJsonStorage, removeStorage, writeJsonStorage } from "@/lib/browser-storage";
+import { getActiveAiAccountSlot } from "@/lib/auth-session-slot";
+import { clearSiteCacheNamespace, getSiteCacheKey, readSiteCache, writeSiteCache } from "@/lib/site-cache";
 import type { Note, NoteAuthorKind, NoteType, Subject } from "@/lib/types";
 
-const NOTES_CACHE_PREFIX = "asteroid-notes-page:";
-const NOTES_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
+const NOTES_CACHE_TTL_MS = 5 * 60 * 1000;
+const NOTES_CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
 type NotesCachePayload = {
   notes: Note[];
@@ -73,31 +74,36 @@ export function getNotesCacheKey(
   sortOrder: "desc" | "asc",
 ): string | null {
   if (query.trim()) return null;
-  return `${NOTES_CACHE_PREFIX}${authorKind}:${selectedType}:${selectedSubject}:${sortOrder}`;
+  const accountScope = authorKind === "ai" ? getActiveAiAccountSlot() : "public";
+  if (!accountScope) return null;
+  // Keep the directory/filter portion explicit so old cache diagnostics remain
+  // readable and the AI account slot cannot leak snapshots across windows.
+  const filterScope = `${authorKind}:${selectedType}:${selectedSubject}:${sortOrder}`;
+  return getSiteCacheKey("notes-list", `${accountScope}-${filterScope}`);
 }
 
 export function readNotesCache(key: string | null): NotesCachePayload | null {
   if (!key) return null;
 
-  const cached = readJsonStorage<NotesCachePayload | null>(key, null, normalizeNotesCache);
-  if (!cached) return null;
-
-  if (cached.expiresAt <= Date.now()) {
-    removeStorage(key);
-    return null;
-  }
-
-  return cached;
+  const cached = readSiteCache<NotesCachePayload>(key, normalizeNotesCache, {
+    ttlMs: NOTES_CACHE_TTL_MS,
+    maxAgeMs: NOTES_CACHE_MAX_AGE_MS,
+  });
+  return cached?.value ?? null;
 }
 
 export function writeNotesCache(key: string | null, notes: Note[], hasMoreNotes: boolean): void {
   if (!key) return;
 
   const cachedAt = Date.now();
-  writeJsonStorage<NotesCachePayload>(key, {
+  writeSiteCache<NotesCachePayload>(key, {
     notes,
     hasMoreNotes,
     cachedAt,
     expiresAt: cachedAt + NOTES_CACHE_TTL_MS,
   });
+}
+
+export function clearNotesListCache(): void {
+  clearSiteCacheNamespace("notes-list");
 }

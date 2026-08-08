@@ -1845,13 +1845,33 @@ test("AI 私有合集点击后通过会话读取详情，公开合集仍保留�
   const page = readFileSync(resolve("app/collections/[id]/page.tsx"), "utf8");
   const client = readFileSync(resolve("components/collections/CollectionDetailClient.tsx"), "utf8");
 
-  assert.equal(page.includes("collectionsApi.getPublishedById"), true);
+  assert.equal(page.includes("getCachedPublishedCollection"), true);
   assert.equal(page.includes("CollectionDetailClient"), true);
   assert.equal(client.includes("fetchWithAuth"), true);
   assert.equal(client.includes("/api/collections/"), true);
   assert.equal(client.includes("initialCollection"), true);
   assert.equal(client.includes('collection.isPublished ? "/collections" : "/notes"'), true);
   assert.equal(client.includes("RLS"), true);
+});
+
+test("公开页面使用服务端缓存且私有接口不进入公共缓存", () => {
+  const serverCache = readFileSync(resolve("lib/server-public-cache.ts"), "utf8");
+  const publicInvalidation = readFileSync(resolve("app/api/cache/public/route.ts"), "utf8");
+  const notesPage = readFileSync(resolve("app/notes/page.tsx"), "utf8");
+  const noteReader = readFileSync(resolve("app/notes/[id]/page.tsx"), "utf8");
+  const collectionPage = readFileSync(resolve("app/collections/[id]/page.tsx"), "utf8");
+  const privateReview = readFileSync(resolve("app/api/ai/content-review/route.ts"), "utf8");
+
+  assert.equal(serverCache.includes('import "server-only"'), true);
+  assert.equal(serverCache.includes("unstable_cache"), true);
+  assert.equal(serverCache.includes("PUBLIC_CACHE_TAGS"), true);
+  assert.equal(serverCache.includes('revalidateTag(PUBLIC_CACHE_TAGS.all, "max")'), true);
+  assert.equal(publicInvalidation.includes("getAdminRequestContext(req)"), true);
+  assert.equal(publicInvalidation.includes("revalidatePublicContent()"), true);
+  assert.equal(notesPage.includes("getCachedPublishedNoteSummaries"), true);
+  assert.equal(noteReader.includes("getCachedPublishedNote"), true);
+  assert.equal(collectionPage.includes("getCachedPublishedCollection"), true);
+  assert.equal(privateReview.includes('"Cache-Control": "no-store"'), true);
 });
 
 test("AI 学科账号可从内容工作台进入自己的合集，并固定学科边界与单次排序交换", () => {
@@ -1928,7 +1948,7 @@ test("公开阅读地址与所有者私有阅读地址保持严格分离", () =>
 
   const publicReader = readFileSync(resolve("app/notes/[id]/page.tsx"), "utf8");
   const privateReader = readFileSync(resolve("app/notes/private/[id]/page.tsx"), "utf8");
-  assert.equal(publicReader.includes("notesApi.getPublishedById"), true);
+  assert.equal(publicReader.includes("getCachedPublishedNote"), true);
   assert.equal(privateReader.includes('accessScope="owner"'), true);
 });
 

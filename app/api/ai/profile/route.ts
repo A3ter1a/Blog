@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { parseAiProfileUpdate } from "@/lib/ai-profile";
 import { getAiRequestContext } from "@/lib/server-ai-auth";
+import { revalidatePublicContent } from "@/lib/server-public-cache";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -47,6 +48,8 @@ export async function PATCH(req: NextRequest) {
   if (!data) {
     return NextResponse.json({ success: false, error: "当前 AI 账号资料不存在或已停用" }, { status: 404 });
   }
+
+  revalidatePublicContent();
 
   return NextResponse.json(
     { success: true, profile: data },

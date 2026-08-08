@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getCollectionRequestContext } from "@/lib/server-collection-auth";
 import { createNoteCollection, CollectionWorkflowError, listNoteCollections } from "@/lib/server-note-collections";
 import { createPublicServerClient } from "@/lib/server-supabase-public";
+import { revalidatePublicContent } from "@/lib/server-public-cache";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -43,6 +44,7 @@ export async function POST(req: NextRequest) {
     const rawBody: unknown = await req.json().catch(() => ({}));
     const body = isRecord(rawBody) ? rawBody : {};
     const collection = await createNoteCollection(auth.context.supabase, auth.context.actor, body);
+    revalidatePublicContent();
     return NextResponse.json({ success: true, collection }, { status: 201 });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "合集创建失败";

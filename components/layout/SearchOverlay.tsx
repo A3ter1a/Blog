@@ -9,6 +9,7 @@ import { subjectMap, typeMap } from "@/lib/types";
 import type { Note } from "@/lib/types";
 import { getNoteReadPath } from "@/lib/note-routes";
 import { dialogMotion, overlayMotion, uiMotion } from "@/lib/motion";
+import { getSiteCacheKey, readSiteCache, writeSiteCache } from "@/lib/site-cache";
 
 interface SearchOverlayProps {
   isOpen: boolean;
@@ -33,13 +34,21 @@ export function SearchOverlay({ isOpen, onClose }: SearchOverlayProps) {
 
     const searchId = latestSearchId.current + 1;
     latestSearchId.current = searchId;
-    setIsSearching(true);
+    const cacheKey = getSiteCacheKey("note-search", searchQuery.trim().toLocaleLowerCase());
+    const cached = readSiteCache<Note[]>(cacheKey, (value) => Array.isArray(value) ? value as Note[] : null, { ttlMs: 2 * 60 * 1000, maxAgeMs: 12 * 60 * 60 * 1000 });
+    if (cached) {
+      setResults(cached.value);
+      setIsSearching(false);
+    } else {
+      setIsSearching(true);
+    }
     try {
       const notes = await notesApi.searchSummaries(searchQuery, undefined, undefined, "desc", {
         limit: 8,
         includeCoverImage: false,
       });
       if (latestSearchId.current === searchId) {
+        writeSiteCache(cacheKey, notes);
         setResults(notes);
       }
     } catch (error) {

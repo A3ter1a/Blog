@@ -14,13 +14,27 @@ import { useAdminAuth } from "@/hooks/useAdminAuth";
 import { useToast } from "@/components/ui/Toast";
 import { PageHeader, PageShell } from "@/components/ui/PageScaffold";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
-import { getNotesCacheKey, readNotesCache, writeNotesCache } from "@/lib/notes-list-cache";
+import { clearNotesListCache, getNotesCacheKey, readNotesCache, writeNotesCache } from "@/lib/notes-list-cache";
 import { NOTES_PAGE_SIZE, NOTES_SEARCH_RESULT_LIMIT } from "@/lib/notes-query";
 import { collapsibleMotion, surfaceMotion, uiMotion } from "@/lib/motion";
 import { CollectionCard } from "@/components/collections/CollectionCard";
 import type { CollectionSummary } from "@/lib/collections-contract";
 import { collectionsApi } from "@/lib/collections-api";
 import { groupNotesByCollection } from "@/lib/note-collection-directory";
+import { getNoteReadPath } from "@/lib/note-routes";
+import { fetchWithAuth } from "@/lib/fetch-with-auth";
+import { getActiveAiAccountSlot } from "@/lib/auth-session-slot";
+import {
+  collectionListsEqual,
+  readCollectionListCache,
+  writeCollectionListCache,
+} from "@/lib/collection-list-cache";
+import {
+  collectionDetailsEqual,
+  readCollectionDetailCache,
+  writeCollectionDetailCache,
+} from "@/lib/collection-detail-cache";
+import type { CollectionDetail } from "@/lib/collections-contract";
 
 const NOTES_REQUEST_TIMEOUT_MS = 8_000;
 
@@ -56,7 +70,7 @@ export function NotesClient({
   initialLoadError = false,
   initialCollections = [],
 }: NotesClientProps) {
-  const { isAdmin, user } = useAdminAuth();
+  const { isAdmin, user, loading: authLoading } = useAdminAuth();
   const toast = useToast();
   const initialRouteReadyRef = useRef(!initialLoadError);
   const [directoryKind, setDirectoryKind] = useState<NoteAuthorKind>("human");
@@ -78,6 +92,9 @@ export function NotesClient({
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(initialLoadError ? "暂时无法加载笔记，请检查网络或 Supabase 配置，然后重试。" : null);
   const [retryToken, setRetryToken] = useState(0);
+  const [expandedCollectionId, setExpandedCollectionId] = useState<string | null>(null);
+  const [expandedCollection, setExpandedCollection] = useState<CollectionDetail | null>(null);
+  const [expandedCollectionLoading, setExpandedCollectionLoading] = useState(false);
   
   // Selection state
   const [selectMode, setSelectMode] = useState(false);
@@ -91,39 +108,83 @@ export function NotesClient({
   const latestCoverLoadId = useRef(0);
   const latestCollectionsLoadId = useRef(0);
   const notesRef = useRef<Note[]>(initialNotes);
+  const collectionsRef = useRef<CollectionSummary[]>(initialCollections);
+  const directoryKindRef = useRef<NoteAuthorKind>(directoryKind);
+  const expandedCollectionIdRef = useRef<string | null>(null);
 
   const setVisibleNotes = useCallback((nextNotes: Note[]) => {
+    if (notesRef.current.length === nextNotes.length && notesRef.current.every((note, index) => {
+      const next = nextNotes[index];
+      return note.id === next?.id
+        && note.title === next.title
+        && note.updatedAt.getTime() === next.updatedAt.getTime()
+        && note.coverImage === next.coverImage;
+    })) return;
     notesRef.current = nextNotes;
     setNotes(nextNotes);
+  }, []);
+
+  const setVisibleCollections = useCallback((nextCollections: CollectionSummary[]) => {
+    if (collectionListsEqual(collectionsRef.current, nextCollections)) return;
+    collectionsRef.current = nextCollections;
+    setCollections(nextCollections);
   }, []);
 
   const visibleNoteIdsKey = useMemo(() => notes.map((note) => note.id).join("|"), [notes]);
 
   const refreshCollections = useCallback(async () => {
+    const requestDirectoryKind = directoryKind;
     const loadId = latestCollectionsLoadId.current + 1;
     latestCollectionsLoadId.current = loadId;
+    // An AI directory must not be finalized while Supabase is still restoring
+    // the account session. Otherwise the public (possibly empty) collection
+    // query can win the race against the private AI query and briefly expose
+    // every note as ungrouped.
+    if (requestDirectoryKind === "ai" && authLoading) {
+      setCollectionsStatus("loading");
+      return;
+    }
     // A server render can only preload public collections. Once the active
     // session is known, the AI directory must revalidate through the same
     // Supabase session so an admin or AI account can see its private draft
     // collections and their ordered members.
-    setCollectionsStatus("loading");
+    const canReadPrivateAiCollections = requestDirectoryKind === "ai"
+      && !authLoading
+      && Boolean(user)
+      && Boolean(getActiveAiAccountSlot());
+    const cacheAllowed = requestDirectoryKind === "human" || canReadPrivateAiCollections;
+    const cached = cacheAllowed ? readCollectionListCache(requestDirectoryKind) : null;
+    if (cached) {
+      if (directoryKindRef.current !== requestDirectoryKind) return;
+      setVisibleCollections(cached.value);
+      setCollectionsStatus("ready");
+    } else {
+      if (directoryKindRef.current !== requestDirectoryKind) return;
+      setCollectionsStatus("loading");
+    }
 
     try {
-      const canReadPrivateAiCollections = directoryKind === "ai" && Boolean(user);
       const nextCollections = await withNotesRequestTimeout(
         canReadPrivateAiCollections
           ? collectionsApi.getAuthenticatedSummaries()
           : collectionsApi.getPublishedSummaries(),
       );
-      if (latestCollectionsLoadId.current !== loadId) return;
-      setCollections(nextCollections);
+      if (latestCollectionsLoadId.current !== loadId || directoryKindRef.current !== requestDirectoryKind) return;
+      if (cacheAllowed) writeCollectionListCache(requestDirectoryKind, nextCollections);
+      setVisibleCollections(nextCollections);
       setCollectionsStatus("ready");
     } catch (error: unknown) {
-      if (latestCollectionsLoadId.current !== loadId) return;
+      if (latestCollectionsLoadId.current !== loadId || directoryKindRef.current !== requestDirectoryKind) return;
       console.warn("Failed to refresh published collections:", error);
-      setCollectionsStatus(initialCollections.length > 0 ? "ready" : "failed");
+      const hasSameDirectorySnapshot = Boolean(cached)
+        || collectionsRef.current.some((collection) => collection.ownerKind === requestDirectoryKind);
+      setCollectionsStatus(hasSameDirectorySnapshot ? "ready" : "failed");
     }
-  }, [directoryKind, initialCollections.length, user]);
+  }, [authLoading, directoryKind, setVisibleCollections, user]);
+
+  useEffect(() => {
+    directoryKindRef.current = directoryKind;
+  }, [directoryKind]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -317,15 +378,78 @@ export function NotesClient({
   );
   const showCollectionOnlyAiDirectory = directoryKind === "ai"
     && !hasActiveFilters
-    && collectionsStatus === "ready"
-    && visibleCollections.length > 0;
+    && collectionsStatus !== "failed";
 
   const handleDirectoryChange = (nextKind: NoteAuthorKind) => {
     if (nextKind === directoryKind) return;
+    directoryKindRef.current = nextKind;
+    // Invalidate any request started for the previous directory before React
+    // commits the new tab. This closes the small window where a fast human
+    // request could otherwise mark the AI directory as ready.
+    latestCollectionsLoadId.current += 1;
+    latestLoadId.current += 1;
     setDirectoryKind(nextKind);
+    // Do not let the previous directory's notes coexist with a newly ready
+    // collection snapshot. The next effect will synchronously use the target
+    // directory's cache when available, or show its loading state otherwise.
+    notesRef.current = [];
+    setNotes([]);
+    setHasMoreNotes(false);
+    setLoading(true);
+    setIsRefreshingNotes(false);
+    setLoadError(null);
+    collectionsRef.current = [];
+    setCollections([]);
+    setCollectionsStatus("loading");
+    setExpandedCollectionId(null);
+    expandedCollectionIdRef.current = null;
+    setExpandedCollection(null);
     setSelectMode(false);
     setSelectedNoteIds(new Set());
   };
+
+  const openAiCollection = useCallback(async (collection: CollectionSummary) => {
+    if (directoryKind !== "ai") return;
+    if (!getActiveAiAccountSlot()) {
+      toast.error("AI 学科会话已失效，请从对应学科入口重新进入");
+      return;
+    }
+    if (expandedCollectionId === collection.id) {
+      setExpandedCollectionId(null);
+      expandedCollectionIdRef.current = null;
+      setExpandedCollection(null);
+      return;
+    }
+
+    setExpandedCollectionId(collection.id);
+    expandedCollectionIdRef.current = collection.id;
+    const cached = readCollectionDetailCache(collection.id);
+    if (cached) {
+      setExpandedCollection(cached.value);
+      setExpandedCollectionLoading(cached.stale);
+    } else {
+      setExpandedCollection(null);
+      setExpandedCollectionLoading(true);
+    }
+
+    try {
+      const response = await fetchWithAuth(`/api/collections/${encodeURIComponent(collection.id)}`, { cache: "no-store" });
+      const payload: unknown = await response.json().catch(() => ({}));
+      const next = payload && typeof payload === "object" && !Array.isArray(payload) && "collection" in payload
+        ? (payload as { collection?: unknown }).collection
+        : null;
+      if (!response.ok || !next || typeof next !== "object") throw new Error("合集详情读取失败");
+      const detail = next as CollectionDetail;
+      writeCollectionDetailCache(detail);
+      if (expandedCollectionIdRef.current === collection.id) {
+        setExpandedCollection((current) => collectionDetailsEqual(current, detail) ? current : detail);
+      }
+    } catch (error: unknown) {
+      if (!cached) toast.error(error instanceof Error ? error.message : "合集详情读取失败");
+    } finally {
+      setExpandedCollectionLoading(false);
+    }
+  }, [directoryKind, expandedCollectionId, toast]);
 
   const handleResetFilters = () => {
     setSearchQuery("");
@@ -401,6 +525,7 @@ export function NotesClient({
         await notesApi.delete(id);
         deletedCount += 1;
       }
+      clearNotesListCache();
       const loadId = latestLoadId.current + 1;
       latestLoadId.current = loadId;
       await fetchNotesPage(0, false, loadId);
@@ -560,8 +685,43 @@ export function NotesClient({
               <Link href="/collections" className="control-button px-3 py-2 text-xs">查看全部合集</Link>
             </div>
             <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
-              {visibleCollections.slice(0, 6).map((collection) => <CollectionCard key={collection.id} collection={collection} />)}
+              {visibleCollections.slice(0, 6).map((collection) => (
+                <CollectionCard
+                  key={collection.id}
+                  collection={collection}
+                  isExpanded={directoryKind === "ai" && expandedCollectionId === collection.id}
+                  onOpen={directoryKind === "ai" ? () => void openAiCollection(collection) : undefined}
+                />
+              ))}
             </div>
+            {directoryKind === "ai" && expandedCollectionId && (
+              <section className="surface-panel mt-4 overflow-hidden border-primary/20" aria-live="polite" aria-label="展开的 AI 合集">
+                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-outline-variant/15 px-5 py-4">
+                  <div>
+                    <p className="eyebrow-chip w-fit px-2.5 py-1 text-[11px]">原位展开</p>
+                    <h3 className="mt-2 font-headline text-lg font-bold text-on-surface">{expandedCollection?.title ?? "合集内容"}</h3>
+                  </div>
+                  <button type="button" className="control-button px-3 py-2 text-xs" onClick={() => { setExpandedCollectionId(null); expandedCollectionIdRef.current = null; setExpandedCollection(null); }}>收起</button>
+                </div>
+                {expandedCollectionLoading && !expandedCollection ? (
+                  <div className="flex items-center justify-center gap-2 px-5 py-8 text-sm text-on-surface-variant"><Loader2 className="h-4 w-4 animate-spin text-primary" />正在读取合集内容…</div>
+                ) : expandedCollection?.items.length ? (
+                  <ol className="divide-y divide-outline-variant/10">
+                    {expandedCollection.items.map((item, index) => item.note ? (
+                      <li key={item.id}>
+                        <Link href={getNoteReadPath({ id: item.note.id, isPublished: item.note.isPublished })} className="flex items-center gap-3 px-5 py-3.5 transition hover:bg-primary/[0.04]">
+                          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-xs font-bold text-primary">{String(index + 1).padStart(2, "0")}</span>
+                          <span className="min-w-0 flex-1 truncate text-sm font-semibold text-on-surface">{item.note.title}</span>
+                          <span className="shrink-0 text-xs text-on-surface-variant">打开 →</span>
+                        </Link>
+                      </li>
+                    ) : null)}
+                  </ol>
+                ) : (
+                  <p className="px-5 py-8 text-center text-sm text-on-surface-variant">这个合集暂时没有可显示的文章。</p>
+                )}
+              </section>
+            )}
           </section>
         )}
 
@@ -654,6 +814,31 @@ export function NotesClient({
               <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-on-surface-variant">请检查网络或 Supabase 配置，然后重试。若问题持续存在，可以稍后再试。</p>
               <button type="button" onClick={handleRetryNotes} className="control-button control-button-primary mt-5 min-h-11 px-5 text-sm">
                 重试
+              </button>
+            </div>
+          ) : showCollectionOnlyAiDirectory && collectionsStatus === "loading" ? (
+            <div className="surface-panel flex min-h-52 flex-col items-center justify-center gap-3 border-dashed px-6 py-12 text-center" role="status">
+              <Loader2 className="h-6 w-6 animate-spin text-primary" />
+              <div>
+                <p className="font-medium text-on-surface">正在整理 AI 合集目录…</p>
+                <p className="mt-1 text-sm text-on-surface-variant">合集顺序确认后再显示文章，避免目录先散开再重新归类。</p>
+              </div>
+            </div>
+          ) : directoryKind === "ai" && !hasActiveFilters && collectionsStatus === "failed" ? (
+            <div className="surface-panel flex min-h-52 flex-col items-center justify-center gap-3 border border-error/20 bg-error/5 px-6 py-12 text-center" role="alert">
+              <div>
+                <p className="font-medium text-on-surface">AI 合集目录暂时无法确认</p>
+                <p className="mt-1 text-sm text-on-surface-variant">为避免文章顺序错误，暂不展开散落文章。可以重试读取合集。</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setCollectionsStatus("loading");
+                  void refreshCollections();
+                }}
+                className="control-button control-button-primary min-h-10 px-4 text-sm"
+              >
+                重试合集
               </button>
             </div>
           ) : filteredNotes.length > 0 ? (

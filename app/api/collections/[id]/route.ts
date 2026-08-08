@@ -9,6 +9,7 @@ import {
   updateNoteCollection,
 } from "@/lib/server-note-collections";
 import { isUuid } from "@/lib/collections-contract";
+import { revalidatePublicContent } from "@/lib/server-public-cache";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -63,6 +64,7 @@ export async function PATCH(
     const body = isRecord(rawBody) ? rawBody : {};
     const collection = await updateNoteCollection(auth.context.supabase, auth.context.actor, id, body);
     if (!collection) return NextResponse.json({ success: false, error: "合集不存在或无权修改" }, { status: 404 });
+    revalidatePublicContent();
     return NextResponse.json({ success: true, collection });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "合集更新失败";
@@ -82,6 +84,7 @@ export async function DELETE(
   try {
     const deleted = await deleteNoteCollection(auth.context.supabase, id);
     if (!deleted) return NextResponse.json({ success: false, error: "合集不存在或无权删除" }, { status: 404 });
+    revalidatePublicContent();
     return NextResponse.json({ success: true, deleted: true });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "合集删除失败";

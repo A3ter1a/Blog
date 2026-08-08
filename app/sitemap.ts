@@ -1,6 +1,6 @@
 import type { MetadataRoute } from "next";
 import { getAbsoluteSiteUrl } from "@/lib/site-metadata";
-import { notesApi } from "@/lib/supabase";
+import { getCachedSitemapNoteSummaries } from "@/lib/server-public-cache";
 
 export const revalidate = 3600;
 
@@ -31,10 +31,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   if (process.env.ASTEROID_OFFLINE_BUILD === "1") return entries;
 
   try {
-    const notes = await notesApi.getSummaries({
-      sortOrder: "desc",
-      includeCoverImage: false,
-    });
+    const notes = await getCachedSitemapNoteSummaries();
 
     return [
       ...entries,

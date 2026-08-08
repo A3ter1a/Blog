@@ -291,6 +291,37 @@ export function getSupabase(): SupabaseClient<Database> {
   return _supabase;
 }
 
+let publicCacheInvalidationPromise: Promise<void> | null = null;
+
+/**
+ * Legacy client-side Supabase mutations cannot call next/cache directly.
+ * Notify the authenticated admin route in the background so the server-side
+ * public cache is refreshed without delaying the successful write response.
+ */
+export function notifyPublicCacheInvalidation(): void {
+  if (typeof window === "undefined" || publicCacheInvalidationPromise) return;
+
+  const request = (async () => {
+    try {
+      const { data } = await getSupabase().auth.getSession();
+      const token = data.session?.access_token;
+      if (!token) return;
+      await fetch("/api/cache/public", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        keepalive: true,
+      });
+    } catch {
+      // The database write already succeeded; TTL revalidation remains the
+      // fallback if the optional notification cannot reach the server.
+    }
+  })().finally(() => {
+    if (publicCacheInvalidationPromise === request) publicCacheInvalidationPromise = null;
+  });
+
+  publicCacheInvalidationPromise = request;
+}
+
 export async function assertAdminWrite(): Promise<string> {
   const { data } = await getSupabase().auth.getSession();
   const session = data.session;
@@ -604,6 +635,7 @@ export const notesApi = {
       .single();
 
     if (error) throw error;
+    notifyPublicCacheInvalidation();
     return mapSnakeToCamel(data);
   },
 
@@ -626,6 +658,7 @@ export const notesApi = {
       .single();
 
     if (error) throw error;
+    notifyPublicCacheInvalidation();
     return {
       id: data.id ?? "",
       updatedAt: data.updated_at ? new Date(data.updated_at) : updatedAt,
@@ -648,6 +681,7 @@ export const notesApi = {
       .single();
 
     if (error) throw error;
+    notifyPublicCacheInvalidation();
     return mapSnakeToCamel(data);
   },
 
@@ -695,6 +729,7 @@ export const notesApi = {
       throw new Error("这篇内容已在其他页面被修改，请刷新后合并更改，系统没有覆盖较新的版本");
     }
     const returnedContentVersion = (data as { content_version?: unknown }).content_version;
+    notifyPublicCacheInvalidation();
     return {
       id: data.id ?? id,
       updatedAt: data.updated_at ? new Date(data.updated_at) : updatedAt,
@@ -708,6 +743,7 @@ export const notesApi = {
     const supabase = getSupabase();
     const { error } = await supabase.from("notes").delete().eq("id", id);
     if (error) throw error;
+    notifyPublicCacheInvalidation();
   },
 
   // Search note summaries. Content is searchable but not returned to the list page.
@@ -831,6 +867,7 @@ export const profileApi = {
       .single();
 
     if (error) throw error;
+    notifyPublicCacheInvalidation();
     return normalizeProfile(data.profile);
   },
 };

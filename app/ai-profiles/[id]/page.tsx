@@ -1,34 +1,17 @@
 import type { Metadata } from "next";
-import { cache } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, GraduationCap, Hash, UserRound } from "lucide-react";
-import { createClient } from "@supabase/supabase-js";
 import { PageHeader, PageShell } from "@/components/ui/PageScaffold";
 import { subjectMap } from "@/lib/types";
 import { createNoIndexMetadata } from "@/lib/site-metadata";
-import type { Database } from "@/lib/database.types";
-import type { PublicAiProfile } from "@/lib/ai-profile";
+import { getCachedPublicAiProfile } from "@/lib/server-public-cache";
 
-export const revalidate = 0;
+export const revalidate = 300;
 
 type ProfilePageProps = { params: Promise<{ id: string }> };
 
-const getProfile = cache(async (id: string): Promise<PublicAiProfile | null> => {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  if (!url || !key) return null;
-  const { data, error } = await createClient<Database>(url, key, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  })
-    .from("ai_profiles")
-    .select("id, account_key, subject, display_name, avatar_url, bio, academic_affiliation, focus_tags, is_active")
-    .eq("id", id)
-    .eq("is_active", true)
-    .maybeSingle();
-  if (error) throw error;
-  return data as PublicAiProfile | null;
-});
+const getProfile = getCachedPublicAiProfile;
 
 export async function generateMetadata({ params }: ProfilePageProps): Promise<Metadata> {
   const { id } = await params;

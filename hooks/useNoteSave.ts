@@ -12,6 +12,7 @@ import { normalizeProblemReferenceMarkup } from "@/lib/problem-references";
 import { getProblemsValidationIssues, normalizeProblem } from "@/lib/problem-utils";
 import { notesApi } from "@/lib/supabase";
 import type { NoteType, Problem, Subject, Video } from "@/lib/types";
+import { clearNotesListCache } from "@/lib/notes-list-cache";
 
 type NoteSaveDraft = {
   isEditMode: boolean;
@@ -98,6 +99,7 @@ export function useNoteSave(): UseNoteSaveResult {
     try {
       if (draft.isEditMode) {
         await notesApi.updateLight(draft.editingId, noteData, draft.editingContentVersion);
+        clearNotesListCache();
         toast.success("笔记已更新！");
         return { id: draft.editingId };
       }
@@ -106,6 +108,7 @@ export function useNoteSave(): UseNoteSaveResult {
         ...noteData,
         isPublished: false,
       });
+      clearNotesListCache();
       toast.success("笔记已创建！");
       return { id: newNote.id };
     } catch (error: unknown) {
