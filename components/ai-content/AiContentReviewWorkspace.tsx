@@ -17,7 +17,7 @@ import {
 import { ContentPreview } from "@/components/ui/ContentPreview";
 import { AiKnowledgeQuizReviewPanel } from "@/components/ai-content/AiKnowledgeQuizReviewPanel";
 import { useToast } from "@/components/ui/Toast";
-import { fetchWithAuth } from "@/lib/fetch-with-auth";
+import { fetchWithAuth, getCachedAuthSession } from "@/lib/fetch-with-auth";
 import { subjectMap } from "@/lib/types";
 import { AI_REVIEW_QUEUE_CHANGED_EVENT, type AiContentReviewStatus } from "@/lib/ai-content-contract";
 import type {
@@ -25,6 +25,15 @@ import type {
   AiContentReviewProposal,
   AiContentReviewSummary,
 } from "@/lib/server-ai-content-review";
+import {
+  getSiteCacheKey,
+  readSiteCache,
+  siteCacheValuesEqual,
+  writeSiteCache,
+} from "@/lib/site-cache";
+import { clearNotesListCache } from "@/lib/notes-list-cache";
+import { clearCollectionDetailCaches } from "@/lib/collection-detail-cache";
+import { clearCollectionListCache } from "@/lib/collection-list-cache";
 
 const STATUS_LABELS: Record<AiContentReviewStatus, string> = {
   draft: "草稿",
@@ -47,6 +56,17 @@ const FILTERS: Array<{ value: "" | AiContentReviewStatus; label: string }> = [
 
 type ReviewAction = "request_changes" | "approve" | "reject" | "publish" | "approve_and_publish";
 type Selection = { start: number; end: number; quote: string } | null;
+
+const REVIEW_QUEUE_CACHE_TTL_MS = 60 * 1000;
+const REVIEW_QUEUE_CACHE_MAX_AGE_MS = 10 * 60 * 1000;
+
+function reviewQueueKey(userId: string, filter: string): string {
+  return getSiteCacheKey("ai-review-queue", `${userId}-${filter || "all"}`);
+}
+
+function reviewDetailKey(userId: string, proposalId: string): string {
+  return getSiteCacheKey("ai-review-detail", `${userId}-${proposalId}`);
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -86,8 +106,21 @@ export function AiContentReviewWorkspace() {
   const bodyRef = useRef<HTMLTextAreaElement | null>(null);
   const detailRequestRef = useRef(0);
 
-  const loadQueue = useCallback(async (nextFilter = filter) => {
-    setLoading(true);
+  const loadQueue = useCallback(async (nextFilter = filter, options: { useCache?: boolean } = {}) => {
+    const session = await getCachedAuthSession().catch(() => null);
+    const cacheKey = session?.user.id ? reviewQueueKey(session.user.id, nextFilter) : null;
+    const cached = options.useCache === false || !cacheKey
+      ? null
+      : readSiteCache<AiContentReviewSummary[]>(cacheKey, (value) => Array.isArray(value) ? value as AiContentReviewSummary[] : null, {
+        ttlMs: REVIEW_QUEUE_CACHE_TTL_MS,
+        maxAgeMs: REVIEW_QUEUE_CACHE_MAX_AGE_MS,
+      });
+    if (cached) {
+      setItems((current) => siteCacheValuesEqual(current, cached.value) ? current : cached.value);
+      setLoading(false);
+    } else {
+      setLoading(true);
+    }
     try {
       const suffix = nextFilter ? `?status=${encodeURIComponent(nextFilter)}` : "";
       const response = await fetchWithAuth(`/api/ai/content-review${suffix}`, {
@@ -97,8 +130,10 @@ export function AiContentReviewWorkspace() {
       if (!response.ok || !isRecord(payload) || !Array.isArray(payload.proposals)) {
         throw new Error(readError(payload, "审核队列读取失败"));
       }
-      setItems(payload.proposals as AiContentReviewSummary[]);
-      const currentIds = new Set((payload.proposals as AiContentReviewSummary[]).map((item) => item.proposal.id));
+      const nextItems = payload.proposals as AiContentReviewSummary[];
+      if (cacheKey) writeSiteCache(cacheKey, nextItems);
+      setItems((current) => siteCacheValuesEqual(current, nextItems) ? current : nextItems);
+      const currentIds = new Set(nextItems.map((item) => item.proposal.id));
       setSelectedProposalIds((current) => new Set([...current].filter((id) => currentIds.has(id))));
       setSelectedPublishIds((current) => new Set([...current].filter((id) => currentIds.has(id))));
       setError(null);
@@ -110,9 +145,22 @@ export function AiContentReviewWorkspace() {
     }
   }, [filter]);
 
-  const loadDetail = useCallback(async (proposalId: string) => {
+  const loadDetail = useCallback(async (proposalId: string, options: { useCache?: boolean } = {}) => {
     const requestId = ++detailRequestRef.current;
-    setDetailLoading(true);
+    const session = await getCachedAuthSession().catch(() => null);
+    const cacheKey = session?.user.id ? reviewDetailKey(session.user.id, proposalId) : null;
+    const cached = options.useCache === false || !cacheKey
+      ? null
+      : readSiteCache<AiContentReviewProposal>(cacheKey, (value) => isRecord(value) && isRecord(value.proposal) ? value as unknown as AiContentReviewProposal : null, {
+        ttlMs: REVIEW_QUEUE_CACHE_TTL_MS,
+        maxAgeMs: REVIEW_QUEUE_CACHE_MAX_AGE_MS,
+      });
+    if (cached && detailRequestRef.current === requestId) {
+      setDetail((current) => siteCacheValuesEqual(current, cached.value) ? current : cached.value);
+      setDetailLoading(false);
+    } else {
+      setDetailLoading(true);
+    }
     setSelection(null);
     try {
       const response = await fetchWithAuth(`/api/ai/content-review/${encodeURIComponent(proposalId)}`, {
@@ -123,7 +171,9 @@ export function AiContentReviewWorkspace() {
         throw new Error(readError(payload, "审核正文读取失败"));
       }
       if (detailRequestRef.current !== requestId) return;
-      setDetail(payload.proposal as AiContentReviewProposal);
+      const nextDetail = payload.proposal as AiContentReviewProposal;
+      if (cacheKey) writeSiteCache(cacheKey, nextDetail);
+      setDetail((current) => siteCacheValuesEqual(current, nextDetail) ? current : nextDetail);
     } catch (nextError: unknown) {
       if (detailRequestRef.current === requestId) {
         toast.error(nextError instanceof Error ? nextError.message : "审核正文读取失败");
@@ -201,8 +251,8 @@ export function AiContentReviewWorkspace() {
 
   const refresh = async () => {
     setBusyAction("refresh");
-    await loadQueue();
-    if (selectedId) await loadDetail(selectedId);
+    await loadQueue(filter, { useCache: false });
+    if (selectedId) await loadDetail(selectedId, { useCache: false });
     setBusyAction(null);
   };
 
@@ -218,8 +268,13 @@ export function AiContentReviewWorkspace() {
       });
       const payload: unknown = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(readError(payload, "审核操作失败"));
-      await loadQueue();
-      await loadDetail(proposal.id);
+      if (action === "publish" || action === "approve_and_publish") {
+        clearNotesListCache();
+        clearCollectionListCache();
+        clearCollectionDetailCaches();
+      }
+      await loadQueue(filter, { useCache: false });
+      await loadDetail(proposal.id, { useCache: false });
       window.dispatchEvent(new CustomEvent(AI_REVIEW_QUEUE_CHANGED_EVENT));
       toast.success(action === "request_changes" ? "已退回返修" : action === "approve" ? "已批准提案" : action === "publish" || action === "approve_and_publish" ? "已发布到博客" : "已驳回提案");
     } catch (nextError: unknown) {
@@ -246,8 +301,8 @@ export function AiContentReviewWorkspace() {
         : [];
       const failedCount = isRecord(payload) && Array.isArray(payload.failed) ? payload.failed.length : 0;
       setSelectedProposalIds(new Set());
-      await loadQueue();
-      if (selectedId) await loadDetail(selectedId);
+      await loadQueue(filter, { useCache: false });
+      if (selectedId) await loadDetail(selectedId, { useCache: false });
       window.dispatchEvent(new CustomEvent(AI_REVIEW_QUEUE_CHANGED_EVENT));
       if (failedCount > 0) {
         toast.error(`已批准 ${approvedIds.length} 篇，${failedCount} 篇未完成，请检查队列。`);
@@ -273,13 +328,16 @@ export function AiContentReviewWorkspace() {
       });
       const payload: unknown = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(readError(payload, "批量发布失败"));
+      clearNotesListCache();
+      clearCollectionListCache();
+      clearCollectionDetailCaches();
       const publishedIds = isRecord(payload) && Array.isArray(payload.publishedIds)
         ? payload.publishedIds.filter((id): id is string => typeof id === "string")
         : [];
       const failedCount = isRecord(payload) && Array.isArray(payload.failed) ? payload.failed.length : 0;
       setSelectedPublishIds(new Set());
-      await loadQueue();
-      if (selectedId) await loadDetail(selectedId);
+      await loadQueue(filter, { useCache: false });
+      if (selectedId) await loadDetail(selectedId, { useCache: false });
       window.dispatchEvent(new CustomEvent(AI_REVIEW_QUEUE_CHANGED_EVENT));
       if (failedCount > 0) {
         toast.error(`已发布 ${publishedIds.length} 篇，${failedCount} 篇未完成，请检查队列。`);
@@ -324,7 +382,7 @@ export function AiContentReviewWorkspace() {
       if (!response.ok) throw new Error(readError(payload, "批注保存失败"));
       setCommentBody("");
       setSelection(null);
-      await loadDetail(proposal.id);
+      await loadDetail(proposal.id, { useCache: false });
       toast.success("批注已保存");
     } catch (nextError: unknown) {
       toast.error(nextError instanceof Error ? nextError.message : "批注保存失败");
@@ -344,7 +402,7 @@ export function AiContentReviewWorkspace() {
       });
       const payload: unknown = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(readError(payload, "批注状态更新失败"));
-      await loadDetail(proposal.id);
+      await loadDetail(proposal.id, { useCache: false });
     } catch (nextError: unknown) {
       toast.error(nextError instanceof Error ? nextError.message : "批注状态更新失败");
     } finally {

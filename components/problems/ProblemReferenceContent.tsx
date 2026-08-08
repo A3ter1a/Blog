@@ -13,6 +13,7 @@ import {
 } from "@/lib/problem-references";
 import { MarkdownContent } from "@/components/ui/MarkdownContent";
 import { ProblemCard } from "@/components/problems/ProblemCard";
+import { getSiteCacheKey, readSiteCache, writeSiteCache } from "@/lib/site-cache";
 
 interface ProblemReferenceContentProps {
   content: string;
@@ -72,6 +73,17 @@ export function ProblemReferenceContent({
     if (noteIds.length === 0) return;
 
     let cancelled = false;
+    const cacheKey = loadMode === "published"
+      ? getSiteCacheKey("problem-reference", noteIdsKey)
+      : null;
+    const cached = cacheKey
+      ? readSiteCache<Record<string, ProblemSetLoadState>>(cacheKey, (value) => value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, ProblemSetLoadState> : null, { ttlMs: 5 * 60 * 1000, maxAgeMs: 24 * 60 * 60 * 1000 })
+      : null;
+    if (cached) {
+      queueMicrotask(() => {
+        if (!cancelled) setProblemSets(cached.value);
+      });
+    }
     const loadProblemSets = async () => {
       try {
         const notes = loadMode === "adminAware"
@@ -80,14 +92,13 @@ export function ProblemReferenceContent({
         if (cancelled) return;
 
         const noteById = new Map(notes.map((note) => [note.id, note]));
-        setProblemSets((current) => {
-          const next = { ...current };
-          noteIds.forEach((noteId) => {
-            const note = noteById.get(noteId);
-            next[noteId] = note ? { status: "ready", note } : { status: "error" };
-          });
-          return next;
+        const next: Record<string, ProblemSetLoadState> = {};
+        noteIds.forEach((noteId) => {
+          const note = noteById.get(noteId);
+          next[noteId] = note ? { status: "ready", note } : { status: "error" };
         });
+        if (cacheKey) writeSiteCache(cacheKey, next);
+        setProblemSets(next);
       } catch {
         if (cancelled) return;
         setProblemSets((current) => {
@@ -100,6 +111,7 @@ export function ProblemReferenceContent({
       }
     };
 
+    if (cached && !cached.stale) return () => { cancelled = true; };
     void loadProblemSets();
 
     return () => {

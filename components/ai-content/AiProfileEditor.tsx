@@ -5,6 +5,7 @@ import { Check, Loader2, Pencil, UserRound, X } from "lucide-react";
 import { useToast } from "@/components/ui/Toast";
 import { fetchWithAuth } from "@/lib/fetch-with-auth";
 import type { AiWorkspaceProfile } from "@/hooks/useAiContentWorkspace";
+import { clearSiteCacheNamespace } from "@/lib/site-cache";
 
 type AiProfileEditorProps = {
   profile: AiWorkspaceProfile;
@@ -64,6 +65,7 @@ export function AiProfileEditor({ profile, onSaved }: AiProfileEditorProps) {
       });
       const payload: unknown = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(readError(payload));
+      clearSiteCacheNamespace("note-author");
       setOpen(false);
       toast.success("角色资料已保存，文章作者卡片会同步更新");
       await onSaved?.();

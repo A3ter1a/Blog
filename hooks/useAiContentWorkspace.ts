@@ -5,6 +5,13 @@ import { fetchWithAuth, getCachedAuthSession, refreshAuthSession } from "@/lib/f
 import { getSupabase } from "@/lib/supabase";
 import { doesAiProfileMatchSlot, getActiveAiAccountSlot } from "@/lib/auth-session-slot";
 import type { AiContentProposalSummaryRow } from "@/lib/server-ai-content";
+import {
+  clearSiteCache,
+  getSiteCacheKey,
+  readSiteCache,
+  siteCacheValuesEqual,
+  writeSiteCache,
+} from "@/lib/site-cache";
 
 export type AiWorkspaceProfile = {
   id: string;
@@ -26,6 +33,13 @@ type WorkspaceState = {
 };
 
 const SESSION_EXPIRED_MESSAGE = "AI 学科会话已失效。系统已尝试自动恢复；如果该学科会话已被浏览器清除，请从对应专属入口登录一次。";
+const AI_WORKSPACE_CACHE_TTL_MS = 5 * 60 * 1000;
+const AI_WORKSPACE_CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+
+type AiWorkspaceCacheValue = {
+  profile: AiWorkspaceProfile | null;
+  proposals: AiContentProposalSummaryRow[];
+};
 
 function parseError(value: unknown, fallback: string): string {
   if (!value || typeof value !== "object" || Array.isArray(value)) return fallback;
@@ -47,11 +61,31 @@ export function useAiContentWorkspace() {
     if (reloadInFlightRef.current) return reloadInFlightRef.current;
 
     const request = (async () => {
-      setState((current) => ({ ...current, loading: true, error: null }));
       try {
         const activeSlot = getActiveAiAccountSlot();
         if (!activeSlot) {
           throw new Error("请从对应学科的专属入口进入 AI 内容工作台");
+        }
+
+        const cacheKey = getSiteCacheKey("ai-content-workspace", activeSlot);
+        const cached = readSiteCache<AiWorkspaceCacheValue>(cacheKey, (value) => {
+          if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+          const record = value as Record<string, unknown>;
+          return {
+            profile: record.profile && typeof record.profile === "object" ? record.profile as AiWorkspaceProfile : null,
+            proposals: Array.isArray(record.proposals) ? record.proposals as AiContentProposalSummaryRow[] : [],
+          };
+        }, { ttlMs: AI_WORKSPACE_CACHE_TTL_MS, maxAgeMs: AI_WORKSPACE_CACHE_MAX_AGE_MS });
+        if (cached) {
+          setState((current) => ({
+            ...current,
+            loading: false,
+            profile: siteCacheValuesEqual(current.profile, cached.value.profile) ? current.profile : cached.value.profile,
+            proposals: siteCacheValuesEqual(current.proposals, cached.value.proposals) ? current.proposals : cached.value.proposals,
+            error: null,
+          }));
+        } else {
+          setState((current) => ({ ...current, loading: true, error: null }));
         }
 
         const response = await fetchWithAuth("/api/ai/content-proposals?limit=60", {
@@ -67,12 +101,15 @@ export function useAiContentWorkspace() {
         if (!doesAiProfileMatchSlot(activeSlot, record.profile)) {
           throw new Error("当前账号资料与学科会话槽不一致，请退出后检查账号配置");
         }
-        setState({
+        const nextProfile = (record.profile ?? null) as AiWorkspaceProfile | null;
+        const nextProposals = Array.isArray(record.proposals) ? record.proposals as AiContentProposalSummaryRow[] : [];
+        writeSiteCache(cacheKey, { profile: nextProfile, proposals: nextProposals });
+        setState((current) => ({
           loading: false,
-          profile: (record.profile ?? null) as AiWorkspaceProfile | null,
-          proposals: Array.isArray(record.proposals) ? record.proposals as AiContentProposalSummaryRow[] : [],
+          profile: siteCacheValuesEqual(current.profile, nextProfile) ? current.profile : nextProfile,
+          proposals: siteCacheValuesEqual(current.proposals, nextProposals) ? current.proposals : nextProposals,
           error: null,
-        });
+        }));
       } catch (error: unknown) {
         setState((current) => ({
           ...current,
@@ -137,6 +174,10 @@ export function useAiContentWorkspace() {
       if (event === "INITIAL_SESSION" && initialSessionPending) {
         initialSessionPending = false;
         return;
+      }
+      if (event === "SIGNED_OUT") {
+        const slot = getActiveAiAccountSlot();
+        if (slot) clearSiteCache(getSiteCacheKey("ai-content-workspace", slot));
       }
       void reload();
     });

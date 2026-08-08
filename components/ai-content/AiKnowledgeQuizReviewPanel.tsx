@@ -3,8 +3,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Check, FileQuestion, Loader2, RefreshCcw, RotateCcw, Send, X } from "lucide-react";
 import { useToast } from "@/components/ui/Toast";
-import { fetchWithAuth } from "@/lib/fetch-with-auth";
+import { fetchWithAuth, getCachedAuthSession } from "@/lib/fetch-with-auth";
 import type { AiKnowledgeQuizItemType, AiKnowledgeQuizStatus } from "@/lib/ai-knowledge-quiz-contract";
+import { getSiteCacheKey, readSiteCache, siteCacheValuesEqual, writeSiteCache } from "@/lib/site-cache";
 
 type QuizRow = {
   id: string;
@@ -34,6 +35,8 @@ type QuizItem = {
 
 type QuizDetail = { quiz: QuizRow; items: QuizItem[] };
 type ReviewAction = "request_changes" | "approve" | "reject" | "publish";
+
+const QUIZ_CACHE_OPTIONS = { ttlMs: 60 * 1000, maxAgeMs: 10 * 60 * 1000 };
 
 const STATUS_LABELS: Record<AiKnowledgeQuizStatus, string> = {
   draft: "草稿",
@@ -75,8 +78,18 @@ export function AiKnowledgeQuizReviewPanel() {
   const [busyAction, setBusyAction] = useState<ReviewAction | "refresh" | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const loadRows = useCallback(async () => {
-    setLoading(true);
+  const loadRows = useCallback(async (options: { useCache?: boolean } = {}) => {
+    const session = await getCachedAuthSession().catch(() => null);
+    const cacheKey = session?.user.id ? getSiteCacheKey("ai-quiz-review", session.user.id) : null;
+    const cached = options.useCache === false || !cacheKey
+      ? null
+      : readSiteCache<QuizRow[]>(cacheKey, (value) => Array.isArray(value) ? value as QuizRow[] : null, QUIZ_CACHE_OPTIONS);
+    if (cached) {
+      setRows((current) => siteCacheValuesEqual(current, cached.value) ? current : cached.value);
+      setLoading(false);
+    } else {
+      setLoading(true);
+    }
     try {
       const response = await fetchWithAuth("/api/ai/knowledge-quiz-review", {
         cache: "no-store",
@@ -86,7 +99,8 @@ export function AiKnowledgeQuizReviewPanel() {
         throw new Error(readError(payload, "快测审核列表读取失败"));
       }
       const nextRows = payload.quizzes.filter((value): value is QuizRow => isRecord(value) && typeof value.id === "string") as QuizRow[];
-      setRows(nextRows);
+      if (cacheKey) writeSiteCache(cacheKey, nextRows);
+      setRows((current) => siteCacheValuesEqual(current, nextRows) ? current : nextRows);
       setError(null);
       if (selectedId && !nextRows.some((row) => row.id === selectedId)) {
         setSelectedId(nextRows[0]?.id ?? null);
@@ -101,8 +115,18 @@ export function AiKnowledgeQuizReviewPanel() {
     }
   }, [selectedId]);
 
-  const loadDetail = useCallback(async (quizId: string) => {
-    setDetailLoading(true);
+  const loadDetail = useCallback(async (quizId: string, options: { useCache?: boolean } = {}) => {
+    const session = await getCachedAuthSession().catch(() => null);
+    const cacheKey = session?.user.id ? getSiteCacheKey("ai-quiz-review-detail", `${session.user.id}-${quizId}`) : null;
+    const cached = options.useCache === false || !cacheKey
+      ? null
+      : readSiteCache<QuizDetail>(cacheKey, (value) => isRecord(value) && isRecord(value.quiz) && Array.isArray(value.items) ? value as unknown as QuizDetail : null, QUIZ_CACHE_OPTIONS);
+    if (cached) {
+      setDetail((current) => siteCacheValuesEqual(current, cached.value) ? current : cached.value);
+      setDetailLoading(false);
+    } else {
+      setDetailLoading(true);
+    }
     try {
       const response = await fetchWithAuth(`/api/ai/knowledge-quiz-review/${encodeURIComponent(quizId)}`, {
         cache: "no-store",
@@ -111,10 +135,12 @@ export function AiKnowledgeQuizReviewPanel() {
       if (!response.ok || !isRecord(payload) || !isRecord(payload.quiz)) {
         throw new Error(readError(payload, "快测审核正文读取失败"));
       }
-      setDetail({
+      const nextDetail = {
         quiz: payload.quiz as unknown as QuizRow,
         items: Array.isArray(payload.items) ? payload.items as unknown as QuizItem[] : [],
-      });
+      };
+      if (cacheKey) writeSiteCache(cacheKey, nextDetail);
+      setDetail((current) => siteCacheValuesEqual(current, nextDetail) ? current : nextDetail);
     } catch (nextError: unknown) {
       setDetail(null);
       toast.error(nextError instanceof Error ? nextError.message : "快测审核正文读取失败");
@@ -158,7 +184,7 @@ export function AiKnowledgeQuizReviewPanel() {
         throw new Error(readError(payload, "快测审核操作失败"));
       }
       setDetail((current) => current ? { ...current, quiz: payload.quiz as unknown as QuizRow } : current);
-      await loadRows();
+       await loadRows({ useCache: false });
       toast.success(action === "request_changes" ? "已退回快测返修" : action === "approve" ? "快测已批准" : action === "publish" ? "快测已发布" : "快测已驳回");
     } catch (nextError: unknown) {
       toast.error(nextError instanceof Error ? nextError.message : "快测审核操作失败");
@@ -174,7 +200,7 @@ export function AiKnowledgeQuizReviewPanel() {
           <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary"><FileQuestion className="h-5 w-5" /></div>
           <div className="min-w-0"><p className="text-xs font-semibold uppercase tracking-[0.16em] text-primary">KNOWLEDGE QUIZ REVIEW</p><h2 className="mt-1 font-headline text-xl font-semibold text-on-surface">讲义知识点快测审核</h2><p className="mt-1 text-sm text-on-surface-variant">题目、答案与解析独立于 Markdown；只有批准或发布后，阅读助手才能调用。</p></div>
         </div>
-        <button type="button" className="control-button inline-flex min-h-11 items-center gap-2 px-4 py-2.5 text-sm" disabled={busyAction !== null} onClick={() => { setBusyAction("refresh"); void loadRows().finally(() => setBusyAction(null)); }}><RefreshCcw className="h-4 w-4" />刷新快测</button>
+      <button type="button" className="control-button inline-flex min-h-11 items-center gap-2 px-4 py-2.5 text-sm" disabled={busyAction !== null} onClick={() => { setBusyAction("refresh"); void loadRows({ useCache: false }).finally(() => setBusyAction(null)); }}><RefreshCcw className="h-4 w-4" />刷新快测</button>
       </div>
 
       {error && <div role="alert" className="mt-4 rounded-xl border border-error/25 bg-error/5 px-4 py-3 text-sm text-error">{error}</div>}

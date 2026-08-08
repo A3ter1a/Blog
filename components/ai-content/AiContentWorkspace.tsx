@@ -21,6 +21,12 @@ import type {
   AiContentProposalRow,
   AiContentProposalSummaryRow,
 } from "@/lib/server-ai-content";
+import {
+  clearSiteCache,
+  getSiteCacheKey,
+  readSiteCache,
+  writeSiteCache,
+} from "@/lib/site-cache";
 
 const STATUS_LABELS: Record<AiContentReviewStatus, string> = {
   draft: "草稿",
@@ -31,6 +37,9 @@ const STATUS_LABELS: Record<AiContentReviewStatus, string> = {
   published: "已发布",
   rejected: "已拒绝",
 };
+
+const AI_PROPOSAL_CACHE_TTL_MS = 2 * 60 * 1000;
+const AI_PROPOSAL_CACHE_MAX_AGE_MS = 12 * 60 * 60 * 1000;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -104,13 +113,24 @@ export function AiContentWorkspace() {
   const selectProposal = async (proposal: AiContentProposalSummaryRow) => {
     const requestId = ++proposalRequestRef.current;
     setSelectedId(proposal.id);
-    setSelectedProposal(null);
-    setProposalLoading(true);
+    const detailCacheKey = accountSlot ? getSiteCacheKey("ai-content-proposal", `${accountSlot}-${proposal.id}`) : null;
+    const cachedDetail = detailCacheKey
+      ? readSiteCache<AiContentProposalRow>(detailCacheKey, (value) => isRecord(value) && typeof value.id === "string" && typeof value.content === "string" ? value as unknown as AiContentProposalRow : null, { ttlMs: AI_PROPOSAL_CACHE_TTL_MS, maxAgeMs: AI_PROPOSAL_CACHE_MAX_AGE_MS })
+      : null;
+    setSelectedProposal(cachedDetail?.value ?? null);
+    setProposalLoading(!cachedDetail);
     setTitle(proposal.title);
     setTags("");
     setContent("");
     setLastSelfCheck(null);
     setQuizSummary(null);
+    if (cachedDetail) {
+      setTitle(cachedDetail.value.title);
+      setTags(cachedDetail.value.tags.join(", "));
+      setContent(cachedDetail.value.content);
+      setLastSelfCheck(readSelfCheck(cachedDetail.value.self_check));
+      void loadQuizSummary(cachedDetail.value.id);
+    }
     try {
       const response = await fetchWithAuth(`/api/ai/content-proposals/${encodeURIComponent(proposal.id)}`, {
         cache: "no-store",
@@ -121,6 +141,7 @@ export function AiContentWorkspace() {
       }
       const detail = payload.proposal as AiContentProposalRow;
       if (proposalRequestRef.current !== requestId) return;
+      if (detailCacheKey) writeSiteCache(detailCacheKey, detail);
       setSelectedProposal(detail);
       setTitle(detail.title);
       setTags(detail.tags.join(", "));
@@ -224,6 +245,10 @@ export function AiContentWorkspace() {
       setContent(proposal.content);
       const selfCheck = readSelfCheck(proposal.self_check);
       setLastSelfCheck(selfCheck);
+      if (accountSlot) {
+        clearSiteCache(getSiteCacheKey("ai-content-proposal", `${accountSlot}-${proposal.id}`));
+        clearSiteCache(getSiteCacheKey("ai-content-workspace", accountSlot));
+      }
       await reload();
 
       if (submitAfterSave) {

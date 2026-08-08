@@ -8,6 +8,7 @@ import { notesApi } from "@/lib/supabase";
 import type { Note, Problem } from "@/lib/types";
 import { getNoteReadHref } from "@/lib/note-routes";
 import { scheduleDeferredClientWork } from "@/lib/deferred-client-work";
+import { getSiteCacheKey, readSiteCache, writeSiteCache } from "@/lib/site-cache";
 
 interface ProblemReferencePickerProps {
   isOpen: boolean;
@@ -31,12 +32,23 @@ export function ProblemReferencePicker({ isOpen, onInsert }: ProblemReferencePic
 
     let cancelled = false;
     const cancelDeferredLoad = scheduleDeferredClientWork(() => {
-      setIsLoading(true);
+      const cacheKey = getSiteCacheKey("problem-reference-picker", "published");
+      const cached = readSiteCache<Note[]>(cacheKey, (value) => Array.isArray(value) ? value as Note[] : null, { ttlMs: 10 * 60 * 1000, maxAgeMs: 24 * 60 * 60 * 1000 });
+      if (cached) {
+        const sets = cached.value.filter((note) => (note.problems?.length ?? 0) > 0);
+        setProblemSets(sets);
+        setSelectedNoteId((current) => current || sets[0]?.id || "");
+        setHasLoaded(!cached.stale);
+        setIsLoading(cached.stale);
+      } else {
+        setIsLoading(true);
+      }
       setLoadError(null);
 
       notesApi.getSummaries({ type: "problem", includeProblems: true, sortOrder: "desc", limit: 120 })
         .then((notes) => {
           if (cancelled) return;
+          writeSiteCache(cacheKey, notes);
           const sets = notes.filter((note) => (note.problems?.length ?? 0) > 0);
           setProblemSets(sets);
           setSelectedNoteId((current) => current || sets[0]?.id || "");
