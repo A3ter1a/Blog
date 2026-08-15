@@ -55,6 +55,28 @@ type PracticeStatusLoadState = "idle" | "loading" | "ready" | "error";
 
 const INITIAL_PROBLEM_WINDOW_SIZE = 12;
 const PROBLEM_WINDOW_INCREMENT = 12;
+const NOTE_READ_TIMEOUT_MS = 12_000;
+const NOTE_READ_TIMEOUT_MESSAGE = "文章读取超时，可能是浏览器阻止了 Supabase 请求。请检查网络或隐私拦截扩展后重试。";
+const NOTE_READ_ERROR_MESSAGE = "暂时无法加载这篇笔记，请检查网络或 Supabase 配置，然后重试。";
+
+function withNoteReadTimeout<T>(promise: Promise<T>): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = window.setTimeout(() => {
+      reject(new Error(NOTE_READ_TIMEOUT_MESSAGE));
+    }, NOTE_READ_TIMEOUT_MS);
+
+    promise.then(
+      (value) => {
+        window.clearTimeout(timer);
+        resolve(value);
+      },
+      (error: unknown) => {
+        window.clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
+}
 
 function getProblemGroupKey(group: { chapter: Chapter | undefined }): string {
   return group.chapter?.id ?? "ungrouped";
@@ -169,16 +191,20 @@ export function NoteReaderClient({
       } else {
         setLoading(true);
       }
-      const data = accessScope === "owner"
-        ? await notesApi.getEditableById(noteId)
-        : await notesApi.getPublishedById(noteId);
+      const data = await withNoteReadTimeout(
+        accessScope === "owner"
+          ? notesApi.getEditableById(noteId)
+          : notesApi.getPublishedById(noteId),
+      );
       if (data && accessScope === "public") writePublicNoteCache(data);
       setNote((current) => noteReaderValuesEqual(current, data) ? current : data);
       setIsCoverExpanded(Boolean(data?.coverImage));
       setLoadError(null);
     } catch (error) {
       console.error("Failed to load note:", error);
-      setLoadError("暂时无法加载这篇笔记，请检查网络或 Supabase 配置，然后重试。");
+      setLoadError(error instanceof Error && error.message === NOTE_READ_TIMEOUT_MESSAGE
+        ? NOTE_READ_TIMEOUT_MESSAGE
+        : NOTE_READ_ERROR_MESSAGE);
     } finally {
       setLoading(false);
     }
@@ -609,7 +635,7 @@ export function NoteReaderClient({
         <div className="surface-panel max-w-lg p-6 text-center" role="alert">
           <AlertTriangle className="mx-auto h-8 w-8 text-error" />
           <h1 className="mt-4 text-2xl font-bold text-on-surface">暂时无法加载笔记</h1>
-          <p className="mt-2 text-sm leading-6 text-on-surface-variant">请检查网络或 Supabase 配置，然后重试。若问题持续存在，可以稍后再试。</p>
+          <p className="mt-2 text-sm leading-6 text-on-surface-variant">{loadError ?? NOTE_READ_ERROR_MESSAGE} 若问题持续存在，可以稍后再试。</p>
           <button type="button" onClick={handleRetryLoadNote} className="control-button control-button-primary mt-5 min-h-11 px-5 text-sm">重试</button>
         </div>
       </main>
