@@ -95,6 +95,12 @@ export function NotesClient({
   const [expandedCollectionId, setExpandedCollectionId] = useState<string | null>(null);
   const [expandedCollection, setExpandedCollection] = useState<CollectionDetail | null>(null);
   const [expandedCollectionLoading, setExpandedCollectionLoading] = useState(false);
+  const canReadUnpublishedNotes = isAdmin || (
+    directoryKind === "ai"
+    && !authLoading
+    && Boolean(user)
+    && Boolean(getActiveAiAccountSlot())
+  );
   
   // Selection state
   const [selectMode, setSelectMode] = useState(false);
@@ -151,7 +157,7 @@ export function NotesClient({
     const canReadPrivateAiCollections = requestDirectoryKind === "ai"
       && !authLoading
       && Boolean(user)
-      && Boolean(getActiveAiAccountSlot());
+      && (isAdmin || Boolean(getActiveAiAccountSlot()));
     const cacheAllowed = requestDirectoryKind === "human" || canReadPrivateAiCollections;
     const cached = cacheAllowed ? readCollectionListCache(requestDirectoryKind) : null;
     if (cached) {
@@ -180,7 +186,7 @@ export function NotesClient({
         || collectionsRef.current.some((collection) => collection.ownerKind === requestDirectoryKind);
       setCollectionsStatus(hasSameDirectorySnapshot ? "ready" : "failed");
     }
-  }, [authLoading, directoryKind, setVisibleCollections, user]);
+  }, [authLoading, directoryKind, isAdmin, setVisibleCollections, user]);
 
   useEffect(() => {
     directoryKindRef.current = directoryKind;
@@ -203,7 +209,14 @@ export function NotesClient({
     const query = searchQuery.trim();
     const typeFilter = selectedType === "all" ? undefined : selectedType;
     const subjectFilter = selectedSubject === "all" ? undefined : selectedSubject;
-    const cacheKey = getNotesCacheKey(query, directoryKind, selectedType, selectedSubject, sortOrder);
+    const cacheKey = getNotesCacheKey(
+      query,
+      directoryKind,
+      selectedType,
+      selectedSubject,
+      sortOrder,
+      canReadUnpublishedNotes,
+    );
 
     try {
       if (append) {
@@ -220,6 +233,7 @@ export function NotesClient({
             limit: NOTES_SEARCH_RESULT_LIMIT,
             includeCoverImage: false,
             authorKind: directoryKind,
+            publishedOnly: !canReadUnpublishedNotes,
           })
           : notesApi.getSummaries({
             type: typeFilter,
@@ -229,6 +243,7 @@ export function NotesClient({
             limit: NOTES_PAGE_SIZE + 1,
             offset,
             includeCoverImage: false,
+            publishedOnly: !canReadUnpublishedNotes,
           }),
       );
 
@@ -262,7 +277,7 @@ export function NotesClient({
         }
       }
     }
-  }, [directoryKind, searchQuery, selectedSubject, selectedType, setVisibleNotes, sortOrder]);
+  }, [canReadUnpublishedNotes, directoryKind, searchQuery, selectedSubject, selectedType, setVisibleNotes, sortOrder]);
 
   useEffect(() => {
     const loadId = latestLoadId.current + 1;
@@ -273,7 +288,14 @@ export function NotesClient({
       setIsLoadingMore(false);
       setSelectedNoteIds(new Set());
 
-      const cacheKey = getNotesCacheKey(searchQuery, directoryKind, selectedType, selectedSubject, sortOrder);
+      const cacheKey = getNotesCacheKey(
+        searchQuery,
+        directoryKind,
+        selectedType,
+        selectedSubject,
+        sortOrder,
+        canReadUnpublishedNotes,
+      );
       const cached = readNotesCache(cacheKey);
       const canKeepInitialRouteData = initialRouteReadyRef.current
         && !cached
@@ -281,7 +303,8 @@ export function NotesClient({
         && selectedType === "all"
         && selectedSubject === "all"
         && sortOrder === "desc"
-        && directoryKind === "human";
+        && directoryKind === "human"
+        && !canReadUnpublishedNotes;
       initialRouteReadyRef.current = false;
 
       if (cached) {
@@ -310,7 +333,7 @@ export function NotesClient({
         window.clearTimeout(fetchTimer);
       }
     };
-  }, [directoryKind, fetchNotesPage, initialHasMoreNotes, retryToken, searchQuery, selectedSubject, selectedType, sortOrder, setVisibleNotes]);
+  }, [canReadUnpublishedNotes, directoryKind, fetchNotesPage, initialHasMoreNotes, retryToken, searchQuery, selectedSubject, selectedType, sortOrder, setVisibleNotes]);
 
   useEffect(() => {
     const ids = visibleNoteIdsKey ? visibleNoteIdsKey.split("|") : [];
@@ -319,7 +342,7 @@ export function NotesClient({
     const loadId = latestCoverLoadId.current + 1;
     latestCoverLoadId.current = loadId;
 
-    void notesApi.getSummaryCoverImages(ids)
+    void notesApi.getSummaryCoverImages(ids, { publishedOnly: !canReadUnpublishedNotes })
       .then((coverImages) => {
         if (latestCoverLoadId.current !== loadId) return;
 
@@ -336,7 +359,7 @@ export function NotesClient({
           console.warn("Failed to load note covers:", error);
         }
       });
-  }, [setVisibleNotes, visibleNoteIdsKey]);
+  }, [canReadUnpublishedNotes, setVisibleNotes, visibleNoteIdsKey]);
 
   const handleLoadMore = useCallback(() => {
     if (loading || isLoadingMore || !hasMoreNotes || searchQuery.trim()) return;
@@ -410,8 +433,10 @@ export function NotesClient({
 
   const openAiCollection = useCallback(async (collection: CollectionSummary) => {
     if (directoryKind !== "ai") return;
-    if (!getActiveAiAccountSlot()) {
-      toast.error("AI 学科会话已失效，请从对应学科入口重新进入");
+    const canReadPrivateAiCollections = Boolean(user)
+      && (isAdmin || Boolean(getActiveAiAccountSlot()));
+    if (!collection.isPublished && !canReadPrivateAiCollections) {
+      toast.error("这份 AI 合集尚未公开，请从对应学科入口或管理员会话进入");
       return;
     }
     if (expandedCollectionId === collection.id) {
@@ -449,7 +474,7 @@ export function NotesClient({
     } finally {
       setExpandedCollectionLoading(false);
     }
-  }, [directoryKind, expandedCollectionId, toast]);
+  }, [directoryKind, expandedCollectionId, isAdmin, toast, user]);
 
   const handleResetFilters = () => {
     setSearchQuery("");

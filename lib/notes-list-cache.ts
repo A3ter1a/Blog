@@ -72,9 +72,12 @@ export function getNotesCacheKey(
   selectedType: NoteType | "all",
   selectedSubject: Subject | "all",
   sortOrder: "desc" | "asc",
+  includeUnpublished = false,
 ): string | null {
   if (query.trim()) return null;
-  const accountScope = authorKind === "ai" ? getActiveAiAccountSlot() : "public";
+  const accountScope = includeUnpublished
+    ? (authorKind === "ai" ? (getActiveAiAccountSlot() ?? "admin") : "admin")
+    : (authorKind === "ai" ? getActiveAiAccountSlot() : "public");
   if (!accountScope) return null;
   // Keep the directory/filter portion explicit so old cache diagnostics remain
   // readable and the AI account slot cannot leak snapshots across windows.

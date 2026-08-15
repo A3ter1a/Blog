@@ -56,6 +56,7 @@ export type NoteSummaryQueryOptions = {
   type?: NoteType;
   subject?: Subject;
   authorKind?: NoteAuthorKind;
+  publishedOnly?: boolean;
   sortOrder?: "desc" | "asc";
   limit?: number;
   offset?: number;
@@ -68,6 +69,7 @@ export type NoteSearchSummaryOptions = {
   includeContent?: boolean;
   includeCoverImage?: boolean;
   authorKind?: NoteAuthorKind;
+  publishedOnly?: boolean;
 };
 
 export type NoteQAReadOptions = {
@@ -456,8 +458,9 @@ export const notesApi = {
     let query = supabase
       .from("notes")
       .select(getNoteSummaryFields(options.includeCoverImage, options.includeProblems))
-      .eq("is_published", true)
       .order("created_at", { ascending });
+
+    if (options.publishedOnly !== false) query = query.eq("is_published", true);
 
     if (options.type) query = query.eq("type", options.type);
     if (options.subject) query = query.or(`subject.eq.${options.subject},type.eq.essay`);
@@ -473,16 +476,22 @@ export const notesApi = {
     return ((data || []) as NoteRow[]).map(mapSnakeToCamel);
   },
 
-  async getSummaryCoverImages(ids: string[]): Promise<Record<string, string>> {
+  async getSummaryCoverImages(
+    ids: string[],
+    options: { publishedOnly?: boolean } = {},
+  ): Promise<Record<string, string>> {
     const uniqueIds = [...new Set(ids.filter(Boolean))];
     if (uniqueIds.length === 0) return {};
 
     const supabase = getSupabase();
-    const { data, error } = await supabase
+    let query = supabase
       .from("notes")
       .select("id, cover_image")
-      .eq("is_published", true)
       .in("id", uniqueIds);
+
+    if (options.publishedOnly !== false) query = query.eq("is_published", true);
+
+    const { data, error } = await query;
 
     if (error) throw error;
 
@@ -658,9 +667,10 @@ export const notesApi = {
       .single();
 
     if (error) throw error;
+    if (!data?.id) throw new Error("笔记已保存，但服务器没有返回笔记 ID，请刷新后重试。");
     notifyPublicCacheInvalidation();
     return {
-      id: data.id ?? "",
+      id: data.id,
       updatedAt: data.updated_at ? new Date(data.updated_at) : updatedAt,
       contentVersion: null,
     };
@@ -765,8 +775,9 @@ export const notesApi = {
     const baseQuery = () => {
       let q = supabase
         .from("notes")
-        .select(getNoteSummaryFields(options.includeCoverImage))
-        .eq("is_published", true);
+        .select(getNoteSummaryFields(options.includeCoverImage));
+
+      if (options.publishedOnly !== false) q = q.eq("is_published", true);
 
       if (type) q = q.eq("type", type);
       if (subject) q = q.or(`subject.eq.${subject},type.eq.essay`);
