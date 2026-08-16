@@ -2,8 +2,17 @@
 
 import { getActiveAiAccountSlot } from "@/lib/auth-session-slot";
 import type { CollectionAvailableNote, CollectionOwnerKind, CollectionSummary } from "@/lib/collections-contract";
+import {
+  getSiteCacheKey,
+  readSiteCache,
+  writeSiteCache,
+  clearSiteCache,
+} from "@/lib/site-cache";
 
-const CACHE_PREFIX = "asteroid-collection-workspace:";
+// The previous implementation used `asteroid-collection-workspace:` in
+// localStorage/sessionStorage. The site cache now owns storage, quota
+// eviction, and cross-window invalidation while retaining this legacy marker
+// in the source for diagnostics and migration notes.
 export const COLLECTION_WORKSPACE_CACHE_TTL_MS = 5 * 60 * 1000;
 const COLLECTION_WORKSPACE_CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
@@ -13,26 +22,6 @@ export type CollectionWorkspaceSnapshot = {
   role: "admin" | "ai" | null;
   cachedAt: number;
 };
-
-type StorageLike = Pick<Storage, "getItem" | "setItem" | "removeItem">;
-
-function getCacheStorages(): StorageLike[] {
-  if (typeof window === "undefined") return [];
-
-  const storages: StorageLike[] = [];
-  // localStorage survives an in-app browser view being folded and rebuilt.
-  // sessionStorage remains the first choice for the current tab, so a newer
-  // in-tab snapshot wins over an older persistent snapshot when both exist.
-  for (const name of ["sessionStorage", "localStorage"] as const) {
-    try {
-      const storage = window[name];
-      if (storage && !storages.includes(storage)) storages.push(storage);
-    } catch {
-      // Private browsing and restricted webviews can deny either storage.
-    }
-  }
-  return storages;
-}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -99,48 +88,26 @@ function normalizeSnapshot(value: unknown): CollectionWorkspaceSnapshot | null {
 }
 
 export function getCollectionWorkspaceCacheKey(): string {
-  return `${CACHE_PREFIX}${getActiveAiAccountSlot() ?? "default"}`;
+  const scope = getActiveAiAccountSlot() ? `ai-${getActiveAiAccountSlot()}` : "admin";
+  return getSiteCacheKey("collection-workspace", scope);
 }
 
 export function readCollectionWorkspaceCache(): CollectionWorkspaceSnapshot | null {
-  const key = getCollectionWorkspaceCacheKey();
-  for (const storage of getCacheStorages()) {
-    try {
-      const raw = storage.getItem(key);
-      if (!raw) continue;
-      const cached = normalizeSnapshot(JSON.parse(raw));
-      if (!cached) continue;
-      if (Date.now() - cached.cachedAt > COLLECTION_WORKSPACE_CACHE_MAX_AGE_MS) {
-        storage.removeItem(key);
-        continue;
-      }
-      return cached;
-    } catch {
-      // Ignore malformed entries and continue with the other storage.
-    }
-  }
-  return null;
+  const cached = readSiteCache<CollectionWorkspaceSnapshot>(
+    getCollectionWorkspaceCacheKey(),
+    normalizeSnapshot,
+    {
+      ttlMs: COLLECTION_WORKSPACE_CACHE_TTL_MS,
+      maxAgeMs: COLLECTION_WORKSPACE_CACHE_MAX_AGE_MS,
+    },
+  );
+  return cached?.value ?? null;
 }
 
 export function writeCollectionWorkspaceCache(snapshot: Omit<CollectionWorkspaceSnapshot, "cachedAt">): void {
-  const key = getCollectionWorkspaceCacheKey();
-  const value = JSON.stringify({ ...snapshot, cachedAt: Date.now() });
-  for (const storage of getCacheStorages()) {
-    try {
-      storage.setItem(key, value);
-    } catch {
-      // Ignore private-mode and quota failures; the network path remains usable.
-    }
-  }
+  writeSiteCache(getCollectionWorkspaceCacheKey(), { ...snapshot, cachedAt: Date.now() });
 }
 
 export function clearCollectionWorkspaceCache(): void {
-  const key = getCollectionWorkspaceCacheKey();
-  for (const storage of getCacheStorages()) {
-    try {
-      storage.removeItem(key);
-    } catch {
-      // Ignore restricted browser contexts.
-    }
-  }
+  clearSiteCache(getCollectionWorkspaceCacheKey());
 }

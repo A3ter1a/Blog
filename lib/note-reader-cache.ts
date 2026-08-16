@@ -82,8 +82,8 @@ function normalizeProfile(value: unknown): PublicAiProfile | null {
   };
 }
 
-function noteKey(noteId: string): string {
-  return getSiteCacheKey("note-reader", `public-${noteId}`);
+function noteKey(noteId: string, scope = "public"): string {
+  return getSiteCacheKey("note-reader", `${scope}-${noteId}`);
 }
 
 function chapterKey(noteId: string): string {
@@ -103,6 +103,17 @@ export function readPublicNoteCache(noteId: string): SiteCacheRead<Note> | null 
 export function writePublicNoteCache(note: Note): void {
   if (!note.isPublished) return;
   writeSiteCache(noteKey(note.id), note);
+}
+
+/** Private reader snapshots are keyed by the authenticated user id. */
+export function readOwnerNoteCache(noteId: string, userId: string | null | undefined): SiteCacheRead<Note> | null {
+  if (!userId) return null;
+  return readSiteCache(noteKey(noteId, `owner-${userId}`), normalizeNote, readOptions);
+}
+
+export function writeOwnerNoteCache(note: Note, userId: string | null | undefined): void {
+  if (!userId) return;
+  writeSiteCache(noteKey(note.id, `owner-${userId}`), note);
 }
 
 export function readPublicChaptersCache(noteId: string): SiteCacheRead<Chapter[]> | null {
@@ -126,6 +137,11 @@ export function clearPublicNoteCache(noteId: string): void {
   clearSiteCache(noteKey(noteId));
   clearSiteCache(chapterKey(noteId));
   clearSiteCache(profileKey(noteId));
+}
+
+export function clearOwnerNoteCache(noteId: string, userId: string | null | undefined): void {
+  if (!userId) return;
+  clearSiteCache(noteKey(noteId, `owner-${userId}`));
 }
 
 export function noteReaderValuesEqual(left: unknown, right: unknown): boolean {

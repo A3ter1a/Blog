@@ -4,6 +4,7 @@ import { PageHeader, PageShell } from "@/components/ui/PageScaffold";
 import { createPageMetadata } from "@/lib/site-metadata";
 import type { CollectionSummary } from "@/lib/collections-contract";
 import { getCachedPublishedCollectionSummaries } from "@/lib/server-public-cache";
+import { withTimeout } from "@/lib/with-timeout";
 
 export const metadata = createPageMetadata({
   title: "合集",
@@ -13,12 +14,13 @@ export const metadata = createPageMetadata({
 });
 
 export const revalidate = 60;
+const SERVER_PRELOAD_TIMEOUT_MS = 1_500;
 
 export default async function CollectionsPage() {
   let collections: CollectionSummary[] = [];
   if (process.env.ASTEROID_OFFLINE_BUILD !== "1") {
     try {
-      collections = await getCachedPublishedCollectionSummaries();
+      collections = await withTimeout(getCachedPublishedCollectionSummaries(), SERVER_PRELOAD_TIMEOUT_MS);
     } catch (error) {
       console.warn("Failed to load collections:", error);
     }

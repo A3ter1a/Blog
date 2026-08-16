@@ -8,6 +8,7 @@ import { estimateReadingTime } from "@/lib/utils";
 import { getVisibleNoteTags } from "@/lib/math3-practice";
 import { getNoteReadPath } from "@/lib/note-routes";
 import { getListItemTransition, surfaceMotion } from "@/lib/motion";
+import { CachedImage } from "@/components/ui/CachedImage";
 
 interface NoteCardProps {
   note: Note;
@@ -51,10 +52,8 @@ export function NoteCard({ note, index, isSelected = false, onToggleSelect, sele
         {/* Cover Image or Placeholder */}
         <div className="relative aspect-[16/9] overflow-hidden rounded-t-md bg-surface-container-low">
           {note.coverImage ? (
-            // Has cover image
             <>
-              {/* eslint-disable-next-line @next/next/no-img-element -- Saved cover images can be data URLs or arbitrary user-provided URLs. */}
-              <img
+              <CachedImage
                 src={note.coverImage}
                 alt={note.title}
                 loading={index < 3 ? "eager" : "lazy"}

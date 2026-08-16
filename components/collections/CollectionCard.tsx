@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Layers3, ListOrdered } from "lucide-react";
 import type { CollectionSummary } from "@/lib/collections-contract";
 import { subjectMap } from "@/lib/types";
+import { CachedImage } from "@/components/ui/CachedImage";
 
 export function CollectionCard({
   collection,
@@ -20,8 +21,7 @@ export function CollectionCard({
     <>
       <div className="relative flex h-28 items-end overflow-hidden bg-surface-container-low px-5 pb-4">
         {collection.coverImage ? (
-          // eslint-disable-next-line @next/next/no-img-element -- cover images are user-provided persisted URLs.
-          <img src={collection.coverImage} alt="" loading="lazy" decoding="async" className="absolute inset-0 h-full w-full object-cover opacity-80 transition duration-300 group-hover:scale-[1.03]" />
+          <CachedImage src={collection.coverImage} alt="" loading="lazy" decoding="async" className="absolute inset-0 h-full w-full object-cover opacity-80 transition duration-300 group-hover:scale-[1.03]" />
         ) : (
           <>
             <div className="absolute inset-0 bg-gradient-to-br from-primary/[0.16] via-primary/[0.05] to-transparent" />

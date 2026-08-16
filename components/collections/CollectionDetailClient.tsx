@@ -36,7 +36,22 @@ export function CollectionDetailClient({
   useEffect(() => {
     let cancelled = false;
     const cached = readCollectionDetailCache(id);
-    if (initialCollection) writeCollectionDetailCache(initialCollection);
+    if (initialCollection) {
+      const initialUpdatedAt = new Date(initialCollection.updatedAt).getTime();
+      const cachedUpdatedAt = cached ? new Date(cached.value.updatedAt).getTime() : 0;
+
+      if (!cached || initialUpdatedAt >= cachedUpdatedAt) {
+        writeCollectionDetailCache(initialCollection);
+        return () => { cancelled = true; };
+      }
+
+      queueMicrotask(() => {
+        if (!cancelled) {
+          setFetchedCollection((current) => collectionDetailsEqual(current, cached.value) ? current : cached.value);
+        }
+      });
+    }
+
     const shouldRefresh = !initialCollection || !cached || cached.stale;
 
     if (!shouldRefresh) return () => { cancelled = true; };

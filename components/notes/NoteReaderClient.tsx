@@ -26,21 +26,26 @@ import { ProblemReferenceContent } from "@/components/problems/ProblemReferenceC
 import { TableOfContents } from "@/components/ui/TableOfContents";
 import { useReadingPreferences } from "@/lib/useReadingPreferences";
 import { ReadingProgress } from "@/components/ui/ReadingProgress";
+import { CachedImage } from "@/components/ui/CachedImage";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { useAdminAuth } from "@/hooks/useAdminAuth";
 import { useToast } from "@/components/ui/Toast";
 import { overlayMotion, surfaceMotion, uiMotion } from "@/lib/motion";
 import { detectBookletSourceDrift, extractBookletSourceManifest, type BookletProblemSnapshot } from "@/lib/booklet-contract";
 import {
+  clearOwnerNoteCache,
   clearPublicNoteCache,
   noteReaderValuesEqual,
   readPublicAuthorProfileCache,
   readPublicChaptersCache,
   readPublicNoteCache,
+  readOwnerNoteCache,
   writePublicAuthorProfileCache,
   writePublicChaptersCache,
   writePublicNoteCache,
+  writeOwnerNoteCache,
 } from "@/lib/note-reader-cache";
+import { subscribeSiteCache } from "@/lib/site-cache";
 
 type NoteReaderClientProps = {
   noteId: string;
@@ -100,9 +105,14 @@ export function NoteReaderClient({
 }: NoteReaderClientProps) {
   const router = useRouter();
   const { preferences } = useReadingPreferences();
-  const { isAdmin } = useAdminAuth();
+  const { isAdmin, user } = useAdminAuth();
+  const ownerUserId = user?.id ?? null;
   const toast = useToast();
-  const cachedInitialNote = accessScope === "public" && !initialNote ? readPublicNoteCache(noteId) : null;
+  const cachedInitialNote = !initialNote
+    ? accessScope === "public"
+      ? readPublicNoteCache(noteId)
+      : readOwnerNoteCache(noteId, ownerUserId)
+    : null;
   const cachedInitialChapters = accessScope === "public" && !initialChaptersLoaded ? readPublicChaptersCache(noteId) : null;
   const [note, setNote] = useState<Note | null>(initialNote ?? cachedInitialNote?.value ?? null);
   const [authorProfile, setAuthorProfile] = useState<PublicAiProfile | null>(null);
@@ -111,7 +121,7 @@ export function NoteReaderClient({
   const [retryToken, setRetryToken] = useState(0);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isDeletingNote, setIsDeletingNote] = useState(false);
-  const [isCoverExpanded, setIsCoverExpanded] = useState(Boolean(initialNote?.coverImage));
+  const [isCoverExpanded, setIsCoverExpanded] = useState(Boolean((initialNote ?? cachedInitialNote?.value)?.coverImage));
   const [isImmersiveMode, setIsImmersiveMode] = useState(false);
   const [inlineVideoIndex, setInlineVideoIndex] = useState<number | null>(null);
   const [chapters, setChapters] = useState<Chapter[]>(initialChapters.length > 0 ? initialChapters : (cachedInitialChapters?.value ?? []));
@@ -158,13 +168,18 @@ export function NoteReaderClient({
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
-      const cachedNote = accessScope === "public" && !initialNote ? readPublicNoteCache(noteId)?.value ?? null : null;
+      const cachedNote = !initialNote
+        ? accessScope === "public"
+          ? readPublicNoteCache(noteId)?.value ?? null
+          : readOwnerNoteCache(noteId, ownerUserId)?.value ?? null
+        : null;
+      const nextNote = initialNote ?? cachedNote;
       const cachedChapters = accessScope === "public" && initialChapters.length === 0 ? readPublicChaptersCache(noteId)?.value ?? [] : [];
-      setNote(initialNote ?? cachedNote);
-      setLoading(initialLoadError || (!initialNote && !cachedNote));
+      setNote(nextNote);
+      setLoading(initialLoadError || !nextNote);
       setChapters(initialChapters.length > 0 ? initialChapters : cachedChapters);
       setSelectedChapterId(undefined);
-      setIsCoverExpanded(Boolean(initialNote?.coverImage));
+      setIsCoverExpanded(Boolean(nextNote?.coverImage));
       setShowProblemTools(false);
       setPracticeStatusMap({});
       setPracticeStatusLoadState("idle");
@@ -179,11 +194,13 @@ export function NoteReaderClient({
     }, 0);
 
     return () => window.clearTimeout(timer);
-  }, [accessScope, initialChapters, initialChaptersLoaded, initialLoadError, initialNote, noteId]);
+  }, [accessScope, initialChapters, initialChaptersLoaded, initialLoadError, initialNote, noteId, ownerUserId]);
 
   const loadNote = useCallback(async () => {
     try {
-      const cached = accessScope === "public" ? readPublicNoteCache(noteId) : null;
+      const cached = accessScope === "public"
+        ? readPublicNoteCache(noteId)
+        : readOwnerNoteCache(noteId, ownerUserId);
       if (cached) {
         setNote((current) => noteReaderValuesEqual(current, cached.value) ? current : cached.value);
         setIsCoverExpanded(Boolean(cached.value.coverImage));
@@ -197,6 +214,7 @@ export function NoteReaderClient({
           : notesApi.getPublishedById(noteId),
       );
       if (data && accessScope === "public") writePublicNoteCache(data);
+      if (data && accessScope === "owner") writeOwnerNoteCache(data, ownerUserId);
       setNote((current) => noteReaderValuesEqual(current, data) ? current : data);
       setIsCoverExpanded(Boolean(data?.coverImage));
       setLoadError(null);
@@ -208,19 +226,40 @@ export function NoteReaderClient({
     } finally {
       setLoading(false);
     }
-  }, [accessScope, noteId]);
+  }, [accessScope, noteId, ownerUserId]);
 
   useEffect(() => {
     if (initialNote && !initialLoadError && retryToken === 0) {
-      if (accessScope === "public") writePublicNoteCache(initialNote);
-      const cached = accessScope === "public" ? readPublicNoteCache(noteId) : null;
-      if (!cached?.stale) return;
+      const cached = accessScope === "public"
+        ? readPublicNoteCache(noteId)
+        : readOwnerNoteCache(noteId, ownerUserId);
+      const initialUpdatedAt = initialNote.updatedAt.getTime();
+      const cachedUpdatedAt = cached?.value.updatedAt.getTime() ?? 0;
+
+      if (!cached || initialUpdatedAt >= cachedUpdatedAt) {
+        if (accessScope === "public") writePublicNoteCache(initialNote);
+        if (accessScope === "owner") writeOwnerNoteCache(initialNote, ownerUserId);
+        return;
+      }
+
+      queueMicrotask(() => {
+        setNote((current) => noteReaderValuesEqual(current, cached.value) ? current : cached.value);
+        setIsCoverExpanded(Boolean(cached.value.coverImage));
+      });
+      if (!cached.stale) return;
     }
     const timer = window.setTimeout(() => {
       void loadNote();
     }, 0);
     return () => window.clearTimeout(timer);
-  }, [accessScope, initialLoadError, initialNote, loadNote, noteId, retryToken]);
+  }, [accessScope, initialLoadError, initialNote, loadNote, noteId, ownerUserId, retryToken]);
+
+  useEffect(() => {
+    if (accessScope !== "public") return undefined;
+    return subscribeSiteCache(() => {
+      void loadNote();
+    }, { namespace: "note-reader" });
+  }, [accessScope, loadNote]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -498,6 +537,7 @@ export function NoteReaderClient({
     try {
       await notesApi.delete(noteId);
       clearPublicNoteCache(noteId);
+      clearOwnerNoteCache(noteId, user?.id);
       setShowDeleteConfirm(false);
       toast.success("笔记已删除");
       router.push("/notes");
@@ -534,9 +574,11 @@ export function NoteReaderClient({
         { problems: updatedProblems },
       );
       clearPublicNoteCache(previousNote.id);
+      clearOwnerNoteCache(previousNote.id, user?.id);
       if (previousNote.isPublished) {
         writePublicNoteCache({ ...previousNote, problems: updatedProblems, updatedAt: savedNote.updatedAt, contentVersion: savedNote.contentVersion });
       }
+      writeOwnerNoteCache({ ...previousNote, problems: updatedProblems, updatedAt: savedNote.updatedAt, contentVersion: savedNote.contentVersion }, user?.id);
       setNote(current => current?.id === previousNote.id
         ? { ...current, updatedAt: savedNote.updatedAt, contentVersion: savedNote.contentVersion }
         : current
@@ -799,8 +841,7 @@ export function NoteReaderClient({
             className="overflow-hidden"
           >
             <div className="overflow-hidden rounded-2xl shadow-elevated">
-              {/* eslint-disable-next-line @next/next/no-img-element -- Saved cover images can be data URLs or arbitrary user-provided URLs. */}
-              <img
+              <CachedImage
                 src={note.coverImage}
                 alt={note.title}
                 className="w-full object-cover max-h-[480px]"

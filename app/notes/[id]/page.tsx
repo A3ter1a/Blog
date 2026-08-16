@@ -12,6 +12,7 @@ import {
   getNoteDescription,
   getShareableImageUrl,
 } from "@/lib/site-metadata";
+import { isPreloadTimeout, withTimeout } from "@/lib/with-timeout";
 
 // Public note pages are ISR-friendly. The client reader still performs a
 // stale-while-revalidate refresh so a returning reader can paint immediately
@@ -30,10 +31,11 @@ type InitialNotePayload = {
 };
 
 const getPublishedNote = getCachedPublishedNote;
+const SERVER_PRELOAD_TIMEOUT_MS = 1_500;
 
 async function getInitialNote(noteId: string): Promise<InitialNotePayload> {
   try {
-    const note = await getPublishedNote(noteId);
+    const note = await withTimeout(getPublishedNote(noteId), SERVER_PRELOAD_TIMEOUT_MS);
 
     if (!note) {
       return {
@@ -54,7 +56,7 @@ async function getInitialNote(noteId: string): Promise<InitialNotePayload> {
     }
 
     try {
-      const chapters = await getCachedPublicChapters(noteId);
+      const chapters = await withTimeout(getCachedPublicChapters(noteId), SERVER_PRELOAD_TIMEOUT_MS);
       return {
         note,
         chapters,
@@ -62,7 +64,7 @@ async function getInitialNote(noteId: string): Promise<InitialNotePayload> {
         loadError: false,
       };
     } catch (error) {
-      console.error("Failed to preload note chapters:", error);
+      if (!isPreloadTimeout(error)) console.error("Failed to preload note chapters:", error);
       return {
         note,
         chapters: [],
@@ -71,7 +73,7 @@ async function getInitialNote(noteId: string): Promise<InitialNotePayload> {
       };
     }
   } catch (error) {
-    console.error("Failed to preload note:", error);
+    if (!isPreloadTimeout(error)) console.error("Failed to preload note:", error);
     return {
       note: null,
       chapters: [],
@@ -88,11 +90,11 @@ export async function generateMetadata(
   const { id } = await params;
   let note: Note | null;
   try {
-    note = await getPublishedNote(id);
+    note = await withTimeout(getPublishedNote(id), SERVER_PRELOAD_TIMEOUT_MS);
   } catch (error) {
     // Metadata must not turn a temporary data-source failure into a route-level
     // error page. The reader itself has a recoverable loading state and retry.
-    console.error("Failed to preload note metadata:", error);
+    if (!isPreloadTimeout(error)) console.error("Failed to preload note metadata:", error);
     return createNoIndexMetadata({
       title: "笔记",
       description: "Asteroid 学习笔记。",

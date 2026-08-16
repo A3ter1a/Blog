@@ -35,6 +35,7 @@ import {
   writeCollectionDetailCache,
 } from "@/lib/collection-detail-cache";
 import type { CollectionDetail } from "@/lib/collections-contract";
+import { subscribeSiteCache } from "@/lib/site-cache";
 
 const NOTES_REQUEST_TIMEOUT_MS = 8_000;
 
@@ -117,6 +118,16 @@ export function NotesClient({
   const collectionsRef = useRef<CollectionSummary[]>(initialCollections);
   const directoryKindRef = useRef<NoteAuthorKind>(directoryKind);
   const expandedCollectionIdRef = useRef<string | null>(null);
+  const renderedNotesScopeRef = useRef<string | null>(null);
+
+  const notesScopeKey = useMemo(() => {
+    const accountScope = canReadUnpublishedNotes
+      ? directoryKind === "ai"
+        ? getActiveAiAccountSlot() ?? "admin"
+        : "admin"
+      : "public";
+    return `${directoryKind}:${accountScope}`;
+  }, [canReadUnpublishedNotes, directoryKind]);
 
   const setVisibleNotes = useCallback((nextNotes: Note[]) => {
     if (notesRef.current.length === nextNotes.length && notesRef.current.every((note, index) => {
@@ -166,7 +177,8 @@ export function NotesClient({
       setCollectionsStatus("ready");
     } else {
       if (directoryKindRef.current !== requestDirectoryKind) return;
-      setCollectionsStatus("loading");
+      const hasSameDirectorySnapshot = collectionsRef.current.some((collection) => collection.ownerKind === requestDirectoryKind);
+      setCollectionsStatus(hasSameDirectorySnapshot ? "ready" : "loading");
     }
 
     try {
@@ -199,6 +211,21 @@ export function NotesClient({
 
     return () => window.clearTimeout(timer);
   }, [refreshCollections]);
+
+  useEffect(() => subscribeSiteCache((event) => {
+    if (event.namespace === "notes-list") {
+      setRetryToken((value) => value + 1);
+      return;
+    }
+    if (event.namespace === "collection-list") {
+      void refreshCollections();
+      return;
+    }
+    if (event.namespace === "collection-detail" && expandedCollectionIdRef.current) {
+      const cached = readCollectionDetailCache(expandedCollectionIdRef.current);
+      if (cached) setExpandedCollection(cached.value);
+    }
+  }), [refreshCollections]);
 
   const fetchNotesPage = useCallback(async (
     offset: number,
@@ -260,6 +287,7 @@ export function NotesClient({
           setHasMoreNotes(nextHasMoreNotes);
           writeNotesCache(cacheKey, nextNotes, nextHasMoreNotes);
         }
+        renderedNotesScopeRef.current = notesScopeKey;
       }
     } catch (error) {
       if (latestLoadId.current === loadId) {
@@ -277,7 +305,7 @@ export function NotesClient({
         }
       }
     }
-  }, [canReadUnpublishedNotes, directoryKind, searchQuery, selectedSubject, selectedType, setVisibleNotes, sortOrder]);
+  }, [canReadUnpublishedNotes, directoryKind, notesScopeKey, searchQuery, selectedSubject, selectedType, setVisibleNotes, sortOrder]);
 
   useEffect(() => {
     const loadId = latestLoadId.current + 1;
@@ -311,11 +339,19 @@ export function NotesClient({
         setVisibleNotes(cached.notes);
         setHasMoreNotes(cached.hasMoreNotes);
         setLoading(false);
+        renderedNotesScopeRef.current = notesScopeKey;
       } else if (canKeepInitialRouteData) {
         setLoading(false);
         setIsRefreshingNotes(false);
         writeNotesCache(cacheKey, notesRef.current, initialHasMoreNotes);
+        renderedNotesScopeRef.current = notesScopeKey;
         return;
+      } else if (notesRef.current.length > 0 && renderedNotesScopeRef.current === notesScopeKey) {
+        // Keep the last usable snapshot visible while a filter or a returning
+        // page performs its background refresh. Directory/account boundaries
+        // are still cleared by handleDirectoryChange and the scope check.
+        setLoading(false);
+        setIsRefreshingNotes(true);
       } else {
         setVisibleNotes([]);
         setHasMoreNotes(false);
@@ -323,7 +359,7 @@ export function NotesClient({
       }
 
       fetchTimer = window.setTimeout(() => {
-        void fetchNotesPage(0, false, loadId, !cached && !canKeepInitialRouteData);
+        void fetchNotesPage(0, false, loadId, !cached && !canKeepInitialRouteData && !(notesRef.current.length > 0 && renderedNotesScopeRef.current === notesScopeKey));
       }, searchQuery.trim() ? 250 : 0);
     }, 0);
 
@@ -333,7 +369,7 @@ export function NotesClient({
         window.clearTimeout(fetchTimer);
       }
     };
-  }, [canReadUnpublishedNotes, directoryKind, fetchNotesPage, initialHasMoreNotes, retryToken, searchQuery, selectedSubject, selectedType, sortOrder, setVisibleNotes]);
+  }, [canReadUnpublishedNotes, directoryKind, fetchNotesPage, initialHasMoreNotes, notesScopeKey, retryToken, searchQuery, selectedSubject, selectedType, sortOrder, setVisibleNotes]);
 
   useEffect(() => {
     const ids = visibleNoteIdsKey ? visibleNoteIdsKey.split("|") : [];
@@ -346,20 +382,28 @@ export function NotesClient({
       .then((coverImages) => {
         if (latestCoverLoadId.current !== loadId) return;
 
-        setVisibleNotes(
-          notesRef.current.map((note) => {
+        const nextNotes = notesRef.current.map((note) => {
             const coverImage = coverImages[note.id];
             if (!coverImage || coverImage === note.coverImage) return note;
             return { ...note, coverImage };
-          }),
+        });
+        setVisibleNotes(nextNotes);
+        const cacheKey = getNotesCacheKey(
+          searchQuery,
+          directoryKind,
+          selectedType,
+          selectedSubject,
+          sortOrder,
+          canReadUnpublishedNotes,
         );
+        if (cacheKey && !searchQuery.trim()) writeNotesCache(cacheKey, nextNotes, hasMoreNotes);
       })
       .catch((error) => {
         if (latestCoverLoadId.current === loadId) {
           console.warn("Failed to load note covers:", error);
         }
       });
-  }, [canReadUnpublishedNotes, setVisibleNotes, visibleNoteIdsKey]);
+  }, [canReadUnpublishedNotes, directoryKind, hasMoreNotes, searchQuery, selectedSubject, selectedType, setVisibleNotes, sortOrder, visibleNoteIdsKey]);
 
   const handleLoadMore = useCallback(() => {
     if (loading || isLoadingMore || !hasMoreNotes || searchQuery.trim()) return;
@@ -416,6 +460,7 @@ export function NotesClient({
     // collection snapshot. The next effect will synchronously use the target
     // directory's cache when available, or show its loading state otherwise.
     notesRef.current = [];
+    renderedNotesScopeRef.current = null;
     setNotes([]);
     setHasMoreNotes(false);
     setLoading(true);

@@ -9,14 +9,18 @@
  * browser view can still paint the last usable snapshot.
  */
 
-export const SITE_CACHE_VERSION = 1;
+export const SITE_CACHE_VERSION = 2;
 export const SITE_CACHE_TTL_MS = 5 * 60 * 1000;
 export const SITE_CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+const SITE_CACHE_ENTRY_MAX_BYTES = 3_000_000;
+const SITE_CACHE_STORAGE_LIMIT_BYTES = 12_000_000;
+const SITE_CACHE_CHANNEL_NAME = "asteroid-site-cache";
 
 export type SiteCacheEnvelope<T> = {
   version: number;
   value: T;
   cachedAt: number;
+  lastAccessedAt?: number;
 };
 
 export type SiteCacheRead<T> = {
@@ -26,6 +30,135 @@ export type SiteCacheRead<T> = {
 };
 
 type StorageLike = Pick<Storage, "getItem" | "setItem" | "removeItem" | "length" | "key">;
+
+export type SiteCacheEvent = {
+  type: "write" | "clear" | "namespace";
+  key?: string;
+  namespace?: string;
+};
+
+type SiteCacheListener = (event: SiteCacheEvent) => void;
+
+let siteCacheChannel: BroadcastChannel | null | undefined;
+const siteCacheListeners = new Set<SiteCacheListener>();
+
+function namespaceFromKey(key: string | null): string | undefined {
+  if (!key) return undefined;
+  const prefix = `asteroid:site-cache:v${SITE_CACHE_VERSION}:`;
+  if (!key.startsWith(prefix)) return undefined;
+  const separatorIndex = key.indexOf(":", prefix.length);
+  if (separatorIndex < 0) return undefined;
+  try {
+    return decodeURIComponent(key.slice(prefix.length, separatorIndex));
+  } catch {
+    return undefined;
+  }
+}
+
+function notifySiteCacheListeners(event: SiteCacheEvent): void {
+  siteCacheListeners.forEach((listener) => {
+    try {
+      listener(event);
+    } catch {
+      // A cache observer must never break a storage operation.
+    }
+  });
+}
+
+function getSiteCacheChannel(): BroadcastChannel | null {
+  if (typeof window === "undefined" || typeof BroadcastChannel === "undefined") return null;
+  if (siteCacheChannel !== undefined) return siteCacheChannel;
+
+  try {
+    const channel = new BroadcastChannel(SITE_CACHE_CHANNEL_NAME);
+    channel.onmessage = (message: MessageEvent<SiteCacheEvent>) => {
+      if (!message.data || typeof message.data !== "object") return;
+      notifySiteCacheListeners(message.data);
+    };
+    siteCacheChannel = channel;
+  } catch {
+    siteCacheChannel = null;
+  }
+
+  return siteCacheChannel;
+}
+
+function broadcastSiteCacheEvent(event: SiteCacheEvent): void {
+  getSiteCacheChannel()?.postMessage(event);
+}
+
+function getStorageEntrySize(raw: string): number {
+  return raw.length * 2;
+}
+
+function parseCacheEnvelope(raw: string): SiteCacheEnvelope<unknown> | null {
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!isRecord(parsed) || parsed.version !== SITE_CACHE_VERSION || typeof parsed.cachedAt !== "number") return null;
+    return parsed as SiteCacheEnvelope<unknown>;
+  } catch {
+    return null;
+  }
+}
+
+function pruneStorage(storage: StorageLike, requiredBytes: number, protectedKey: string): void {
+  const now = Date.now();
+  const entries: Array<{ key: string; size: number; lastAccessedAt: number }> = [];
+  let totalBytes = 0;
+
+  let storageLength = 0;
+  try {
+    storageLength = storage.length;
+  } catch {
+    return;
+  }
+
+  for (let index = 0; index < storageLength; index += 1) {
+    let key: string | null = null;
+    let raw: string | null = null;
+    try {
+      key = storage.key(index);
+      raw = key ? storage.getItem(key) : null;
+    } catch {
+      continue;
+    }
+    if (!key?.startsWith(`asteroid:site-cache:v${SITE_CACHE_VERSION}:`)) continue;
+
+    if (!raw) continue;
+    const envelope = parseCacheEnvelope(raw);
+    if (!envelope || now - envelope.cachedAt > SITE_CACHE_MAX_AGE_MS) {
+      try {
+        storage.removeItem(key);
+      } catch {
+        // Ignore restricted storage contexts.
+      }
+      continue;
+    }
+
+    const size = getStorageEntrySize(raw);
+    totalBytes += size;
+    entries.push({
+      key,
+      size,
+      lastAccessedAt: typeof envelope.lastAccessedAt === "number" ? envelope.lastAccessedAt : envelope.cachedAt,
+    });
+  }
+
+  if (totalBytes + requiredBytes <= SITE_CACHE_STORAGE_LIMIT_BYTES) return;
+
+  entries
+    .filter((entry) => entry.key !== protectedKey)
+    .sort((left, right) => left.lastAccessedAt - right.lastAccessedAt)
+    .some((entry) => {
+      try {
+        storage.removeItem(entry.key);
+      } catch {
+        return false;
+      }
+      totalBytes -= entry.size;
+      return totalBytes + requiredBytes <= SITE_CACHE_STORAGE_LIMIT_BYTES;
+    });
+}
 
 function getStorages(): StorageLike[] {
   if (typeof window === "undefined") return [];
@@ -69,12 +202,13 @@ export function readSiteCache<T>(
 ): SiteCacheRead<T> | null {
   const ttlMs = options.ttlMs ?? SITE_CACHE_TTL_MS;
   const maxAgeMs = options.maxAgeMs ?? SITE_CACHE_MAX_AGE_MS;
+  let newest: SiteCacheRead<T> | null = null;
   for (const storage of getStorages()) {
     try {
       const raw = storage.getItem(key);
       if (!raw) continue;
-      const parsed: unknown = JSON.parse(raw);
-      if (!isRecord(parsed) || parsed.version !== SITE_CACHE_VERSION || typeof parsed.cachedAt !== "number") {
+      const parsed = parseCacheEnvelope(raw);
+      if (!parsed) {
         storage.removeItem(key);
         continue;
       }
@@ -88,36 +222,62 @@ export function readSiteCache<T>(
         storage.removeItem(key);
         continue;
       }
-      return {
+      const candidate = {
         value,
         cachedAt: parsed.cachedAt,
         stale: age >= ttlMs,
       };
+      if (!newest || candidate.cachedAt > newest.cachedAt) newest = candidate;
     } catch {
       // Ignore malformed entries and continue with the other storage.
     }
   }
-  return null;
+  return newest;
 }
 
 export function writeSiteCache<T>(key: string, value: T): void {
   if (typeof window === "undefined") return;
   let serialized: string;
   try {
-    serialized = JSON.stringify({ version: SITE_CACHE_VERSION, value, cachedAt: Date.now() });
+    serialized = JSON.stringify({
+      version: SITE_CACHE_VERSION,
+      value,
+      cachedAt: Date.now(),
+      lastAccessedAt: Date.now(),
+    });
   } catch {
     return;
   }
 
   // A single unusually large article should not evict the entire site cache.
-  if (serialized.length > 3_000_000) return;
+  if (getStorageEntrySize(serialized) > SITE_CACHE_ENTRY_MAX_BYTES) return;
+  let wrote = false;
   for (const storage of getStorages()) {
     try {
-      storage.setItem(key, serialized);
+      pruneStorage(storage, getStorageEntrySize(serialized), key);
     } catch {
-      // Ignore quota and restricted-storage failures.
+      // A restricted storage implementation can fail while enumerating keys.
+    }
+    try {
+      storage.setItem(key, serialized);
+      wrote = true;
+    } catch {
+      // Retry once after removing the oldest entries. Some webviews report
+      // quota errors before their internal accounting catches up.
+      try {
+        pruneStorage(storage, getStorageEntrySize(serialized), key);
+      } catch {
+        // Ignore restricted storage enumeration failures.
+      }
+      try {
+        storage.setItem(key, serialized);
+        wrote = true;
+      } catch {
+        // Ignore quota and restricted-storage failures.
+      }
     }
   }
+  if (wrote) broadcastSiteCacheEvent({ type: "write", key, namespace: namespaceFromKey(key) });
 }
 
 export function clearSiteCache(key: string): void {
@@ -128,6 +288,7 @@ export function clearSiteCache(key: string): void {
       // Ignore restricted browser contexts.
     }
   }
+  broadcastSiteCacheEvent({ type: "clear", key, namespace: namespaceFromKey(key) });
 }
 
 export function clearSiteCacheNamespace(namespace: string): void {
@@ -145,6 +306,38 @@ export function clearSiteCacheNamespace(namespace: string): void {
       // Ignore restricted browser contexts.
     }
   }
+  broadcastSiteCacheEvent({ type: "namespace", namespace: namespace.trim() || "site" });
+}
+
+/** Subscribe to cache changes made by another tab or in-app browser context. */
+export function subscribeSiteCache(
+  listener: SiteCacheListener,
+  options: { namespace?: string } = {},
+): () => void {
+  if (typeof window === "undefined") return () => undefined;
+
+  const filteredListener: SiteCacheListener = (event) => {
+    if (options.namespace && event.namespace !== options.namespace) return;
+    listener(event);
+  };
+  siteCacheListeners.add(filteredListener);
+  getSiteCacheChannel();
+
+  const handleStorage = (event: StorageEvent) => {
+    if (!event.key) return;
+    const cacheEvent: SiteCacheEvent = {
+      type: event.newValue === null ? "clear" : "write",
+      key: event.key,
+      namespace: namespaceFromKey(event.key),
+    };
+    filteredListener(cacheEvent);
+  };
+  window.addEventListener("storage", handleStorage);
+
+  return () => {
+    siteCacheListeners.delete(filteredListener);
+    window.removeEventListener("storage", handleStorage);
+  };
 }
 
 /** Stable enough for normalized API snapshots; ignores object key ordering. */
