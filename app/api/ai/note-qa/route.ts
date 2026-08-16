@@ -231,7 +231,12 @@ export async function POST(req: NextRequest) {
     if (sourceError) throw sourceError;
     const notes = ((sourceRows ?? []) as NoteRow[]).map(mapNote);
 
-    const indexStats = await syncPrivateNotesRag(supabase, notes);
+    if (noteId && notes.length === 0) {
+      return NextResponse.json({ error: "当前笔记不存在或不在所选范围内", success: false }, { status: 404 });
+    }
+    const indexStats = await syncPrivateNotesRag(supabase, notes, {
+      cacheKey: auth.context.user.id,
+    });
     const retrievalQuestion = normalizeNoteQAQuestion(
       selectedText ? `${question}\n${selectedText.slice(0, 300)}` : question,
     );

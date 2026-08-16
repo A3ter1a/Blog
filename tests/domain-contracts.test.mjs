@@ -77,12 +77,17 @@ import {
   formatEconomicsCitation,
   validateEconomicsConcept,
 } from "../lib/economics-concept-contract.ts";
+import {
+  checkEconomicsGraphLayers,
+  parseEconomicsGraphSpec,
+} from "../lib/economics-graphs.ts";
 import { normalizeMarkdownSyntax } from "../lib/markdown-normalizer.ts";
 import {
   AI_CONTENT_MAX_CHARS,
   runAiContentSelfCheck,
   validateAiContentInput,
 } from "../lib/ai-content-contract.ts";
+import { analyzeAiHighlights, extractAiHighlightTerms } from "../lib/ai-highlight-contract.ts";
 import {
   answersEqual,
   runAiKnowledgeQuizSelfCheck,
@@ -158,6 +163,12 @@ import {
   buildMathOcrConfirmationPayload,
   normalizeMathGradeSuggestion,
 } from "../lib/math-training-core.ts";
+import {
+  mergeMathManualReviewQueue,
+  normalizeMathManualReviewQueue,
+  parseMathProblemNumbers,
+  removeMathManualReviewEntry,
+} from "../lib/math-review-queue.ts";
 import {
   buildAcceptedMemoryContext,
   createAssistantMemoryCandidate,
@@ -732,6 +743,19 @@ test("AI 内容输入边界要求标题、正文和章节拆分", () => {
   assert.equal(validateAiContentInput("标题", "# 内容"), null);
 });
 
+test("AI 讲义高亮自检限制密度，并把正文高亮词提供给快测联动", () => {
+  const markdown = `# 需求定律\n\n=={#fef08a}需求定律==${"要求其他条件不变，价格变化只引起沿曲线移动。".repeat(8)}\n\n\`\`\`md\n==代码中的标记不计入高亮==\n\`\`\``;
+  const analysis = analyzeAiHighlights(markdown);
+  assert.deepEqual(extractAiHighlightTerms(markdown), ["需求定律"]);
+  assert.equal(analysis.count, 1);
+  assert.equal(analysis.issues.length, 0);
+
+  const dense = runAiContentSelfCheck(`# 讲义\n\n${"==重点== ".repeat(30)}正文`);
+  assert.equal((dense.selfCheck.highlightCount ?? 0) >= 30, true);
+  assert.equal(dense.selfCheck.issues.some((issue) => issue.code === "highlight_density_high"), true);
+  assert.equal(dense.selfCheck.checks.highlights, true);
+});
+
 test("AI 讲义知识点快测先自检，公开投影不泄露答案，判分支持四种题型", () => {
   const checked = runAiKnowledgeQuizSelfCheck([
     {
@@ -754,6 +778,19 @@ test("AI 讲义知识点快测先自检，公开投影不泄露答案，判分�
   assert.equal(checked.items.length, 2);
   assert.equal(answersEqual(checked.items[0].answer, "A"), true);
   assert.equal(answersEqual(checked.items[1].answer, "false"), true);
+
+  const linked = runAiKnowledgeQuizSelfCheck([
+    {
+      itemType: "short_answer",
+      question: "什么是需求定律？",
+      answer: "价格上升，需求量通常下降",
+      explanation: "其他条件不变时，价格与需求量通常反向变动。",
+      knowledgePoints: ["需求定律"],
+    },
+  ], { sourceHighlightTerms: ["需求定律", "供给曲线"] });
+  assert.equal(linked.selfCheck.sourceHighlightCount, 2);
+  assert.equal(linked.selfCheck.coveredHighlightCount, 1);
+  assert.equal(linked.selfCheck.issues.some((issue) => issue.code === "highlight_knowledge_points_uncovered"), false);
 
   const publicItem = toPublicAiKnowledgeQuizItem(checked.items[0]);
   assert.equal("answer" in publicItem, false);
@@ -1257,6 +1294,20 @@ test("数学 AI 建议分必须逐题覆盖固定满分并由步骤合计派生"
   }, problems));
 });
 
+test("数学手动题号复盘队列支持范围、去重和持久化清理", () => {
+  assert.deepEqual(parseMathProblemNumbers("3, 8, 12-15, 999", 20), [3, 8, 12, 13, 14, 15]);
+  const first = normalizeMathManualReviewQueue([
+    { practiceKey: "n1:p3", noteId: "n1", problemId: "p3", problemNumber: 3, noteTitle: "套卷 A" },
+    { practiceKey: "n1:p3", noteId: "n1", problemId: "p3", problemNumber: 3, noteTitle: "套卷 A" },
+    { practiceKey: "broken", noteId: "", problemId: "", problemNumber: 0, noteTitle: "" },
+  ]);
+  const merged = mergeMathManualReviewQueue(first, [
+    { practiceKey: "n1:p8", noteId: "n1", problemId: "p8", problemNumber: 8, noteTitle: "套卷 A" },
+  ]);
+  assert.deepEqual(merged.map((entry) => entry.problemNumber), [3, 8]);
+  assert.equal(removeMathManualReviewEntry(merged, "n1:p3").length, 1);
+});
+
 test("做题本共享清单记录源版本与 SHA-256，快照 checksum 只覆盖不可变区", async () => {
   const snapshot = {
     sourceNoteId: "n1",
@@ -1358,11 +1409,15 @@ test("WP7 迁移只检索当前来源版本并持久化待确认记忆", () => {
 
 test("私人笔记问答查询必须携带用户 JWT 通过 RLS", () => {
   const route = readFileSync(resolve("app/api/ai/note-qa/route.ts"), "utf8");
+  const ragServer = readFileSync(resolve("lib/server-private-note-rag.ts"), "utf8");
   const auth = readFileSync(resolve("lib/server-admin-auth.ts"), "utf8");
   assert.equal(route.includes("getAdminRequestContext(req)"), true);
   assert.equal(route.includes("syncPrivateNotesRag"), true);
   assert.equal(route.includes("searchPrivateNoteRag"), true);
   assert.equal(route.includes("listAssistantMemories"), true);
+  assert.match(route, /cacheKey:\s*auth\.context\.user\.id/);
+  assert.match(ragServer, /NOTE_RAG_SYNC_MEMO_TTL_MS/);
+  assert.match(ragServer, /noteRagFingerprint/);
   assert.equal(route.includes("record.memoryContext"), false);
   assert.equal(route.includes("notesApi.getQuestionAnswerSources"), false);
   assert.equal(auth.includes("global: { headers: { Authorization: `Bearer ${token}` } }"), true);
@@ -1633,6 +1688,24 @@ test("当前标签页槽位从 URL 初始化、跨站内导航保留并可独立
       });
     }
   }
+});
+
+test("经济学自由曲线保留安全路径并完成四层图形自检", () => {
+  const parsed = parseEconomicsGraphSpec(JSON.stringify({
+    template: "monopoly-mr-mc",
+    title: "手绘垄断图",
+    focus: ["mr", "mc"],
+    customStrokes: [{ id: "free-curve-1", label: "手绘辅助曲线", color: "#0f766e", path: "M 120 300 L 220 260 L 330 220" }],
+  }));
+  assert.equal(parsed.ok, true);
+  if (!parsed.ok) return;
+  assert.equal(parsed.spec.customStrokes?.length, 1);
+  const unsafe = parseEconomicsGraphSpec(JSON.stringify({ template: "monopoly-mr-mc", customStrokes: [{ path: "M 0 0 <script>" }] }));
+  assert.equal(unsafe.ok, true);
+  if (unsafe.ok) assert.equal(unsafe.spec.customStrokes?.length, 0);
+  const checks = checkEconomicsGraphLayers(parsed.spec);
+  assert.deepEqual(checks.map((check) => check.id), ["axes", "curves", "guides", "labels"]);
+  assert.equal(checks.every((check) => check.passed), true);
 });
 
 test("浏览器重启后仅有一个持久 AI 会话时可安全恢复槽位", () => {

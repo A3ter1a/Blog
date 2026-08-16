@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
 import {
   AlertCircle,
   Bookmark,
@@ -47,8 +47,62 @@ import { problemPracticeApi } from "@/lib/problem-practice-api";
 import { notesApi } from "@/lib/supabase";
 import type { Note, PracticeResult, ProblemPracticeStatus } from "@/lib/types";
 import { difficultyMap, problemTypeMap } from "@/lib/types";
+import { readJsonStorage, writeJsonStorage } from "@/lib/browser-storage";
+import {
+  MATH_MANUAL_REVIEW_QUEUE_STORAGE_KEY,
+  mergeMathManualReviewQueue,
+  normalizeMathManualReviewQueue,
+  parseMathProblemNumbers,
+  removeMathManualReviewEntry,
+  type MathManualReviewEntry,
+} from "@/lib/math-review-queue";
 
 const UNASSIGNED_CHAPTER_ID = "__unassigned__";
+const MANUAL_QUEUE_CHANGE_EVENT = "asteroid-math-manual-review-queue-change";
+
+let manualQueueSnapshotRaw: string | null | undefined;
+let manualQueueSnapshot: MathManualReviewEntry[] = [];
+
+function getManualQueueSnapshot(): MathManualReviewEntry[] {
+  if (typeof window === "undefined") return [];
+
+  let raw: string | null = null;
+  try {
+    raw = window.localStorage.getItem(MATH_MANUAL_REVIEW_QUEUE_STORAGE_KEY);
+  } catch {
+    // readJsonStorage handles unavailable storage and returns an empty queue.
+  }
+
+  if (raw === manualQueueSnapshotRaw) return manualQueueSnapshot;
+  manualQueueSnapshotRaw = raw;
+  manualQueueSnapshot = readJsonStorage(
+    MATH_MANUAL_REVIEW_QUEUE_STORAGE_KEY,
+    [],
+    normalizeMathManualReviewQueue,
+  );
+  return manualQueueSnapshot;
+}
+
+function getManualQueueServerSnapshot(): MathManualReviewEntry[] {
+  return [];
+}
+
+function subscribeToManualQueue(listener: () => void): () => void {
+  window.addEventListener("storage", listener);
+  window.addEventListener(MANUAL_QUEUE_CHANGE_EVENT, listener);
+  return () => {
+    window.removeEventListener("storage", listener);
+    window.removeEventListener(MANUAL_QUEUE_CHANGE_EVENT, listener);
+  };
+}
+
+function updateManualQueue(updater: (current: MathManualReviewEntry[]) => MathManualReviewEntry[]): void {
+  const current = getManualQueueSnapshot();
+  const next = normalizeMathManualReviewQueue(updater(current));
+  writeJsonStorage(MATH_MANUAL_REVIEW_QUEUE_STORAGE_KEY, next);
+  manualQueueSnapshotRaw = undefined;
+  window.dispatchEvent(new Event(MANUAL_QUEUE_CHANGE_EVENT));
+}
 
 type ReviewProblemItem = PracticeProblemItem & {
   status?: ProblemPracticeStatus;
@@ -166,6 +220,14 @@ export function ReviewCenter() {
   const [showAnswer, setShowAnswer] = useState(false);
   const [recordingResult, setRecordingResult] = useState<PracticeResult | null>(null);
   const [markingProblemKey, setMarkingProblemKey] = useState<string | null>(null);
+  const manualQueue = useSyncExternalStore(
+    subscribeToManualQueue,
+    getManualQueueSnapshot,
+    getManualQueueServerSnapshot,
+  );
+  const [manualQueueActive, setManualQueueActive] = useState(false);
+  const [manualSetId, setManualSetId] = useState("");
+  const [manualNumbers, setManualNumbers] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -189,6 +251,7 @@ export function ReviewCenter() {
         if (cancelled) return;
         setProblemSets(sets);
         setStatusMap(toPracticeStatusMap(statuses));
+        setManualSetId((current) => current || sets[0]?.id || "");
       } catch (error) {
         if (cancelled) return;
         const message = error instanceof Error ? error.message : "未知错误";
@@ -211,6 +274,21 @@ export function ReviewCenter() {
     () => allProblems.map((problem) => createReviewItem(problem, statusMap[problem.practiceKey])),
     [allProblems, statusMap],
   );
+
+  const manualQueueKeys = useMemo(() => new Set(manualQueue.map((entry) => entry.practiceKey)), [manualQueue]);
+  const availableManualKeys = useMemo(() => new Set(reviewItems.map((item) => item.practiceKey)), [reviewItems]);
+
+  const validManualQueue = useMemo(
+    () => isLoading
+      ? manualQueue
+      : manualQueue.filter((entry) => availableManualKeys.has(entry.practiceKey)),
+    [availableManualKeys, isLoading, manualQueue],
+  );
+
+  useEffect(() => {
+    if (isLoading || validManualQueue.length === manualQueue.length) return;
+    updateManualQueue(() => validManualQueue);
+  }, [isLoading, manualQueue.length, validManualQueue]);
 
   const stats = useMemo(() => {
     let practiced = 0;
@@ -257,16 +335,18 @@ export function ReviewCenter() {
     ],
     [chapterStats, stats.total],
   );
-  const hasFilters = normalizedQuery || activeFilter !== "review" || chapterFilter !== "all";
+  const hasFilters = manualQueueActive || normalizedQuery || activeFilter !== "review" || chapterFilter !== "all";
   const shouldShowFilters = showFilters || Boolean(hasFilters);
 
   const visibleProblems = useMemo(
-    () => reviewItems.filter((item) =>
-      matchesPracticeFilter(item.status, activeFilter)
-      && (chapterFilter === "all" || item.primaryChapterId === chapterFilter)
-      && itemMatchesQuery(item, normalizedQuery)
-    ),
-    [activeFilter, chapterFilter, normalizedQuery, reviewItems],
+    () => manualQueueActive
+      ? reviewItems.filter((item) => manualQueueKeys.has(item.practiceKey))
+      : reviewItems.filter((item) =>
+        matchesPracticeFilter(item.status, activeFilter)
+        && (chapterFilter === "all" || item.primaryChapterId === chapterFilter)
+        && itemMatchesQuery(item, normalizedQuery)
+      ),
+    [activeFilter, chapterFilter, manualQueueActive, manualQueueKeys, normalizedQuery, reviewItems],
   );
 
   const activeIndex = visibleProblems.length === 0
@@ -282,7 +362,7 @@ export function ReviewCenter() {
     }, 0);
 
     return () => window.clearTimeout(timer);
-  }, [activeFilter, chapterFilter, normalizedQuery]);
+  }, [activeFilter, chapterFilter, manualQueueActive, normalizedQuery]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -296,6 +376,34 @@ export function ReviewCenter() {
     if (index < 0 || index >= visibleProblems.length || recordingResult) return;
     setCurrentIndex(index);
     setShowAnswer(false);
+  };
+
+  const addManualQueueItems = () => {
+    const selectedSet = problemSets.find((set) => set.id === manualSetId);
+    if (!selectedSet) {
+      toast.error("请先选择数学题集");
+      return;
+    }
+    const numbers = parseMathProblemNumbers(manualNumbers, selectedSet.problems?.length ?? 0);
+    if (numbers.length === 0) {
+      toast.error(`请输入 1-${selectedSet.problems?.length ?? 0} 之间的题号`);
+      return;
+    }
+    const additions = numbers.flatMap((number): MathManualReviewEntry[] => {
+      const problem = selectedSet.problems?.[number - 1];
+      if (!problem) return [];
+      return [{
+        practiceKey: getPracticeProblemKey(selectedSet.id, problem.id),
+        noteId: selectedSet.id,
+        problemId: problem.id,
+        problemNumber: number,
+        noteTitle: selectedSet.title,
+      }];
+    });
+    updateManualQueue((current) => mergeMathManualReviewQueue(current, additions));
+    setManualQueueActive(true);
+    setManualNumbers("");
+    toast.success(`已加入 ${additions.length} 道手动复盘题`);
   };
 
   const handleRecordResult = async (result: PracticeResult) => {
@@ -382,6 +490,7 @@ export function ReviewCenter() {
   };
 
   const resetFilters = () => {
+    setManualQueueActive(false);
     setActiveFilter("review");
     setChapterFilter("all");
     setQuery("");
@@ -406,7 +515,7 @@ export function ReviewCenter() {
 
       <PageShell width="normal" topPadding="content">
         <section className="mb-5 rounded-lg border border-outline-variant/20 bg-surface-container-lowest p-3 shadow-ambient">
-          <div className="grid gap-3 lg:grid-cols-[1fr_auto_auto] lg:items-center">
+          <div className="grid gap-3 lg:grid-cols-[1fr_auto_auto_auto] lg:items-center">
             <div className="relative">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-on-surface-variant/50" />
               <input
@@ -437,6 +546,17 @@ export function ReviewCenter() {
               筛选
             </button>
 
+            <button
+              type="button"
+              onClick={() => setManualQueueActive((value) => !value)}
+              disabled={manualQueue.length === 0}
+              className={`control-button h-11 px-4 text-sm ${manualQueueActive ? "control-button-selected" : ""}`}
+              title={manualQueueActive ? "返回状态复盘队列" : "打开手动题号复盘队列"}
+            >
+              <ListChecks className="h-4 w-4" />
+              {manualQueueActive ? "状态队列" : `手动复盘${manualQueue.length > 0 ? ` ${manualQueue.length}` : ""}`}
+            </button>
+
             {hasFilters && (
               <button
                 type="button"
@@ -447,6 +567,37 @@ export function ReviewCenter() {
                 恢复默认
               </button>
             )}
+          </div>
+
+          <div className="mt-3 border-t border-outline-variant/10 pt-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h2 className="text-sm font-semibold text-on-surface">手动题号复盘</h2>
+                <p className="mt-1 text-xs text-on-surface-variant">从 iPad 做题本记下题号，加入独立复盘队列；不会改变答题状态。</p>
+              </div>
+              <span className="text-xs text-on-surface-variant">已保存 {manualQueue.length} 题</span>
+            </div>
+            <div className="mt-3 grid gap-2 md:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)_auto] md:items-end">
+              <label className="block">
+                <span className="mb-1 block text-xs font-medium text-on-surface-variant">题集</span>
+                <select value={manualSetId} onChange={(event) => setManualSetId(event.target.value)} className="h-10 w-full rounded-lg border border-outline-variant/30 bg-surface-container-low px-3 text-sm text-on-surface outline-none focus:border-primary/50">
+                  <option value="">选择数学题集</option>
+                  {problemSets.map((set) => <option key={set.id} value={set.id}>{set.title} · {set.problems?.length ?? 0} 题</option>)}
+                </select>
+              </label>
+              <label className="block">
+                <span className="mb-1 block text-xs font-medium text-on-surface-variant">题号</span>
+                <input value={manualNumbers} onChange={(event) => setManualNumbers(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") addManualQueueItems(); }} className="h-10 w-full rounded-lg border border-outline-variant/30 bg-surface-container-low px-3 text-sm text-on-surface outline-none placeholder:text-on-surface-variant/45 focus:border-primary/50" placeholder="例如：3, 8, 12-15" inputMode="numeric" />
+              </label>
+              <button type="button" onClick={addManualQueueItems} className="control-button control-button-primary h-10 justify-center px-4 text-sm"><ListChecks className="h-4 w-4" />加入队列</button>
+            </div>
+            {manualQueue.length > 0 && <div className="mt-3 flex flex-wrap gap-2">
+              {manualQueue.slice(0, 36).map((entry) => <span key={entry.practiceKey} className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs ${manualQueueActive && manualQueueKeys.has(entry.practiceKey) ? "border-primary/30 bg-primary/10 text-primary" : "border-outline-variant/20 bg-surface-container-low text-on-surface-variant"}`} title={entry.noteTitle}>
+                {entry.problemNumber} · {entry.noteTitle}
+               <button type="button" onClick={() => updateManualQueue((current) => removeMathManualReviewEntry(current, entry.practiceKey))} className="ml-1 inline-flex h-5 w-5 items-center justify-center rounded-full hover:bg-surface-container-high" aria-label={`移除${entry.noteTitle}第${entry.problemNumber}题`} title="移出手动队列"><X className="h-3 w-3" /></button>
+              </span>)}
+              {manualQueue.length > 36 && <span className="self-center text-xs text-on-surface-variant">还有 {manualQueue.length - 36} 题</span>}
+            </div>}
           </div>
 
           {shouldShowFilters && (

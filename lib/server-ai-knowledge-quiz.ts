@@ -13,6 +13,7 @@ import {
   type AiKnowledgeQuizSelfCheck,
   type AiKnowledgeQuizStatus,
 } from "@/lib/ai-knowledge-quiz-contract";
+import { extractAiHighlightTerms } from "@/lib/ai-highlight-contract";
 
 const QUIZ_FIELDS = [
   "id",
@@ -111,8 +112,11 @@ function normalizeStoredItem(row: AiKnowledgeQuizItemRow): AiKnowledgeQuizItem {
   return item;
 }
 
-function normalizeItems(value: unknown): { items: AiKnowledgeQuizItem[]; selfCheck: AiKnowledgeQuizSelfCheck } {
-  const checked = runAiKnowledgeQuizSelfCheck(value);
+function normalizeItems(
+  value: unknown,
+  options: { sourceHighlightTerms?: string[] } = {},
+): { items: AiKnowledgeQuizItem[]; selfCheck: AiKnowledgeQuizSelfCheck } {
+  const checked = runAiKnowledgeQuizSelfCheck(value, options);
   return {
     items: checked.items,
     selfCheck: checkedSelfCheck(checked.selfCheck),
@@ -200,7 +204,7 @@ export async function createAiKnowledgeQuiz(
 ): Promise<AiKnowledgeQuizWithItems> {
   const { data: proposal, error: proposalError } = await supabase
     .from("ai_content_proposals")
-    .select("id, owner_user_id, ai_profile_id, title, subject, note_id")
+    .select("id, owner_user_id, ai_profile_id, title, content, subject, note_id")
     .eq("id", input.proposalId)
     .eq("owner_user_id", input.userId)
     .eq("ai_profile_id", input.profile.id)
@@ -208,7 +212,8 @@ export async function createAiKnowledgeQuiz(
   if (proposalError) throw proposalError;
   if (!proposal) throw new AiKnowledgeQuizError("只能为自己的 AI 讲义提案创建快测。", 403);
 
-  const { items, selfCheck } = normalizeItems(input.items);
+  const sourceHighlightTerms = extractAiHighlightTerms(typeof proposal.content === "string" ? proposal.content : "");
+  const { items, selfCheck } = normalizeItems(input.items, { sourceHighlightTerms });
   if (!items.length) throw new AiKnowledgeQuizError("至少需要生成一题知识点快测。", 400);
   const title = safeTitle(input.title, `${proposal.title} · 知识点快测`);
   const insert: TablesInsert<"ai_knowledge_quizzes"> = {

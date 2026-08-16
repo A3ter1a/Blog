@@ -91,6 +91,34 @@ function isSubmittedAttempt(attempt?: EnglishAttempt): boolean {
   return attempt?.status === "submitted";
 }
 
+function getRoundProgress(
+  passageId: string,
+  ledgersByPassageId: Map<string, EnglishPassageRoundLedger>,
+  attemptsByPassageId: Map<string, EnglishAttempt>,
+): { round: 1 | 2 | 3; status: "in_progress" | "submitted" | "sealed" | "abandoned" | "none" } {
+  const ledger = ledgersByPassageId.get(passageId);
+  if (ledger) {
+    const round = getPreferredEnglishRound(ledger);
+    const record = getEnglishRound(ledger, round);
+    return { round, status: record?.status ?? "none" };
+  }
+
+  const attempt = attemptsByPassageId.get(passageId);
+  return {
+    round: 1,
+    status: attempt?.status === "submitted" ? "submitted" : attempt ? "in_progress" : "none",
+  };
+}
+
+function isCompletedPassage(
+  passageId: string,
+  ledgersByPassageId: Map<string, EnglishPassageRoundLedger>,
+  attemptsByPassageId: Map<string, EnglishAttempt>,
+): boolean {
+  const progress = getRoundProgress(passageId, ledgersByPassageId, attemptsByPassageId);
+  return progress.status === "submitted" || progress.status === "sealed";
+}
+
 function buildAnswerMap(attempt?: EnglishAttempt): EnglishAttemptAnswerInput {
   if (!attempt) return {};
   return Object.fromEntries(attempt.answers.map((answer) => [answer.questionId, answer.answer]));
@@ -649,13 +677,14 @@ export function EnglishTraining() {
         />
       )}
       {stage === "sets" && activeCategory && (
-        <TrainingSetList
-          category={activeCategory}
-          passages={categoryPassages}
-          attemptsByPassageId={attemptsByPassageId}
-          loading={isLoading}
-          error={loadError}
-          onBack={handleBack}
+          <TrainingSetList
+            category={activeCategory}
+            passages={categoryPassages}
+            attemptsByPassageId={attemptsByPassageId}
+            ledgersByPassageId={ledgersByPassageId}
+            loading={isLoading}
+            error={loadError}
+            onBack={handleBack}
           onSelect={handleOpenPassage}
         />
       )}
@@ -796,6 +825,7 @@ function TrainingSetList({
   category,
   passages,
   attemptsByPassageId,
+  ledgersByPassageId,
   loading,
   error,
   onBack,
@@ -804,6 +834,7 @@ function TrainingSetList({
   category: TrainingCategory;
   passages: EnglishPassage[];
   attemptsByPassageId: Map<string, EnglishAttempt>;
+  ledgersByPassageId: Map<string, EnglishPassageRoundLedger>;
   loading: boolean;
   error: string | null;
   onBack: () => void;
@@ -818,18 +849,23 @@ function TrainingSetList({
     }
     return Array.from(groups.entries())
       .map(([year, groupPassages]) => {
-        const sortedPassages = sortPassagesForWindow(groupPassages, attemptsByPassageId);
+        const sortedPassages = [...groupPassages].sort((left, right) => {
+          const leftCompleted = isCompletedPassage(left.id, ledgersByPassageId, attemptsByPassageId);
+          const rightCompleted = isCompletedPassage(right.id, ledgersByPassageId, attemptsByPassageId);
+          if (leftCompleted !== rightCompleted) return leftCompleted ? 1 : -1;
+          return sortPassagesOldestFirst(left, right);
+        });
         return {
           year,
           passages: sortedPassages,
-          completed: sortedPassages.length > 0 && sortedPassages.every((passage) => isSubmittedAttempt(attemptsByPassageId.get(passage.id))),
+          completed: sortedPassages.length > 0 && sortedPassages.every((passage) => isCompletedPassage(passage.id, ledgersByPassageId, attemptsByPassageId)),
         };
       })
       .sort((left, right) => {
         if (left.completed !== right.completed) return left.completed ? 1 : -1;
         return left.year - right.year;
       });
-  }, [attemptsByPassageId, passages]);
+  }, [attemptsByPassageId, ledgersByPassageId, passages]);
 
   return (
     <section className="space-y-4">
@@ -862,7 +898,8 @@ function TrainingSetList({
                 <div className="text-2xl font-bold tabular-nums text-on-surface">{group.year}</div>
                 <div className="flex flex-wrap gap-2 sm:justify-end">
                   {group.passages.map((passage) => {
-                    const submitted = isSubmittedAttempt(attemptsByPassageId.get(passage.id));
+                    const progress = getRoundProgress(passage.id, ledgersByPassageId, attemptsByPassageId);
+                    const submitted = progress.status === "submitted" || progress.status === "sealed";
                     return (
                       <button
                         key={passage.id}
@@ -871,7 +908,10 @@ function TrainingSetList({
                         aria-label={getPassageDisplayTitle(passage)}
                         className={`english-year-choice ${submitted ? "english-year-choice-submitted" : ""}`}
                       >
-                        {getPassageWindowLabel(passage)}
+                        <>
+                          {getPassageWindowLabel(passage)}
+                          {progress.round > 1 && <small className="ml-1 opacity-70">R{progress.round}</small>}
+                        </>
                       </button>
                     );
                   })}

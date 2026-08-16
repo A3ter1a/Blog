@@ -32,10 +32,19 @@ export interface EconomicsGraphTemplate {
   elements: EconomicsGraphElement[];
 }
 
+export interface EconomicsGraphStroke {
+  id: string;
+  label: string;
+  color: string;
+  path: string;
+  dashed?: boolean;
+}
+
 export interface EconomicsGraphSpec {
   template: EconomicsGraphTemplateId;
   title?: string;
   focus: string[];
+  customStrokes?: EconomicsGraphStroke[];
 }
 
 export type EconomicsGraphParseResult =
@@ -341,6 +350,75 @@ function normalizeFocus(value: unknown): string[] {
     .slice(0, 6);
 }
 
+const SAFE_ECONOMICS_PATH = /^[MmLlHhVvCcSsQqTtAaZz0-9.,\s-]+$/;
+
+function normalizeColor(value: unknown, fallback = "#0f766e"): string {
+  if (typeof value !== "string") return fallback;
+  const color = value.trim();
+  return /^#[0-9a-f]{6}$/i.test(color) ? color : fallback;
+}
+
+export function normalizeEconomicsGraphStrokes(value: unknown): EconomicsGraphStroke[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item, index): EconomicsGraphStroke[] => {
+    const objectValue = readObject(item);
+    if (!objectValue || typeof objectValue.path !== "string") return [];
+    const path = objectValue.path.trim().slice(0, 2_000);
+    if (!path || !SAFE_ECONOMICS_PATH.test(path)) return [];
+    const label = sanitizeOptionalText(objectValue.label, 60) ?? `手绘曲线 ${index + 1}`;
+    const id = typeof objectValue.id === "string" && /^[a-z0-9_-]{1,40}$/i.test(objectValue.id.trim())
+      ? objectValue.id.trim()
+      : `custom-${index + 1}`;
+    return [{
+      id,
+      label,
+      color: normalizeColor(objectValue.color),
+      path,
+      ...(objectValue.dashed === true ? { dashed: true } : {}),
+    }];
+  }).slice(0, 8);
+}
+
+export type EconomicsGraphLayerCheck = {
+  id: "axes" | "curves" | "guides" | "labels";
+  label: string;
+  passed: boolean;
+  detail: string;
+};
+
+export function checkEconomicsGraphLayers(spec: EconomicsGraphSpec): EconomicsGraphLayerCheck[] {
+  const template = getEconomicsGraphTemplate(spec.template);
+  const customStrokes = spec.customStrokes ?? [];
+  const elements = template?.elements ?? [];
+  return [
+    {
+      id: "axes",
+      label: "坐标轴",
+      passed: Boolean(template?.xLabel && template?.yLabel && template?.viewBox),
+      detail: template ? `${template.xLabel} / ${template.yLabel}` : "缺少模板坐标轴",
+    },
+    {
+      id: "curves",
+      label: "曲线",
+      passed: elements.some((element) => element.kind === "curve" && element.path) || customStrokes.length > 0,
+      detail: `${elements.filter((element) => element.kind === "curve").length + customStrokes.length} 条`,
+    },
+    {
+      id: "guides",
+      label: "辅助线",
+      passed: elements.some((element) => element.kind === "guide" && element.path),
+      detail: `${elements.filter((element) => element.kind === "guide").length} 条`,
+    },
+    {
+      id: "labels",
+      label: "标注",
+      passed: elements.some((element) => element.label && element.labelX !== undefined && element.labelY !== undefined)
+        || customStrokes.some((stroke) => stroke.label),
+      detail: `${elements.filter((element) => element.label && element.labelX !== undefined && element.labelY !== undefined).length + customStrokes.filter((stroke) => stroke.label).length} 个`,
+    },
+  ];
+}
+
 export function parseEconomicsGraphSpec(raw: string): EconomicsGraphParseResult {
   const source = raw.trim();
   if (!source) {
@@ -375,6 +453,7 @@ export function parseEconomicsGraphSpec(raw: string): EconomicsGraphParseResult 
       template,
       title: objectValue ? sanitizeOptionalText(objectValue.title, 90) : undefined,
       focus: normalizeFocus(focusSource),
+      customStrokes: objectValue ? normalizeEconomicsGraphStrokes(objectValue.customStrokes ?? objectValue.strokes) : [],
     },
   };
 }

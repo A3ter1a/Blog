@@ -43,6 +43,30 @@ export type NoteRagSyncResult = {
   chunkCount: number;
 };
 
+export type NoteRagSyncOptions = {
+  /** A user-scoped key for the short-lived server memo. */
+  cacheKey?: string;
+  force?: boolean;
+};
+
+type NoteRagMemoEntry = {
+  fingerprint: string;
+  expiresAt: number;
+};
+
+const NOTE_RAG_SYNC_MEMO_TTL_MS = 5 * 60 * 1000;
+const noteRagSyncMemo = new Map<string, Map<string, NoteRagMemoEntry>>();
+
+function noteRagFingerprint(note: Note): string {
+  return [
+    note.id,
+    note.contentVersion ?? 0,
+    note.updatedAt.toISOString(),
+    note.content.length,
+    note.problems?.length ?? 0,
+  ].join(":");
+}
+
 function normalizeSyncResult(value: unknown): NoteRagSyncResult {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("RAG 同步返回无效");
   const row = value as Record<string, unknown>;
@@ -80,17 +104,40 @@ export async function syncPrivateNoteRag(
 export async function syncPrivateNotesRag(
   supabase: SupabaseClient<Database>,
   notes: Note[],
+  options: NoteRagSyncOptions = {},
 ): Promise<{ createdVersions: number; unchanged: number; skipped: number; chunkCount: number }> {
   let createdVersions = 0;
   let unchanged = 0;
   let chunkCount = 0;
   const indexableNotes = notes.filter((note) => buildNoteRagChunks(note).length > 0);
-  for (let index = 0; index < indexableNotes.length; index += 6) {
-    const batch = await Promise.all(indexableNotes.slice(index, index + 6).map((note) => syncPrivateNoteRag(supabase, note)));
+  const memo = options.cacheKey
+    ? noteRagSyncMemo.get(options.cacheKey) ?? new Map<string, NoteRagMemoEntry>()
+    : null;
+  if (options.cacheKey && !noteRagSyncMemo.has(options.cacheKey)) noteRagSyncMemo.set(options.cacheKey, memo!);
+  const now = Date.now();
+  const pendingNotes = indexableNotes.filter((note) => {
+    if (!memo || options.force) return true;
+    const entry = memo.get(note.id);
+    const fingerprint = noteRagFingerprint(note);
+    if (!entry || entry.expiresAt <= now || entry.fingerprint !== fingerprint) return true;
+    unchanged += 1;
+    return false;
+  });
+  for (let index = 0; index < pendingNotes.length; index += 6) {
+    const batch = await Promise.all(pendingNotes.slice(index, index + 6).map((note) => syncPrivateNoteRag(supabase, note)));
     for (const result of batch) {
       if (result.action === "create_version") createdVersions += 1;
       else unchanged += 1;
       chunkCount += result.chunkCount;
+    }
+  }
+  if (memo) {
+    pendingNotes.forEach((note) => memo.set(note.id, {
+      fingerprint: noteRagFingerprint(note),
+      expiresAt: Date.now() + NOTE_RAG_SYNC_MEMO_TTL_MS,
+    }));
+    if (memo.size > 240) {
+      Array.from(memo.keys()).slice(0, memo.size - 240).forEach((noteId) => memo.delete(noteId));
     }
   }
   return { createdVersions, unchanged, skipped: notes.length - indexableNotes.length, chunkCount };

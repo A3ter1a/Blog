@@ -2715,6 +2715,46 @@ body:has(.note-reader-assistant-open) .job-center-fab {
   }
 }
 
+.econ-graph-drawing-canvas {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 10.5;
+  height: auto;
+  min-height: 13rem;
+  cursor: crosshair;
+  touch-action: none;
+  background:
+    linear-gradient(color-mix(in srgb, var(--color-outline-variant) 22%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--color-outline-variant) 22%, transparent) 1px, transparent 1px);
+  background-size: 10% 10%;
+}
+
+.econ-graph-drawing-axes {
+  fill: none;
+  stroke: var(--color-on-surface-variant);
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+
+.econ-graph-drawing-stroke {
+  fill: none;
+  stroke: #0f766e;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 4;
+  vector-effect: non-scaling-stroke;
+}
+
+.econ-graph-drawing-label {
+  fill: var(--color-on-surface-variant);
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.econ-graph-custom {
+  cursor: default;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .assistant-dock-overlay,
   .assistant-dock-panel,

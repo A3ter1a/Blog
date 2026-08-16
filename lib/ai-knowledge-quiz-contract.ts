@@ -67,7 +67,10 @@ export type AiKnowledgeQuizSelfCheck = {
     structure: boolean;
     answerCoverage: boolean;
     explanationCoverage: boolean;
+    highlightCoverage?: boolean;
   };
+  sourceHighlightCount?: number;
+  coveredHighlightCount?: number;
   issues: AiKnowledgeQuizIssue[];
 };
 
@@ -174,7 +177,18 @@ function normalizeItem(value: unknown, ordinal: number): { item: AiKnowledgeQuiz
   };
 }
 
-export function runAiKnowledgeQuizSelfCheck(value: unknown): AiKnowledgeQuizSelfCheckResult {
+export type AiKnowledgeQuizSelfCheckOptions = {
+  sourceHighlightTerms?: string[];
+};
+
+function normalizeKnowledgePoint(value: string): string {
+  return value.replace(/[\s`*_~#()[\]{}]/g, "").toLocaleLowerCase();
+}
+
+export function runAiKnowledgeQuizSelfCheck(
+  value: unknown,
+  options: AiKnowledgeQuizSelfCheckOptions = {},
+): AiKnowledgeQuizSelfCheckResult {
   const rawItems = Array.isArray(value) ? value : [];
   const limitedItems = rawItems.slice(0, AI_KNOWLEDGE_QUIZ_MAX_ITEMS);
   const normalized = limitedItems.map((item, index) => normalizeItem(item, index + 1));
@@ -194,6 +208,22 @@ export function runAiKnowledgeQuizSelfCheck(value: unknown): AiKnowledgeQuizSelf
     issues.push({ code: "missing_knowledge_point", severity: "warning", message: "部分题目没有标注知识点，审核时请补充。" });
   }
 
+  const sourceHighlightTerms = Array.from(new Set((options.sourceHighlightTerms ?? [])
+    .filter((term): term is string => typeof term === "string")
+    .map(normalizeKnowledgePoint)
+    .filter(Boolean)));
+  const itemKnowledgePoints = new Set(items
+    .flatMap((item) => item.knowledgePoints.map(normalizeKnowledgePoint))
+    .filter(Boolean));
+  const coveredHighlightCount = sourceHighlightTerms.filter((term) => itemKnowledgePoints.has(term)).length;
+  if (sourceHighlightTerms.length > 0 && coveredHighlightCount === 0) {
+    issues.push({
+      code: "highlight_knowledge_points_uncovered",
+      severity: "warning",
+      message: "讲义高亮词没有出现在快测知识点中；请至少覆盖核心高亮词。",
+    });
+  }
+
   const hasErrors = issues.some((issue) => issue.severity === "error");
   return {
     items,
@@ -205,7 +235,10 @@ export function runAiKnowledgeQuizSelfCheck(value: unknown): AiKnowledgeQuizSelf
         structure: !issues.some((issue) => issue.code.includes("question") || issue.code.includes("options") || issue.code === "items_not_array"),
         answerCoverage: !issues.some((issue) => issue.code.includes("answer")),
         explanationCoverage: !issues.some((issue) => issue.code === "missing_explanation"),
+        highlightCoverage: sourceHighlightTerms.length === 0 || coveredHighlightCount > 0,
       },
+      sourceHighlightCount: sourceHighlightTerms.length,
+      coveredHighlightCount,
       issues,
     },
   };

@@ -1,4 +1,5 @@
 import { normalizeMarkdownSource, type MarkdownRisk } from "./content-contract.ts";
+import { analyzeAiHighlights } from "./ai-highlight-contract.ts";
 
 export const AI_CONTENT_SELF_CHECK_VERSION = "ai-content-self-check-v1";
 export const AI_CONTENT_MAX_CHARS = 240_000;
@@ -28,10 +29,14 @@ export type AiSelfCheck = {
   checkedAt?: string;
   characterCount: number;
   headingCount: number;
+  highlightCount?: number;
+  highlightedCharacterCount?: number;
+  highlightTerms?: string[];
   checks: {
     markdown: boolean;
     layout: boolean;
     headings: boolean;
+    highlights?: boolean;
   };
   issues: AiSelfCheckIssue[];
 };
@@ -152,10 +157,16 @@ export function runAiContentSelfCheck(source: string): AiContentSelfCheckResult 
   const normalizedResult = normalizeMarkdownSource(normalizedSource, "ai");
   const content = normalizedResult.normalized.trim();
   const headings = getHeadings(content);
+  const highlightAnalysis = analyzeAiHighlights(content);
   const issues = [
     ...normalizedResult.risks.map(mapMarkdownRisk),
     ...getMarkdownLayoutIssues(content),
     ...getHeadingIssues(headings, content.length),
+    ...highlightAnalysis.issues.map((issue) => ({
+      code: issue.code,
+      severity: issue.severity,
+      message: issue.message,
+    })),
   ];
   const hasErrors = issues.some((issue) => issue.severity === "error");
 
@@ -166,10 +177,14 @@ export function runAiContentSelfCheck(source: string): AiContentSelfCheckResult 
       passed: Boolean(content) && !hasErrors,
       characterCount: content.length,
       headingCount: headings.length,
+      highlightCount: highlightAnalysis.count,
+      highlightedCharacterCount: highlightAnalysis.highlightedCharacterCount,
+      highlightTerms: highlightAnalysis.terms,
       checks: {
         markdown: normalizedResult.risks.every((risk) => risk.severity !== "high"),
         layout: getMarkdownLayoutIssues(content).every((issue) => issue.severity !== "error"),
         headings: getHeadingIssues(headings, content.length).every((issue) => issue.severity !== "error"),
+        highlights: true,
       },
       issues,
     },

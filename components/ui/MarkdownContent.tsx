@@ -6,6 +6,7 @@ import { renderMarkdownToHtml } from "@/lib/markdown";
 import {
   getEconomicsGraphTemplate,
   parseEconomicsGraphSpec,
+  type EconomicsGraphStroke,
   type EconomicsGraphElement,
   type EconomicsGraphElementKind,
   type EconomicsGraphSpec,
@@ -179,6 +180,29 @@ function appendGraphLabel(svg: SVGElement, element: EconomicsGraphElement) {
   svg.appendChild(label);
 }
 
+function appendCustomGraphStroke(svg: SVGElement, stroke: EconomicsGraphStroke) {
+  const node = createSvgElement("path", {
+    d: stroke.path,
+    class: "econ-graph-element econ-graph-curve econ-graph-custom",
+    stroke: stroke.color,
+    "stroke-dasharray": stroke.dashed ? "7 7" : undefined,
+    "data-econ-graph-element": stroke.id,
+    role: "img",
+    "aria-label": stroke.label,
+  });
+  svg.appendChild(node);
+
+  const label = createSvgElement("text", {
+    x: 96,
+    y: 78,
+    class: "econ-graph-svg-label econ-graph-custom-label",
+    fill: stroke.color,
+    "data-econ-graph-label": stroke.id,
+  });
+  label.textContent = stroke.label;
+  svg.appendChild(label);
+}
+
 function createGraphSvgNode(
   element: EconomicsGraphElement,
   selectElement: (elementId: string) => void,
@@ -342,6 +366,7 @@ function createEconomicsGraphNode(spec: EconomicsGraphSpec) {
     svg.appendChild(createGraphSvgNode(element, selectElement, focusIds));
   });
   template.elements.forEach((element) => appendGraphLabel(svg, element));
+  (spec.customStrokes ?? []).forEach((stroke) => appendCustomGraphStroke(svg, stroke));
 
   template.elements.forEach((element) => {
     const button = document.createElement("button");
@@ -368,6 +393,18 @@ function createEconomicsGraphNode(spec: EconomicsGraphSpec) {
       control.append(checkbox, name);
       visibilityControls.appendChild(control);
     });
+
+  (spec.customStrokes ?? []).forEach((stroke) => {
+    const control = document.createElement("label");
+    control.className = "econ-graph-visibility-control";
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.checked = true;
+    checkbox.addEventListener("change", () => setElementVisible(stroke.id, checkbox.checked));
+    const name = createTextElement("span", "econ-graph-visibility-name", stroke.label);
+    control.append(checkbox, name);
+    visibilityControls.appendChild(control);
+  });
 
   panel.append(panelKind, panelTitle, panelBody, panelFormula, panelHint, selector, visibility);
   figure.appendChild(svg);

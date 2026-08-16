@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { CheckCircle2, Loader2, Sparkles } from "lucide-react";
+import { useMemo, useRef, useState, type PointerEvent } from "react";
+import { CheckCircle2, Eraser, Loader2, Sparkles } from "lucide-react";
 import { MarkdownContent } from "@/components/ui/MarkdownContent";
 import { useToast } from "@/components/ui/Toast";
 import { buildAuthHeaders } from "@/lib/fetch-with-auth";
@@ -11,6 +11,7 @@ import {
   normalizeEconomicsGraphAIDraft,
   type EconomicsGraphAIDraft,
 } from "@/lib/economics-graph-ai";
+import { checkEconomicsGraphLayers, type EconomicsGraphStroke } from "@/lib/economics-graphs";
 import { AI_CONFIG_STORAGE_KEY, normalizeAIConfig } from "@/lib/ai-config";
 
 type EconomicsGraphAIResponse = {
@@ -55,9 +56,25 @@ export function EconomicsGraphComposer({ onInsert }: EconomicsGraphComposerProps
   const [reviewNotes, setReviewNotes] = useState<string[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [drawPoints, setDrawPoints] = useState<Array<{ x: number; y: number }>>([]);
+  const [isDrawing, setIsDrawing] = useState(false);
+  const drawCanvasRef = useRef<SVGSVGElement | null>(null);
+
+  const customStrokes = useMemo<EconomicsGraphStroke[]>(() => drawPoints.length > 1
+    ? [{
+      id: "free-curve-1",
+      label: "手绘曲线",
+      color: "#0f766e",
+      path: `M ${drawPoints.map((point) => `${point.x.toFixed(1)} ${point.y.toFixed(1)}`).join(" L ")}`,
+    }]
+    : [], [drawPoints]);
 
   const validation = useMemo(() => jsonText.trim() ? parseJsonDraft(jsonText) : null, [jsonText]);
-  const previewMarkdown = validation?.ok ? buildEconomicsGraphMarkdown(validation.draft.spec) : "";
+  const previewSpec = validation?.ok
+    ? { ...validation.draft.spec, customStrokes: [...(validation.draft.spec.customStrokes ?? []), ...customStrokes] }
+    : null;
+  const previewMarkdown = previewSpec ? buildEconomicsGraphMarkdown(previewSpec) : "";
+  const layerChecks = previewSpec ? checkEconomicsGraphLayers(previewSpec) : [];
   const canGenerate = prompt.trim().length > 0 && !isGenerating;
   const canInsert = Boolean(validation?.ok);
 
@@ -86,7 +103,7 @@ export function EconomicsGraphComposer({ onInsert }: EconomicsGraphComposerProps
         throw new Error(getResponseError(data, "曲线生成失败"));
       }
 
-      setJsonText(JSON.stringify(data.draft.spec, null, 2));
+      setJsonText(JSON.stringify({ ...data.draft.spec, customStrokes }, null, 2));
       setRationale(data.draft.rationale);
       setReviewNotes(data.draft.reviewNotes);
       toast.success("曲线结构已生成");
@@ -105,8 +122,16 @@ export function EconomicsGraphComposer({ onInsert }: EconomicsGraphComposerProps
       return;
     }
 
-    onInsert(buildEconomicsGraphMarkdown(validation.draft.spec));
+    onInsert(buildEconomicsGraphMarkdown(previewSpec ?? validation.draft.spec));
     toast.success("曲线卡片已插入正文");
+  }
+
+  function getDrawPoint(event: PointerEvent<SVGSVGElement>) {
+    const rect = event.currentTarget.getBoundingClientRect();
+    return {
+      x: Math.max(80, Math.min(580, ((event.clientX - rect.left) / rect.width) * 640)),
+      y: Math.max(52, Math.min(340, ((event.clientY - rect.top) / rect.height) * 420)),
+    };
   }
 
   return (
@@ -185,6 +210,43 @@ export function EconomicsGraphComposer({ onInsert }: EconomicsGraphComposerProps
         </div>
 
         <div className="min-w-0">
+          <div className="mb-2 flex items-center justify-between gap-3">
+            <div className="text-sm font-medium text-on-surface-variant">自由曲线</div>
+            <button
+              type="button"
+              onClick={() => setDrawPoints([])}
+              disabled={drawPoints.length === 0}
+              className="control-button h-8 min-h-0 px-2 text-xs"
+              title="清除手绘曲线"
+            >
+              <Eraser className="h-3.5 w-3.5" />清除
+            </button>
+          </div>
+          <div className="mb-4 overflow-hidden rounded-lg border border-outline-variant/20 bg-surface-container-lowest">
+            <svg
+              ref={drawCanvasRef}
+              viewBox="0 0 640 420"
+              className="econ-graph-drawing-canvas"
+              role="img"
+              aria-label="经济学自由曲线绘图区"
+              onPointerDown={(event) => {
+                event.currentTarget.setPointerCapture(event.pointerId);
+                setIsDrawing(true);
+                setDrawPoints([getDrawPoint(event)]);
+              }}
+              onPointerMove={(event) => {
+                if (!isDrawing) return;
+                setDrawPoints((current) => [...current, getDrawPoint(event)].slice(-180));
+              }}
+              onPointerUp={() => setIsDrawing(false)}
+              onPointerCancel={() => setIsDrawing(false)}
+            >
+              <path d="M80 340 H580 M80 340 V52" className="econ-graph-drawing-axes" />
+              <path d={customStrokes[0]?.path ?? ""} className="econ-graph-drawing-stroke" />
+              <text x="540" y="382" className="econ-graph-drawing-label">Q</text>
+              <text x="42" y="58" className="econ-graph-drawing-label">P</text>
+            </svg>
+          </div>
           <div className="mb-2 text-sm font-medium text-on-surface-variant">预览</div>
           <div className="min-h-80 rounded-lg border border-outline-variant/20 bg-surface-container-lowest p-3">
             {previewMarkdown ? (
@@ -199,6 +261,16 @@ export function EconomicsGraphComposer({ onInsert }: EconomicsGraphComposerProps
               </div>
             )}
           </div>
+          {layerChecks.length > 0 && (
+            <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4" aria-label="经济学图像四层自检">
+              {layerChecks.map((check) => (
+                <div key={check.id} className={`rounded-lg border px-2.5 py-2 text-xs ${check.passed ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-700" : "border-amber-500/25 bg-amber-500/10 text-amber-700"}`}>
+                  <div className="flex items-center gap-1.5 font-semibold"><CheckCircle2 className="h-3.5 w-3.5" />{check.label}</div>
+                  <div className="mt-1 opacity-80">{check.detail}</div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </section>

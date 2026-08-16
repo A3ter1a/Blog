@@ -4,6 +4,7 @@ import { DEFAULT_DEEPSEEK_MODEL } from "@/lib/ai-config";
 import { getAiRequestContext } from "@/lib/server-ai-auth";
 import { resolveAIKey } from "@/lib/server-admin-auth";
 import { AiKnowledgeQuizError, createAiKnowledgeQuiz } from "@/lib/server-ai-knowledge-quiz";
+import { extractAiHighlightTerms } from "@/lib/ai-highlight-contract";
 
 export const runtime = "nodejs";
 export const maxDuration = 90;
@@ -46,15 +47,20 @@ export async function POST(
     if (!apiKey) return NextResponse.json({ error: "DeepSeek API key 未配置", success: false }, { status: 400 });
     const model = typeof body.model === "string" && body.model.trim() ? body.model.trim() : DEFAULT_DEEPSEEK_MODEL;
     const source = proposal.content.slice(0, 120_000);
+    const highlightedTerms = extractAiHighlightTerms(source).slice(0, 24);
     const systemPrompt = `你是学习博客的知识点快测生成器。根据给出的讲义 Markdown 生成可审核的自测题，不修改正文。
 只返回 JSON 对象：{"title":"...","items":[{"itemType":"single_choice|multiple_choice|true_false|short_answer","question":"...","options":[{"label":"A","text":"..."}],"answer":"A"或["A"]或true/false,"explanation":"...","knowledgePoints":["..."],"difficulty":"easy|medium|hard","sourceHeading":"..."}]}
 规则：
 - 只使用讲义中明确出现的知识，不补造来源。
 - 每题必须有可判定答案、简明解析和至少一个知识点。
 - 优先覆盖核心定义、因果关系、公式条件和常见易错点；题目数量 5 到 12 题。
+- 讲义中用 ==...== 标出的词是辅助记忆高亮词；如果它们确实表达知识点，优先把原词放进 knowledgePoints，不要凭空扩展术语。
 - 选择题答案必须是选项 label；简答题答案应能用短文本判定。
 - 不要把答案或解析写进 question；不要生成 Markdown 正文。`;
-    const userPrompt = `讲义标题：${proposal.title}\n\n讲义 Markdown：\n${source}`;
+    const highlightHint = highlightedTerms.length > 0
+      ? `\n\n正文高亮词（仅作覆盖提示）：${highlightedTerms.join("、")}`
+      : "";
+    const userPrompt = `讲义标题：${proposal.title}${highlightHint}\n\n讲义 Markdown：\n${source}`;
     const result = await callDeepSeek(
       apiKey,
       model,

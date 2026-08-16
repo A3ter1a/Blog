@@ -16,7 +16,8 @@ const rehearsal = readFileSync(rehearsalPath, "utf8");
 const typegen = readFileSync(typegenPath, "utf8");
 const docs = readFileSync(docsPath, "utf8");
 const types = readFileSync(typesPath, "utf8");
-const normalized = migration.toLowerCase();
+// Normalize checkout line endings before checking multi-line SQL markers.
+const normalized = migration.replace(/\r\n/g, "\n").toLowerCase();
 
 const requiredTables = [
   "public.ai_profiles",

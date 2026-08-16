@@ -1,6 +1,7 @@
 import {
   economicsGraphTemplates,
   getEconomicsGraphTemplate,
+  normalizeEconomicsGraphStrokes,
   type EconomicsGraphSpec,
   type EconomicsGraphTemplateId,
 } from "@/lib/economics-graphs";
@@ -94,6 +95,7 @@ export function normalizeEconomicsGraphAIDraft(value: unknown): EconomicsGraphAI
     template,
     title: normalizeTitle(value.title, templateDefinition.title),
     focus: normalizeFocus(value.focus ?? value.highlight ?? value.highlights, template),
+    customStrokes: normalizeEconomicsGraphStrokes(value.customStrokes ?? value.strokes),
   };
 
   const rationale = typeof value.rationale === "string" && value.rationale.trim()
@@ -121,6 +123,10 @@ export function buildEconomicsGraphMarkdown(spec: EconomicsGraphSpec): string {
 
   if (spec.focus.length > 0) {
     payload.focus = spec.focus;
+  }
+
+  if (spec.customStrokes && spec.customStrokes.length > 0) {
+    payload.customStrokes = spec.customStrokes;
   }
 
   return `\n\n\`\`\`econgraph\n${JSON.stringify(payload, null, 2)}\n\`\`\`\n\n`;
