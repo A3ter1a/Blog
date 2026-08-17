@@ -37,9 +37,37 @@ const AI_PROPOSAL_SUMMARY_FIELDS = [
   "id",
   "title",
   "subject",
+  "note_id",
   "review_status",
   "content_version",
   "created_at",
+  "updated_at",
+].join(",");
+
+const AI_OWNED_PUBLISHED_NOTE_SUMMARY_FIELDS = [
+  "id",
+  "title",
+  "subject",
+  "tags",
+  "is_published",
+  "content_version",
+  "updated_at",
+].join(",");
+
+const AI_OWNED_NOTE_FIELDS = [
+  "id",
+  "title",
+  "content",
+  "subject",
+  "tags",
+  "cover_image",
+  "videos",
+  "problems",
+  "is_published",
+  "author_kind",
+  "author_profile_id",
+  "owner_user_id",
+  "content_version",
   "updated_at",
 ].join(",");
 
@@ -47,7 +75,12 @@ export type AiContentProposalRow = Tables<"ai_content_proposals">;
 export type AiProfileRow = Tables<"ai_profiles">;
 export type AiContentProposalSummaryRow = Pick<
   AiContentProposalRow,
-  "id" | "title" | "subject" | "review_status" | "content_version" | "created_at" | "updated_at"
+  "id" | "title" | "subject" | "note_id" | "review_status" | "content_version" | "created_at" | "updated_at"
+>;
+
+export type AiOwnedPublishedNoteSummary = Pick<
+  Tables<"notes">,
+  "id" | "title" | "subject" | "tags" | "is_published" | "content_version" | "updated_at"
 >;
 
 export class AiContentWorkflowError extends Error {
@@ -90,6 +123,7 @@ export type CreateAiContentProposalInput = {
   profile: AiProfileRow;
   title: string;
   content: string;
+  noteId?: string;
   subject?: string;
   tags?: unknown;
   coverImage?: unknown;
@@ -111,6 +145,24 @@ export async function listAiContentProposals(
     .limit(safeLimit);
   if (error) throw error;
   return (data ?? []) as unknown as AiContentProposalSummaryRow[];
+}
+
+export async function listAiOwnedPublishedNotes(
+  supabase: SupabaseClient<Database>,
+  userId: string,
+  limit = 100,
+): Promise<AiOwnedPublishedNoteSummary[]> {
+  const safeLimit = Math.max(1, Math.min(Math.trunc(limit), 200));
+  const { data, error } = await supabase
+    .from("notes")
+    .select(AI_OWNED_PUBLISHED_NOTE_SUMMARY_FIELDS)
+    .eq("author_kind", "ai")
+    .eq("owner_user_id", userId)
+    .eq("is_published", true)
+    .order("updated_at", { ascending: false })
+    .limit(safeLimit);
+  if (error) throw error;
+  return (data ?? []) as unknown as AiOwnedPublishedNoteSummary[];
 }
 
 export async function getAiContentProposal(
@@ -146,6 +198,7 @@ export async function createAiContentProposal(
   const insert: TablesInsert<"ai_content_proposals"> = {
     owner_user_id: input.userId,
     ai_profile_id: input.profile.id,
+    note_id: input.noteId ?? null,
     title,
     content: checked.content,
     subject: input.profile.subject,
@@ -182,6 +235,61 @@ export async function createAiContentProposal(
     .single();
   if (updateError) throw updateError;
   return checkedProposal as unknown as AiContentProposalRow;
+}
+
+export async function createAiContentRevisionProposal(
+  supabase: SupabaseClient<Database>,
+  input: {
+    userId: string;
+    profile: AiProfileRow;
+    noteId: string;
+  },
+): Promise<AiContentProposalRow | null> {
+  const { data: note, error: noteError } = await supabase
+    .from("notes")
+    .select(AI_OWNED_NOTE_FIELDS)
+    .eq("id", input.noteId)
+    .eq("author_kind", "ai")
+    .eq("author_profile_id", input.profile.id)
+    .eq("owner_user_id", input.userId)
+    .eq("is_published", true)
+    .maybeSingle();
+  if (noteError) throw noteError;
+  if (!note) return null;
+
+  const typedNote = note as unknown as Tables<"notes">;
+  if (typedNote.subject !== input.profile.subject) {
+    throw new AiContentWorkflowError("AI 账号只能返修自己所属学科的文章。", 403);
+  }
+
+  const { data: openProposals, error: proposalError } = await supabase
+    .from("ai_content_proposals")
+    .select(AI_PROPOSAL_FIELDS)
+    .eq("note_id", typedNote.id)
+    .eq("owner_user_id", input.userId)
+    .in("review_status", ["draft", "self_checked", "pending_review", "changes_requested"])
+    .order("updated_at", { ascending: false })
+    .limit(1);
+  if (proposalError) throw proposalError;
+
+  const existing = (openProposals?.[0] ?? null) as unknown as AiContentProposalRow | null;
+  if (existing?.review_status === "pending_review") {
+    throw new AiContentWorkflowError("这篇文章已有返修提案在等待人工审核，审核完成前不能重复创建。", 409);
+  }
+  if (existing) return existing;
+
+  return createAiContentProposal(supabase, {
+    userId: input.userId,
+    profile: input.profile,
+    noteId: typedNote.id,
+    title: typedNote.title,
+    content: typedNote.content,
+    subject: typedNote.subject ?? undefined,
+    tags: typedNote.tags,
+    coverImage: typedNote.cover_image,
+    videos: typedNote.videos,
+    problems: typedNote.problems,
+  });
 }
 
 export type UpdateAiContentProposalInput = {

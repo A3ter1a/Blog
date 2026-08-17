@@ -1860,6 +1860,30 @@ test("AI 内容提案接口只接受 AI 学科账号，不复用管理员写入�
   assert.equal(workspace.includes("保存并提交审核"), true);
 });
 
+test("AI 已发布文章通过返修提案更新，不直接覆盖公开正文", () => {
+  const workflow = readFileSync(resolve("lib/server-ai-content.ts"), "utf8");
+  const route = readFileSync(resolve("app/api/ai/content-proposals/route.ts"), "utf8");
+  const hook = readFileSync(resolve("hooks/useAiContentWorkspace.ts"), "utf8");
+  const workspace = readFileSync(resolve("components/ai-content/AiContentWorkspace.tsx"), "utf8");
+  const migration = readFileSync(resolve("supabase/migrations/0023_ai_content_accounts_and_collections.sql"), "utf8");
+  const publishMigration = readFileSync(resolve("supabase/migrations/0024_ai_content_review_comments.sql"), "utf8");
+
+  assert.equal(workflow.includes("listAiOwnedPublishedNotes"), true);
+  assert.equal(workflow.includes("createAiContentRevisionProposal"), true);
+  assert.equal(workflow.includes('.eq("is_published", true)'), true);
+  assert.equal(workflow.includes('.eq("author_profile_id", input.profile.id)'), true);
+  assert.equal(workflow.includes('note_id: input.noteId ?? null'), true);
+  assert.equal(route.includes("createAiContentRevisionProposal"), true);
+  assert.equal(route.includes("body.noteId"), true);
+  assert.equal(route.includes("notes,"), true);
+  assert.equal(hook.includes("AiOwnedPublishedNoteSummary"), true);
+  assert.equal(workspace.includes("已发布文章"), true);
+  assert.equal(workspace.includes("创建返修提案"), true);
+  assert.equal(workspace.includes("公开文章仍保持不变"), true);
+  assert.equal(migration.includes("and is_published = false"), true);
+  assert.equal(publishMigration.includes("public.publish_ai_content_proposal"), true);
+});
+
 test("AI 角色资料只开放白名单字段并拒绝身份篡改", () => {
   const valid = parseAiProfileUpdate({
     display_name: "守岸人",

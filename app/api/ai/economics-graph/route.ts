@@ -50,14 +50,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "DeepSeek API key 未配置", success: false }, { status: 400 });
     }
 
-    const systemPrompt = `你是微观经济学图像结构化助手。你只为博客的 econgraph 交互图选择模板，不生成 SVG、HTML、React 代码。
+    const systemPrompt = `你是宏微观经济学图像结构化助手。你只为博客的 econgraph 交互图选择模板，不生成 SVG、HTML、React 代码。
 
 可用模板和元素：
 ${JSON.stringify(economicsGraphTemplateSummaries, null, 2)}
 
 必须只返回 JSON 对象，格式：
 {
-  "template": "demand-supply | monopoly-mr-mc | cost-curves",
+  "template": "可用模板中的一个 id",
   "title": "不超过 30 个汉字的图名",
   "focus": ["元素 id"],
   "rationale": "为什么选择这个模板，1 到 2 句话",
@@ -67,9 +67,8 @@ ${JSON.stringify(economicsGraphTemplateSummaries, null, 2)}
 规则：
 - template 必须来自可用模板 id。
 - focus 只能使用该模板下存在的元素 id，最多 6 个。
-- 如果需求涉及供给、需求、均衡、税收、补贴或比较静态，优先 demand-supply。
-- 如果需求涉及垄断、MR、MC、AR、利润最大化或价格歧视基础图，优先 monopoly-mr-mc。
-- 如果需求涉及 MC、AC、AVC、AFC、停产点或短期成本，优先 cost-curves。
+- 优先选择标题和元素语义与需求最贴合的专属模板，不要用通用模板替代已有专属模板。
+- 只有在确实没有专属模板时，才使用 demand-supply、monopoly-mr-mc 或 cost-curves。
 - 不确定时选择最接近的模板，并在 reviewNotes 里提醒用户审查。`;
 
     const userPrompt = `曲线需求：${prompt}`;

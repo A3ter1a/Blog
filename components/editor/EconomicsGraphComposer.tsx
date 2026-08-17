@@ -141,10 +141,13 @@ export function EconomicsGraphComposer({ onInsert }: EconomicsGraphComposerProps
           <p className="text-xs font-bold text-primary">经济学曲线卡片</p>
           <h2 className="mt-1 font-headline text-lg font-bold text-on-surface">生成交互曲线</h2>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <span className="econ-category-chip">{economicsGraphTemplateSummaries[0]?.title}</span>
-          <span className="econ-category-chip">{economicsGraphTemplateSummaries[1]?.title}</span>
-          <span className="econ-category-chip">{economicsGraphTemplateSummaries[2]?.title}</span>
+        <div className="flex max-w-xl flex-wrap gap-2">
+          {economicsGraphTemplateSummaries.slice(0, 9).map((template) => (
+            <span className="econ-category-chip" key={template.id}>{template.title}</span>
+          ))}
+          {economicsGraphTemplateSummaries.length > 9 && (
+            <span className="econ-category-chip">+{economicsGraphTemplateSummaries.length - 9} 个专属模板</span>
+          )}
         </div>
       </div>
 

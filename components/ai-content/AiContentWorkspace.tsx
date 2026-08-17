@@ -2,7 +2,7 @@
 
 import { useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { FileText, Layers3, ListChecks, Loader2, RefreshCcw, Send, ShieldCheck, Sparkles } from "lucide-react";
+import { FilePenLine, FileText, Layers3, ListChecks, Loader2, RefreshCcw, Send, ShieldCheck, Sparkles } from "lucide-react";
 import { ContentPreview } from "@/components/ui/ContentPreview";
 import { AiProfileEditor } from "@/components/ai-content/AiProfileEditor";
 import { useToast } from "@/components/ui/Toast";
@@ -20,6 +20,7 @@ import { getAiAccountSlotPath } from "@/lib/auth-session-slot";
 import type {
   AiContentProposalRow,
   AiContentProposalSummaryRow,
+  AiOwnedPublishedNoteSummary,
 } from "@/lib/server-ai-content";
 import {
   clearSiteCache,
@@ -64,7 +65,7 @@ function statusTone(status: string): string {
 export function AiContentWorkspace() {
   const toast = useToast();
   const accountSlot = useAiAccountSlot();
-  const { loading, profile, proposals, error, reload, recoverSession, recovering } = useAiContentWorkspace();
+  const { loading, profile, proposals, notes, error, reload, recoverSession, recovering } = useAiContentWorkspace();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedProposal, setSelectedProposal] = useState<AiContentProposalRow | null>(null);
   const [proposalLoading, setProposalLoading] = useState(false);
@@ -72,7 +73,7 @@ export function AiContentWorkspace() {
   const [tags, setTags] = useState("");
   const [content, setContent] = useState("");
   const [lastSelfCheck, setLastSelfCheck] = useState<AiSelfCheck | null>(null);
-  const [busyAction, setBusyAction] = useState<"save" | "submit" | "reload" | null>(null);
+  const [busyAction, setBusyAction] = useState<"save" | "submit" | "revision" | "reload" | null>(null);
   const [quizBusy, setQuizBusy] = useState(false);
   const [quizSummary, setQuizSummary] = useState<{ id: string; count: number; status: AiKnowledgeQuizStatus } | null>(null);
   const proposalRequestRef = useRef(0);
@@ -82,6 +83,17 @@ export function AiContentWorkspace() {
     () => proposals.find((proposal) => proposal.id === selectedId) ?? null,
     [proposals, selectedId],
   );
+  const activeRevisionByNote = useMemo(() => {
+    const revisions = new Map<string, AiContentProposalSummaryRow>();
+    for (const proposal of proposals) {
+      if (!proposal.note_id || !["draft", "self_checked", "pending_review", "changes_requested"].includes(proposal.review_status)) continue;
+      if (!revisions.has(proposal.note_id)) revisions.set(proposal.note_id, proposal);
+    }
+    return revisions;
+  }, [proposals]);
+  const selectedStatus = selectedProposal?.review_status ?? selectedSummary?.review_status ?? null;
+  const selectedProposalEditable = selectedStatus === null
+    || ["draft", "self_checked", "changes_requested"].includes(selectedStatus);
 
   const loadQuizSummary = async (proposalId: string) => {
     try {
@@ -170,8 +182,39 @@ export function AiContentWorkspace() {
     return payload.proposal as AiContentProposalRow;
   };
 
+  const createRevisionProposal = async (note: AiOwnedPublishedNoteSummary) => {
+    if (!profile || busyAction) return;
+    const existingRevision = activeRevisionByNote.get(note.id);
+    if (existingRevision) {
+      void selectProposal(existingRevision);
+      return;
+    }
+
+    setBusyAction("revision");
+    try {
+      const proposal = await requestProposal("/api/ai/content-proposals", "POST", { noteId: note.id });
+      setSelectedId(proposal.id);
+      setSelectedProposal(proposal);
+      setTitle(proposal.title);
+      setTags(proposal.tags.join(", "));
+      setContent(proposal.content);
+      setLastSelfCheck(readSelfCheck(proposal.self_check));
+      setQuizSummary(null);
+      if (accountSlot) {
+        clearSiteCache(getSiteCacheKey("ai-content-proposal", `${accountSlot}-${proposal.id}`));
+        clearSiteCache(getSiteCacheKey("ai-content-workspace", accountSlot));
+      }
+      await reload();
+      toast.success("已创建返修提案，公开文章仍保持不变");
+    } catch (error: unknown) {
+      toast.error(error instanceof Error ? error.message : "返修提案创建失败");
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
   const generateKnowledgeQuiz = async () => {
-    if (!selectedId || quizBusy) return;
+    if (!selectedId || !selectedProposalEditable || quizBusy) return;
     setQuizBusy(true);
     try {
       const response = await fetchWithAuth(`/api/ai/knowledge-quizzes/${encodeURIComponent(selectedId)}/generate`, {
@@ -227,6 +270,10 @@ export function AiContentWorkspace() {
 
   const saveProposal = async (submitAfterSave: boolean) => {
     if (!profile || busyAction) return;
+    if (selectedId && !selectedProposalEditable) {
+      toast.error("当前提案已提交审核或已发布，请从已发布文章创建新的返修提案");
+      return;
+    }
     setBusyAction(submitAfterSave ? "submit" : "save");
     try {
       const body = {
@@ -325,23 +372,24 @@ export function AiContentWorkspace() {
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_21rem]">
         <section className="surface-panel min-w-0 p-5">
           <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-            <div><p className="text-xs font-semibold uppercase tracking-[0.16em] text-primary">Markdown proposal</p><h2 className="mt-1 font-headline text-xl font-semibold text-on-surface">{selectedProposal ? "编辑自己的提案" : "新建文章或讲义"}</h2></div>
+            <div><p className="text-xs font-semibold uppercase tracking-[0.16em] text-primary">Markdown proposal</p><h2 className="mt-1 font-headline text-xl font-semibold text-on-surface">{selectedProposal ? "编辑自己的提案" : "新建文章或讲义"}</h2>{selectedStatus && !selectedProposalEditable && <p className="mt-2 text-xs leading-5 text-on-surface-variant">当前版本已提交审核或已发布，不能直接覆盖；请从“已发布文章”创建新的返修提案。</p>}</div>
             {selectedSummary && <span className={`rounded-full border px-2.5 py-1 text-xs font-medium ${statusTone(selectedSummary.review_status)}`}>{STATUS_LABELS[selectedSummary.review_status as AiContentReviewStatus] ?? selectedSummary.review_status}</span>}
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
-            <label className="block"><span className="field-label">文章标题</span><input value={title} onChange={(event) => setTitle(event.target.value)} className="field-control h-11 w-full px-3 text-sm" placeholder="例如：微观经济学 · 第 1 章" /></label>
-            <label className="block"><span className="field-label">标签</span><input value={tags} onChange={(event) => setTags(event.target.value)} className="field-control h-11 w-full px-3 text-sm" placeholder="讲义, 重点, 第1章" /></label>
+            <label className="block"><span className="field-label">文章标题</span><input value={title} onChange={(event) => setTitle(event.target.value)} disabled={!selectedProposalEditable} className="field-control h-11 w-full px-3 text-sm disabled:opacity-60" placeholder="例如：微观经济学 · 第 1 章" /></label>
+            <label className="block"><span className="field-label">标签</span><input value={tags} onChange={(event) => setTags(event.target.value)} disabled={!selectedProposalEditable} className="field-control h-11 w-full px-3 text-sm disabled:opacity-60" placeholder="讲义, 重点, 第1章" /></label>
           </div>
-          <label className="mt-4 block"><span className="field-label">Markdown 正文</span><textarea value={content} onChange={(event) => setContent(event.target.value)} disabled={proposalLoading} className="field-control min-h-[30rem] w-full resize-y px-3 py-3 font-mono text-sm leading-6 disabled:opacity-60" placeholder={proposalLoading ? "正在读取提案正文…" : "# 第一章\n\n把 Codex 输出的规范 Markdown 放在这里…"} spellCheck={false} /></label>
+          <label className="mt-4 block"><span className="field-label">Markdown 正文</span><textarea value={content} onChange={(event) => setContent(event.target.value)} disabled={proposalLoading || !selectedProposalEditable} className="field-control min-h-[30rem] w-full resize-y px-3 py-3 font-mono text-sm leading-6 disabled:opacity-60" placeholder={proposalLoading ? "正在读取提案正文…" : "# 第一章\n\n把 Codex 输出的规范 Markdown 放在这里…"} spellCheck={false} /></label>
           <div className="mt-4 flex flex-wrap justify-end gap-2">
-            <button type="button" className="control-button inline-flex items-center gap-2 px-4 py-2.5 text-sm" disabled={busyAction !== null || proposalLoading} onClick={() => void saveProposal(false)}><Sparkles className="h-4 w-4" />保存并自检</button>
-            <button type="button" className="control-button control-button-primary inline-flex items-center gap-2 px-4 py-2.5 text-sm" disabled={busyAction !== null || proposalLoading} onClick={() => void saveProposal(true)}><Send className="h-4 w-4" />保存并提交审核</button>
+            <button type="button" className="control-button inline-flex items-center gap-2 px-4 py-2.5 text-sm" disabled={busyAction !== null || proposalLoading || !selectedProposalEditable} onClick={() => void saveProposal(false)}><Sparkles className="h-4 w-4" />保存并自检</button>
+            <button type="button" className="control-button control-button-primary inline-flex items-center gap-2 px-4 py-2.5 text-sm" disabled={busyAction !== null || proposalLoading || !selectedProposalEditable} onClick={() => void saveProposal(true)}><Send className="h-4 w-4" />保存并提交审核</button>
           </div>
         </section>
 
         <aside className="space-y-5">
           <section className="surface-panel p-4"><div className="mb-3 flex items-center gap-2"><ShieldCheck className="h-4 w-4 text-primary" /><h3 className="font-semibold text-on-surface">静默自检结果</h3></div>{lastSelfCheck ? <div className="space-y-3"><div className={`rounded-xl border px-3 py-2 text-sm ${lastSelfCheck.passed ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-700" : "border-amber-500/25 bg-amber-500/10 text-amber-700"}`}>{lastSelfCheck.passed ? "格式、排版与标题层级已通过" : "仍有问题，暂不能提交审核"}</div><div className="grid grid-cols-2 gap-2 text-center text-xs text-on-surface-variant"><div className="rounded-lg bg-surface-container-low p-2"><strong className="block text-sm text-on-surface">{lastSelfCheck.characterCount.toLocaleString()}</strong>字符</div><div className="rounded-lg bg-surface-container-low p-2"><strong className="block text-sm text-on-surface">{lastSelfCheck.headingCount}</strong>标题</div><div className="rounded-lg bg-surface-container-low p-2"><strong className="block text-sm text-on-surface">{lastSelfCheck.highlightCount ?? 0}</strong>高亮</div><div className="rounded-lg bg-surface-container-low p-2"><strong className="block text-sm text-on-surface">{lastSelfCheck.issues.length}</strong>提示</div></div>{lastSelfCheck.highlightTerms && lastSelfCheck.highlightTerms.length > 0 && <p className="text-xs leading-5 text-on-surface-variant">辅助记忆词：{lastSelfCheck.highlightTerms.slice(0, 8).join("、")}{lastSelfCheck.highlightTerms.length > 8 ? "…" : ""}</p>}{lastSelfCheck.issues.length > 0 && <ul className="space-y-2 text-xs leading-5 text-on-surface-variant">{lastSelfCheck.issues.slice(0, 6).map((issue) => <li key={`${issue.code}-${issue.message}`} className="flex gap-2"><span className={issue.severity === "error" ? "text-error" : "text-amber-600"}>•</span><span>{issue.message}</span></li>)}</ul>}</div> : <p className="text-sm leading-6 text-on-surface-variant">保存后自动检查 Markdown 定界符、代码块、图片链接、排版、标题层级和高亮密度。</p>}</section>
           <section className="surface-panel p-4"><div className="mb-3 flex items-center gap-2"><ListChecks className="h-4 w-4 text-primary" /><h3 className="font-semibold text-on-surface">知识点快测</h3></div><p className="text-sm leading-6 text-on-surface-variant">AI 根据当前讲义单独生成题目、答案和解析；它们不会混入 Markdown 正文，审核通过后才可调用。</p><button type="button" className="control-button control-button-primary mt-3 inline-flex w-full items-center justify-center gap-2 px-3 py-2.5 text-sm" disabled={!selectedId || quizBusy || busyAction !== null} onClick={() => void generateKnowledgeQuiz()}>{quizBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <ListChecks className="h-4 w-4" />}{selectedId ? (quizBusy ? "正在生成…" : quizSummary ? "重新生成知识点快测" : "生成知识点快测") : "先保存并选择讲义"}</button>{quizSummary && <><div className="mt-3 rounded-xl border border-outline-variant/20 bg-surface-container-low px-3 py-2 text-xs leading-5 text-on-surface-variant">已生成 {quizSummary.count} 题 · 状态：{quizSummary.status === "self_checked" ? "已自检，待提交审核" : quizSummary.status === "pending_review" ? "已提交，等待人工审核" : quizSummary.status === "approved" ? "已批准，等待发布" : quizSummary.status === "published" ? "已发布，可被助手调用" : quizSummary.status}</div>{["self_checked", "changes_requested"].includes(quizSummary.status) && <button type="button" className="control-button mt-2 inline-flex w-full items-center justify-center gap-2 px-3 py-2.5 text-sm" disabled={quizBusy || busyAction !== null} onClick={() => void submitKnowledgeQuiz()}>{quizBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}提交快测审核</button>}</>}</section>
+          <section className="surface-panel overflow-hidden p-4"><div className="mb-3 flex items-center gap-2"><FilePenLine className="h-4 w-4 text-primary" /><h3 className="font-semibold text-on-surface">已发布文章</h3><span className="ml-auto text-xs text-on-surface-variant">{notes.length}</span></div><p className="mb-3 text-xs leading-5 text-on-surface-variant">只能返修当前账号自己的文章；创建提案后，公开版本仍等人工审核。</p>{notes.length === 0 ? <p className="text-sm leading-6 text-on-surface-variant">暂时没有已发布文章。</p> : <div className="space-y-2">{notes.map((note) => { const revision = activeRevisionByNote.get(note.id); const waiting = revision?.review_status === "pending_review"; return <div key={note.id} className="rounded-xl border border-outline-variant/20 bg-surface-container-low p-3"><div className="flex items-start gap-2"><strong className="min-w-0 flex-1 line-clamp-2 text-sm text-on-surface">{note.title}</strong><span className="shrink-0 text-[10px] text-on-surface-variant">v{note.content_version}</span></div><button type="button" disabled={busyAction !== null || waiting} onClick={() => { if (revision) void selectProposal(revision); else void createRevisionProposal(note); }} className="control-button mt-2 inline-flex w-full items-center justify-center gap-2 px-3 py-2 text-xs">{waiting ? "等待人工审核" : revision ? "继续返修" : "创建返修提案"}</button></div>; })}</div>}</section>
           <section className="surface-panel overflow-hidden p-4"><div className="mb-3 flex items-center gap-2"><FileText className="h-4 w-4 text-primary" /><h3 className="font-semibold text-on-surface">我的提案</h3><span className="ml-auto text-xs text-on-surface-variant">{proposals.length}</span></div>{proposals.length === 0 ? <p className="text-sm leading-6 text-on-surface-variant">还没有提案。完成一篇章节后，从左侧保存。</p> : <div className="space-y-2">{proposals.map((proposal) => <button type="button" key={proposal.id} onClick={() => selectProposal(proposal)} className={`w-full rounded-xl border px-3 py-3 text-left transition ${proposal.id === selectedId ? "border-primary/45 bg-primary/5" : "border-outline-variant/20 bg-surface-container-low hover:border-primary/25"}`}><span className="flex items-start justify-between gap-2"><strong className="line-clamp-2 text-sm text-on-surface">{proposal.title}</strong><span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] ${statusTone(proposal.review_status)}`}>{STATUS_LABELS[proposal.review_status as AiContentReviewStatus] ?? proposal.review_status}</span></span><span className="mt-1 block text-xs text-on-surface-variant">{new Date(proposal.updated_at).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}</span></button>)}</div>}</section>
         </aside>
       </div>
