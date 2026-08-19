@@ -25,7 +25,7 @@ function normalizeDate(value: unknown): Date | null {
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
-function normalizeNote(value: unknown): Note | null {
+export function normalizeNoteReaderValue(value: unknown): Note | null {
   if (!isRecord(value) || typeof value.id !== "string" || typeof value.title !== "string") return null;
   if (value.type !== "note" && value.type !== "problem" && value.type !== "essay") return null;
   const createdAt = normalizeDate(value.createdAt);
@@ -97,7 +97,7 @@ function profileKey(noteId: string): string {
 const readOptions = { ttlMs: NOTE_READER_CACHE_TTL_MS, maxAgeMs: NOTE_READER_CACHE_MAX_AGE_MS };
 
 export function readPublicNoteCache(noteId: string): SiteCacheRead<Note> | null {
-  return readSiteCache(noteKey(noteId), normalizeNote, readOptions);
+  return readSiteCache(noteKey(noteId), normalizeNoteReaderValue, readOptions);
 }
 
 export function writePublicNoteCache(note: Note): void {
@@ -108,7 +108,7 @@ export function writePublicNoteCache(note: Note): void {
 /** Private reader snapshots are keyed by the authenticated user id. */
 export function readOwnerNoteCache(noteId: string, userId: string | null | undefined): SiteCacheRead<Note> | null {
   if (!userId) return null;
-  return readSiteCache(noteKey(noteId, `owner-${userId}`), normalizeNote, readOptions);
+  return readSiteCache(noteKey(noteId, `owner-${userId}`), normalizeNoteReaderValue, readOptions);
 }
 
 export function writeOwnerNoteCache(note: Note, userId: string | null | undefined): void {

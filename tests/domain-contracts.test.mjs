@@ -2049,6 +2049,16 @@ test("公开阅读地址与所有者私有阅读地址保持严格分离", () =>
   assert.equal(privateReader.includes('accessScope="owner"'), true);
 });
 
+test("笔记阅读器在 hydration 前恢复服务端序列化的日期字段", () => {
+  const reader = readFileSync(resolve("components/notes/NoteReaderClient.tsx"), "utf8");
+  const readerCache = readFileSync(resolve("lib/note-reader-cache.ts"), "utf8");
+
+  assert.equal(readerCache.includes("export function normalizeNoteReaderValue(value: unknown): Note | null"), true);
+  assert.equal(reader.includes("normalizeNoteReaderValue(initialNote)"), true);
+  assert.equal(reader.includes("initialNote.updatedAt.getTime()"), false);
+  assert.equal(reader.includes("normalizedInitialNote.updatedAt.getTime()"), true);
+});
+
 test("WP4 四类页面模板共用统一版心与语义契约", () => {
   const scaffold = readFileSync(resolve("components/ui/PageScaffold.tsx"), "utf8");
   const home = readFileSync(resolve("app/page.tsx"), "utf8");

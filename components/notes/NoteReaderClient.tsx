@@ -35,6 +35,7 @@ import { detectBookletSourceDrift, extractBookletSourceManifest, type BookletPro
 import {
   clearOwnerNoteCache,
   clearPublicNoteCache,
+  normalizeNoteReaderValue,
   noteReaderValuesEqual,
   readPublicAuthorProfileCache,
   readPublicChaptersCache,
@@ -108,20 +109,21 @@ export function NoteReaderClient({
   const { isAdmin, user } = useAdminAuth();
   const ownerUserId = user?.id ?? null;
   const toast = useToast();
-  const cachedInitialNote = !initialNote
+  const normalizedInitialNote = useMemo(() => normalizeNoteReaderValue(initialNote), [initialNote]);
+  const cachedInitialNote = !normalizedInitialNote
     ? accessScope === "public"
       ? readPublicNoteCache(noteId)
       : readOwnerNoteCache(noteId, ownerUserId)
     : null;
   const cachedInitialChapters = accessScope === "public" && !initialChaptersLoaded ? readPublicChaptersCache(noteId) : null;
-  const [note, setNote] = useState<Note | null>(initialNote ?? cachedInitialNote?.value ?? null);
+  const [note, setNote] = useState<Note | null>(normalizedInitialNote ?? cachedInitialNote?.value ?? null);
   const [authorProfile, setAuthorProfile] = useState<PublicAiProfile | null>(null);
-  const [loading, setLoading] = useState(initialLoadError || (!initialNote && !cachedInitialNote));
+  const [loading, setLoading] = useState(initialLoadError || (!normalizedInitialNote && !cachedInitialNote));
   const [loadError, setLoadError] = useState<string | null>(initialLoadError ? "暂时无法加载这篇笔记，请检查网络或 Supabase 配置，然后重试。" : null);
   const [retryToken, setRetryToken] = useState(0);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isDeletingNote, setIsDeletingNote] = useState(false);
-  const [isCoverExpanded, setIsCoverExpanded] = useState(Boolean((initialNote ?? cachedInitialNote?.value)?.coverImage));
+  const [isCoverExpanded, setIsCoverExpanded] = useState(Boolean((normalizedInitialNote ?? cachedInitialNote?.value)?.coverImage));
   const [isImmersiveMode, setIsImmersiveMode] = useState(false);
   const [inlineVideoIndex, setInlineVideoIndex] = useState<number | null>(null);
   const [chapters, setChapters] = useState<Chapter[]>(initialChapters.length > 0 ? initialChapters : (cachedInitialChapters?.value ?? []));
@@ -168,12 +170,12 @@ export function NoteReaderClient({
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
-      const cachedNote = !initialNote
+      const cachedNote = !normalizedInitialNote
         ? accessScope === "public"
           ? readPublicNoteCache(noteId)?.value ?? null
           : readOwnerNoteCache(noteId, ownerUserId)?.value ?? null
         : null;
-      const nextNote = initialNote ?? cachedNote;
+      const nextNote = normalizedInitialNote ?? cachedNote;
       const cachedChapters = accessScope === "public" && initialChapters.length === 0 ? readPublicChaptersCache(noteId)?.value ?? [] : [];
       setNote(nextNote);
       setLoading(initialLoadError || !nextNote);
@@ -194,7 +196,7 @@ export function NoteReaderClient({
     }, 0);
 
     return () => window.clearTimeout(timer);
-  }, [accessScope, initialChapters, initialChaptersLoaded, initialLoadError, initialNote, noteId, ownerUserId]);
+  }, [accessScope, initialChapters, initialChaptersLoaded, initialLoadError, normalizedInitialNote, noteId, ownerUserId]);
 
   const loadNote = useCallback(async () => {
     try {
@@ -229,16 +231,16 @@ export function NoteReaderClient({
   }, [accessScope, noteId, ownerUserId]);
 
   useEffect(() => {
-    if (initialNote && !initialLoadError && retryToken === 0) {
+    if (normalizedInitialNote && !initialLoadError && retryToken === 0) {
       const cached = accessScope === "public"
         ? readPublicNoteCache(noteId)
         : readOwnerNoteCache(noteId, ownerUserId);
-      const initialUpdatedAt = initialNote.updatedAt.getTime();
+      const initialUpdatedAt = normalizedInitialNote.updatedAt.getTime();
       const cachedUpdatedAt = cached?.value.updatedAt.getTime() ?? 0;
 
       if (!cached || initialUpdatedAt >= cachedUpdatedAt) {
-        if (accessScope === "public") writePublicNoteCache(initialNote);
-        if (accessScope === "owner") writeOwnerNoteCache(initialNote, ownerUserId);
+        if (accessScope === "public") writePublicNoteCache(normalizedInitialNote);
+        if (accessScope === "owner") writeOwnerNoteCache(normalizedInitialNote, ownerUserId);
         return;
       }
 
@@ -252,7 +254,7 @@ export function NoteReaderClient({
       void loadNote();
     }, 0);
     return () => window.clearTimeout(timer);
-  }, [accessScope, initialLoadError, initialNote, loadNote, noteId, ownerUserId, retryToken]);
+  }, [accessScope, initialLoadError, loadNote, normalizedInitialNote, noteId, ownerUserId, retryToken]);
 
   useEffect(() => {
     if (accessScope !== "public") return undefined;
