@@ -13,6 +13,7 @@ import {
   getShareableImageUrl,
 } from "@/lib/site-metadata";
 import { isPreloadTimeout, withTimeout } from "@/lib/with-timeout";
+import { toIsoDateString } from "@/lib/utils";
 
 // Public note pages are ISR-friendly. The client reader still performs a
 // stale-while-revalidate refresh so a returning reader can paint immediately
@@ -126,8 +127,8 @@ export async function generateMetadata(
       title: note.title,
       description,
       url: `/notes/${note.id}`,
-      publishedTime: note.createdAt.toISOString(),
-      modifiedTime: note.updatedAt.toISOString(),
+      publishedTime: toIsoDateString(note.createdAt),
+      modifiedTime: toIsoDateString(note.updatedAt),
       tags: note.tags,
       images: [
         {

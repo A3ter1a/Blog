@@ -95,7 +95,7 @@ import {
 } from "../lib/ai-knowledge-quiz-contract.ts";
 import { validateReviewSelection } from "../lib/ai-review-contract.ts";
 import { parseAiProfileUpdate } from "../lib/ai-profile.ts";
-import { normalizeLatexForKatex } from "../lib/utils.ts";
+import { normalizeLatexForKatex, toIsoDateString } from "../lib/utils.ts";
 import { repairAIJsonText } from "../lib/ai-json-repair.ts";
 import {
   buildMarkdownReviewProposal,
@@ -2049,14 +2049,21 @@ test("公开阅读地址与所有者私有阅读地址保持严格分离", () =>
   assert.equal(privateReader.includes('accessScope="owner"'), true);
 });
 
-test("笔记阅读器在 hydration 前恢复服务端序列化的日期字段", () => {
+test("笔记阅读器与元数据恢复缓存序列化后的日期字段", () => {
   const reader = readFileSync(resolve("components/notes/NoteReaderClient.tsx"), "utf8");
   const readerCache = readFileSync(resolve("lib/note-reader-cache.ts"), "utf8");
+  const publicReader = readFileSync(resolve("app/notes/[id]/page.tsx"), "utf8");
+  const isoDate = "2026-08-19T06:15:00.000Z";
 
   assert.equal(readerCache.includes("export function normalizeNoteReaderValue(value: unknown): Note | null"), true);
   assert.equal(reader.includes("normalizeNoteReaderValue(initialNote)"), true);
   assert.equal(reader.includes("initialNote.updatedAt.getTime()"), false);
   assert.equal(reader.includes("normalizedInitialNote.updatedAt.getTime()"), true);
+  assert.equal(publicReader.includes("note.createdAt.toISOString()"), false);
+  assert.equal(publicReader.includes("toIsoDateString(note.createdAt)"), true);
+  assert.equal(toIsoDateString(new Date(isoDate)), isoDate);
+  assert.equal(toIsoDateString(isoDate), isoDate);
+  assert.equal(toIsoDateString("invalid-date"), undefined);
 });
 
 test("WP4 四类页面模板共用统一版心与语义契约", () => {

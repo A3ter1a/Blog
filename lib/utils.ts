@@ -1,5 +1,15 @@
 import type { Chapter } from "@/lib/types";
 
+export function toIsoDateString(value: unknown): string | undefined {
+  const date = value instanceof Date
+    ? value
+    : typeof value === "string" || typeof value === "number"
+      ? new Date(value)
+      : null;
+
+  return date && Number.isFinite(date.getTime()) ? date.toISOString() : undefined;
+}
+
 const LATEX_LINE_BREAK_MARKER = "AsteroidLatexLineBreakToken";
 const MATH_SPAN_SPLIT_PATTERN = /(\$\$[\s\S]*?\$\$|(?<!\$)\$(?!\$)(?:(?!\n\s*\n)[\s\S])*?(?<!\$)\$(?!\$))/;
 const LATEX_ENV_NAMES = "align|equation|gather|aligned|split|cases|multline|array|matrix|pmatrix|bmatrix|vmatrix|Vmatrix";
