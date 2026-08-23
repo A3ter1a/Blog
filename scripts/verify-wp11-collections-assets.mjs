@@ -13,12 +13,14 @@ const required = [
   ["app/api/collections/[id]/items/route.ts", ["export async function POST", "export async function PATCH", "export async function DELETE"]],
   ["app/api/collections/notes/route.ts", ["listCollectionAvailableNotes"]],
   ["app/collections/page.tsx", ["CollectionCard", "公开合集"]],
-  ["app/collections/[id]/page.tsx", ["getPublishedById", "getNoteReadPath"]],
+  ["app/collections/[id]/page.tsx", ["getCachedPublishedCollection", "CollectionDetailClient"]],
   ["app/tools/collections/page.tsx", ["CollectionWorkspace"]],
   ["components/collections/CollectionCard.tsx", ["合集", "itemCount"]],
+  ["components/collections/CollectionDetailClient.tsx", ["getNoteReadPath", "initialCollection"]],
   ["components/collections/CollectionWorkspace.tsx", ["逐篇加入", "handleMove", "handleRemoveNote"]],
   ["components/notes/NotesClient.tsx", ["initialCollections", "CollectionCard", "合集"]],
-  ["app/notes/page.tsx", ["collectionsApi.getPublishedSummaries"]],
+  ["app/notes/page.tsx", ["getCachedPublishedCollectionSummaries"]],
+  ["lib/server-public-cache.ts", ["collectionsApi.getPublishedSummaries", "collectionsApi.getPublishedById"]],
 ];
 
 const failures = [];

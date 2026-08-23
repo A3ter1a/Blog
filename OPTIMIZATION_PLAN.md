@@ -1,96 +1,45 @@
-# Asteroid 优化目标与阶段计划
+# Asteroid 当前维护计划
 
-## 长期目标
+> 更新时间：2026-08-23。本文件记录当前本地维护状态，不代替生产数据库操作手册。
 
-把 Asteroid 从“已上线的个人博客”继续优化成一个更稳定、更安全、更好维护的个人学习知识库。后续所有改动优先保护公网数据安全、管理员权限、AI API 密钥和生产环境稳定性。
+## 当前结论
 
-## 当前阶段
+Asteroid 当前重点是维护本地验证门禁，使 Windows 与 CI/Linux 环境对同一份仓库得到一致结果。功能代码、领域测试和离线生产构建已有稳定基线；生产数据库是否应用迁移，不能根据本地文件或本地验证结果推断。
 
-当前处于“公网部署安全收尾验收”阶段。
+数据库与 RLS 的唯一操作指南是 `supabase/README.md`，迁移后的只读核验入口是 `supabase/verification.sql`。
 
-代码侧安全加固和生产安全验收工具已经完成并推送到 `main`，生产部署至少应包含这个安全验收基准提交：
+## 生产安全边界
 
-```text
-b4258ff Add production security verification checklist
+1. 现有生产项目不得重放 `0001–0007`。这些对象可能已经存在，但生产库不一定有对应的迁移历史记录。
+2. 只有全新的空项目才按 `supabase/README.md` 从 `0001` 开始顺序执行迁移。
+3. 任何现有生产项目的远程迁移都必须遵守对应工作包的 live audit、备份、fixed shadow、preflight/postflight 和独立确认要求。
+4. 本地资产检查通过只说明脚本与迁移文件满足静态契约，不代表 Vercel 或 Supabase 已经配置、迁移或验收。
+5. 不使用 `supabase-init.sql` 配置生产环境。
+
+## 当前本地门禁
+
+| 项目 | 状态 | 验收证据 |
+| --- | --- | --- |
+| WP2 migration checksum 跨平台一致性 | 已完成 | `0015` 在 LF/CRLF 工作区都映射到同一审阅哈希，同时保留其他字节的严格校验 |
+| WP11 合集资产检查 | 已完成 | 校验缓存重构后的服务端公开缓存、详情客户端与阅读路径 |
+| WP8–WP13 验证接入 | 已完成 | `verify:predeploy` 覆盖 AI 内容、审核、合集、任务中心、阅读助手与知识点快测 |
+| 博客内容 skill | 已完成 | `verify:predeploy` 执行仓库内可复现的 skill 资产检查 |
+| 本地浏览器截图 | 手动证据 | 截图目录被 Git 忽略，不作为 fresh clone 的发布门禁 |
+| Lint、领域测试、离线生产构建 | 已通过 | `npm run verify:predeploy` 于 2026-08-23 完整通过 |
+
+## 后续候选优化
+
+以下项目不是当前发布阻塞项，应在生产边界和验证门禁稳定后单独排期：
+
+1. 清理旧兼容逻辑与重复的数据访问封装。
+2. 继续统一题库编辑器与阅读页的题目卡片行为。
+3. 优化 Markdown、LaTeX、题册打印和长文阅读体验。
+4. 根据实际使用数据评估缓存、交互和性能改造，不以主观重构替代问题证据。
+
+## 常用验证
+
+```bash
+npm run verify:predeploy
 ```
 
-如果 Vercel 已部署到它之后的 `main` 提交，也满足这个版本要求。
-
-接下来必须先确认 Vercel 和 Supabase 后台配置已经应用，然后再进入大规模架构优化。
-
-## 阶段计划表
-
-| 阶段 | 目标 | 当前状态 | 验收证据 |
-| --- | --- | --- | --- |
-| 1. 安全现状确认 | 核对当前分支、提交、安全文件和核心权限链 | 已完成 | `git status` 干净，`main` 与 `origin/main` 同步，安全文件存在 |
-| 2. 公网安全收尾 | 确认 `/debug`、AI API、管理员鉴权、RLS 脚本没有明显遗漏 | 自动验收已通过，RLS 迁移资产已补齐，待后台执行确认 | 公网 `/debug` 为 404，未登录 `/api/auth/admin` 和 `/api/ai/config` 为 401，首页 HTML 未发现明显创建入口，`npm run verify:rls-assets` 通过 |
-| 3. 后台配置执行 | 在 Vercel 设置服务端环境变量，在 Supabase 执行迁移并确认 RLS 生产策略 | 待用户执行 | Vercel 环境变量存在，Supabase policy 与 `admin_users` 生效 |
-| 4. 线上验收 | 验证公网未登录访问不能写入、不能调用 AI、不能访问 `/debug` | 自动检查已通过，待人工检查 | 自动脚本已验证关键未登录安全门，仍需无痕窗口和管理员登录后人工确认 |
-| 5. 架构清理 | 清理冗余代码、重复数据访问逻辑、旧兼容逻辑和易错模块 | 待开始 | 构建通过，改动有明确范围，删除或合并的逻辑有证据 |
-| 6. 题库专项优化 | 继续优化题库编辑、阅读页小题编辑、一键修正和 Markdown 渲染链路 | 待排期 | 题库编辑和阅读页编辑路径行为一致，答案/解析 Markdown 稳定渲染 |
-| 7. 稳定性与体验优化 | 在安全边界稳定后，再处理性能、交互、视觉和内容体验 | 待排期 | 构建通过，关键页面可用，未引入新的权限风险 |
-
-## 必须先完成的生产后台动作
-
-这些动作无法只靠本地代码代替：
-
-1. 在 Vercel 设置服务端环境变量：
-   - `ADMIN_EMAILS`
-   - `DEEPSEEK_API_KEY`
-   - `QWEN_API_KEY`
-2. 在 Supabase SQL Editor 按顺序执行：
-   - `supabase/migrations/0001_base_schema.sql`
-   - `supabase/migrations/0002_rls_policies.sql`
-3. 在 Supabase 插入管理员邮箱：
-
-```sql
-insert into public.admin_users (email)
-values ('your_admin_email@example.com')
-on conflict do nothing;
-```
-
-4. 确认 Vercel 生产部署至少包含提交 `b4258ff`，或已经部署到它之后的 `main` 提交。
-
-## 低风险改造顺序
-
-1. 先完成生产安全验收。
-2. 再清理权限、数据访问、AI 调用这些高风险模块的重复逻辑。
-3. 然后处理题库专项问题，尤其是 Markdown 渲染、一键修正、题目编辑入口一致性。
-4. 最后再做视觉、交互和性能优化。
-
-## 上下文压缩提醒条件
-
-如果后续出现以下情况，应暂停任务并提醒用户触发平台原生上下文压缩：
-
-1. 已完成一个大阶段，例如安全验收结束或题库专项优化结束。
-2. 连续修改多个核心模块，当前对话开始变长。
-3. 即将进入新主题，例如从安全审计切换到架构清理。
-4. 我需要依赖较多历史结论继续工作，且上下文已经明显臃肿。
-
-## 当前发现记录
-
-- `/debug` 页面在非开发环境会调用 `notFound()`，代码侧风险已降到低。
-- AI API 路由均调用 `requireAdminRequest()`，未登录无法直接调用。
-- 生产环境下 AI key 优先并仅使用服务端环境变量，客户端 key fallback 已禁用。
-- 写操作入口已统一加入 `assertAdminWrite()` 前置检查。
-- Supabase RLS 仍是最终安全边界，必须确认生产策略生效后才算真正完成。
-- 数据库迁移与 RLS 标准入口已收口到 `supabase/migrations/0001_base_schema.sql` 和 `supabase/migrations/0002_rls_policies.sql`。
-- 旧的 `supabase-init.sql` 已改为安全指针，不再包含历史的全放开开发策略。
-- 已新增 `npm run verify:rls-assets`，用于在本地检查迁移文件覆盖关键表、Storage bucket 和危险 RLS 写法。
-- `npm.cmd run lint` 已通过。
-- `npm.cmd run build` 已通过。
-- 本地生产服务验证通过：`/debug` 返回 `404`，未登录访问 `/api/auth/admin` 和 `/api/ai/config` 返回 `401`。
-- 已新增 `npm run verify:production-security`，用于在 Vercel/Supabase 后台配置完成后重复检查公网关键安全门。
-- 自动验收脚本已加严：除 `/debug`、管理员鉴权和 AI 配置 GET 外，现在还会检查未登录状态下所有 AI POST 接口必须返回 `401`。
-- `npm run verify:production-security -- --url http://127.0.0.1:3011` 已在本地生产服务上验证通过，说明脚本成功路径可用。
-- 已新增 `PRODUCTION_SECURITY_CHECKLIST.md`，把 Vercel、Supabase、自动脚本和人工无痕窗口检查整理成逐项清单。
-- `npm.cmd run verify:production-security` 已对公网 `https://www.a3ter1a.cn` 验证通过：`/debug` 为 `404`，未登录 `/api/auth/admin` 和 `/api/ai/config` 为 `401`，首页 HTML 未发现明显创建入口。
-- 仍需在 Vercel 后台确认生产部署至少包含 `b4258ff`，并在 Supabase 后台确认 RLS 生产策略已经生效。
-- PowerShell `Get-Content` 读取部分中文文案时出现乱码，但 Node 按 UTF-8 读取能正常显示，初步判断是终端显示编码问题，不应直接按源文件损坏处理。
-
-## 架构扫描第一轮记录
-
-- 数据写入集中在 `notesApi`、`chaptersApi`、`problemPracticeApi`、`math3SelfTestsApi` 和 `supabase-storage`，目前这些入口都已有管理员前置检查。
-- `localStorage` 仍用于阅读偏好、AI 使用统计和本地个人资料，这些属于非敏感配置；生产环境 AI key 已被清空和禁用。
-- Markdown 渲染集中在 `lib/markdown.ts` 和 `components/ui/MarkdownContent.tsx`，题库阅读页、编辑器预览和 AI 提取结果都依赖这条链路。后续题库专项优化应优先从这条链路入手。
-- `components/problems/ProblemEditor.tsx` 内部还有一个编辑器专用 `ProblemCard`，同时阅读页使用 `components/problems/ProblemCard.tsx`。这两个题目卡片逻辑存在重复，后续可以作为题库专项优化的重点。
+需要核验线上安全配置时，另按 `PRODUCTION_SECURITY_CHECKLIST.md` 和 `supabase/README.md` 操作；不得把本地通过描述成线上通过。

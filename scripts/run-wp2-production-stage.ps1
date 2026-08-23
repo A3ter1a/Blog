@@ -25,6 +25,26 @@ $PreflightPhrase = "READ $ProductionProjectRef WP2 0015 PREFLIGHT"
 $PostflightPhrase = "READ $ProductionProjectRef WP2 0015 POSTFLIGHT"
 $WritePhrase = "WRITE $ProductionProjectRef 0015"
 
+function Get-NormalizedLineEndingSha256([string]$LiteralPath) {
+  [byte[]]$Bytes = [System.IO.File]::ReadAllBytes($LiteralPath)
+  $CanonicalBytes = [System.Collections.Generic.List[byte]]::new($Bytes.Length)
+  for ($Index = 0; $Index -lt $Bytes.Length; $Index++) {
+    if ($Bytes[$Index] -eq 13 -and $Index + 1 -lt $Bytes.Length -and $Bytes[$Index + 1] -eq 10) {
+      $CanonicalBytes.Add([byte]10)
+      $Index++
+      continue
+    }
+    $CanonicalBytes.Add($Bytes[$Index])
+  }
+
+  $Sha256 = [System.Security.Cryptography.SHA256]::Create()
+  try {
+    return [System.Convert]::ToHexString($Sha256.ComputeHash($CanonicalBytes.ToArray())).ToLowerInvariant()
+  } finally {
+    $Sha256.Dispose()
+  }
+}
+
 if ($ProductionProjectRef -eq $ShadowProjectRef) {
   throw 'Refusing to run: production ref equals fixed shadow ref.'
 }
@@ -91,7 +111,7 @@ $Psql = Join-Path $PgBin 'psql.exe'
 $TunnelScript = Join-Path $RepositoryRoot 'scripts\wp1b-pg-http-connect-tunnel.mjs'
 $GateSql = Join-Path $RepositoryRoot 'supabase\wp1c-production-gate.sql'
 $MigrationPath = Join-Path $RepositoryRoot 'supabase\migrations\0015_content_migration_snapshots.sql'
-$MigrationHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $MigrationPath).Hash.ToLowerInvariant()
+$MigrationHash = Get-NormalizedLineEndingSha256 $MigrationPath
 if ($MigrationHash -cne $ExpectedMigrationSha256) {
   throw 'Production 0015 migration hash differs from the reviewed artifact.'
 }

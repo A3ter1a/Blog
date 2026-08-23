@@ -7,7 +7,28 @@ $RunnerPath = Join-Path $RepositoryRoot 'scripts\run-wp2-production-stage.ps1'
 $MigrationPath = Join-Path $RepositoryRoot 'supabase\migrations\0015_content_migration_snapshots.sql'
 $Runner = Get-Content -Raw -Encoding UTF8 -LiteralPath $RunnerPath
 $Migration = Get-Content -Raw -Encoding UTF8 -LiteralPath $MigrationPath
-$MigrationSha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $MigrationPath).Hash.ToLowerInvariant()
+
+function Get-NormalizedLineEndingSha256([string]$LiteralPath) {
+  [byte[]]$Bytes = [System.IO.File]::ReadAllBytes($LiteralPath)
+  $CanonicalBytes = [System.Collections.Generic.List[byte]]::new($Bytes.Length)
+  for ($Index = 0; $Index -lt $Bytes.Length; $Index++) {
+    if ($Bytes[$Index] -eq 13 -and $Index + 1 -lt $Bytes.Length -and $Bytes[$Index + 1] -eq 10) {
+      $CanonicalBytes.Add([byte]10)
+      $Index++
+      continue
+    }
+    $CanonicalBytes.Add($Bytes[$Index])
+  }
+
+  $Sha256 = [System.Security.Cryptography.SHA256]::Create()
+  try {
+    return [System.Convert]::ToHexString($Sha256.ComputeHash($CanonicalBytes.ToArray())).ToLowerInvariant()
+  } finally {
+    $Sha256.Dispose()
+  }
+}
+
+$MigrationSha256 = Get-NormalizedLineEndingSha256 $MigrationPath
 
 $Tokens = $null
 $ParseErrors = $null
@@ -49,6 +70,7 @@ Assert-Contains 'snapshotTable\s*-ne\s*\$false' 'Runner does not require the uni
 Assert-Contains 'snapshotRows\s*-ne\s*0' 'Runner does not require an empty new snapshot table.'
 Assert-Contains 'Assert-BaselineMatchesBackup' 'Runner does not compare live production to the fresh backup.'
 Assert-Contains 'Assert-BaselineStable' 'Runner does not prove protected production data stayed stable.'
+Assert-Contains 'Get-NormalizedLineEndingSha256' 'Runner does not normalize CRLF before freezing the 0015 migration checksum.'
 Assert-Contains 'MigrationHash' 'Runner does not freeze the 0015 migration checksum.'
 Assert-Contains "ExpectedMigrationSha256\s*=\s*'$MigrationSha256'" 'Runner expected migration checksum does not match the reviewed 0015 file.'
 Assert-Contains 'function Test-LoopbackPortListening' 'Runner is missing the bounded loopback cleanup probe.'

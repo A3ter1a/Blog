@@ -74,7 +74,7 @@ Asteroid 的核心目标是把备考期间分散的学习材料变成一个可�
 
 | 类别 | 技术 |
 | --- | --- |
-| 框架 | Next.js 16.2.4, App Router, Turbopack |
+| 框架 | Next.js 16.2.10, App Router, Turbopack |
 | 运行时 | React 19.2, TypeScript 5 |
 | 样式 | Tailwind CSS v4, CSS Variables |
 | 动效 | Framer Motion |
@@ -132,7 +132,7 @@ npm run verify:predeploy
 npm run verify:production-security
 ```
 
-- `verify:predeploy` 会依次执行 lint、RLS 本地资产检查和生产构建，适合作为上线前本地总检查。
+- `verify:predeploy` 会依次执行 lint、领域测试、RLS/迁移/工作包资产检查和离线生产构建，适合作为上线前本地总检查；被 Git 忽略的本地浏览器截图不作为 fresh clone 的发布门禁。
 - 如需单项排查，可分别运行 `npm run lint -- --quiet`、`npm run verify:rls-assets` 或 `npm run build`。
 - `verify:rls-assets` 只检查本地迁移和验证脚本是否完整，不连接生产数据库。
 - `verify:production-security` 用于检查公开部署前后的关键安全配置。
