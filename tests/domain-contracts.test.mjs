@@ -88,6 +88,8 @@ import {
   validateAiContentInput,
 } from "../lib/ai-content-contract.ts";
 import { analyzeAiHighlights, extractAiHighlightTerms } from "../lib/ai-highlight-contract.ts";
+import { getAiContentImageExtension, normalizeExternalImageUrl } from "../lib/ai-content-image.ts";
+import { buildMarkdownImage } from "../lib/markdown-format.ts";
 import {
   answersEqual,
   runAiKnowledgeQuizSelfCheck,
@@ -121,6 +123,7 @@ import {
 } from "../lib/document-markdown-review-service.ts";
 import {
   getNotesDirectoryPath,
+  getCollectionIdFromReturnPath,
   getSafeNotesReturnPath,
   getNoteReadHref,
   getNoteReadPath,
@@ -748,6 +751,27 @@ test("AI 内容输入边界要求标题、正文和章节拆分", () => {
   assert.equal(validateAiContentInput("标题", ""), "Markdown 正文不能为空。");
   assert.equal(validateAiContentInput("标题", "x".repeat(AI_CONTENT_MAX_CHARS + 1))?.includes("不能超过"), true);
   assert.equal(validateAiContentInput("标题", "# 内容"), null);
+});
+
+test("AI 图片入口生成标准 Markdown 并由自检计数", () => {
+  const markdown = buildMarkdownImage("需求曲线 ] 示例", "https://cdn.example.com/demand curve(1).png");
+  assert.equal(markdown, "![需求曲线 \\] 示例](https://cdn.example.com/demand%20curve%281%29.png)");
+  assert.equal(normalizeExternalImageUrl("javascript:alert(1)"), null);
+  assert.equal(normalizeExternalImageUrl("https://cdn.example.com/a.png"), "https://cdn.example.com/a.png");
+  assert.equal(getAiContentImageExtension("image/webp"), "webp");
+
+  const checked = runAiContentSelfCheck(`# 图解\n\n${markdown}`);
+  assert.equal(checked.selfCheck.passed, true);
+  assert.equal(checked.selfCheck.imageCount, 1);
+
+  const route = readFileSync(resolve("app/api/ai/content-assets/route.ts"), "utf8");
+  const migration = readFileSync(resolve("supabase/migrations/0033_ai_content_image_assets.sql"), "utf8");
+  assert.equal(route.includes("getAiRequestContext(req)"), true);
+  assert.equal(route.includes("upsert: false"), true);
+  assert.match(migration, /for insert\s+to authenticated/i);
+  assert.equal(migration.includes("(storage.foldername(name))[2] = (select auth.uid())::text"), true);
+  assert.equal(migration.includes("for update"), false);
+  assert.equal(migration.includes("for delete"), false);
 });
 
 test("AI 讲义高亮自检限制密度，并把正文高亮词提供给快测联动", () => {
@@ -2088,6 +2112,10 @@ test("笔记目录状态可安全写入阅读返回地址", () => {
   assert.equal(getSafeNotesReturnPath(directoryPath), directoryPath);
   assert.equal(getSafeNotesReturnPath("https://evil.example/notes?directory=ai"), "/notes");
   assert.equal(getSafeNotesReturnPath("/notes/ai-note"), "/notes");
+  const collectionPath = "/collections/123e4567-e89b-42d3-a456-426614174000";
+  assert.equal(getSafeNotesReturnPath(collectionPath), collectionPath);
+  assert.equal(getCollectionIdFromReturnPath(collectionPath), "123e4567-e89b-42d3-a456-426614174000");
+  assert.equal(getSafeNotesReturnPath("/collections/not-a-uuid"), "/notes");
   assert.equal(getNoteReadPath(publicNote, "/notes"), "/notes/ai-note?from=%2Fnotes");
   assert.equal(
     getNoteReadPath(publicNote, directoryPath),
@@ -2158,7 +2186,7 @@ test("WP4 四类页面模板共用统一版心与语义契约", () => {
 test("econgraph 阅读页在 hydration 后延迟执行可重复的 SVG 后处理", () => {
   const markdownContent = readFileSync(resolve("components/ui/MarkdownContent.tsx"), "utf8");
 
-  assert.equal(markdownContent.includes('import { useEffect, useMemo, useRef } from "react";'), true);
+  assert.match(markdownContent, /import \{[^}]*useEffect[^}]*useMemo[^}]*useRef[^}]*\} from "react";/);
   assert.equal(markdownContent.includes("useLayoutEffect"), false);
   assert.equal(markdownContent.includes("processEnhancements();"), true);
   assert.equal(markdownContent.includes("window.requestAnimationFrame(processEnhancements)"), true);

@@ -29,11 +29,12 @@ import {
 interface SettingsPanelProps {
   isOpen: boolean;
   onClose: () => void;
+  mode?: "all" | "reading";
 }
 
 const MAX_IMPORT_FILE_BYTES = 10 * 1024 * 1024;
 
-export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
+export function SettingsPanel({ isOpen, onClose, mode = "all" }: SettingsPanelProps) {
   const { preferences, updatePreference, resetPreferences } = useReadingPreferences();
   const themePreference = useThemePreference();
   const { loading: authLoading, user, isAdmin } = useAdminAuth();
@@ -99,7 +100,7 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
   }, [isOpen]);
 
   useEffect(() => {
-    if (!isOpen || !isAdmin) return;
+    if (!isOpen || !isAdmin || mode === "reading") return;
     let mounted = true;
 
     void (async () => {
@@ -111,7 +112,7 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
     return () => {
       mounted = false;
     };
-  }, [isOpen, isAdmin]);
+  }, [isOpen, isAdmin, mode]);
 
   const handleSaveProfile = async (newProfile: Profile) => {
     try {
@@ -227,11 +228,11 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
           >
             {/* Header */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-outline-variant/10 flex-shrink-0">
-              <h2 id="settings-panel-title" className="text-xl font-bold text-on-surface font-headline">设置</h2>
+              <h2 id="settings-panel-title" className="text-xl font-bold text-on-surface font-headline">{mode === "reading" ? "阅读设置" : "设置"}</h2>
               <button
                 onClick={onClose}
                 ref={closeButtonRef}
-                className="motion-ui motion-interactive p-2 rounded-full hover:bg-surface-container-high"
+                className="motion-ui motion-interactive flex h-11 w-11 items-center justify-center rounded-full hover:bg-surface-container-high"
                 aria-label="关闭设置"
               >
                 <X className="w-5 h-5 text-on-surface-variant" />
@@ -240,7 +241,7 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
 
             {/* Content */}
             <div className="flex-1 overflow-y-auto p-6 space-y-8">
-              <section aria-labelledby="settings-account-title">
+              {mode === "all" && <section aria-labelledby="settings-account-title">
                 <h3 id="settings-account-title" className="mb-4 flex items-center gap-2 text-sm font-medium text-on-surface-variant">
                   <UserRound className="h-4 w-4" />
                   账号
@@ -295,7 +296,7 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
                     </Link>
                   </div>
                 )}
-              </section>
+              </section>}
 
               {/* Reading Preferences */}
               <section>
@@ -317,7 +318,8 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
                     <div className="flex items-center gap-3">
                       <button
                         onClick={() => updatePreference("fontSize", Math.max(14, preferences.fontSize - 1))}
-                        className="motion-ui motion-interactive w-8 h-8 rounded-lg bg-surface-container-high text-on-surface-variant hover:bg-primary/10 hover:text-primary flex items-center justify-center"
+                        className="motion-ui motion-interactive flex h-11 w-11 items-center justify-center rounded-lg bg-surface-container-high text-on-surface-variant hover:bg-primary/10 hover:text-primary"
+                        aria-label="减小字体"
                       >
                         A-
                       </button>
@@ -329,10 +331,12 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
                         value={preferences.fontSize}
                         onChange={(e) => updatePreference("fontSize", parseInt(e.target.value))}
                         className="flex-1 accent-primary"
+                        aria-label="字体大小"
                       />
                       <button
                         onClick={() => updatePreference("fontSize", Math.min(22, preferences.fontSize + 1))}
-                        className="motion-ui motion-interactive w-8 h-8 rounded-lg bg-surface-container-high text-on-surface-variant hover:bg-primary/10 hover:text-primary flex items-center justify-center"
+                        className="motion-ui motion-interactive flex h-11 w-11 items-center justify-center rounded-lg bg-surface-container-high text-on-surface-variant hover:bg-primary/10 hover:text-primary"
+                        aria-label="增大字体"
                       >
                         A+
                       </button>
@@ -356,6 +360,7 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
                       value={preferences.lineHeight}
                       onChange={(e) => updatePreference("lineHeight", parseFloat(e.target.value))}
                       className="w-full accent-primary"
+                      aria-label="正文行距"
                     />
                   </div>
 
@@ -374,7 +379,7 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
                         <button
                           key={option.value}
                           onClick={() => updatePreference("contentWidth", option.value)}
-                          className={`motion-ui motion-interactive rounded-lg px-3 py-2 text-sm font-medium ${
+                          className={`motion-ui motion-interactive min-h-11 rounded-lg px-3 py-2 text-sm font-medium ${
                             preferences.contentWidth === option.value
                               ? "bg-primary text-on-primary"
                               : "bg-surface-container-high text-on-surface-variant hover:bg-surface-container-highest"
@@ -401,7 +406,7 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
                         <button
                           key={option.value}
                           onClick={() => updatePreference("tocPosition", option.value)}
-                          className={`motion-ui motion-interactive px-3 py-2 rounded-lg text-sm font-medium ${
+                          className={`motion-ui motion-interactive min-h-11 rounded-lg px-3 py-2 text-sm font-medium ${
                             preferences.tocPosition === option.value
                               ? "bg-primary text-on-primary"
                               : "bg-surface-container-high text-on-surface-variant hover:bg-surface-container-highest"
@@ -468,9 +473,11 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
                             aria-checked={preferences.showRoleplay}
                             aria-label="切换角色扮演相关显示"
                             onClick={() => updatePreference("showRoleplay", !preferences.showRoleplay)}
-                            className={`motion-ui motion-interactive flex h-6 w-11 shrink-0 items-center rounded-full ${preferences.showRoleplay ? "bg-primary" : "bg-surface-container-highest"}`}
+                            className="motion-ui motion-interactive relative flex h-11 w-12 shrink-0 items-center justify-center rounded-full"
                           >
-                            <span className={`motion-ui h-4 w-4 rounded-full bg-on-primary ${preferences.showRoleplay ? "ml-6" : "ml-1"}`} />
+                            <span className={`motion-ui flex h-6 w-11 items-center rounded-full ${preferences.showRoleplay ? "bg-primary" : "bg-surface-container-highest"}`}>
+                              <span className={`motion-ui h-4 w-4 rounded-full bg-on-primary ${preferences.showRoleplay ? "ml-6" : "ml-1"}`} />
+                            </span>
                           </button>
                         </div>
                         <p className="mt-2 text-xs text-on-surface-variant/70">{preferences.showRoleplay ? "已开启" : "已关闭，文章按普通内容显示"}</p>
@@ -480,7 +487,7 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
                 </div>
               </section>
 
-              <section>
+              {mode === "all" && <section>
                 <h3 className="mb-4 flex items-center gap-2 text-sm font-medium text-on-surface-variant">
                   <MonitorCog className="h-4 w-4" />
                   显示主题
@@ -507,9 +514,9 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
                 <p className="mt-3 text-xs leading-5 text-on-surface-variant/70">
                   跟随日光会按北京当天的日出与日落时间自动切换，不读取定位权限。
                 </p>
-              </section>
+              </section>}
 
-              {isAdmin && (
+              {mode === "all" && isAdmin && (
                 <>
                   {/* Profile */}
                   <section>

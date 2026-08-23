@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import katex from "katex";
 import { renderMarkdownToHtml } from "@/lib/markdown";
 import {
@@ -15,6 +15,7 @@ import {
 import { splitEconomicsTermText } from "@/lib/economics-term-matcher";
 import { normalizeLatexForKatex } from "@/lib/utils";
 import "katex/dist/katex.min.css";
+import { ImageLightbox, type LightboxImage } from "@/components/ui/ImageLightbox";
 
 interface MarkdownContentProps {
   content: string;
@@ -23,6 +24,7 @@ interface MarkdownContentProps {
   compact?: boolean;
   enableEconomicsTerms?: boolean;
   enableEconomicsGraphs?: boolean;
+  enableImageLightbox?: boolean;
 }
 
 function createEconomicsTermNode(text: string, termId: string, label: string, body: string, hint: string): HTMLElement {
@@ -439,9 +441,12 @@ export function MarkdownContent({
   compact = false,
   enableEconomicsTerms = false,
   enableEconomicsGraphs = false,
+  enableImageLightbox = false,
 }: MarkdownContentProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const [lightboxImage, setLightboxImage] = useState<LightboxImage | null>(null);
   const htmlContent = useMemo(() => renderMarkdownToHtml(content), [content]);
+  const closeLightbox = useCallback(() => setLightboxImage(null), []);
 
   useEffect(() => {
     let frame: number | null = null;
@@ -482,12 +487,55 @@ export function MarkdownContent({
     };
   }, [enableEconomicsGraphs, enableEconomicsTerms, htmlContent]);
 
+  useEffect(() => {
+    if (!enableImageLightbox) return;
+    const container = containerRef.current;
+    if (!container) return;
+
+    const enhanceImages = () => {
+      container.querySelectorAll<HTMLImageElement>("img").forEach((image) => {
+        if (image.closest("a")) return;
+        image.tabIndex = 0;
+        image.setAttribute("role", "button");
+        image.setAttribute("aria-label", image.alt ? `查看大图：${image.alt}` : "查看文章大图");
+        image.classList.add("markdown-image-expandable");
+      });
+    };
+    const openImage = (image: HTMLImageElement) => setLightboxImage({ src: image.currentSrc || image.src, alt: image.alt || "文章图片" });
+    const handleClick = (event: MouseEvent) => {
+      const image = event.target instanceof HTMLImageElement ? event.target : null;
+      if (!image || image.closest("a")) return;
+      openImage(image);
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      const image = event.target instanceof HTMLImageElement ? event.target : null;
+      if (!image || image.closest("a")) return;
+      event.preventDefault();
+      openImage(image);
+    };
+
+    enhanceImages();
+    const observer = new MutationObserver(enhanceImages);
+    observer.observe(container, { childList: true, subtree: true });
+    container.addEventListener("click", handleClick);
+    container.addEventListener("keydown", handleKeyDown);
+    return () => {
+      observer.disconnect();
+      container.removeEventListener("click", handleClick);
+      container.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [enableImageLightbox, htmlContent]);
+
   return (
-    <div
-      ref={containerRef}
-      className={`markdown-surface ${compact ? "markdown-compact" : ""} ${className}`}
-      style={style}
-      dangerouslySetInnerHTML={{ __html: htmlContent }}
-    />
+    <>
+      <div
+        ref={containerRef}
+        className={`markdown-surface ${compact ? "markdown-compact" : ""} ${className}`}
+        style={style}
+        dangerouslySetInnerHTML={{ __html: htmlContent }}
+      />
+      {enableImageLightbox && <ImageLightbox image={lightboxImage} onClose={closeLightbox} />}
+    </>
   );
 }

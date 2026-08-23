@@ -29,11 +29,20 @@ export function getSafeNotesReturnPath(value: string | null | undefined): string
 
   try {
     const parsed = new URL(value, "https://asteroid.local");
-    if (parsed.origin !== "https://asteroid.local" || parsed.pathname !== "/notes") return "/notes";
+    const isNotesDirectory = parsed.pathname === "/notes";
+    const isCollectionDetail = /^\/collections\/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(parsed.pathname)
+      && parsed.search === "";
+    if (parsed.origin !== "https://asteroid.local" || (!isNotesDirectory && !isCollectionDetail)) return "/notes";
     return `${parsed.pathname}${parsed.search}`;
   } catch {
     return "/notes";
   }
+}
+
+export function getCollectionIdFromReturnPath(value: string | null | undefined): string | null {
+  const safePath = getSafeNotesReturnPath(value);
+  const match = safePath.match(/^\/collections\/([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/i);
+  return match?.[1] ?? null;
 }
 
 export function getPrivateNoteReadPath(noteId: string): string {

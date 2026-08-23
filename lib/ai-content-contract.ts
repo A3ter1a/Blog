@@ -1,5 +1,6 @@
 import { normalizeMarkdownSource, type MarkdownRisk } from "./content-contract.ts";
 import { analyzeAiHighlights } from "./ai-highlight-contract.ts";
+import { countMarkdownImages } from "./markdown-format.ts";
 
 export const AI_CONTENT_SELF_CHECK_VERSION = "ai-content-self-check-v1";
 export const AI_CONTENT_MAX_CHARS = 240_000;
@@ -29,6 +30,7 @@ export type AiSelfCheck = {
   checkedAt?: string;
   characterCount: number;
   headingCount: number;
+  imageCount?: number;
   highlightCount?: number;
   highlightedCharacterCount?: number;
   highlightTerms?: string[];
@@ -177,6 +179,7 @@ export function runAiContentSelfCheck(source: string): AiContentSelfCheckResult 
       passed: Boolean(content) && !hasErrors,
       characterCount: content.length,
       headingCount: headings.length,
+      imageCount: countMarkdownImages(content),
       highlightCount: highlightAnalysis.count,
       highlightedCharacterCount: highlightAnalysis.highlightedCharacterCount,
       highlightTerms: highlightAnalysis.terms,

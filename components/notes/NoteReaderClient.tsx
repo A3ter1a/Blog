@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { AlertTriangle, ArrowLeft, Calendar, Tag, Edit2, Trash2, ChevronDown, ChevronUp, BookOpen, BookMarked, Loader2, Clock, Layers, MessageCircle, PanelLeftClose, PanelLeftOpen, SlidersHorizontal } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Calendar, Tag, Edit2, Trash2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, BookOpen, BookMarked, ListTree, Loader2, Clock, Layers, MessageCircle, PanelLeftClose, PanelLeftOpen, Settings2, SlidersHorizontal } from "lucide-react";
 import { notesApi } from "@/lib/supabase";
 import type { PublicAiProfile } from "@/lib/ai-profile";
 import { chaptersApi } from "@/lib/chapters-api";
@@ -46,6 +46,18 @@ import {
   writeOwnerNoteCache,
 } from "@/lib/note-reader-cache";
 import { subscribeSiteCache } from "@/lib/site-cache";
+import { extractTocItems } from "@/lib/markdown";
+import { SettingsPanel } from "@/components/layout/SettingsPanel";
+import { ReaderTocDrawer } from "@/components/notes/ReaderTocDrawer";
+import { useReadingPosition } from "@/hooks/useReadingPosition";
+import { useTabletLandscape } from "@/hooks/useTabletLandscape";
+
+export type CollectionReaderNavigation = {
+  collectionTitle: string;
+  returnHref: string;
+  previous?: { id: string; title: string; isPublished: boolean };
+  next?: { id: string; title: string; isPublished: boolean };
+};
 
 type NoteReaderClientProps = {
   noteId: string;
@@ -56,6 +68,7 @@ type NoteReaderClientProps = {
   accessScope?: "public" | "owner";
   backHref?: string;
   preferHistoryBack?: boolean;
+  collectionNavigation?: CollectionReaderNavigation | null;
 };
 
 type PracticeStatusLoadState = "idle" | "loading" | "ready" | "error";
@@ -106,6 +119,7 @@ export function NoteReaderClient({
   accessScope = "public",
   backHref = "/notes",
   preferHistoryBack = false,
+  collectionNavigation = null,
 }: NoteReaderClientProps) {
   const router = useRouter();
   const { preferences } = useReadingPreferences();
@@ -142,15 +156,53 @@ export function NoteReaderClient({
   const [assistantOpen, setAssistantOpen] = useState(false);
   const [assistantQuotedText, setAssistantQuotedText] = useState("");
   const [readerDirectoriesHidden, setReaderDirectoriesHidden] = useState(false);
+  const [tocDrawerOpen, setTocDrawerOpen] = useState(false);
+  const [readerSettingsOpen, setReaderSettingsOpen] = useState(false);
+  const [toolbarVisible, setToolbarVisible] = useState(true);
+  const isTabletLandscape = useTabletLandscape();
   const displayContent = useMemo(
     () => stripRedundantLeadingMarkdownTitle(note?.content ?? "", note?.title ?? ""),
     [note?.content, note?.title],
   );
+  const hasArticleToc = useMemo(() => extractTocItems(displayContent).length > 0, [displayContent]);
   const readerDirectoriesBeforeAssistantRef = useRef(false);
   const immersiveCloseButtonRef = useRef<HTMLButtonElement>(null);
   const immersivePreviousFocusRef = useRef<HTMLElement | null>(null);
   const skipInitialChapterFetchRef = useRef(initialChaptersLoaded);
   const lastHashScrollRef = useRef("");
+
+  useReadingPosition({
+    noteId,
+    contentVersion: note?.updatedAt instanceof Date ? note.updatedAt.toISOString() : String(note?.updatedAt ?? "unknown"),
+    enabled: Boolean(note && note.type !== "problem"),
+  });
+
+  useEffect(() => {
+    if (!isTabletLandscape || note?.type === "problem") return;
+    let lastScrollY = window.scrollY;
+    let frame: number | null = null;
+
+    const updateToolbar = () => {
+      frame = null;
+      const nextScrollY = window.scrollY;
+      const delta = nextScrollY - lastScrollY;
+      if (tocDrawerOpen || readerSettingsOpen || nextScrollY < 72 || delta < -8) {
+        setToolbarVisible(true);
+      } else if (delta > 10 && nextScrollY > 128) {
+        setToolbarVisible(false);
+      }
+      lastScrollY = nextScrollY;
+    };
+    const handleScroll = () => {
+      if (frame === null) frame = window.requestAnimationFrame(updateToolbar);
+    };
+
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => {
+      window.removeEventListener("scroll", handleScroll);
+      if (frame !== null) window.cancelAnimationFrame(frame);
+    };
+  }, [isTabletLandscape, note?.type, readerSettingsOpen, tocDrawerOpen]);
 
   useEffect(() => {
     if (!isImmersiveMode) return;
@@ -199,6 +251,9 @@ export function NoteReaderClient({
         setAssistantOpen(false);
         setAssistantQuotedText("");
         setReaderDirectoriesHidden(false);
+        setTocDrawerOpen(false);
+        setReaderSettingsOpen(false);
+        setToolbarVisible(true);
        skipInitialChapterFetchRef.current = initialChaptersLoaded;
     }, 0);
 
@@ -703,12 +758,15 @@ export function NoteReaderClient({
   const isEssay = note.type === "essay";
   const enableEconomicsTerms = note.subject === "economics";
   const enableEconomicsGraphs = note.subject === "economics" && !isProblem;
-  const showReaderSidebar = !readerDirectoriesHidden && (isProblem ? showProblemTools : preferences.tocPosition !== "hidden");
+  const tabletArticleReader = isTabletLandscape && !isProblem;
+  const showReaderSidebar = !tabletArticleReader && !readerDirectoriesHidden && (isProblem ? showProblemTools : preferences.tocPosition !== "hidden");
   const readerWidthClass = preferences.contentWidth === "narrow"
-    ? "mx-auto max-w-3xl"
+    ? "mx-auto max-w-[42rem]"
     : preferences.contentWidth === "wide"
-      ? "mx-auto max-w-5xl"
-      : "mx-auto max-w-4xl";
+      ? "mx-auto max-w-[56rem]"
+      : "mx-auto max-w-[45rem]";
+  const readerFontSize = tabletArticleReader && preferences.fontSize === 16 ? 18 : preferences.fontSize;
+  const readerLineHeight = tabletArticleReader && preferences.lineHeight === 1.72 ? 1.85 : preferences.lineHeight;
   const contentColumnClass = showReaderSidebar ? "min-w-0 lg:col-span-9" : "min-w-0 lg:col-span-12";
   const contentOrderClass = !isProblem && preferences.tocPosition === "left" ? "lg:order-last" : "";
   const sidebarOrderClass = !isProblem && preferences.tocPosition === "left" ? "lg:order-first" : "";
@@ -730,12 +788,12 @@ export function NoteReaderClient({
   };
 
   return (
-    <main className={`page-template-reader min-h-screen pb-20 pt-20 ${assistantOpen ? "note-reader-assistant-open" : ""}`} data-page-template="reader" data-assistant-open={assistantOpen || undefined}>
+    <main className={`page-template-reader min-h-screen pb-20 pt-20 ${assistantOpen ? "note-reader-assistant-open" : ""} ${tabletArticleReader ? "is-tablet-landscape-reader" : ""}`} data-page-template="reader" data-assistant-open={assistantOpen || undefined}>
       {/* Reading Progress Bar */}
       {preferences.showProgressBar && <ReadingProgress />}
 
       {/* Top Bar with Breadcrumb and Immersive Mode Button */}
-      <div className="sticky top-20 z-30 border-b border-outline-variant/20 bg-surface/80 backdrop-blur-xl" data-print-hide>
+      <div className={`reader-toolbar sticky top-20 z-30 border-b border-outline-variant/20 bg-surface/80 backdrop-blur-xl ${!toolbarVisible ? "reader-toolbar--hidden" : ""}`} data-print-hide>
         <div className="page-frame page-frame--wide flex flex-wrap items-center justify-between gap-3 py-3">
           <Link
             href={backHref}
@@ -755,6 +813,8 @@ export function NoteReaderClient({
             返回
           </Link>
 
+          <span className="reader-toolbar__title" title={note.title}>{note.title}</span>
+
           {readerDirectoriesHidden && !assistantOpen && (
             <button
               type="button"
@@ -769,7 +829,30 @@ export function NoteReaderClient({
           )}
 
           <div className="flex flex-wrap items-center justify-end gap-2">
-            {isAdmin && (
+            {!isProblem && hasArticleToc && (
+              <button
+                type="button"
+                onClick={() => setTocDrawerOpen(true)}
+                className="reader-toolbar__tablet-only reader-toolbar__icon"
+                aria-label="打开文章目录"
+                aria-expanded={tocDrawerOpen}
+              >
+                <ListTree className="h-5 w-5" />
+              </button>
+            )}
+            {!isProblem && (
+              <button
+                type="button"
+                onClick={() => setReaderSettingsOpen(true)}
+                className="reader-toolbar__tablet-only reader-toolbar__icon"
+                aria-label="打开阅读设置"
+                aria-expanded={readerSettingsOpen}
+              >
+                <Settings2 className="h-5 w-5" />
+              </button>
+            )}
+            <div className="reader-toolbar__desktop-actions">
+              {isAdmin && (
               <button
                 type="button"
                 onMouseDown={captureAssistantSelection}
@@ -783,7 +866,7 @@ export function NoteReaderClient({
                 <span className="hidden sm:inline">问助手</span>
               </button>
             )}
-            {showReaderSidebar && !assistantOpen && (
+              {showReaderSidebar && !assistantOpen && (
               <button
                 type="button"
                 onClick={() => setReaderDirectoriesHidden(true)}
@@ -795,7 +878,7 @@ export function NoteReaderClient({
                 <span className="hidden sm:inline">隐藏目录</span>
               </button>
             )}
-            {isProblem && allProblems.length > 0 && (
+              {isProblem && allProblems.length > 0 && (
               <button
                 onClick={() => setShowProblemTools((value) => !value)}
                 className={`control-button min-h-11 px-3 text-sm ${showProblemTools ? "control-button-selected" : ""}`}
@@ -806,7 +889,7 @@ export function NoteReaderClient({
               </button>
             )}
             {/* Immersive Reading Button - Only for notes and essays */}
-            {!isProblem && (
+              {!isProblem && (
               <button
                 onClick={() => setIsImmersiveMode(true)}
                 className="control-button min-h-11 px-3 text-sm"
@@ -816,7 +899,7 @@ export function NoteReaderClient({
                 <span className="hidden sm:inline">沉浸</span>
               </button>
             )}
-            {isAdmin && (
+              {isAdmin && (
               <>
                 <Link
                   href={`/create?edit=${note.id}`}
@@ -836,6 +919,7 @@ export function NoteReaderClient({
                 </button>
               </>
             )}
+            </div>
           </div>
         </div>
       </div>
@@ -1001,6 +1085,7 @@ export function NoteReaderClient({
           {/* Article Content */}
           <article
             data-note-reader-content
+            data-reader-article-content={!isProblem || undefined}
             className={`py-8 ${isProblem ? "" : readerWidthClass}`}
           >
             {isProblem && allProblems.length > 0 ? (
@@ -1144,11 +1229,12 @@ export function NoteReaderClient({
                   content={displayContent}
                   className="reader-content text-on-surface"
                   style={{
-                    fontSize: `${preferences.fontSize}px`,
-                    lineHeight: preferences.lineHeight,
+                    fontSize: `${readerFontSize}px`,
+                    lineHeight: readerLineHeight,
                   }}
                   enableEconomicsTerms={enableEconomicsTerms}
                   enableEconomicsGraphs={enableEconomicsGraphs}
+                  enableImageLightbox
                 />
               </>
             )}
@@ -1199,6 +1285,34 @@ export function NoteReaderClient({
           </aside>
         )}
       </div>
+
+      {collectionNavigation && !isProblem && (
+        <nav className={`reader-collection-nav ${readerWidthClass}`} aria-label="合集文章导航">
+          <div className="reader-collection-nav__side">
+            {collectionNavigation.previous ? (
+              <Link href={getNoteReadPath(collectionNavigation.previous, collectionNavigation.returnHref)} className="reader-collection-nav__link reader-collection-nav__link--previous">
+                <ChevronLeft className="h-5 w-5 shrink-0" />
+                <span><small>上一篇</small><strong>{collectionNavigation.previous.title}</strong></span>
+              </Link>
+            ) : <span />}
+          </div>
+          <Link href={collectionNavigation.returnHref} className="reader-collection-nav__return">
+            <ListTree className="h-4 w-4" />
+            <span>{collectionNavigation.collectionTitle}</span>
+          </Link>
+          <div className="reader-collection-nav__side reader-collection-nav__side--next">
+            {collectionNavigation.next ? (
+              <Link href={getNoteReadPath(collectionNavigation.next, collectionNavigation.returnHref)} className="reader-collection-nav__link reader-collection-nav__link--next">
+                <span><small>下一篇</small><strong>{collectionNavigation.next.title}</strong></span>
+                <ChevronRight className="h-5 w-5 shrink-0" />
+              </Link>
+            ) : <span />}
+          </div>
+        </nav>
+      )}
+
+      <ReaderTocDrawer open={tocDrawerOpen && !isProblem && hasArticleToc} content={displayContent} onClose={() => setTocDrawerOpen(false)} />
+      <SettingsPanel isOpen={readerSettingsOpen} onClose={() => setReaderSettingsOpen(false)} mode="reading" />
 
       <AssistantDock
         noteId={note.id}
@@ -1339,6 +1453,7 @@ export function NoteReaderClient({
                     }}
                     enableEconomicsTerms={enableEconomicsTerms}
                     enableEconomicsGraphs={enableEconomicsGraphs}
+                    enableImageLightbox
                   />
                 )}
               </div>

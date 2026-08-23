@@ -80,6 +80,12 @@ AI 直接写入 `notes` 时只能写未发布的、自身学科对应的草稿�
 
 工作台位于 `/tools/ai-content`，使用真实博客 Markdown 预览。未登录或非 AI 账号只能看到安全门；四个 Auth 账号的具体 provisioning 仍需单独审核，不在迁移或本地演练中自动创建。
 
+### AI 正文图片
+
+正文图片继续使用标准 Markdown：`![图片说明](https://...)`。AI 工作台提供 URL 插入和图片上传两种入口，都会把生成结果插入当前光标位置；自检会统计图片并拒绝空链接。AI 也可以直接调用 `POST /api/ai/content-assets`，以 multipart form-data 传入 `file` 和可选的 `alt`，响应返回 `url`、`path` 与可直接放入正文的 `markdown`。
+
+上传仅接受 PNG、JPEG、WebP、GIF，单张上限 10 MB。迁移 `0033_ai_content_image_assets.sql` 只向激活的 AI 账号开放 `note-images/ai-content/{auth.uid()}/...` 下的 `INSERT`；接口固定 `upsert=false`，不授予覆盖、删除或列举其他对象的能力。图片进入提案后仍随正文走自检、人工审核和发布链，AI 账号不能绕过审核直接改公开文章。
+
 ## 阶段 4：版本锚定人工审核与发布
 
 管理员审核工作台位于 `/tools/ai-review`，与 AI 工作台分离。接口全部走管理员 bearer token：

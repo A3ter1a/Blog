@@ -22,6 +22,7 @@ interface ProblemReferenceContentProps {
   loadMode?: "published" | "adminAware";
   enableEconomicsTerms?: boolean;
   enableEconomicsGraphs?: boolean;
+  enableImageLightbox?: boolean;
 }
 
 type ProblemSetLoadState = {
@@ -63,6 +64,7 @@ export function ProblemReferenceContent({
   loadMode = "published",
   enableEconomicsTerms = false,
   enableEconomicsGraphs = false,
+  enableImageLightbox = false,
 }: ProblemReferenceContentProps) {
   const segments = useMemo(() => splitProblemReferenceContent(content), [content]);
   const noteIds = useMemo(() => extractProblemReferenceNoteIds(content), [content]);
@@ -138,6 +140,7 @@ export function ProblemReferenceContent({
         style={style}
         enableEconomicsTerms={enableEconomicsTerms}
         enableEconomicsGraphs={enableEconomicsGraphs}
+        enableImageLightbox={enableImageLightbox}
       />
     );
   }
@@ -155,6 +158,7 @@ export function ProblemReferenceContent({
               style={style}
               enableEconomicsTerms={enableEconomicsTerms}
               enableEconomicsGraphs={enableEconomicsGraphs}
+              enableImageLightbox={enableImageLightbox}
             />
           );
         }

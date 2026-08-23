@@ -137,7 +137,7 @@ export function CollectionDetailClient({
             <ol className="space-y-3">
               {collection.items.map((item, index) => item.note ? (
                 <li key={item.id}>
-                  <Link href={getNoteReadPath({ id: item.note.id, isPublished: item.note.isPublished })} className="group flex items-center gap-4 rounded-2xl border border-outline-variant/15 bg-surface-container-low px-4 py-4 transition hover:border-primary/35 hover:bg-primary/[0.04]">
+                  <Link href={getNoteReadPath({ id: item.note.id, isPublished: item.note.isPublished }, `/collections/${collection.id}`)} className="group flex items-center gap-4 rounded-2xl border border-outline-variant/15 bg-surface-container-low px-4 py-4 transition hover:border-primary/35 hover:bg-primary/[0.04]">
                     <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-sm font-bold text-primary">{String(index + 1).padStart(2, "0")}</span>
                     <span className="min-w-0 flex-1"><span className="block truncate font-headline text-base font-semibold text-on-surface group-hover:text-primary">{item.note.title}</span><span className="mt-1 block text-xs text-on-surface-variant">{typeMap[item.note.type]}{item.note.subject ? ` · ${subjectMap[item.note.subject]}` : ""}</span></span>
                     <ArrowUpRight className="h-4 w-4 shrink-0 text-on-surface-variant transition group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:text-primary" />

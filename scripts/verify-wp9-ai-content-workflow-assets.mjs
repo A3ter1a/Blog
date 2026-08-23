@@ -13,6 +13,9 @@ const files = [
   "app/api/ai/content-proposals/[id]/route.ts",
   "app/api/ai/content-proposals/[id]/self-check/route.ts",
   "app/api/ai/content-proposals/[id]/submit/route.ts",
+  "app/api/ai/content-assets/route.ts",
+  "components/ai-content/AiContentImageInserter.tsx",
+  "supabase/migrations/0033_ai_content_image_assets.sql",
   "docs/ai-content-workflow.md",
 ];
 
@@ -30,6 +33,8 @@ const patchRoute = readFileSync(resolve("app/api/ai/content-proposals/[id]/route
 const submitRoute = readFileSync(resolve("app/api/ai/content-proposals/[id]/submit/route.ts"), "utf8");
 const workspace = readFileSync(resolve("components/ai-content/AiContentWorkspace.tsx"), "utf8");
 const docs = readFileSync(resolve("docs/ai-content-workflow.md"), "utf8");
+const assetRoute = readFileSync(resolve("app/api/ai/content-assets/route.ts"), "utf8");
+const assetMigration = readFileSync(resolve("supabase/migrations/0033_ai_content_image_assets.sql"), "utf8");
 
 for (const marker of [
   "AI_CONTENT_SELF_CHECK_VERSION",
@@ -76,6 +81,13 @@ for (const route of [api, patchRoute, submitRoute]) {
   if (route.includes("getAdminRequestContext(req)")) throw new Error("阶段 3 提案接口不应复用管理员鉴权");
 }
 
+for (const marker of ["getAiRequestContext(req)", "upsert: false", "AI_CONTENT_IMAGE_MAX_BYTES", "buildMarkdownImage"]) {
+  if (!assetRoute.includes(marker)) throw new Error(`AI 图片接口缺少：${marker}`);
+}
+for (const marker of ["for insert", "storage.foldername(name)", "private.current_user_is_ai()", "auth.uid()"]) {
+  if (!assetMigration.includes(marker)) throw new Error(`AI 图片 Storage RLS 缺少：${marker}`);
+}
+
 for (const marker of ["/api/ai/content-proposals", "保存并自检", "保存并提交审核", "ContentPreview"]) {
   if (!workspace.includes(marker)) throw new Error(`阶段 3 工作台缺少：${marker}`);
 }
@@ -91,7 +103,7 @@ for (const marker of [
 
 console.log(JSON.stringify({
   status: "passed",
-  routes: 4,
+  routes: 5,
   productionWrites: false,
   sourceMaterialIngestion: false,
   selfCheck: "ai-content-self-check-v1",

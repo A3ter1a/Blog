@@ -1,9 +1,10 @@
 import type { Metadata, ResolvingMetadata } from "next";
 import { notFound } from "next/navigation";
 import type { Chapter, Note } from "@/lib/types";
-import { NoteReaderClient } from "@/components/notes/NoteReaderClient";
+import { NoteReaderClient, type CollectionReaderNavigation } from "@/components/notes/NoteReaderClient";
 import {
   getCachedPublicChapters,
+  getCachedPublishedCollection,
   getCachedPublishedNote,
 } from "@/lib/server-public-cache";
 import {
@@ -14,7 +15,7 @@ import {
 } from "@/lib/site-metadata";
 import { isPreloadTimeout, withTimeout } from "@/lib/with-timeout";
 import { toIsoDateString } from "@/lib/utils";
-import { getSafeNotesReturnPath } from "@/lib/note-routes";
+import { getCollectionIdFromReturnPath, getSafeNotesReturnPath } from "@/lib/note-routes";
 
 // Public note pages are ISR-friendly. The client reader still performs a
 // stale-while-revalidate refresh so a returning reader can paint immediately
@@ -154,11 +155,36 @@ export default async function NoteReaderPage({ params, searchParams }: NoteReade
   const rawReturnPath = (await searchParams).from;
   const returnPath = Array.isArray(rawReturnPath) ? rawReturnPath[0] : rawReturnPath;
   const backHref = getSafeNotesReturnPath(returnPath);
+  const collectionId = getCollectionIdFromReturnPath(backHref);
   const preferHistoryBack = Boolean(returnPath && returnPath === backHref);
-  const initialData = await getInitialNote(id);
+  const [initialData, collection] = await Promise.all([
+    getInitialNote(id),
+    collectionId
+      ? withTimeout(getCachedPublishedCollection(collectionId), SERVER_PRELOAD_TIMEOUT_MS).catch((error: unknown) => {
+          if (!isPreloadTimeout(error)) console.error("Failed to preload collection navigation:", error);
+          return null;
+        })
+      : Promise.resolve(null),
+  ]);
 
   if (!initialData.loadError && !initialData.note) {
     notFound();
+  }
+
+  let collectionNavigation: CollectionReaderNavigation | null = null;
+  if (collection && initialData.note) {
+    const readableItems = collection.items.filter((item) => item.note?.isPublished && item.note.type !== "problem");
+    const currentIndex = readableItems.findIndex((item) => item.note?.id === initialData.note?.id);
+    if (currentIndex >= 0) {
+      const previous = readableItems[currentIndex - 1]?.note;
+      const next = readableItems[currentIndex + 1]?.note;
+      collectionNavigation = {
+        collectionTitle: collection.title,
+        returnHref: `/collections/${collection.id}`,
+        previous: previous ? { id: previous.id, title: previous.title, isPublished: previous.isPublished } : undefined,
+        next: next ? { id: next.id, title: next.title, isPublished: next.isPublished } : undefined,
+      };
+    }
   }
 
   return (
@@ -170,6 +196,7 @@ export default async function NoteReaderPage({ params, searchParams }: NoteReade
       initialLoadError={initialData.loadError}
       backHref={backHref}
       preferHistoryBack={preferHistoryBack}
+      collectionNavigation={collectionNavigation}
     />
   );
 }

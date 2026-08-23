@@ -26,6 +26,7 @@ export function Navbar() {
   const [showSearch, setShowSearch] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
+  const isReaderRoute = /^\/notes\/(?:private\/)?[^/]+$/.test(pathname);
 
   const visibleNavItems = navItems.filter((item) => isAdmin || !item.adminOnly);
 
@@ -58,7 +59,8 @@ export function Navbar() {
 
   return (
     <nav
-      className={`motion-page fixed top-0 z-50 w-full border-b ${
+      data-reader-route={isReaderRoute || undefined}
+      className={`site-navbar motion-page fixed top-0 z-50 w-full border-b ${
         scrolled
           ? "border-slate-100/50 bg-white/70 shadow-ambient backdrop-blur-md"
           : "border-transparent bg-transparent"

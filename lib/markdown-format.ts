@@ -1,5 +1,5 @@
 const FENCED_CODE_PATTERN = /(```[\s\S]*?```|~~~[\s\S]*?~~~)/g;
-const MARKDOWN_IMAGE_PATTERN = /!\[[^\]\n]*\]\((?:\\.|[^)\n])+\)/g;
+const MARKDOWN_IMAGE_PATTERN = /!\[(?:\\.|[^\]\n])*\]\((?:\\.|[^)\n])+\)/g;
 const COLLAPSED_IMAGE_HEADING_PATTERN = /(!\[[^\]\n]*\]\((?:\\.|[^)\n])+\))(?=#{1,6}\s)/g;
 const IMAGE_BEFORE_HEADING_PATTERN = /(!\[[^\]\n]*\]\((?:\\.|[^)\n])+\))[ \t]*\n(?=#{1,6}\s)/g;
 const HTML_IMAGE_PATTERN = /<img\b[^>]*>/gi;
@@ -41,6 +41,20 @@ function getHtmlAttribute(tag: string, name: string): string | null {
 
 function escapeMarkdownImageAlt(value: string): string {
   return value.replace(/\\/g, "\\\\").replace(/]/g, "\\]");
+}
+
+export function buildMarkdownImage(alt: string, url: string): string {
+  const safeAlt = escapeMarkdownImageAlt(alt.trim() || "文章插图");
+  const safeUrl = url.trim()
+    .replace(/\\/g, "%5C")
+    .replace(/\s/g, "%20")
+    .replace(/\(/g, "%28")
+    .replace(/\)/g, "%29");
+  return `![${safeAlt}](${safeUrl})`;
+}
+
+export function countMarkdownImages(content: string): number {
+  return (normalizeMarkdownImageHtml(content).match(MARKDOWN_IMAGE_PATTERN) ?? []).length;
 }
 
 function normalizeImageWidth(value: string | null): string | null {

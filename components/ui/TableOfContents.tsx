@@ -8,6 +8,7 @@ import { extractTocItems } from "@/lib/markdown";
 interface TableOfContentsProps {
   content: string;
   className?: string;
+  onNavigate?: () => void;
 }
 
 function renderInlineMath(text: string): ReactNode[] {
@@ -34,13 +35,14 @@ function renderInlineMath(text: string): ReactNode[] {
     });
 }
 
-export function TableOfContents({ content, className = "" }: TableOfContentsProps) {
+export function TableOfContents({ content, className = "", onNavigate }: TableOfContentsProps) {
   const tocItems = useMemo(() => extractTocItems(content), [content]);
 
   if (tocItems.length === 0) return null;
 
   const scrollToHeading = (id: string) => {
     document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    onNavigate?.();
   };
 
   return (
