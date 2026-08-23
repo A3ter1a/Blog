@@ -73,6 +73,7 @@ export default function RootLayout({
   return (
     <html lang="zh-CN" className="h-full antialiased" data-scroll-behavior="smooth" suppressHydrationWarning>
       <body className="min-h-full flex flex-col bg-surface text-on-surface selection:bg-primary-container selection:text-on-primary-container">
+        <a href="#main-content" className="skip-link">跳到主要内容</a>
         <ThemeController />
         <MotionProvider>
           <ToastProvider>

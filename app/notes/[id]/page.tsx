@@ -14,6 +14,7 @@ import {
 } from "@/lib/site-metadata";
 import { isPreloadTimeout, withTimeout } from "@/lib/with-timeout";
 import { toIsoDateString } from "@/lib/utils";
+import { getSafeNotesReturnPath } from "@/lib/note-routes";
 
 // Public note pages are ISR-friendly. The client reader still performs a
 // stale-while-revalidate refresh so a returning reader can paint immediately
@@ -22,6 +23,7 @@ export const revalidate = 60;
 
 type NoteReaderPageProps = {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ from?: string | string[] }>;
 };
 
 type InitialNotePayload = {
@@ -147,8 +149,12 @@ export async function generateMetadata(
   };
 }
 
-export default async function NoteReaderPage({ params }: NoteReaderPageProps) {
+export default async function NoteReaderPage({ params, searchParams }: NoteReaderPageProps) {
   const { id } = await params;
+  const rawReturnPath = (await searchParams).from;
+  const returnPath = Array.isArray(rawReturnPath) ? rawReturnPath[0] : rawReturnPath;
+  const backHref = getSafeNotesReturnPath(returnPath);
+  const preferHistoryBack = Boolean(returnPath && returnPath === backHref);
   const initialData = await getInitialNote(id);
 
   if (!initialData.loadError && !initialData.note) {
@@ -162,6 +168,8 @@ export default async function NoteReaderPage({ params }: NoteReaderPageProps) {
       initialChapters={initialData.chapters}
       initialChaptersLoaded={initialData.chaptersLoaded}
       initialLoadError={initialData.loadError}
+      backHref={backHref}
+      preferHistoryBack={preferHistoryBack}
     />
   );
 }

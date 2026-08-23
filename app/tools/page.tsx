@@ -17,12 +17,12 @@ export const metadata = createPageMetadata({
 
 const toolHubs: ToolHubCardItem[] = [
   {
-    id: "collections",
-    title: "合集工作台",
-    description: "按章节或主题逐篇追加内容，随时调整顺序、移除或发布。",
-    href: "/tools/collections",
-    icon: Layers3,
-    tone: "border-violet-500/20 bg-violet-500/10 text-violet-700",
+    id: "math-training",
+    title: "数学训练",
+    description: "集中管理数学三自测、错题复盘、知识目录和做题本。",
+    href: "/tools/math-training",
+    icon: Calculator,
+    tone: "border-emerald-500/20 bg-emerald-500/10 text-emerald-700",
   },
   {
     id: "past-papers",
@@ -33,20 +33,20 @@ const toolHubs: ToolHubCardItem[] = [
     tone: "border-teal-500/20 bg-teal-500/10 text-teal-700",
   },
   {
-    id: "math-training",
-    title: "数学训练",
-    description: "集中管理数学三自测、错题复盘、知识目录和做题本。",
-    href: "/tools/math-training",
-    icon: Calculator,
-    tone: "border-emerald-500/20 bg-emerald-500/10 text-emerald-700",
-  },
-  {
     id: "economics-glossary",
     title: "经济学术语",
     description: "按英文原词、中文译名和考研表达整理微观概念。",
     href: "/tools/economics-glossary",
     icon: BookOpenText,
     tone: "border-amber-500/20 bg-amber-500/10 text-amber-700",
+  },
+  {
+    id: "collections",
+    title: "合集工作台",
+    description: "按章节或主题逐篇追加内容，随时调整顺序、移除或发布。",
+    href: "/tools/collections",
+    icon: Layers3,
+    tone: "border-violet-500/20 bg-violet-500/10 text-violet-700",
   },
 ];
 

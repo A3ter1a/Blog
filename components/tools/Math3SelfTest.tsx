@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import Link from "next/link";
 import {
   BookOpenCheck,
   Check,
@@ -461,6 +462,16 @@ export function Math3SelfTest() {
         icon={<BookOpenCheck className="h-5 w-5" />}
         title="需要管理员登录"
         description="自测卷会写入 Supabase，并调用服务端 AI key，所以暂时只开放给管理员使用。"
+        actions={(
+          <div className="flex flex-wrap justify-center gap-2">
+            <Link href="/login" className="control-button control-button-primary min-h-10 px-4 text-sm">
+              前往登录
+            </Link>
+            <Link href="/tools/math-training" className="control-button min-h-10 px-4 text-sm">
+              返回数学训练
+            </Link>
+          </div>
+        )}
       />
     );
   }
@@ -595,7 +606,17 @@ export function Math3SelfTest() {
   );
 }
 
-function ShellMessage({ icon, title, description }: { icon: ReactNode; title: string; description?: string }) {
+function ShellMessage({
+  icon,
+  title,
+  description,
+  actions,
+}: {
+  icon: ReactNode;
+  title: string;
+  description?: string;
+  actions?: ReactNode;
+}) {
   return (
     <div className="flex min-h-[420px] flex-col items-center justify-center gap-3 text-center text-on-surface-variant">
       <div className="flex h-11 w-11 items-center justify-center rounded-full bg-surface-container-high text-primary">
@@ -603,6 +624,7 @@ function ShellMessage({ icon, title, description }: { icon: ReactNode; title: st
       </div>
       <div className="text-sm font-semibold text-on-surface">{title}</div>
       {description && <p className="max-w-md text-sm leading-6">{description}</p>}
+      {actions}
     </div>
   );
 }

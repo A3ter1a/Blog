@@ -112,7 +112,7 @@ export function Navbar() {
           <button
             type="button"
             onClick={() => setShowSearch(true)}
-            className="motion-ui motion-interactive rounded-lg p-2 text-primary-container hover:bg-surface-container-high focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+            className="motion-ui motion-interactive flex h-11 w-11 items-center justify-center rounded-lg text-primary-container hover:bg-surface-container-high focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
             aria-label="搜索"
           >
             <Search className="w-5 h-5" />
@@ -122,7 +122,7 @@ export function Navbar() {
           <button
             type="button"
             onClick={() => setShowSettings(true)}
-            className="motion-ui motion-interactive rounded-lg p-2 text-primary-container hover:bg-surface-container-high focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+            className="motion-ui motion-interactive flex h-11 w-11 items-center justify-center rounded-lg text-primary-container hover:bg-surface-container-high focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
             aria-label="设置"
           >
             <Settings className="w-5 h-5" />
@@ -131,7 +131,7 @@ export function Navbar() {
           <button
             type="button"
             onClick={() => setShowMobileMenu(true)}
-            className="motion-ui motion-interactive rounded-lg p-2 text-primary-container hover:bg-surface-container-high focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 md:hidden"
+            className="motion-ui motion-interactive flex h-11 w-11 items-center justify-center rounded-lg text-primary-container hover:bg-surface-container-high focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 md:hidden"
             aria-label="打开导航"
             aria-expanded={showMobileMenu}
           >
@@ -185,7 +185,7 @@ export function Navbar() {
                 <button
                   type="button"
                   onClick={() => setShowMobileMenu(false)}
-                  className="motion-ui motion-interactive flex h-9 w-9 items-center justify-center rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-primary"
+                  className="motion-ui motion-interactive flex h-11 w-11 items-center justify-center rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-primary"
                   aria-label="关闭导航"
                 >
                   <X className="h-5 w-5" />

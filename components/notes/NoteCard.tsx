@@ -1,13 +1,11 @@
 "use client";
 
-import { motion } from "framer-motion";
 import Link from "next/link";
 import { subjectMap, typeMap, type Note } from "@/lib/types";
 import { FileText, BookOpen, Calendar, Check, Clock } from "lucide-react";
 import { estimateReadingTime } from "@/lib/utils";
 import { getVisibleNoteTags } from "@/lib/math3-practice";
 import { getNoteReadPath } from "@/lib/note-routes";
-import { getListItemTransition, surfaceMotion } from "@/lib/motion";
 import { CachedImage } from "@/components/ui/CachedImage";
 
 interface NoteCardProps {
@@ -16,9 +14,10 @@ interface NoteCardProps {
   isSelected?: boolean;
   onToggleSelect?: (noteId: string) => void;
   selectMode?: boolean;
+  returnTo?: string;
 }
 
-export function NoteCard({ note, index, isSelected = false, onToggleSelect, selectMode = false }: NoteCardProps) {
+export function NoteCard({ note, index, isSelected = false, onToggleSelect, selectMode = false, returnTo }: NoteCardProps) {
   const isProblem = note.type === "problem";
   const isEssay = note.type === "essay";
   const createdAt = note.createdAt instanceof Date ? note.createdAt : new Date(String(note.createdAt));
@@ -34,11 +33,7 @@ export function NoteCard({ note, index, isSelected = false, onToggleSelect, sele
   };
 
   return (
-    <motion.article
-      variants={surfaceMotion}
-      initial="initial"
-      animate="animate"
-      transition={getListItemTransition(index)}
+    <article
       onClick={handleClick}
       className={`surface-card library-card group h-full cursor-pointer overflow-hidden ${
         selectMode
@@ -48,7 +43,7 @@ export function NoteCard({ note, index, isSelected = false, onToggleSelect, sele
           : ""
       }`}
     >
-      <Link href={getNoteReadPath(note)} className="flex h-full flex-col" onClick={selectMode ? (e) => e.preventDefault() : undefined}>
+      <Link href={getNoteReadPath(note, returnTo)} className="flex h-full flex-col" onClick={selectMode ? (e) => e.preventDefault() : undefined}>
         {/* Cover Image or Placeholder */}
         <div className="relative aspect-[16/9] overflow-hidden rounded-t-md bg-surface-container-low">
           {note.coverImage ? (
@@ -79,20 +74,25 @@ export function NoteCard({ note, index, isSelected = false, onToggleSelect, sele
           
           {/* Selection Checkbox (visible in select mode) */}
           {selectMode && (
-            <div className="absolute top-4 left-4 z-10">
+            <div className="absolute left-2 top-2 z-10">
               <button
+                type="button"
                 onClick={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
                   onToggleSelect?.(note.id);
                 }}
-                className={`motion-ui flex w-6 h-6 rounded-full items-center justify-center ${
+                className="motion-ui flex h-11 w-11 items-center justify-center rounded-full hover:bg-surface-container-lowest/45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+                aria-label={isSelected ? `取消选择 ${note.title}` : `选择 ${note.title}`}
+                aria-pressed={isSelected}
+              >
+                <span className={`flex h-6 w-6 items-center justify-center rounded-full ${
                   isSelected
                     ? "bg-primary text-on-primary"
-                    : "bg-surface-container-lowest/80 backdrop-blur-sm border-2 border-outline-variant"
-                }`}
-              >
-                {isSelected && <Check className="w-4 h-4" />}
+                    : "border-2 border-outline-variant bg-surface-container-lowest/80 backdrop-blur-sm"
+                }`}>
+                  {isSelected && <Check className="w-4 h-4" />}
+                </span>
               </button>
             </div>
           )}
@@ -165,6 +165,6 @@ export function NoteCard({ note, index, isSelected = false, onToggleSelect, sele
           </div>
         </div>
       </Link>
-    </motion.article>
+    </article>
   );
 }

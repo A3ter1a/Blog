@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Search, X, ArrowRight } from "lucide-react";
+import { Search, X, ArrowRight, Loader2, RotateCcw } from "lucide-react";
 import Link from "next/link";
 import { notesApi } from "@/lib/supabase";
 import { subjectMap, typeMap } from "@/lib/types";
@@ -20,6 +20,7 @@ export function SearchOverlay({ isOpen, onClose }: SearchOverlayProps) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<Note[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const latestSearchId = useRef(0);
 
@@ -29,6 +30,7 @@ export function SearchOverlay({ isOpen, onClose }: SearchOverlayProps) {
       latestSearchId.current += 1;
       setResults([]);
       setIsSearching(false);
+      setSearchError(null);
       return;
     }
 
@@ -36,10 +38,12 @@ export function SearchOverlay({ isOpen, onClose }: SearchOverlayProps) {
     latestSearchId.current = searchId;
     const cacheKey = getSiteCacheKey("note-search", searchQuery.trim().toLocaleLowerCase());
     const cached = readSiteCache<Note[]>(cacheKey, (value) => Array.isArray(value) ? value as Note[] : null, { ttlMs: 2 * 60 * 1000, maxAgeMs: 12 * 60 * 60 * 1000 });
+    setSearchError(null);
     if (cached) {
       setResults(cached.value);
       setIsSearching(false);
     } else {
+      setResults([]);
       setIsSearching(true);
     }
     try {
@@ -54,7 +58,8 @@ export function SearchOverlay({ isOpen, onClose }: SearchOverlayProps) {
     } catch (error) {
       console.error("Search failed:", error);
       if (latestSearchId.current === searchId) {
-        setResults([]);
+        if (!cached) setResults([]);
+        setSearchError("搜索暂时不可用，请检查网络后重试。");
       }
     } finally {
       if (latestSearchId.current === searchId) {
@@ -79,8 +84,11 @@ export function SearchOverlay({ isOpen, onClose }: SearchOverlayProps) {
     }
     if (!isOpen) {
       const timer = window.setTimeout(() => {
+        latestSearchId.current += 1;
         setQuery("");
         setResults([]);
+        setIsSearching(false);
+        setSearchError(null);
       }, 0);
       return () => window.clearTimeout(timer);
     }
@@ -119,7 +127,10 @@ export function SearchOverlay({ isOpen, onClose }: SearchOverlayProps) {
             animate="animate"
             exit="exit"
             transition={uiMotion.spring.panel}
-            className="fixed top-20 left-1/2 -translate-x-1/2 z-50 w-full max-w-2xl px-4"
+            className="fixed left-1/2 top-4 z-50 w-full max-w-2xl -translate-x-1/2 px-3 sm:top-20 sm:px-4"
+            role="dialog"
+            aria-modal="true"
+            aria-label="全局搜索"
           >
             <div className="bg-surface-container-lowest rounded-2xl shadow-elevated overflow-hidden">
               {/* Input */}
@@ -131,12 +142,16 @@ export function SearchOverlay({ isOpen, onClose }: SearchOverlayProps) {
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                   placeholder="搜索笔记标题或标签..."
+                  aria-label="搜索笔记"
+                  aria-busy={isSearching}
                   className="flex-1 bg-transparent outline-none text-on-surface placeholder:text-on-surface-variant/40 text-lg"
                 />
                 {query && (
                   <button
                     onClick={() => setQuery("")}
-                    className="motion-ui motion-interactive p-1 rounded-full hover:bg-surface-container-high"
+                    type="button"
+                    aria-label="清空搜索"
+                    className="motion-ui motion-interactive flex h-11 w-11 shrink-0 items-center justify-center rounded-full hover:bg-surface-container-high"
                   >
                     <X className="w-4 h-4 text-on-surface-variant" />
                   </button>
@@ -145,23 +160,24 @@ export function SearchOverlay({ isOpen, onClose }: SearchOverlayProps) {
 
               {/* Results */}
               {query.trim() && (
-                <div className="max-h-80 overflow-y-auto">
-                  {isSearching ? (
-                    <div className="py-12 text-center">
-                      <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-3" />
-                      <p className="text-sm text-on-surface-variant/60">搜索中...</p>
-                    </div>
-                  ) : results.length > 0 ? (
+                <div className="max-h-80 overflow-y-auto" aria-live="polite" aria-busy={isSearching}>
+                  {results.length > 0 ? (
                     <div className="py-2">
-                      <p className="px-6 py-2 text-xs text-on-surface-variant/60">
-                        找到 {results.length} 条结果
-                      </p>
+                      <div className="flex items-center justify-between gap-3 px-6 py-2 text-xs text-on-surface-variant/60">
+                        <span>找到 {results.length} 条结果</span>
+                        {isSearching && (
+                          <span className="inline-flex items-center gap-1.5" role="status">
+                            <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
+                            正在更新
+                          </span>
+                        )}
+                      </div>
                       {results.map((note) => (
                         <Link
                           key={note.id}
                           href={getNoteReadPath(note)}
                           onClick={onClose}
-                          className="motion-ui group flex items-center justify-between px-6 py-3 hover:bg-surface-container-high"
+                          className="motion-ui group flex min-h-11 items-center justify-between px-6 py-3 hover:bg-surface-container-high"
                         >
                           <div className="flex-1 min-w-0">
                             <p className="text-sm font-medium text-on-surface truncate">
@@ -182,11 +198,38 @@ export function SearchOverlay({ isOpen, onClose }: SearchOverlayProps) {
                         </Link>
                       ))}
                     </div>
+                  ) : isSearching ? (
+                    <div className="space-y-1 py-2" role="status" aria-label="正在搜索">
+                      <div className="flex items-center gap-2 px-6 py-2 text-xs text-on-surface-variant/60">
+                        <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
+                        正在搜索
+                      </div>
+                      {Array.from({ length: 4 }).map((_, index) => (
+                        <div key={index} className="flex items-center gap-4 px-6 py-3">
+                          <div className="min-w-0 flex-1 space-y-2">
+                            <div className="h-4 w-3/4 animate-pulse rounded bg-surface-container-high" />
+                            <div className="h-3 w-1/3 animate-pulse rounded bg-surface-container-high/70" />
+                          </div>
+                          <div className="h-4 w-4 animate-pulse rounded bg-surface-container-high" />
+                        </div>
+                      ))}
+                    </div>
+                  ) : searchError ? (
+                    <div className="px-6 py-10 text-center" role="alert">
+                      <p className="text-sm text-on-surface-variant">{searchError}</p>
+                      <button
+                        type="button"
+                        onClick={() => void searchNotes(query)}
+                        className="control-button mt-4 min-h-11 px-4 text-sm"
+                      >
+                        <RotateCcw className="h-4 w-4" />
+                        重试
+                      </button>
+                    </div>
                   ) : (
                     <div className="py-12 text-center">
-                      <p className="text-sm text-on-surface-variant/40">
-                        没有找到匹配的结果
-                      </p>
+                      <p className="text-sm font-medium text-on-surface-variant">没有找到匹配的结果</p>
+                      <p className="mt-1 text-xs text-on-surface-variant/55">尝试减少关键词，或改用文章标题中的词语。</p>
                     </div>
                   )}
                 </div>

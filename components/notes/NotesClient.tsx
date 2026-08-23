@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useMemo, useEffect, useCallback, useRef } from "react";
-import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import { SearchBar } from "@/components/notes/SearchBar";
 import { TagFilter } from "@/components/notes/TagFilter";
@@ -16,12 +15,12 @@ import { PageHeader, PageShell } from "@/components/ui/PageScaffold";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { clearNotesListCache, getNotesCacheKey, readNotesCache, writeNotesCache } from "@/lib/notes-list-cache";
 import { NOTES_PAGE_SIZE, NOTES_SEARCH_RESULT_LIMIT } from "@/lib/notes-query";
-import { collapsibleMotion, surfaceMotion, uiMotion } from "@/lib/motion";
 import { CollectionCard } from "@/components/collections/CollectionCard";
 import type { CollectionSummary } from "@/lib/collections-contract";
 import { collectionsApi } from "@/lib/collections-api";
 import { groupNotesByCollection } from "@/lib/note-collection-directory";
-import { getNoteReadPath } from "@/lib/note-routes";
+import { getNoteReadPath, getNotesDirectoryPath } from "@/lib/note-routes";
+import { toUnixTimestamp } from "@/lib/utils";
 import { fetchWithAuth } from "@/lib/fetch-with-auth";
 import { getActiveAiAccountSlot } from "@/lib/auth-session-slot";
 import {
@@ -63,6 +62,11 @@ interface NotesClientProps {
   initialHasMoreNotes?: boolean;
   initialLoadError?: boolean;
   initialCollections?: CollectionSummary[];
+  initialDirectoryKind?: NoteAuthorKind;
+  initialSearchQuery?: string;
+  initialSelectedType?: NoteType | "all";
+  initialSelectedSubject?: Subject | "all";
+  initialSortOrder?: "desc" | "asc";
 }
 
 export function NotesClient({
@@ -70,15 +74,20 @@ export function NotesClient({
   initialHasMoreNotes = false,
   initialLoadError = false,
   initialCollections = [],
+  initialDirectoryKind = "human",
+  initialSearchQuery = "",
+  initialSelectedType = "all",
+  initialSelectedSubject = "all",
+  initialSortOrder = "desc",
 }: NotesClientProps) {
   const { isAdmin, user, loading: authLoading } = useAdminAuth();
   const toast = useToast();
   const initialRouteReadyRef = useRef(!initialLoadError);
-  const [directoryKind, setDirectoryKind] = useState<NoteAuthorKind>("human");
-  const [searchQuery, setSearchQuery] = useState("");
-  const [selectedType, setSelectedType] = useState<NoteType | "all">("all");
-  const [selectedSubject, setSelectedSubject] = useState<Subject | "all">("all");
-  const [sortOrder, setSortOrder] = useState<"desc" | "asc">("desc");
+  const [directoryKind, setDirectoryKind] = useState<NoteAuthorKind>(initialDirectoryKind);
+  const [searchQuery, setSearchQuery] = useState(initialSearchQuery);
+  const [selectedType, setSelectedType] = useState<NoteType | "all">(initialSelectedType);
+  const [selectedSubject, setSelectedSubject] = useState<Subject | "all">(initialSelectedSubject);
+  const [sortOrder, setSortOrder] = useState<"desc" | "asc">(initialSortOrder);
   const [showLibraryTools, setShowLibraryTools] = useState(false);
   
   // Data state
@@ -134,7 +143,7 @@ export function NotesClient({
       const next = nextNotes[index];
       return note.id === next?.id
         && note.title === next.title
-        && note.updatedAt.getTime() === next.updatedAt.getTime()
+        && toUnixTimestamp(note.updatedAt) === toUnixTimestamp(next.updatedAt)
         && note.coverImage === next.coverImage;
     })) return;
     notesRef.current = nextNotes;
@@ -203,6 +212,21 @@ export function NotesClient({
   useEffect(() => {
     directoryKindRef.current = directoryKind;
   }, [directoryKind]);
+
+  const directoryReturnPath = useMemo(() => getNotesDirectoryPath({
+    directoryKind,
+    searchQuery,
+    selectedType,
+    selectedSubject,
+    sortOrder,
+  }), [directoryKind, searchQuery, selectedSubject, selectedType, sortOrder]);
+
+  useEffect(() => {
+    const currentPath = `${window.location.pathname}${window.location.search}`;
+    if (currentPath !== directoryReturnPath) {
+      window.history.replaceState(null, "", directoryReturnPath);
+    }
+  }, [directoryReturnPath]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -331,7 +355,7 @@ export function NotesClient({
         && selectedType === "all"
         && selectedSubject === "all"
         && sortOrder === "desc"
-        && directoryKind === "human"
+        && directoryKind === initialDirectoryKind
         && !canReadUnpublishedNotes;
       initialRouteReadyRef.current = false;
 
@@ -369,7 +393,7 @@ export function NotesClient({
         window.clearTimeout(fetchTimer);
       }
     };
-  }, [canReadUnpublishedNotes, directoryKind, fetchNotesPage, initialHasMoreNotes, notesScopeKey, retryToken, searchQuery, selectedSubject, selectedType, sortOrder, setVisibleNotes]);
+  }, [canReadUnpublishedNotes, directoryKind, fetchNotesPage, initialDirectoryKind, initialHasMoreNotes, notesScopeKey, retryToken, searchQuery, selectedSubject, selectedType, sortOrder, setVisibleNotes]);
 
   useEffect(() => {
     const ids = visibleNoteIdsKey ? visibleNoteIdsKey.split("|") : [];
@@ -430,11 +454,12 @@ export function NotesClient({
     return result;
   }, [selectedType, selectedSubject, sortOrder, notes]);
 
-  const hasActiveFilters = Boolean(searchQuery.trim())
-    || selectedType !== "all"
+  const hasSearchQuery = Boolean(searchQuery.trim());
+  const hasAdvancedFilters = selectedType !== "all"
     || selectedSubject !== "all"
     || sortOrder !== "desc";
-  const shouldShowLibraryTools = showLibraryTools || hasActiveFilters;
+  const hasActiveFilters = hasSearchQuery || hasAdvancedFilters;
+  const shouldShowLibraryTools = showLibraryTools || hasAdvancedFilters;
   const visibleCollections = useMemo(
     () => collections.filter((collection) => collection.ownerKind === directoryKind),
     [collections, directoryKind],
@@ -635,7 +660,7 @@ export function NotesClient({
                 aria-pressed={directoryKind === "human"}
                 aria-controls="notes-directory-content"
                 onClick={() => handleDirectoryChange("human")}
-                className={`control-button min-h-10 border-transparent px-3 text-sm ${directoryKind === "human" ? "control-button-selected" : ""}`}
+                className={`control-button min-h-11 border-transparent px-3 text-sm ${directoryKind === "human" ? "control-button-selected" : ""}`}
               >
                 <FileText className="h-4 w-4" />
                 我的笔记
@@ -645,7 +670,7 @@ export function NotesClient({
                 aria-pressed={directoryKind === "ai"}
                 aria-controls="notes-directory-content"
                 onClick={() => handleDirectoryChange("ai")}
-                className={`control-button min-h-10 border-transparent px-3 text-sm ${directoryKind === "ai" ? "control-button-selected" : ""}`}
+                className={`control-button min-h-11 border-transparent px-3 text-sm ${directoryKind === "ai" ? "control-button-selected" : ""}`}
               >
                 <Sparkles className="h-4 w-4" />
                 AI 笔记
@@ -681,17 +706,13 @@ export function NotesClient({
 
         {/* Batch Actions Bar (visible in select mode) */}
         {isAdmin && selectMode && (
-          <motion.div
-            variants={surfaceMotion}
-            initial="initial"
-            animate="animate"
-            transition={{ duration: uiMotion.duration.standard, ease: uiMotion.ease.emphasized }}
+          <div
             className="command-bar mb-4 flex flex-col gap-3 p-3 sm:flex-row sm:items-center sm:justify-between"
           >
             <div className="flex items-center gap-4">
               <button
                 onClick={handleSelectAll}
-                className="motion-ui flex items-center gap-2 text-sm text-on-surface-variant hover:text-primary"
+                className="motion-ui flex min-h-11 items-center gap-2 rounded-lg px-2 text-sm text-on-surface-variant hover:bg-primary/10 hover:text-primary"
               >
                 {selectedNoteIds.size === filteredNotes.length ? (
                   <>
@@ -736,12 +757,13 @@ export function NotesClient({
                   setSelectedNoteIds(new Set());
                 }}
                 disabled={isDeletingNotes}
-                className="control-button h-10 w-10 p-0 disabled:cursor-not-allowed"
+                className="control-button h-11 w-11 p-0 disabled:cursor-not-allowed"
+                aria-label="退出多选"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
-          </motion.div>
+          </div>
         )}
 
         {!hasActiveFilters && visibleCollections.length > 0 && (
@@ -796,11 +818,7 @@ export function NotesClient({
         )}
 
         {/* Search & Filter Section */}
-        <motion.section
-          variants={surfaceMotion}
-          initial="initial"
-          animate="animate"
-          transition={{ duration: uiMotion.duration.page, ease: uiMotion.ease.emphasized }}
+        <section
           className="surface-panel mb-6 p-5"
         >
           <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
@@ -812,7 +830,8 @@ export function NotesClient({
               <button
                 type="button"
                 onClick={() => setShowLibraryTools((value) => !value)}
-                className={`control-button h-10 px-3 text-xs ${shouldShowLibraryTools ? "control-button-selected" : ""}`}
+                className={`control-button min-h-11 px-3 text-xs ${shouldShowLibraryTools ? "control-button-selected" : ""}`}
+                aria-expanded={shouldShowLibraryTools}
               >
                 <SlidersHorizontal className="h-3.5 w-3.5" />
                 筛选
@@ -822,23 +841,15 @@ export function NotesClient({
                 <button
                   type="button"
                   onClick={handleResetFilters}
-                  className="motion-ui motion-interactive rounded-lg px-2 py-1 text-primary hover:bg-primary/10"
+                  className="motion-ui motion-interactive min-h-11 rounded-lg px-3 text-primary hover:bg-primary/10"
                 >
                   清除筛选
                 </button>
               )}
             </div>
           </div>
-          <AnimatePresence initial={false}>
-            {shouldShowLibraryTools && (
-              <motion.div
-                variants={collapsibleMotion}
-                initial="initial"
-                animate="animate"
-                exit="exit"
-                transition={{ duration: uiMotion.duration.reveal, ease: uiMotion.ease.emphasized }}
-                className="overflow-hidden"
-              >
+          {shouldShowLibraryTools && (
+              <div>
                 <div className="mt-4 border-t border-outline-variant/10 pt-4">
                   <TagFilter
                     selectedType={selectedType}
@@ -849,10 +860,9 @@ export function NotesClient({
                     onSortOrderChange={setSortOrder}
                   />
                 </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </motion.section>
+              </div>
+          )}
+        </section>
 
         {/* Notes Grid */}
         <section>
@@ -868,15 +878,23 @@ export function NotesClient({
                 <p className="font-medium">暂时无法刷新笔记</p>
                 <p className="mt-1 text-xs text-on-surface-variant">请检查网络或 Supabase 配置，当前仍显示上一次成功加载的内容。</p>
               </div>
-              <button type="button" onClick={handleRetryNotes} className="control-button min-h-10 shrink-0 px-4 text-sm">
+              <button type="button" onClick={handleRetryNotes} className="control-button min-h-11 shrink-0 px-4 text-sm">
                 重试
               </button>
             </div>
           )}
           {loading ? (
-            <div className="flex items-center justify-center py-20">
-              <Loader2 className="w-8 h-8 animate-spin text-primary" />
-              <span className="ml-3 text-on-surface-variant">加载笔记中...</span>
+            <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-3" role="status" aria-label="正在加载笔记">
+              {Array.from({ length: 6 }, (_, index) => (
+                <div key={index} className="surface-panel overflow-hidden">
+                  <div className="aspect-[16/9] animate-pulse bg-surface-container-high" />
+                  <div className="space-y-3 p-5">
+                    <div className="h-5 w-4/5 animate-pulse rounded bg-surface-container-high" />
+                    <div className="h-4 w-full animate-pulse rounded bg-surface-container-high" />
+                    <div className="h-4 w-2/3 animate-pulse rounded bg-surface-container-high" />
+                  </div>
+                </div>
+              ))}
             </div>
           ) : loadError ? (
             <div className="surface-panel border border-error/20 bg-error/5 px-6 py-14 text-center" role="alert">
@@ -906,7 +924,7 @@ export function NotesClient({
                   setCollectionsStatus("loading");
                   void refreshCollections();
                 }}
-                className="control-button control-button-primary min-h-10 px-4 text-sm"
+                className="control-button control-button-primary min-h-11 px-4 text-sm"
               >
                 重试合集
               </button>
@@ -930,6 +948,7 @@ export function NotesClient({
                             isSelected={selectedNoteIds.has(note.id)}
                             onToggleSelect={selectMode ? handleToggleSelect : undefined}
                             selectMode={selectMode}
+                            returnTo={directoryReturnPath}
                           />
                         ))}
                       </div>
@@ -950,6 +969,7 @@ export function NotesClient({
                       isSelected={selectedNoteIds.has(note.id)}
                       onToggleSelect={selectMode ? handleToggleSelect : undefined}
                       selectMode={selectMode}
+                      returnTo={directoryReturnPath}
                     />
                   ))}
                 </div>
@@ -968,11 +988,7 @@ export function NotesClient({
               )}
             </>
           ) : (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              className="surface-panel border-dashed py-16 text-center"
-            >
+            <div className="surface-panel border-dashed py-16 text-center">
               <p className="text-lg text-on-surface-variant">
                 {hasActiveFilters ? "没有找到匹配的笔记" : directoryKind === "ai" ? "还没有已发布的 AI 笔记" : "还没有笔记"}
               </p>
@@ -980,12 +996,12 @@ export function NotesClient({
                 <button
                   type="button"
                   onClick={handleResetFilters}
-                  className="mt-4 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-on-primary hover:bg-primary/90"
+                  className="mt-4 min-h-11 rounded-lg bg-primary px-4 text-sm font-medium text-on-primary hover:bg-primary/90"
                 >
                   清除筛选
                 </button>
               )}
-            </motion.div>
+            </div>
           )}
         </section>
         </div>

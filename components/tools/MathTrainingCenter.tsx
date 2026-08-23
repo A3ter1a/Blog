@@ -11,13 +11,6 @@ import { ToolHubCard, ToolHubGrid, type ToolHubCardItem } from "@/components/too
 
 const mathTrainingModules: ToolHubCardItem[] = [
   {
-    title: "数学真题 OCR 核对",
-    description: "整套结束后统一识别答题纸，逐页确认无误再进入评分。",
-    href: "/tools/math-paper-ocr",
-    icon: ScanText,
-    tone: "border-sky-500/20 bg-sky-500/10 text-sky-700",
-  },
-  {
     title: "数学三自测",
     description: "先做：生成计时训练卷，并保存作答与复盘记录。",
     href: "/tools/math3-self-test",
@@ -44,6 +37,13 @@ const mathTrainingModules: ToolHubCardItem[] = [
     href: "/tools/problem-booklet",
     icon: FileDown,
     tone: "border-amber-500/20 bg-amber-500/10 text-amber-700",
+  },
+  {
+    title: "数学真题 OCR 核对",
+    description: "整套结束后统一识别答题纸，逐页确认无误再进入评分。",
+    href: "/tools/math-paper-ocr",
+    icon: ScanText,
+    tone: "border-sky-500/20 bg-sky-500/10 text-sky-700",
   },
 ];
 

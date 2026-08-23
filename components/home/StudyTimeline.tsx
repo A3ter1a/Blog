@@ -67,8 +67,6 @@ const monthToneStyles = {
   },
 } as const;
 
-const detailStageColumns = "minmax(22rem,1.35fr) minmax(20rem,1.2fr) minmax(16rem,1fr) minmax(24rem,1.45fr)";
-
 const taskStatusMeta: Record<TimelineTaskStatus, { label: string; symbol: string; className: string }> = {
   not_started: {
     label: "未开始",
@@ -103,18 +101,10 @@ export default function StudyTimeline() {
   const subjects = studyTimelines;
   const months = useMemo(() => buildTimelineMonths(subjects), [subjects]);
   const currentMonthId = useMemo(() => resolveCurrentTimelineMonthId(months), [months]);
-  const detailRef = useRef<HTMLDivElement | null>(null);
-  const [activeMonthId, setActiveMonthId] = useState<string | null>(null);
   const [selectedMonthId, setSelectedMonthId] = useState<string | null>(() => currentMonthId);
-  const activeMonth = activeMonthId
-    ? months.find((month) => month.id === activeMonthId) ?? null
-    : null;
   const selectedMonth = selectedMonthId
     ? months.find((month) => month.id === selectedMonthId) ?? null
     : null;
-  const activeMonthIndex = activeMonth
-    ? months.findIndex((month) => month.id === activeMonth.id)
-    : -1;
   const [taskStatuses, setTaskStatuses] = useState<TimelineTaskStatusMap>({});
   const [planningAccess, setPlanningAccess] = useState<PlanningAccessState>("checking");
   const remoteUserIdRef = useRef<string | null>(null);
@@ -157,15 +147,6 @@ export default function StudyTimeline() {
     };
   }, []);
 
-  const activeSubjectGroups = useMemo(() => {
-    return (activeMonth?.subjects ?? [])
-      .map((subject) => ({
-        ...subject,
-        tasks: sortTasksByStatus(subject.tasks, canEditTaskStatuses ? taskStatuses : {}),
-      }))
-      .filter((subject) => subject.tasks.length > 0);
-  }, [activeMonth, canEditTaskStatuses, taskStatuses]);
-
   const selectedSubjectGroups = useMemo(() => {
     return (selectedMonth?.subjects ?? [])
       .map((subject) => ({
@@ -176,15 +157,7 @@ export default function StudyTimeline() {
   }, [canEditTaskStatuses, selectedMonth, taskStatuses]);
 
   const selectMonth = (monthId: string) => {
-    setActiveMonthId(null);
     setSelectedMonthId(monthId);
-
-    window.requestAnimationFrame(() => {
-      detailRef.current?.scrollIntoView({
-        behavior: "smooth",
-        block: "start",
-      });
-    });
   };
 
   const cycleTaskStatus = (taskId: string) => {
@@ -219,30 +192,15 @@ export default function StudyTimeline() {
     return null;
   }
 
-  const cardLeft = activeMonthIndex >= 0
-    ? `${((activeMonthIndex + 0.5) / months.length) * 100}%`
-    : "50%";
-  const cardAlign =
-    activeMonthIndex <= 0
-      ? "translate-x-0"
-      : activeMonthIndex >= months.length - 1
-        ? "-translate-x-full"
-        : "-translate-x-1/2";
-  const showSubjectLabels = activeSubjectGroups.length > 1;
-
   return (
-    <div
-      className="relative mx-auto w-full py-8 sm:py-10"
-      onMouseLeave={() => setActiveMonthId(null)}
-    >
-      <div className="relative mx-auto w-full max-w-6xl pb-36 sm:pb-40">
-        <div className="absolute left-[8.333%] right-[8.333%] top-2.5 z-0 h-4 rounded-full bg-[linear-gradient(90deg,#0284c7_0%,#0ea5e9_28%,#f59e0b_45%,#f97316_80%,#e11d48_100%)] shadow-[inset_0_1px_0_rgba(255,255,255,0.38),0_14px_34px_-20px_rgba(15,23,42,0.9)]" />
+    <div className="relative mx-auto w-full py-4 sm:py-6">
+      <div className="relative mx-auto w-full max-w-6xl pb-6">
+        <div className="absolute left-[8.333%] right-[8.333%] top-2.5 z-0 hidden h-4 rounded-full bg-[linear-gradient(90deg,#0284c7_0%,#0ea5e9_28%,#f59e0b_45%,#f97316_80%,#e11d48_100%)] shadow-[inset_0_1px_0_rgba(255,255,255,0.38),0_14px_34px_-20px_rgba(15,23,42,0.9)] sm:block" />
 
-        <div className="relative z-10 grid grid-cols-6">
+        <div className="relative z-10 grid grid-cols-3 gap-y-5 sm:grid-cols-6 sm:gap-y-0">
           {months.map((month) => {
             const tone = getMonthTone(month.label);
             const toneStyle = monthToneStyles[tone];
-            const isActive = month.id === activeMonth?.id;
             const isSelected = month.id === selectedMonth?.id;
 
             return (
@@ -250,17 +208,15 @@ export default function StudyTimeline() {
                 <button
                   type="button"
                   onClick={() => selectMonth(month.id)}
-                  onFocus={() => setActiveMonthId(month.id)}
-                  onMouseEnter={() => setActiveMonthId(month.id)}
                   className={`motion-ui group flex min-w-0 flex-col items-center gap-3 rounded-lg px-2 pb-1 pt-0 text-center focus:outline-none focus-visible:ring-2 ${toneStyle.button} ${
-                    isActive ? toneStyle.active : ""
+                    isSelected ? `${toneStyle.active} bg-surface-container-lowest/70` : ""
                   }`}
-                  aria-expanded={isActive}
+                  aria-pressed={isSelected}
                 >
                   <span
                     className={`motion-ui relative flex h-9 w-9 items-center justify-center rounded-full border-[5px] border-surface group-hover:scale-110 ${
                       toneStyle.marker
-                    } ${isActive || isSelected ? "scale-110" : ""}`}
+                    } ${isSelected ? "scale-110" : ""}`}
                   >
                     <span className="h-2.5 w-2.5 rounded-full bg-white/95" />
                   </span>
@@ -273,82 +229,11 @@ export default function StudyTimeline() {
           })}
         </div>
 
-        {activeMonth ? (
-          <div
-            className={`absolute top-20 z-20 w-[min(22rem,calc(100vw-2rem))] ${cardAlign}`}
-            style={{ left: cardLeft }}
-          >
-            <div className="motion-ui rounded-xl border border-white/10 bg-[#14263a]/95 p-4 text-white shadow-[0_18px_50px_-24px_rgba(15,23,42,0.95)] backdrop-blur-md">
-              <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-                <span className="font-headline text-lg font-bold leading-none">
-                  {activeMonth.label}
-                </span>
-                <div className="flex flex-wrap items-center gap-3">
-                  {Object.entries(brushStageLabels).map(([stage, label]) => (
-                    <span key={stage} className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-white/76">
-                      <span className={`h-2 w-2 rounded-full ${stageStyles[stage as BrushStage].dot}`} />
-                      {label}
-                    </span>
-                  ))}
-                </div>
-              </div>
-
-              <div className="space-y-4">
-                {activeSubjectGroups.map((subject) => (
-                  <div key={subject.id}>
-                    {showSubjectLabels ? (
-                      <p className="mb-2 text-xs font-semibold text-white/58">
-                        {subject.label}
-                      </p>
-                    ) : null}
-                    <div className="flex gap-2 overflow-x-auto pb-1">
-                      {subject.tasks.map((task) => {
-                        if (!canEditTaskStatuses) {
-                          return (
-                            <span
-                              key={task.id}
-                              className={`shrink-0 whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-bold text-white sm:text-sm ${
-                                stageStyles[task.stage].pill
-                              }`}
-                            >
-                              {task.title}
-                            </span>
-                          );
-                        }
-
-                        const status = taskStatuses[task.id] ?? "not_started";
-                        const statusMeta = taskStatusMeta[status];
-                        const nextStatus = getNextTimelineTaskStatus(status);
-
-                        return (
-                          <button
-                            key={task.id}
-                            type="button"
-                            data-status={status}
-                            aria-label={`${task.title}，${brushStageLabels[task.stage]}，当前${statusMeta.label}；点击切换为${taskStatusMeta[nextStatus].label}`}
-                            onClick={() => cycleTaskStatus(task.id)}
-                            className={`motion-ui motion-interactive shrink-0 whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-bold text-white hover:-translate-y-0.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/40 sm:text-sm ${
-                              stageStyles[task.stage].pill
-                            } ${statusMeta.className}`}
-                          >
-                            <span aria-hidden="true" className="mr-1.5">{statusMeta.symbol}</span>
-                            {task.title}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        ) : null}
       </div>
 
       {selectedMonth ? (
         <div
-          ref={detailRef}
-          className="motion-ui relative left-1/2 w-[min(96vw,104rem)] -translate-x-1/2 scroll-mt-24 rounded-2xl border border-primary/10 bg-surface-container-lowest/50 p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.55),0_18px_48px_-34px_rgba(15,23,42,0.58)] backdrop-blur-sm sm:p-6"
+          className="motion-ui mx-auto w-full max-w-6xl rounded-2xl border border-primary/10 bg-surface-container-lowest/50 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.55),0_18px_48px_-34px_rgba(15,23,42,0.58)] backdrop-blur-sm sm:p-6"
         >
           <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
             <div>
@@ -394,25 +279,19 @@ export default function StudyTimeline() {
                   <h3 className="mb-4 font-headline text-lg font-bold text-primary">
                     {subject.label}
                   </h3>
-                  <div className="overflow-x-auto pb-1">
-                    <div
-                      className="grid min-w-[88rem] gap-4"
-                      style={{
-                        gridTemplateColumns: detailStageColumns,
-                      }}
-                    >
+                  <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
                       {stageGroups.map(({ stage, label, tasks }) => (
-                        <div key={stage} className="min-w-0">
+                        <div key={stage} className="min-w-0 rounded-lg bg-surface-container-low/55 p-3">
                           <p className="mb-2 text-xs font-bold text-on-surface-variant">
                             {label}
                           </p>
-                          <div className="flex gap-2 overflow-x-auto pb-1">
+                          <div className="flex flex-wrap gap-2">
                             {tasks.map((task) => {
                               if (!canEditTaskStatuses) {
                                 return (
                                   <span
                                     key={task.id}
-                                    className={`shrink-0 whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-bold text-white sm:text-sm ${
+                                    className={`max-w-full whitespace-normal rounded-full px-3 py-1.5 text-left text-xs font-bold leading-5 text-white sm:text-sm ${
                                       stageStyles[task.stage].pill
                                     }`}
                                   >
@@ -432,7 +311,7 @@ export default function StudyTimeline() {
                                   data-status={status}
                                   aria-label={`${task.title}，${brushStageLabels[task.stage]}，当前${statusMeta.label}；点击切换为${taskStatusMeta[nextStatus].label}`}
                                   onClick={() => cycleTaskStatus(task.id)}
-                                  className={`motion-ui motion-interactive shrink-0 whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-bold text-white hover:-translate-y-0.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/25 sm:text-sm ${
+                                  className={`motion-ui motion-interactive min-h-11 max-w-full whitespace-normal rounded-full px-3 py-1.5 text-left text-xs font-bold leading-5 text-white hover:-translate-y-0.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/25 sm:text-sm ${
                                     stageStyles[task.stage].pill
                                   } ${statusMeta.className}`}
                                 >
@@ -444,7 +323,6 @@ export default function StudyTimeline() {
                           </div>
                         </div>
                       ))}
-                    </div>
                   </div>
                 </section>
               );

@@ -95,7 +95,12 @@ import {
 } from "../lib/ai-knowledge-quiz-contract.ts";
 import { validateReviewSelection } from "../lib/ai-review-contract.ts";
 import { parseAiProfileUpdate } from "../lib/ai-profile.ts";
-import { normalizeLatexForKatex, toIsoDateString } from "../lib/utils.ts";
+import {
+  normalizeLatexForKatex,
+  stripRedundantLeadingMarkdownTitle,
+  toIsoDateString,
+  toUnixTimestamp,
+} from "../lib/utils.ts";
 import { repairAIJsonText } from "../lib/ai-json-repair.ts";
 import {
   buildMarkdownReviewProposal,
@@ -115,6 +120,8 @@ import {
   reviewDocumentMarkdown,
 } from "../lib/document-markdown-review-service.ts";
 import {
+  getNotesDirectoryPath,
+  getSafeNotesReturnPath,
   getNoteReadHref,
   getNoteReadPath,
   getPrivateNoteReadPath,
@@ -1790,6 +1797,21 @@ test("首页规划首帧不读取 localStorage，避免服务端与客户端水�
   assert.match(timeline, /useEffect\(\(\) => \{[\s\S]*const localStatuses = readStoredTaskStatuses\(\)/);
 });
 
+test("首页时间轴与全局搜索保持响应式且在等待时提供反馈", () => {
+  const home = readFileSync(resolve("app/page.tsx"), "utf8");
+  const timeline = readFileSync(resolve("components/home/StudyTimeline.tsx"), "utf8");
+  const search = readFileSync(resolve("components/layout/SearchOverlay.tsx"), "utf8");
+
+  assert.equal(home.includes("content-visibility:auto"), false);
+  assert.equal(timeline.includes("min-w-[88rem]"), false);
+  assert.equal(timeline.includes("scrollIntoView"), false);
+  assert.equal(timeline.includes("grid-cols-3"), true);
+  assert.equal(timeline.includes("xl:grid-cols-4"), true);
+  assert.equal(search.includes('aria-busy={isSearching}'), true);
+  assert.equal(search.includes('aria-label="正在搜索"'), true);
+  assert.equal(search.includes("搜索暂时不可用，请检查网络后重试。"), true);
+});
+
 test("旧助手工具 URL 只保留笔记库兼容跳转且不再维护重复页面", () => {
   const noteQaCompatibilityPage = readFileSync(resolve("app/tools/note-qa/page.tsx"), "utf8");
   const resourceSearchCompatibilityPage = readFileSync(resolve("app/tools/resource-search/page.tsx"), "utf8");
@@ -2049,6 +2071,30 @@ test("公开阅读地址与所有者私有阅读地址保持严格分离", () =>
   assert.equal(privateReader.includes('accessScope="owner"'), true);
 });
 
+test("笔记目录状态可安全写入阅读返回地址", () => {
+  const directoryPath = getNotesDirectoryPath({
+    directoryKind: "ai",
+    searchQuery: " 宏观 经济 ",
+    selectedType: "note",
+    selectedSubject: "economics",
+    sortOrder: "asc",
+  });
+  const publicNote = { id: "ai-note", isPublished: true };
+
+  assert.equal(
+    directoryPath,
+    "/notes?directory=ai&q=%E5%AE%8F%E8%A7%82+%E7%BB%8F%E6%B5%8E&type=note&subject=economics&sort=asc",
+  );
+  assert.equal(getSafeNotesReturnPath(directoryPath), directoryPath);
+  assert.equal(getSafeNotesReturnPath("https://evil.example/notes?directory=ai"), "/notes");
+  assert.equal(getSafeNotesReturnPath("/notes/ai-note"), "/notes");
+  assert.equal(getNoteReadPath(publicNote, "/notes"), "/notes/ai-note?from=%2Fnotes");
+  assert.equal(
+    getNoteReadPath(publicNote, directoryPath),
+    `/notes/ai-note?from=${encodeURIComponent(directoryPath)}`,
+  );
+});
+
 test("笔记阅读器与元数据恢复缓存序列化后的日期字段", () => {
   const reader = readFileSync(resolve("components/notes/NoteReaderClient.tsx"), "utf8");
   const readerCache = readFileSync(resolve("lib/note-reader-cache.ts"), "utf8");
@@ -2064,6 +2110,27 @@ test("笔记阅读器与元数据恢复缓存序列化后的日期字段", () =>
   assert.equal(toIsoDateString(new Date(isoDate)), isoDate);
   assert.equal(toIsoDateString(isoDate), isoDate);
   assert.equal(toIsoDateString("invalid-date"), undefined);
+  assert.equal(toUnixTimestamp(new Date(isoDate)), toUnixTimestamp(isoDate));
+  assert.equal(toUnixTimestamp("invalid-date"), 0);
+});
+
+test("阅读器只移除与文章标题完全一致的正文首个一级标题", () => {
+  assert.equal(
+    stripRedundantLeadingMarkdownTitle("# 宏观经济学\n\n## 第一节\n正文", "宏观经济学"),
+    "## 第一节\n正文",
+  );
+  assert.equal(
+    stripRedundantLeadingMarkdownTitle("\n# **宏观经济学**\n\n正文", "宏观经济学"),
+    "正文",
+  );
+  assert.equal(
+    stripRedundantLeadingMarkdownTitle("# 第一章\n\n正文", "宏观经济学"),
+    "# 第一章\n\n正文",
+  );
+  assert.equal(
+    stripRedundantLeadingMarkdownTitle("## 宏观经济学\n正文", "宏观经济学"),
+    "## 宏观经济学\n正文",
+  );
 });
 
 test("WP4 四类页面模板共用统一版心与语义契约", () => {
@@ -2136,8 +2203,9 @@ test("笔记目录按人工与 AI 来源原位切换且缓存严格隔离", () =
   const directory = readFileSync(resolve("lib/note-collection-directory.ts"), "utf8");
   const notesCache = readFileSync(resolve("lib/notes-list-cache.ts"), "utf8");
 
-  assert.equal(notesPage.includes('authorKind: "human"'), true);
-  assert.equal(notesClient.includes('useState<NoteAuthorKind>("human")'), true);
+  assert.equal(notesPage.includes("authorKind,"), true);
+  assert.equal(notesPage.includes("getInitialNotes(initialDirectory.directoryKind)"), true);
+  assert.equal(notesClient.includes("useState<NoteAuthorKind>(initialDirectoryKind)"), true);
   assert.equal(notesClient.includes("我的笔记"), true);
   assert.equal(notesClient.includes("AI 笔记"), true);
   assert.equal(notesClient.includes('aria-controls="notes-directory-content"'), true);

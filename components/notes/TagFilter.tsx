@@ -1,10 +1,7 @@
 "use client";
 
-import { motion, AnimatePresence } from "framer-motion";
-import { useState } from "react";
 import { NoteType, Subject, subjectMap } from "@/lib/types";
-import { ChevronDown, ChevronUp, ArrowUpDown } from "lucide-react";
-import { collapsibleMotion, uiMotion } from "@/lib/motion";
+import { ArrowUpDown } from "lucide-react";
 
 interface TagFilterProps {
   selectedType: NoteType | "all";
@@ -38,50 +35,28 @@ export function TagFilter({
   onSubjectChange,
   onSortOrderChange,
 }: TagFilterProps) {
-  const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
-
   return (
     <div className="space-y-3">
-      {/* Type Filter + Advanced Toggle */}
+      {/* Type Filter */}
       <div className="flex flex-wrap gap-2 items-center">
         <span className="text-xs text-on-surface-variant/60 flex items-center mr-1">类型</span>
         {types.map((type) => (
-          <motion.button
+          <button
+            type="button"
             key={type.value}
-            whileTap={{ scale: 0.95 }}
             onClick={() => onTypeChange(type.value)}
-            className={`control-button min-h-0 px-3 py-1.5 text-sm ${
+            className={`control-button min-h-11 px-3 text-sm ${
               selectedType === type.value
                 ? "control-button-primary"
                 : ""
             }`}
           >
             {type.label}
-          </motion.button>
+          </button>
         ))}
-        
-        {/* Advanced Filters Toggle */}
-        <button
-          onClick={() => setIsAdvancedOpen(!isAdvancedOpen)}
-          className="control-button ml-2 min-h-0 px-3 py-1.5 text-sm"
-        >
-          {isAdvancedOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-          高级筛选
-        </button>
       </div>
 
-      {/* Collapsible Advanced Filters */}
-      <AnimatePresence>
-        {isAdvancedOpen && (
-          <motion.div
-            variants={collapsibleMotion}
-            initial="initial"
-            animate="animate"
-            exit="exit"
-            transition={{ duration: uiMotion.duration.reveal, ease: uiMotion.ease.emphasized }}
-            className="overflow-hidden"
-          >
-            <div className="space-y-3 pt-1">
+      <div className="space-y-3 pt-1">
               {/* Sort Order */}
               <div className="flex flex-wrap gap-2 items-center">
                 <span className="text-xs text-on-surface-variant/60 flex items-center mr-1">
@@ -89,8 +64,9 @@ export function TagFilter({
                   排序
                 </span>
                 <button
+                  type="button"
                   onClick={() => onSortOrderChange("desc")}
-                  className={`control-button min-h-0 px-3 py-1.5 text-sm ${
+                  className={`control-button min-h-11 px-3 text-sm ${
                     sortOrder === "desc"
                       ? "control-button-selected"
                       : ""
@@ -99,8 +75,9 @@ export function TagFilter({
                   最新优先
                 </button>
                 <button
+                  type="button"
                   onClick={() => onSortOrderChange("asc")}
-                  className={`control-button min-h-0 px-3 py-1.5 text-sm ${
+                  className={`control-button min-h-11 px-3 text-sm ${
                     sortOrder === "asc"
                       ? "control-button-selected"
                       : ""
@@ -114,24 +91,21 @@ export function TagFilter({
               <div className="flex flex-wrap gap-2">
                 <span className="text-xs text-on-surface-variant/60 flex items-center mr-1">科目</span>
                 {subjects.map((subject) => (
-                  <motion.button
+                  <button
+                    type="button"
                     key={subject.value}
-                    whileTap={{ scale: 0.95 }}
                     onClick={() => onSubjectChange(subject.value)}
-                    className={`control-button min-h-0 px-3 py-1.5 text-sm ${
+                    className={`control-button min-h-11 px-3 text-sm ${
                       selectedSubject === subject.value
                         ? "control-button-selected"
                         : ""
                     }`}
                   >
                     {subject.label}
-                  </motion.button>
+                  </button>
                 ))}
               </div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      </div>
     </div>
   );
 }

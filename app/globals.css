@@ -2580,7 +2580,7 @@ body:has(.note-reader-assistant-open) .job-center-fab {
 
 .note-reader-directory-reveal {
   display: inline-flex;
-  min-height: 2.25rem;
+  min-height: 2.75rem;
   align-items: center;
   gap: 0.35rem;
   margin-left: 0.55rem;
@@ -2713,6 +2713,30 @@ body:has(.note-reader-assistant-open) .job-center-fab {
   .english-translation-source {
     min-height: 0;
   }
+}
+
+.skip-link {
+  position: fixed;
+  top: 0.75rem;
+  left: 0.75rem;
+  z-index: 200;
+  min-height: 2.75rem;
+  display: inline-flex;
+  align-items: center;
+  border-radius: var(--radius-md);
+  background: var(--color-primary);
+  color: var(--color-on-primary);
+  padding: 0 1rem;
+  font-weight: 700;
+  box-shadow: var(--shadow-elevated);
+  transform: translateY(calc(-100% - 1rem));
+  transition: transform var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.skip-link:focus-visible {
+  transform: translateY(0);
+  outline: 3px solid var(--color-primary-fixed-dim);
+  outline-offset: 2px;
 }
 
 .econ-graph-drawing-canvas {

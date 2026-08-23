@@ -10,6 +10,36 @@ export function toIsoDateString(value: unknown): string | undefined {
   return date && Number.isFinite(date.getTime()) ? date.toISOString() : undefined;
 }
 
+export function toUnixTimestamp(value: unknown): number {
+  const date = value instanceof Date
+    ? value
+    : typeof value === "string" || typeof value === "number"
+      ? new Date(value)
+      : null;
+
+  const timestamp = date?.getTime();
+  return typeof timestamp === "number" && Number.isFinite(timestamp) ? timestamp : 0;
+}
+
+function normalizeMarkdownHeadingText(value: string): string {
+  return value
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
+    .replace(/\\([\\`*_[\]#])/g, "$1")
+    .replace(/[*_`~]/g, "")
+    .trim();
+}
+
+export function stripRedundantLeadingMarkdownTitle(content: string, title: string): string {
+  if (!content || !title.trim()) return content;
+
+  const leadingTitle = content.match(/^(?:\uFEFF)?[\t ]*(?:\r?\n[\t ]*)*#(?!#)[\t ]+(.+?)[\t ]*#*[\t ]*(?:\r?\n|$)/);
+  if (!leadingTitle || normalizeMarkdownHeadingText(leadingTitle[1]) !== title.trim()) {
+    return content;
+  }
+
+  return content.slice(leadingTitle[0].length).replace(/^[\t ]*\r?\n/, "");
+}
+
 const LATEX_LINE_BREAK_MARKER = "AsteroidLatexLineBreakToken";
 const MATH_SPAN_SPLIT_PATTERN = /(\$\$[\s\S]*?\$\$|(?<!\$)\$(?!\$)(?:(?!\n\s*\n)[\s\S])*?(?<!\$)\$(?!\$))/;
 const LATEX_ENV_NAMES = "align|equation|gather|aligned|split|cases|multline|array|matrix|pmatrix|bmatrix|vmatrix|Vmatrix";

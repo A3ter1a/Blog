@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
-import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AlertTriangle, ArrowLeft, Calendar, Tag, Edit2, Trash2, ChevronDown, ChevronUp, BookOpen, BookMarked, Loader2, Clock, Layers, MessageCircle, PanelLeftClose, PanelLeftOpen, SlidersHorizontal } from "lucide-react";
@@ -9,7 +8,7 @@ import { notesApi } from "@/lib/supabase";
 import type { PublicAiProfile } from "@/lib/ai-profile";
 import { chaptersApi } from "@/lib/chapters-api";
 import { subjectMap, typeMap, Note, Chapter, Problem, type ProblemPracticeStatus } from "@/lib/types";
-import { estimateReadingTime, getDescendantIds } from "@/lib/utils";
+import { estimateReadingTime, getDescendantIds, stripRedundantLeadingMarkdownTitle } from "@/lib/utils";
 import { getNoteReadPath } from "@/lib/note-routes";
 import { getRootChapters } from "@/lib/chapter-utils";
 import { getPracticeProblemKey, getVisibleNoteTags } from "@/lib/math3-practice";
@@ -28,9 +27,9 @@ import { useReadingPreferences } from "@/lib/useReadingPreferences";
 import { ReadingProgress } from "@/components/ui/ReadingProgress";
 import { CachedImage } from "@/components/ui/CachedImage";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { PageLoadingSkeleton } from "@/components/ui/PageLoadingSkeleton";
 import { useAdminAuth } from "@/hooks/useAdminAuth";
 import { useToast } from "@/components/ui/Toast";
-import { overlayMotion, surfaceMotion, uiMotion } from "@/lib/motion";
 import { detectBookletSourceDrift, extractBookletSourceManifest, type BookletProblemSnapshot } from "@/lib/booklet-contract";
 import {
   clearOwnerNoteCache,
@@ -55,6 +54,8 @@ type NoteReaderClientProps = {
   initialChaptersLoaded?: boolean;
   initialLoadError?: boolean;
   accessScope?: "public" | "owner";
+  backHref?: string;
+  preferHistoryBack?: boolean;
 };
 
 type PracticeStatusLoadState = "idle" | "loading" | "ready" | "error";
@@ -103,6 +104,8 @@ export function NoteReaderClient({
   initialChaptersLoaded = false,
   initialLoadError = false,
   accessScope = "public",
+  backHref = "/notes",
+  preferHistoryBack = false,
 }: NoteReaderClientProps) {
   const router = useRouter();
   const { preferences } = useReadingPreferences();
@@ -123,7 +126,7 @@ export function NoteReaderClient({
   const [retryToken, setRetryToken] = useState(0);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isDeletingNote, setIsDeletingNote] = useState(false);
-  const [isCoverExpanded, setIsCoverExpanded] = useState(Boolean((normalizedInitialNote ?? cachedInitialNote?.value)?.coverImage));
+  const [isCoverExpanded, setIsCoverExpanded] = useState(false);
   const [isImmersiveMode, setIsImmersiveMode] = useState(false);
   const [inlineVideoIndex, setInlineVideoIndex] = useState<number | null>(null);
   const [chapters, setChapters] = useState<Chapter[]>(initialChapters.length > 0 ? initialChapters : (cachedInitialChapters?.value ?? []));
@@ -139,6 +142,10 @@ export function NoteReaderClient({
   const [assistantOpen, setAssistantOpen] = useState(false);
   const [assistantQuotedText, setAssistantQuotedText] = useState("");
   const [readerDirectoriesHidden, setReaderDirectoriesHidden] = useState(false);
+  const displayContent = useMemo(
+    () => stripRedundantLeadingMarkdownTitle(note?.content ?? "", note?.title ?? ""),
+    [note?.content, note?.title],
+  );
   const readerDirectoriesBeforeAssistantRef = useRef(false);
   const immersiveCloseButtonRef = useRef<HTMLButtonElement>(null);
   const immersivePreviousFocusRef = useRef<HTMLElement | null>(null);
@@ -181,7 +188,7 @@ export function NoteReaderClient({
       setLoading(initialLoadError || !nextNote);
       setChapters(initialChapters.length > 0 ? initialChapters : cachedChapters);
       setSelectedChapterId(undefined);
-      setIsCoverExpanded(Boolean(nextNote?.coverImage));
+      setIsCoverExpanded(false);
       setShowProblemTools(false);
       setPracticeStatusMap({});
       setPracticeStatusLoadState("idle");
@@ -205,7 +212,6 @@ export function NoteReaderClient({
         : readOwnerNoteCache(noteId, ownerUserId);
       if (cached) {
         setNote((current) => noteReaderValuesEqual(current, cached.value) ? current : cached.value);
-        setIsCoverExpanded(Boolean(cached.value.coverImage));
         setLoading(false);
       } else {
         setLoading(true);
@@ -218,7 +224,6 @@ export function NoteReaderClient({
       if (data && accessScope === "public") writePublicNoteCache(data);
       if (data && accessScope === "owner") writeOwnerNoteCache(data, ownerUserId);
       setNote((current) => noteReaderValuesEqual(current, data) ? current : data);
-      setIsCoverExpanded(Boolean(data?.coverImage));
       setLoadError(null);
     } catch (error) {
       console.error("Failed to load note:", error);
@@ -246,7 +251,6 @@ export function NoteReaderClient({
 
       queueMicrotask(() => {
         setNote((current) => noteReaderValuesEqual(current, cached.value) ? current : cached.value);
-        setIsCoverExpanded(Boolean(cached.value.coverImage));
       });
       if (!cached.stale) return;
     }
@@ -663,14 +667,7 @@ export function NoteReaderClient({
   };
 
   if (loading) {
-    return (
-      <main className="flex min-h-screen items-center justify-center bg-surface px-4 pb-20 pt-24 sm:px-6">
-        <div className="flex items-center gap-3">
-          <Loader2 className="w-8 h-8 animate-spin text-primary" />
-          <span className="text-on-surface-variant">加载笔记中...</span>
-        </div>
-      </main>
-    );
+    return <PageLoadingSkeleton title="正在加载笔记正文" variant="reader" />;
   }
 
   if (!note && loadError) {
@@ -692,8 +689,8 @@ export function NoteReaderClient({
         <div className="surface-panel p-6 text-center">
           <h1 className="text-2xl font-bold text-on-surface mb-4">笔记不存在</h1>
           <Link
-            href="/notes"
-            className="text-primary hover:underline font-medium"
+            href={backHref}
+            className="control-button mt-4 min-h-11 px-4 text-sm"
           >
             返回笔记列表
           </Link>
@@ -741,8 +738,18 @@ export function NoteReaderClient({
       <div className="sticky top-20 z-30 border-b border-outline-variant/20 bg-surface/80 backdrop-blur-xl" data-print-hide>
         <div className="page-frame page-frame--wide flex flex-wrap items-center justify-between gap-3 py-3">
           <Link
-            href="/notes"
-            className="control-button h-9 px-3 text-sm"
+            href={backHref}
+            onClick={(event) => {
+              if (!preferHistoryBack
+                || event.button !== 0
+                || event.metaKey
+                || event.ctrlKey
+                || event.shiftKey
+                || event.altKey) return;
+              event.preventDefault();
+              router.back();
+            }}
+            className="control-button min-h-11 px-3 text-sm"
           >
             <ArrowLeft className="h-4 w-4" />
             返回
@@ -767,7 +774,7 @@ export function NoteReaderClient({
                 type="button"
                 onMouseDown={captureAssistantSelection}
                 onClick={() => handleAssistantOpenChange(true)}
-                className={`control-button h-9 px-3 text-sm ${assistantOpen ? "control-button-selected" : ""}`}
+                className={`control-button min-h-11 px-3 text-sm ${assistantOpen ? "control-button-selected" : ""}`}
                 title="询问当前笔记的助手"
                 aria-expanded={assistantOpen}
                 aria-controls="assistant-dock"
@@ -780,7 +787,7 @@ export function NoteReaderClient({
               <button
                 type="button"
                 onClick={() => setReaderDirectoriesHidden(true)}
-                className="control-button h-9 px-3 text-sm"
+                className="control-button min-h-11 px-3 text-sm"
                 title="隐藏目录栏"
                 aria-label="隐藏目录栏"
               >
@@ -791,7 +798,7 @@ export function NoteReaderClient({
             {isProblem && allProblems.length > 0 && (
               <button
                 onClick={() => setShowProblemTools((value) => !value)}
-                className={`control-button h-9 px-3 text-sm ${showProblemTools ? "control-button-selected" : ""}`}
+                className={`control-button min-h-11 px-3 text-sm ${showProblemTools ? "control-button-selected" : ""}`}
                 title="题集导航"
               >
                 <SlidersHorizontal className="h-4 w-4" />
@@ -802,7 +809,7 @@ export function NoteReaderClient({
             {!isProblem && (
               <button
                 onClick={() => setIsImmersiveMode(true)}
-                className="control-button h-9 px-3 text-sm"
+                className="control-button min-h-11 px-3 text-sm"
                 title="沉浸阅读模式"
               >
                 <BookMarked className="h-4 w-4" />
@@ -813,7 +820,7 @@ export function NoteReaderClient({
               <>
                 <Link
                   href={`/create?edit=${note.id}`}
-                  className="control-button h-9 px-3 text-sm"
+                  className="control-button min-h-11 px-3 text-sm"
                 >
                   <Edit2 className="h-4 w-4" />
                   编辑
@@ -821,7 +828,7 @@ export function NoteReaderClient({
                 <button
                   onClick={() => setShowDeleteConfirm(true)}
                   disabled={isDeletingNote}
-                  className="control-button control-button-danger h-9 px-3 text-sm"
+                  className="control-button control-button-danger min-h-11 px-3 text-sm"
                   title="删除笔记"
                   aria-label="删除笔记"
                 >
@@ -836,12 +843,7 @@ export function NoteReaderClient({
       {/* Cover Image (Collapsible) */}
       {note.coverImage && (
         <div className="page-frame page-frame--wide mb-6">
-          <motion.div
-            initial={false}
-            animate={{ height: isCoverExpanded ? "auto" : 0 }}
-            transition={{ duration: uiMotion.duration.reveal, ease: uiMotion.ease.emphasized }}
-            className="overflow-hidden"
-          >
+          {isCoverExpanded && (
             <div className="overflow-hidden rounded-2xl shadow-elevated">
               <CachedImage
                 src={note.coverImage}
@@ -849,10 +851,11 @@ export function NoteReaderClient({
                 className="w-full object-cover max-h-[480px]"
               />
             </div>
-          </motion.div>
+          )}
           <button
             onClick={() => setIsCoverExpanded(!isCoverExpanded)}
-            className="motion-ui motion-interactive mt-2 flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-on-surface-variant hover:bg-primary/10 hover:text-primary"
+            className="motion-ui motion-interactive mt-2 flex min-h-11 items-center gap-1 rounded-lg px-3 text-xs text-on-surface-variant hover:bg-primary/10 hover:text-primary"
+            aria-expanded={isCoverExpanded}
           >
             {isCoverExpanded ? (
               <>
@@ -886,11 +889,7 @@ export function NoteReaderClient({
         {/* Article Content */}
         <div className={`${contentColumnClass} ${contentOrderClass}`}>
           {/* Article Header */}
-          <motion.header
-            variants={surfaceMotion}
-            initial="initial"
-            animate="animate"
-            transition={{ duration: uiMotion.duration.page, ease: uiMotion.ease.emphasized }}
+          <header
             className={`surface-panel reader-title-block p-6 sm:p-8 ${isProblem ? "" : readerWidthClass}`}
           >
             <div className="mb-4 flex flex-wrap items-center gap-2">
@@ -974,7 +973,7 @@ export function NoteReaderClient({
                 {unassignedProblemCount > 0 && <span>未归章节 {unassignedProblemCount} 题</span>}
               </div>
             )}
-          </motion.header>
+          </header>
 
           <ConfirmDialog
             isOpen={showDeleteConfirm}
@@ -988,33 +987,20 @@ export function NoteReaderClient({
           />
 
           {/* Inline Video Player (shown when clicking play in sidebar) */}
-          <AnimatePresence>
-            {inlineVideoIndex !== null && note.videos && note.videos[inlineVideoIndex] && (
-              <motion.section
-                variants={surfaceMotion}
-                initial="initial"
-                animate="animate"
-                exit="exit"
-                transition={{ duration: uiMotion.duration.page, ease: uiMotion.ease.emphasized }}
-                className="mb-8"
-              >
+          {inlineVideoIndex !== null && note.videos && note.videos[inlineVideoIndex] && (
+              <section className="mb-8">
                 <VideoPlayer 
                   video={note.videos[inlineVideoIndex]} 
                   autoPlay={true}
                   inlineMode={true}
                   onExitInline={() => setInlineVideoIndex(null)}
                 />
-              </motion.section>
-            )}
-          </AnimatePresence>
+              </section>
+          )}
 
           {/* Article Content */}
-          <motion.article
+          <article
             data-note-reader-content
-            variants={surfaceMotion}
-            initial="initial"
-            animate="animate"
-            transition={{ delay: 0.06, duration: uiMotion.duration.page, ease: uiMotion.ease.emphasized }}
             className={`py-8 ${isProblem ? "" : readerWidthClass}`}
           >
             {isProblem && allProblems.length > 0 ? (
@@ -1155,7 +1141,7 @@ export function NoteReaderClient({
             ) : (
               <>
                 <ProblemReferenceContent
-                  content={note.content}
+                  content={displayContent}
                   className="reader-content text-on-surface"
                   style={{
                     fontSize: `${preferences.fontSize}px`,
@@ -1166,43 +1152,26 @@ export function NoteReaderClient({
                 />
               </>
             )}
-          </motion.article>
+          </article>
         </div>
 
         {/* Sidebar: Video Player + TOC (hidden when TOC is hidden) */}
         {showReaderSidebar && (
-          <aside className={`min-w-[280px] space-y-4 lg:col-span-3 ${sidebarOrderClass}`}>
-            <AnimatePresence>
+          <aside className={`min-w-0 space-y-4 lg:col-span-3 lg:min-w-[280px] ${sidebarOrderClass}`}>
               {note.videos && note.videos.length > 0 && (
-                <motion.section
-                  variants={surfaceMotion}
-                  initial="initial"
-                  animate="animate"
-                  exit="exit"
-                  transition={{ delay: 0.08, duration: uiMotion.duration.page, ease: uiMotion.ease.emphasized }}
-                  className="surface-panel p-4 overscroll-contain lg:sticky lg:top-28"
-                >
+                <section className="surface-panel p-4 overscroll-contain lg:sticky lg:top-28">
                   <Playlist 
                     videos={note.videos} 
                     editable={false}
                     onPlay={(index) => setInlineVideoIndex(index)}
                   />
-                </motion.section>
+                </section>
               )}
-            </AnimatePresence>
 
             {/* Table of Contents for notes/essays, or Problem Stats for problems */}
-            <AnimatePresence>
-              <motion.section
-                variants={surfaceMotion}
-                initial="initial"
-                animate="animate"
-                exit="exit"
-                transition={{ delay: 0.1, duration: uiMotion.duration.page, ease: uiMotion.ease.emphasized }}
-                className="surface-panel p-4 lg:sticky lg:top-28 lg:flex lg:max-h-[calc(100vh-8rem)] lg:flex-col"
-              >
+              <section className="surface-panel p-4 lg:sticky lg:top-28 lg:flex lg:max-h-[calc(100vh-8rem)] lg:flex-col">
                 {isProblem && allProblems.length > 0 ? (
-                  <div className="overflow-y-scroll flex-1 min-h-0 -mr-2 pr-2 space-y-4">
+                  <div className="-mr-2 min-h-0 flex-1 space-y-4 overflow-y-auto pr-2">
                     <ChapterFilter
                       chapters={chapters}
                       selectedId={selectedChapterId}
@@ -1221,13 +1190,12 @@ export function NoteReaderClient({
                       <BookOpen className="w-4 h-4 text-on-surface-variant" />
                       <h3 className="text-sm font-bold text-on-surface">目录</h3>
                     </div>
-                    <div className="overflow-y-scroll flex-1 min-h-0 -mr-2 pr-2">
-                      <TableOfContents content={note.content} />
+                    <div className="-mr-2 min-h-0 flex-1 overflow-y-auto pr-2">
+                      <TableOfContents content={displayContent} />
                     </div>
                   </>
                 )}
-              </motion.section>
-            </AnimatePresence>
+              </section>
           </aside>
         )}
       </div>
@@ -1243,14 +1211,8 @@ export function NoteReaderClient({
       />
 
       {/* Immersive Reading Mode */}
-      <AnimatePresence>
-        {isImmersiveMode && (
-          <motion.div
-            variants={overlayMotion}
-            initial="initial"
-            animate="animate"
-            exit="exit"
-            transition={{ duration: uiMotion.duration.page, ease: uiMotion.ease.standard }}
+      {isImmersiveMode && (
+          <div
             className="fixed inset-0 z-[100] bg-surface-container-lowest overflow-y-auto"
             role="dialog"
             aria-modal="true"
@@ -1265,11 +1227,7 @@ export function NoteReaderClient({
             onClick={() => setIsImmersiveMode(false)}
           >
             {/* Immersive Header */}
-            <motion.div
-              variants={surfaceMotion}
-              initial="initial"
-              animate="animate"
-              transition={{ duration: uiMotion.duration.page, ease: uiMotion.ease.emphasized }}
+            <div
               className="sticky top-0 bg-surface-container-lowest/80 backdrop-blur-xl border-b border-outline-variant/10 z-10"
             >
               <div className="max-w-3xl mx-auto px-6 py-4 flex items-center justify-between">
@@ -1282,7 +1240,7 @@ export function NoteReaderClient({
                     setIsImmersiveMode(false);
                   }}
                   onClick={() => setIsImmersiveMode(false)}
-                  className="motion-ui inline-flex items-center gap-2 text-on-surface-variant hover:text-primary"
+                  className="motion-ui inline-flex min-h-11 items-center gap-2 rounded-lg px-2 text-on-surface-variant hover:bg-primary/10 hover:text-primary"
                 >
                   <ArrowLeft className="w-4 h-4" />
                   退出沉浸模式
@@ -1296,35 +1254,24 @@ export function NoteReaderClient({
                   )}
                 </div>
               </div>
-            </motion.div>
+            </div>
 
             {/* Immersive Content */}
-            <motion.div
-              variants={surfaceMotion}
-              initial="initial"
-              animate="animate"
-              transition={{ delay: 0.06, duration: uiMotion.duration.page, ease: uiMotion.ease.emphasized }}
+            <div
               className={`${readerWidthClass} px-6 py-12`}
               onClick={(e) => e.stopPropagation()}
             >
               {/* Title */}
-              <motion.h1
-                variants={surfaceMotion}
-                initial="initial"
-                animate="animate"
-                transition={{ delay: 0.1, duration: uiMotion.duration.page, ease: uiMotion.ease.emphasized }}
+              <h1
                 id="immersive-note-title"
                 className="text-4xl md:text-5xl font-bold text-on-surface mb-8 font-headline leading-tight"
               >
                 {note.title}
-              </motion.h1>
+              </h1>
 
               {/* Meta Info */}
-              <motion.div
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.12, duration: uiMotion.duration.page, ease: uiMotion.ease.emphasized }}
-                className="flex items-center gap-4 text-sm text-on-surface-variant mb-12 pb-8 border-b border-outline-variant/10"
+              <div
+                className="flex flex-wrap items-center gap-4 text-sm text-on-surface-variant mb-12 pb-8 border-b border-outline-variant/10"
               >
                 <span className="flex items-center gap-2">
                   <Calendar className="w-4 h-4" />
@@ -1348,14 +1295,10 @@ export function NoteReaderClient({
                     </span>
                   </>
                 )}
-              </motion.div>
+              </div>
 
               {/* Content */}
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: 0.14, duration: uiMotion.duration.page, ease: uiMotion.ease.standard }}
-                className="prose prose-lg max-w-none"
+              <div className="prose prose-lg max-w-none"
               >
                 {isProblem && allProblems.length > 0 ? (
                   <div className="space-y-8">
@@ -1388,7 +1331,7 @@ export function NoteReaderClient({
                   </div>
                 ) : (
                   <ProblemReferenceContent
-                    content={note.content}
+                    content={displayContent}
                     className="reader-content text-on-surface"
                     style={{
                       fontSize: `${preferences.fontSize}px`,
@@ -1398,14 +1341,13 @@ export function NoteReaderClient({
                     enableEconomicsGraphs={enableEconomicsGraphs}
                   />
                 )}
-              </motion.div>
+              </div>
 
               {/* Bottom spacer */}
               <div className="h-32" />
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+            </div>
+          </div>
+      )}
     </main>
   );
 }
