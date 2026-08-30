@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   Bookmark,
   BookOpen,
@@ -19,6 +19,8 @@ import {
 import { MarkdownContent } from "@/components/ui/MarkdownContent";
 import { PageHeader, PageShell } from "@/components/ui/PageScaffold";
 import { useToast } from "@/components/ui/Toast";
+import { BookletFormatControl, type BookletPaperStyle } from "@/components/tools/BookletFormatControl";
+import { useBookletPrint, type BookletOrientation } from "@/hooks/useBookletPrint";
 import { flattenPracticeProblems, getPracticeProblemKey, type PracticeProblemItem } from "@/lib/math3-practice";
 import {
   buildBookletNoteMarkdown,
@@ -164,8 +166,6 @@ function matchesProblem(problem: PracticeProblemItem, query: string): boolean {
 
 export function ProblemBooklet() {
   const toast = useToast();
-  const printCleanupRef = useRef<(() => void) | null>(null);
-  const printStartTimerRef = useRef<number | null>(null);
   const [summaries, setSummaries] = useState<Note[]>([]);
   const [loadedSets, setLoadedSets] = useState<Record<string, Note>>({});
   const [selectedSetIds, setSelectedSetIds] = useState<string[]>([]);
@@ -177,7 +177,8 @@ export function ProblemBooklet() {
   const [difficulty, setDifficulty] = useState<DifficultyFilter>("all");
   const [loadingSummaries, setLoadingSummaries] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [activePrintTarget, setActivePrintTarget] = useState<ExportTarget | null>(null);
+  const [bookletOrientation, setBookletOrientation] = useState<BookletOrientation>("landscape");
+  const [bookletPaperStyle, setBookletPaperStyle] = useState<BookletPaperStyle>("lined");
   const [creatingNote, setCreatingNote] = useState(false);
   const [preparingBookletPreview, setPreparingBookletPreview] = useState(false);
   const [bookletSnapshots, setBookletSnapshots] = useState<BookletProblemSnapshot[]>([]);
@@ -186,6 +187,10 @@ export function ProblemBooklet() {
   const [bookletReviewOpen, setBookletReviewOpen] = useState(false);
   const [markedStatuses, setMarkedStatuses] = useState<ProblemPracticeStatus[]>([]);
   const [markedStatusLoadState, setMarkedStatusLoadState] = useState<MarkedStatusLoadState>("idle");
+  const { activePrintTarget, startPrint } = useBookletPrint<ExportTarget>({
+    bodyTargetAttribute: "data-problem-booklet-print",
+    bodyOrientationAttribute: "data-problem-booklet-orientation",
+  });
 
   useEffect(() => {
     let cancelled = false;
@@ -324,10 +329,6 @@ export function ProblemBooklet() {
     };
   }, [loadedSets, markedProblemKeySet, markedSetSelected, markedSourceNoteIds, requiredSetIds, selectedActualSetIds, toast]);
 
-  useEffect(() => () => {
-    printCleanupRef.current?.();
-  }, []);
-
   const selectedProblemKeySet = useMemo(() => new Set(selectedProblemKeys), [selectedProblemKeys]);
   const normalizedSetQuery = normalizeQuery(setQuery);
   const normalizedProblemQuery = normalizeQuery(problemQuery);
@@ -462,64 +463,13 @@ export function ProblemBooklet() {
       return;
     }
 
-    printCleanupRef.current?.();
-
-    const previousTitle = document.title;
-    const previousTarget = document.body.dataset.problemBookletPrint;
-    const printMediaQuery = window.matchMedia("print");
-    let fallbackCleanupTimer: number | null = null;
-    let cleaned = false;
-
-    function clearFallbackCleanup() {
-      if (fallbackCleanupTimer !== null) {
-        window.clearTimeout(fallbackCleanupTimer);
-        fallbackCleanupTimer = null;
-      }
-    }
-
-    function restorePrintState() {
-      if (cleaned) return;
-      cleaned = true;
-
-      if (printStartTimerRef.current !== null) {
-        window.clearTimeout(printStartTimerRef.current);
-        printStartTimerRef.current = null;
-      }
-
-      clearFallbackCleanup();
-      if (previousTarget) {
-        document.body.dataset.problemBookletPrint = previousTarget;
-      } else {
-        delete document.body.dataset.problemBookletPrint;
-      }
-      document.title = previousTitle;
-      window.removeEventListener("afterprint", finishPrint);
-      printMediaQuery.removeEventListener("change", handlePrintMediaChange);
-      printCleanupRef.current = null;
-    }
-
-    function finishPrint() {
-      restorePrintState();
-      setActivePrintTarget(null);
-    }
-
-    function handlePrintMediaChange(event: MediaQueryListEvent) {
-      if (!event.matches) finishPrint();
-    }
-
-    printCleanupRef.current = restorePrintState;
-    setActivePrintTarget(target);
-    document.body.dataset.problemBookletPrint = target;
-    document.title = target === "questions"
-      ? `Asteroid-题目册-${selectedProblems.length}题`
-      : `Asteroid-答案册-${selectedProblems.length}题`;
-    window.addEventListener("afterprint", finishPrint);
-    printMediaQuery.addEventListener("change", handlePrintMediaChange);
-    fallbackCleanupTimer = window.setTimeout(finishPrint, 60_000);
-    printStartTimerRef.current = window.setTimeout(() => {
-      printStartTimerRef.current = null;
-      window.print();
-    }, 250);
+    const orientationLabel = bookletOrientation === "landscape" ? "横版" : "竖版";
+    startPrint(target, {
+      orientation: bookletOrientation,
+      title: target === "questions"
+        ? `Asteroid-题目册-${orientationLabel}-${selectedProblems.length}题`
+        : `Asteroid-答案册-${orientationLabel}-${selectedProblems.length}题`,
+    });
   };
 
   const openPrivateBookletReview = async () => {
@@ -696,6 +646,18 @@ export function ProblemBooklet() {
                 <span>生成笔记前会强制检查题目、答案、详细解析与方法总结。</span>
                 {loadingSets && <span className="inline-flex items-center gap-1"><Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />加载题目</span>}
               </div>
+
+              <div className="mt-3 rounded-lg border border-outline-variant/20 bg-surface-container-lowest p-3">
+                <BookletFormatControl
+                  orientation={bookletOrientation}
+                  paperStyle={bookletPaperStyle}
+                  onOrientationChange={setBookletOrientation}
+                  onPaperStyleChange={setBookletPaperStyle}
+                />
+                <p className="mt-2 text-xs leading-5 text-on-surface-variant">
+                  页面按 iPad 4:3 固定输出；在系统打印窗口中保持应用设定的方向，直接选择“保存为 PDF”。
+                </p>
+              </div>
             </div>
 
             <div className="grid gap-4 xl:grid-cols-[minmax(18rem,22rem)_minmax(0,1fr)] 2xl:grid-cols-[minmax(22rem,24rem)_minmax(0,1fr)]">
@@ -708,7 +670,12 @@ export function ProblemBooklet() {
                 hasSelectedSets={selectedSetIds.length > 0}
                 onToggle={toggleProblem}
               />
-              <BookletPreview problems={selectedProblems} onPrintQuestions={() => exportPdfFile("questions")} />
+              <BookletPreview
+                problems={selectedProblems}
+                orientation={bookletOrientation}
+                paperStyle={bookletPaperStyle}
+                onPrintQuestions={() => exportPdfFile("questions")}
+              />
             </div>
           </section>
         </section>
@@ -736,6 +703,8 @@ export function ProblemBooklet() {
           className={activePrintTarget === "questions" ? "problem-booklet-questions" : "problem-booklet-answers"}
           problems={selectedProblems}
           type={activePrintTarget}
+          orientation={bookletOrientation}
+          paperStyle={bookletPaperStyle}
         />
       )}
     </>
@@ -1004,7 +973,17 @@ function ProblemPicker({
   );
 }
 
-function BookletPreview({ problems, onPrintQuestions }: { problems: PracticeProblemItem[]; onPrintQuestions: () => void }) {
+function BookletPreview({
+  problems,
+  orientation,
+  paperStyle,
+  onPrintQuestions,
+}: {
+  problems: PracticeProblemItem[];
+  orientation: BookletOrientation;
+  paperStyle: BookletPaperStyle;
+  onPrintQuestions: () => void;
+}) {
   if (problems.length === 0) {
     return <EmptyPanel className="min-h-[520px] bg-surface-container-lowest" icon={<BookOpen className="h-10 w-10 opacity-45" />} text="选择题目后预览题目册。" />;
   }
@@ -1012,7 +991,10 @@ function BookletPreview({ problems, onPrintQuestions }: { problems: PracticeProb
   return (
     <section className="min-w-0 space-y-3">
       <div className="surface-panel flex flex-wrap items-center justify-between gap-3 p-3 xl:sticky xl:top-24 xl:z-10">
-        <div className="text-sm font-semibold text-on-surface">{problems.length} 页题目册</div>
+        <div>
+          <div className="text-sm font-semibold text-on-surface">{problems.length} 页题目册</div>
+          <div className="mt-0.5 text-xs text-on-surface-variant">iPad {orientation === "landscape" ? "横版" : "竖版"} · {paperStyle === "grid" ? "方格" : paperStyle === "lined" ? "横线" : "空白"}答题区</div>
+        </div>
         <button type="button" onClick={onPrintQuestions} className="control-button h-10 px-3 text-sm">
           <Printer className="h-4 w-4" />
           打印题目册
@@ -1020,31 +1002,62 @@ function BookletPreview({ problems, onPrintQuestions }: { problems: PracticeProb
       </div>
       <div className="space-y-4 rounded-lg bg-surface-container-low/45 p-3 sm:p-4">
         {problems.map((problem, index) => (
-          <QuestionPage key={problem.practiceKey} problem={problem} pageIndex={index} total={problems.length} />
+          <QuestionPage key={problem.practiceKey} problem={problem} pageIndex={index} total={problems.length} orientation={orientation} paperStyle={paperStyle} />
         ))}
       </div>
     </section>
   );
 }
 
-function PrintDeck({ className, problems, type }: { className: string; problems: PracticeProblemItem[]; type: ExportTarget }) {
+function PrintDeck({
+  className,
+  problems,
+  type,
+  orientation,
+  paperStyle,
+}: {
+  className: string;
+  problems: PracticeProblemItem[];
+  type: ExportTarget;
+  orientation: BookletOrientation;
+  paperStyle: BookletPaperStyle;
+}) {
   return (
-    <div className={`problem-booklet-print ${className}`}>
+    <div className={`booklet-print-deck problem-booklet-print ${className}`}>
       {problems.map((problem, index) => (
         type === "questions" ? (
-          <QuestionPage key={problem.practiceKey} problem={problem} pageIndex={index} total={problems.length} />
+          <QuestionPage key={problem.practiceKey} problem={problem} pageIndex={index} total={problems.length} orientation={orientation} paperStyle={paperStyle} />
         ) : (
-          <AnswerPage key={problem.practiceKey} problem={problem} pageIndex={index} total={problems.length} />
+          <AnswerPage key={problem.practiceKey} problem={problem} pageIndex={index} total={problems.length} orientation={orientation} />
         )
       ))}
     </div>
   );
 }
 
-function QuestionPage({ problem, pageIndex, total }: { problem: PracticeProblemItem; pageIndex: number; total: number }) {
+function QuestionPage({
+  problem,
+  pageIndex,
+  total,
+  orientation,
+  paperStyle,
+}: {
+  problem: PracticeProblemItem;
+  pageIndex: number;
+  total: number;
+  orientation: BookletOrientation;
+  paperStyle: BookletPaperStyle;
+}) {
   const hasOptions = problem.type === "choice" && Array.isArray(problem.options) && problem.options.length > 0;
+  const contentLength = problem.question.length + (problem.options ?? []).reduce((sum, option) => sum + option.content.length, 0);
+  const density = contentLength > 720 ? "compact" : "comfortable";
   return (
-    <article className="booklet-page flex min-h-[420px] flex-col overflow-hidden rounded-lg border border-outline-variant/25 bg-white p-5 text-neutral-950 shadow-ambient sm:aspect-[4/3] sm:p-6">
+    <article
+      data-booklet-orientation={orientation}
+      data-booklet-density={density}
+      data-booklet-page-kind="question"
+      className={`booklet-page flex min-h-[420px] flex-col overflow-hidden rounded-lg border border-outline-variant/25 bg-white p-5 text-neutral-950 shadow-ambient sm:p-6 ${orientation === "landscape" ? "sm:aspect-[4/3]" : "sm:aspect-[3/4]"}`}
+    >
       <BookletHeader problem={problem} pageIndex={pageIndex} total={total} label="题目" />
       <section className="booklet-question mt-5">
         <MarkdownContent content={problem.question || "空题干"} className="booklet-markdown text-[15px] leading-8 text-neutral-950" />
@@ -1059,14 +1072,19 @@ function QuestionPage({ problem, pageIndex, total }: { problem: PracticeProblemI
           ))}
         </section>
       )}
-      <div className="booklet-answer-space mt-6 min-h-28 flex-1 rounded-lg border border-dashed border-neutral-300" />
+      <div data-paper-style={paperStyle} className="booklet-answer-space mt-6 min-h-28 flex-1 rounded-lg border border-dashed border-neutral-300" />
     </article>
   );
 }
 
-function AnswerPage({ problem, pageIndex, total }: { problem: PracticeProblemItem; pageIndex: number; total: number }) {
+function AnswerPage({ problem, pageIndex, total, orientation }: { problem: PracticeProblemItem; pageIndex: number; total: number; orientation: BookletOrientation }) {
   return (
-    <article className="booklet-page flex min-h-[420px] flex-col overflow-hidden rounded-lg border border-outline-variant/25 bg-white p-5 text-neutral-950 shadow-ambient sm:aspect-[4/3] sm:p-6">
+    <article
+      data-booklet-orientation={orientation}
+      data-booklet-density="compact"
+      data-booklet-page-kind="answer"
+      className={`booklet-page flex min-h-[420px] flex-col overflow-hidden rounded-lg border border-outline-variant/25 bg-white p-5 text-neutral-950 shadow-ambient sm:p-6 ${orientation === "landscape" ? "sm:aspect-[4/3]" : "sm:aspect-[3/4]"}`}
+    >
       <BookletHeader problem={problem} pageIndex={pageIndex} total={total} label="答案" />
       <section className="mt-5 rounded-lg border border-green-200 bg-green-50 p-4">
         <h3 className="mb-3 text-sm font-semibold text-green-800">答案</h3>

@@ -34,6 +34,17 @@ export interface Math3SelfTestBlueprintItem {
   score: number;
 }
 
+export interface Math3SelfTestVerification {
+  status: "verified";
+  verifiedAt: string;
+  profileVersion: string;
+  profileLabel: string;
+  reviewMethod: "independent-area-review" | "independent-area-review+high-risk-final-gate";
+  checkedQuestions: number;
+  finalGateQuestions?: number;
+  correctedQuestionIndexes: number[];
+}
+
 export interface Math3SelfTestPaper {
   title: string;
   subject: "math3";
@@ -46,6 +57,7 @@ export interface Math3SelfTestPaper {
   blueprint: Math3SelfTestBlueprintItem[];
   coverageTargets: Array<{ areaId: Math3KnowledgeAreaId; label: string; targetQuestions: number }>;
   questions: Math3SelfTestQuestion[];
+  verification?: Math3SelfTestVerification;
 }
 
 export interface Math3SelfTestStepGrade {
@@ -145,8 +157,8 @@ export const math3SelfTestTypeLabels: Record<Math3SelfTestQuestionType, string> 
 const FULL_BLUEPRINT: Math3SelfTestBlueprintItem[] = [
   { type: "choice", count: 10, score: 5 },
   { type: "fill", count: 6, score: 5 },
-  { type: "solution", count: 4, score: 10 },
-  { type: "solution", count: 2, score: 15 },
+  { type: "solution", count: 1, score: 10 },
+  { type: "solution", count: 5, score: 12 },
 ];
 
 const QUICK_BLUEPRINT: Math3SelfTestBlueprintItem[] = [
@@ -173,15 +185,71 @@ export function getMath3SelfTestCoverageTargets(mode: Math3SelfTestMode) {
       ];
 }
 
-export function getMath3SelfTestQuestionPlan(mode: Math3SelfTestMode): Array<{
+export interface Math3SelfTestQuestionPlanItem {
   index: number;
   type: Math3SelfTestQuestionType;
   score: number;
-}> {
-  const plan: Array<{ index: number; type: Math3SelfTestQuestionType; score: number }> = [];
+  targetAreaId: Math3KnowledgeAreaId;
+  targetDifficulty: "easy" | "medium" | "hard";
+}
+
+const FULL_AREA_PLAN: Math3KnowledgeAreaId[] = [
+  "calculus", "calculus", "calculus", "calculus", "calculus", "calculus",
+  "linear-algebra", "linear-algebra", "probability-statistics", "probability-statistics",
+  "calculus", "calculus", "calculus", "calculus", "linear-algebra", "probability-statistics",
+  "calculus", "calculus", "calculus", "linear-algebra", "probability-statistics", "probability-statistics",
+];
+
+const QUICK_AREA_PLAN: Math3KnowledgeAreaId[] = [
+  "calculus", "calculus", "linear-algebra", "probability-statistics",
+  "calculus", "probability-statistics", "calculus", "linear-algebra",
+];
+
+const FULL_DIFFICULTY_PLANS: Record<Math3SelfTestDifficulty, Array<"easy" | "medium" | "hard">> = {
+  comfort: [
+    "easy", "easy", "easy", "easy", "easy", "medium", "medium", "medium", "medium", "hard",
+    "easy", "easy", "easy", "medium", "medium", "medium",
+    "medium", "medium", "medium", "medium", "medium", "hard",
+  ],
+  simulation: [
+    "easy", "easy", "easy", "medium", "medium", "medium", "medium", "medium", "hard", "hard",
+    "easy", "easy", "medium", "medium", "medium", "hard",
+    "medium", "medium", "hard", "medium", "medium", "hard",
+  ],
+  challenge: [
+    "easy", "easy", "medium", "medium", "medium", "medium", "hard", "hard", "hard", "hard",
+    "easy", "medium", "medium", "medium", "hard", "hard",
+    "medium", "hard", "hard", "hard", "hard", "hard",
+  ],
+};
+
+const QUICK_DIFFICULTY_PLANS: Record<Math3SelfTestDifficulty, Array<"easy" | "medium" | "hard">> = {
+  comfort: ["easy", "easy", "medium", "medium", "easy", "medium", "medium", "medium"],
+  simulation: ["easy", "medium", "medium", "hard", "medium", "medium", "medium", "hard"],
+  challenge: ["medium", "medium", "hard", "hard", "medium", "hard", "hard", "hard"],
+};
+
+export function getMath3SelfTestQuestionPlan(
+  mode: Math3SelfTestMode,
+  difficulty: Math3SelfTestDifficulty = "simulation",
+): Math3SelfTestQuestionPlanItem[] {
+  const plan: Math3SelfTestQuestionPlanItem[] = [];
+  const areaPlan = mode === "full" ? FULL_AREA_PLAN : QUICK_AREA_PLAN;
+  const difficultyPlan = mode === "full" ? FULL_DIFFICULTY_PLANS[difficulty] : QUICK_DIFFICULTY_PLANS[difficulty];
+  const expectedQuestionCount = getMath3SelfTestBlueprint(mode).reduce((sum, item) => sum + item.count, 0);
+  if (areaPlan.length !== expectedQuestionCount || difficultyPlan.length !== expectedQuestionCount) {
+    throw new Error(`数学三命题蓝图长度错误：${mode}/${difficulty}`);
+  }
   for (const item of getMath3SelfTestBlueprint(mode)) {
     for (let i = 0; i < item.count; i++) {
-      plan.push({ index: plan.length + 1, type: item.type, score: item.score });
+      const index = plan.length;
+      plan.push({
+        index: index + 1,
+        type: item.type,
+        score: item.score,
+        targetAreaId: areaPlan[index],
+        targetDifficulty: difficultyPlan[index],
+      });
     }
   }
   return plan;
@@ -197,7 +265,7 @@ export function getMath3SelfTestConfig(mode: Math3SelfTestMode, difficulty: Math
     durationMinutes: modeMeta.durationMinutes,
     totalScore: modeMeta.totalScore,
     blueprint: getMath3SelfTestBlueprint(mode),
-    questionPlan: getMath3SelfTestQuestionPlan(mode),
+    questionPlan: getMath3SelfTestQuestionPlan(mode, difficulty),
     coverageTargets: getMath3SelfTestCoverageTargets(mode),
   };
 }
@@ -313,33 +381,73 @@ export function normalizeMath3SelfTestAttempt(value: unknown, startedAt?: string
   };
 }
 
-function normalizeAreaId(value: unknown): Math3KnowledgeAreaId {
-  return value === "linear-algebra" || value === "probability-statistics" || value === "calculus"
-    ? value
-    : "calculus";
-}
-
-const math3ChapterIdSet = new Set(
-  math3KnowledgeAreas.flatMap((area) => area.chapters.map((chapter) => chapter.id))
+const math3ChapterAreaMap = new Map(
+  math3KnowledgeAreas.flatMap((area) => area.chapters.map((chapter) => [chapter.id, area.id] as const))
 );
 
-const math3PointIdSet = new Set(
+const math3PointAreaMap = new Map(
   math3KnowledgeAreas.flatMap((area) =>
-    area.chapters.flatMap((chapter) => chapter.points.map((point) => point.id))
+    area.chapters.flatMap((chapter) => chapter.points.map((point) => [point.id, area.id] as const))
   )
 );
 
-function normalizeChapterId(value: unknown): string | undefined {
+function normalizeChapterId(value: unknown, areaId: Math3KnowledgeAreaId): string | undefined {
   const chapterId = getString(value);
-  return math3ChapterIdSet.has(chapterId) ? chapterId : undefined;
+  return math3ChapterAreaMap.get(chapterId) === areaId ? chapterId : undefined;
 }
 
-function normalizeKnowledgePointIds(value: unknown): string[] {
-  return toStringArray(value).filter((pointId) => math3PointIdSet.has(pointId));
+function normalizeKnowledgePointIds(value: unknown, areaId: Math3KnowledgeAreaId): string[] {
+  return toStringArray(value).filter((pointId) => math3PointAreaMap.get(pointId) === areaId);
 }
 
-function normalizeDifficulty(value: unknown): "easy" | "medium" | "hard" {
-  return value === "easy" || value === "hard" ? value : "medium";
+function normalizeAreaId(value: unknown, fallback: Math3KnowledgeAreaId): Math3KnowledgeAreaId {
+  return value === "linear-algebra" || value === "probability-statistics" || value === "calculus"
+    ? value
+    : fallback;
+}
+
+function normalizeQuestionDifficulty(value: unknown, fallback: "easy" | "medium" | "hard"): "easy" | "medium" | "hard" {
+  return value === "easy" || value === "medium" || value === "hard" ? value : fallback;
+}
+
+function normalizeVerification(value: unknown, questionCount: number): Math3SelfTestVerification | undefined {
+  if (!isRecord(value) || value.status !== "verified") return undefined;
+  const verifiedAt = getString(value.verifiedAt);
+  const profileVersion = getString(value.profileVersion);
+  const profileLabel = getString(value.profileLabel);
+  const checkedQuestions = Math.max(0, Math.floor(getNumber(value.checkedQuestions, 0)));
+  const finalGateQuestions = Math.max(0, Math.floor(getNumber(value.finalGateQuestions, 0)));
+  if (!verifiedAt || !profileVersion || !profileLabel || checkedQuestions !== questionCount) return undefined;
+
+  return {
+    status: "verified",
+    verifiedAt,
+    profileVersion,
+    profileLabel,
+    reviewMethod: value.reviewMethod === "independent-area-review+high-risk-final-gate"
+      ? "independent-area-review+high-risk-final-gate"
+      : "independent-area-review",
+    checkedQuestions,
+    finalGateQuestions: finalGateQuestions > 0 ? Math.min(questionCount, finalGateQuestions) : undefined,
+    correctedQuestionIndexes: Array.isArray(value.correctedQuestionIndexes)
+      ? Array.from(new Set(value.correctedQuestionIndexes
+        .map((index) => Number(index))
+        .filter((index) => Number.isInteger(index) && index >= 1 && index <= questionCount)))
+      : [],
+  };
+}
+
+function normalizeBlueprint(value: unknown, fallback: Math3SelfTestBlueprintItem[]): Math3SelfTestBlueprintItem[] {
+  if (!Array.isArray(value)) return fallback;
+  const items = value.flatMap((raw): Math3SelfTestBlueprintItem[] => {
+    if (!isRecord(raw)) return [];
+    const type = raw.type;
+    const count = Math.floor(getNumber(raw.count, 0));
+    const score = getNumber(raw.score, 0);
+    if ((type !== "choice" && type !== "fill" && type !== "solution") || count <= 0 || score <= 0) return [];
+    return [{ type, count, score }];
+  });
+  return items.length > 0 ? items : fallback;
 }
 
 function normalizeOptions(value: unknown): Array<{ label: string; content: string }> | undefined {
@@ -401,11 +509,14 @@ export function normalizeMath3SelfTestPaper(
   value: unknown,
   mode: Math3SelfTestMode,
   difficulty: Math3SelfTestDifficulty,
+  options: { enforceRealPaperProfile?: boolean } = {},
 ): Math3SelfTestPaper {
   const config = getMath3SelfTestConfig(mode, difficulty);
   const source = isRecord(value) ? value : {};
   const rawQuestions = Array.isArray(source.questions) ? source.questions : [];
   const now = new Date().toISOString();
+  const enforceRealPaperProfile = options.enforceRealPaperProfile === true
+    || (isRecord(source.verification) && source.verification.status === "verified");
 
   const questions = config.questionPlan.flatMap((planned, index): Math3SelfTestQuestion[] => {
     const raw = isRecord(rawQuestions[index]) ? rawQuestions[index] : {};
@@ -414,16 +525,21 @@ export function normalizeMath3SelfTestPaper(
 
     const id = getString(raw.id, `math3-q-${planned.index}-${crypto.randomUUID()}`);
     const type = planned.type;
-    const score = planned.score;
+    const score = enforceRealPaperProfile ? planned.score : Math.max(0, getNumber(raw.score, planned.score));
+    const areaId = enforceRealPaperProfile
+      ? planned.targetAreaId
+      : normalizeAreaId(raw.areaId, planned.targetAreaId);
 
     return [{
       id,
       index: planned.index,
       type,
-      areaId: normalizeAreaId(raw.areaId),
-      chapterId: normalizeChapterId(raw.chapterId),
-      knowledgePointIds: normalizeKnowledgePointIds(raw.knowledgePointIds),
-      difficulty: normalizeDifficulty(raw.difficulty),
+      areaId,
+      chapterId: normalizeChapterId(raw.chapterId, areaId),
+      knowledgePointIds: normalizeKnowledgePointIds(raw.knowledgePointIds, areaId),
+      difficulty: enforceRealPaperProfile
+        ? planned.targetDifficulty
+        : normalizeQuestionDifficulty(raw.difficulty, planned.targetDifficulty),
       score,
       question: questionText,
       options: type === "choice" ? normalizeOptions(raw.options) : undefined,
@@ -441,10 +557,11 @@ export function normalizeMath3SelfTestPaper(
     durationMinutes: config.durationMinutes,
     totalScore: config.totalScore,
     generatedAt: getString(source.generatedAt, now),
-    sourcePolicy: "AI 原创模拟题；不得直接复制商业题库、网课讲义或来源不明的整题。",
-    blueprint: config.blueprint,
+    sourcePolicy: getString(source.sourcePolicy, "按 2021—2026 数学三真题结构原创命题；不得直接复制真题、商业题库、网课讲义或来源不明的整题。"),
+    blueprint: enforceRealPaperProfile ? config.blueprint : normalizeBlueprint(source.blueprint, config.blueprint),
     coverageTargets: config.coverageTargets,
     questions,
+    verification: normalizeVerification(source.verification, questions.length),
   };
 }
 

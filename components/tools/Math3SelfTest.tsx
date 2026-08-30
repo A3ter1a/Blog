@@ -8,20 +8,30 @@ import {
   ChevronLeft,
   ChevronRight,
   Clock3,
+  FileDown,
   FileText,
   Flag,
   Loader2,
   Play,
+  Printer,
   Save,
+  ShieldCheck,
   Sparkles,
   Target,
 } from "lucide-react";
+import { BookletFormatControl } from "@/components/tools/BookletFormatControl";
 import { MarkdownContent } from "@/components/ui/MarkdownContent";
 import { PageHeader, PageShell } from "@/components/ui/PageScaffold";
 import { useToast } from "@/components/ui/Toast";
 import { useAdminAuth } from "@/hooks/useAdminAuth";
+import { useBookletPrint, type BookletOrientation } from "@/hooks/useBookletPrint";
 import { buildAuthHeaders } from "@/lib/fetch-with-auth";
 import { recordDeepSeekUsage } from "@/lib/ai-usage";
+import {
+  getMath3ChoiceOptionLayout,
+  paginateMath3ObjectiveQuestions,
+  type Math3ObjectiveSection,
+} from "@/lib/math3-booklet-layout";
 import {
   createEmptyMath3SelfTestAttempt,
   gradeObjectiveAnswer,
@@ -43,6 +53,7 @@ import { math3SelfTestsApi } from "@/lib/math3-self-test-api";
 
 const MODE_OPTIONS: Math3SelfTestMode[] = ["quick", "full"];
 const DIFFICULTY_OPTIONS: Math3SelfTestDifficulty[] = ["comfort", "simulation", "challenge"];
+type Math3BookletExportTarget = "questions" | "answers";
 
 function formatDate(value?: Date): string {
   if (!value) return "未保存";
@@ -199,6 +210,11 @@ export function Math3SelfTest() {
   const [scoringStepId, setScoringStepId] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [remainingSeconds, setRemainingSeconds] = useState(0);
+  const [bookletOrientation, setBookletOrientation] = useState<BookletOrientation>("landscape");
+  const { activePrintTarget, startPrint } = useBookletPrint<Math3BookletExportTarget>({
+    bodyTargetAttribute: "data-math3-booklet-print",
+    bodyOrientationAttribute: "data-math3-booklet-orientation",
+  });
 
   const activeQuestion = activeTest?.paper.questions[activeIndex] ?? null;
   const isExamRunning = activeTest?.status === "in_progress";
@@ -280,11 +296,10 @@ export function Math3SelfTest() {
       });
 
       const payload = await response.json().catch(() => ({}));
+      if (typeof payload.tokensUsed === "number") recordDeepSeekUsage(payload.tokensUsed);
       if (!response.ok || !payload.paper) {
         throw new Error(typeof payload.error === "string" ? payload.error : "试卷生成失败");
       }
-
-      if (typeof payload.tokensUsed === "number") recordDeepSeekUsage(payload.tokensUsed);
 
       const paper = payload.paper;
       const saved = await math3SelfTestsApi.create({
@@ -299,7 +314,15 @@ export function Math3SelfTest() {
       });
 
       replaceTest(saved);
-      toast.success("试卷已生成并保存");
+      const checkedQuestions = paper.verification?.checkedQuestions ?? paper.questions.length;
+      const finalGateQuestions = paper.verification?.finalGateQuestions ?? 0;
+      const correctedQuestions = paper.verification?.correctedQuestionIndexes?.length ?? 0;
+      const finalGateLabel = finalGateQuestions > 0 ? `，${finalGateQuestions} 题二次终审通过` : "";
+      toast.success(
+        correctedQuestions > 0
+          ? `真题风格试卷已生成，${checkedQuestions} 题审校通过并修正 ${correctedQuestions} 题${finalGateLabel}`
+          : `真题风格试卷已生成，${checkedQuestions} 题独立审校通过${finalGateLabel}`,
+      );
     } catch (error) {
       const message = error instanceof Error ? error.message : "未知错误";
       toast.error(message);
@@ -452,6 +475,21 @@ export function Math3SelfTest() {
     ? `${getPendingSolutionStepCount(activeTest)} 步`
     : "-";
 
+  const exportBooklet = (target: Math3BookletExportTarget) => {
+    if (!activeTest || activeTest.paper.questions.length === 0) {
+      toast.info("当前试卷没有可导出的题目");
+      return;
+    }
+
+    const orientationLabel = bookletOrientation === "landscape" ? "横版" : "竖版";
+    startPrint(target, {
+      orientation: bookletOrientation,
+      title: target === "questions"
+        ? `Asteroid-数学三模拟题目册-${orientationLabel}-${activeTest.paper.questions.length}题`
+        : `Asteroid-数学三模拟答案册-${orientationLabel}-${activeTest.paper.questions.length}题`,
+    });
+  };
+
   if (authLoading) {
     return <ShellMessage icon={<Loader2 className="h-5 w-5 animate-spin" />} title="正在读取登录状态" />;
   }
@@ -495,7 +533,7 @@ export function Math3SelfTest() {
         <div className="grid gap-6 lg:grid-cols-[320px_minmax(0,1fr)]">
         <aside className="space-y-4">
           <section className="rounded-lg border border-outline-variant/20 bg-surface-container-lowest p-4 shadow-ambient">
-            <h2 className="mb-3 text-sm font-semibold text-on-surface">生成新卷</h2>
+            <h2 className="mb-3 text-sm font-semibold text-on-surface">生成真题风格卷</h2>
             <OptionGroup label="模式">
               {MODE_OPTIONS.map((option) => (
                 <OptionButton key={option} active={mode === option} onClick={() => setMode(option)}>
@@ -516,6 +554,10 @@ export function Math3SelfTest() {
             <div className="rounded-lg bg-surface-container-low px-3 py-3 text-xs leading-5 text-on-surface-variant">
               <div>{math3SelfTestModeMeta[mode].description}</div>
               <div className="mt-1">{math3SelfTestDifficultyMeta[difficulty].prompt}</div>
+              <div className="mt-2 flex items-start gap-1.5 border-t border-outline-variant/20 pt-2 text-primary">
+                <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                <span>按 2021—2026 真题题型与难度曲线命题；逐题分科审校后，解答题、难题和修正题还会二次终审。</span>
+              </div>
             </div>
 
             <button
@@ -525,7 +567,7 @@ export function Math3SelfTest() {
               className="mt-4 inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-on-primary transition-colors hover:bg-primary/90 disabled:opacity-50"
             >
               {isGenerating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-              {isGenerating ? "生成中" : "生成试卷"}
+              {isGenerating ? "命题、初审与终审中" : "生成并双重审校"}
             </button>
           </section>
 
@@ -571,6 +613,14 @@ export function Math3SelfTest() {
         </aside>
 
         <section className="min-h-[680px] rounded-lg border border-outline-variant/20 bg-surface-container-lowest shadow-ambient">
+          {activeTest && activeTest.status !== "in_progress" && (
+            <Math3BookletExportToolbar
+              orientation={bookletOrientation}
+              onOrientationChange={setBookletOrientation}
+              onPrintQuestions={() => exportBooklet("questions")}
+              onPrintAnswers={() => exportBooklet("answers")}
+            />
+          )}
           {!activeTest ? (
             <ShellMessage icon={<FileText className="h-5 w-5" />} title="选择或生成一份试卷" />
           ) : activeTest.status === "draft" ? (
@@ -602,7 +652,296 @@ export function Math3SelfTest() {
         </section>
         </div>
       </PageShell>
+
+      {activePrintTarget && activeTest && (
+        <Math3BookletPrintDeck
+          test={activeTest}
+          target={activePrintTarget}
+          orientation={bookletOrientation}
+        />
+      )}
     </>
+  );
+}
+
+function Math3BookletExportToolbar({
+  orientation,
+  onOrientationChange,
+  onPrintQuestions,
+  onPrintAnswers,
+}: {
+  orientation: BookletOrientation;
+  onOrientationChange: (orientation: BookletOrientation) => void;
+  onPrintQuestions: () => void;
+  onPrintAnswers: () => void;
+}) {
+  return (
+    <section className="border-b border-outline-variant/15 bg-surface-container-low/45 p-4">
+      <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+        <div className="min-w-0 flex-1">
+          <div className="mb-2 flex items-center gap-2">
+            <FileDown className="h-4 w-4 text-primary" />
+            <h2 className="text-sm font-semibold text-on-surface">iPad 做题本输出</h2>
+          </div>
+          <BookletFormatControl
+            orientation={orientation}
+            onOrientationChange={onOrientationChange}
+            showPaperStyle={false}
+          />
+        </div>
+        <div className="flex flex-wrap gap-2 xl:justify-end">
+          <button type="button" onClick={onPrintQuestions} className="control-button control-button-primary h-11 px-4 text-sm">
+            <FileDown className="h-4 w-4" />
+            导出题目册
+          </button>
+          <button type="button" onClick={onPrintAnswers} className="control-button h-11 px-4 text-sm">
+            <Printer className="h-4 w-4" />
+            导出答案册
+          </button>
+        </div>
+      </div>
+      <p className="mt-2 text-xs leading-5 text-on-surface-variant">
+        选择题每面 5 道、填空题每面 6 道并增加题间距，选择题选项会按长度自动排成一行或两行；解答题一题一面，题干后保留整页空白。保存为 PDF 后可导入 Goodnotes 或 Notability。
+      </p>
+    </section>
+  );
+}
+
+function Math3BookletPrintDeck({
+  test,
+  target,
+  orientation,
+}: {
+  test: Math3SelfTestRecord;
+  target: Math3BookletExportTarget;
+  orientation: BookletOrientation;
+}) {
+  const objectivePages = paginateMath3ObjectiveQuestions(test.paper.questions, orientation);
+  const solutionQuestions = test.paper.questions.filter((question) => question.type === "solution");
+  return (
+    <div className={`booklet-print-deck math3-booklet-print math3-booklet-${target}`}>
+      <Math3BookletCover test={test} target={target} orientation={orientation} />
+      {target === "questions" ? (
+        <>
+          {objectivePages.map((page, pageIndex) => (
+            <Math3BookletObjectivePage
+              key={`${page.section}-${page.questions[0]?.id ?? pageIndex}`}
+              section={page.section}
+              questions={page.questions}
+              pageIndex={pageIndex}
+              pageCount={objectivePages.length}
+              orientation={orientation}
+            />
+          ))}
+          {solutionQuestions.map((question, solutionIndex) => (
+            <Math3BookletSolutionPage
+              key={question.id}
+              question={question}
+              orientation={orientation}
+              bookletPageNumber={objectivePages.length + solutionIndex + 1}
+            />
+          ))}
+        </>
+      ) : (
+        test.paper.questions.map((question) => (
+          <Math3BookletAnswerPage
+            key={question.id}
+            question={question}
+            orientation={orientation}
+          />
+        ))
+      )}
+    </div>
+  );
+}
+
+function Math3BookletCover({
+  test,
+  target,
+  orientation,
+}: {
+  test: Math3SelfTestRecord;
+  target: Math3BookletExportTarget;
+  orientation: BookletOrientation;
+}) {
+  return (
+    <article
+      data-booklet-orientation={orientation}
+      data-booklet-density="comfortable"
+      data-booklet-page-kind="cover"
+      className={`booklet-page math3-booklet-cover flex min-h-[420px] flex-col overflow-hidden rounded-lg border border-outline-variant/25 bg-white p-7 text-neutral-950 shadow-ambient sm:p-10 ${orientation === "landscape" ? "sm:aspect-[4/3]" : "sm:aspect-[3/4]"}`}
+    >
+      <div className="text-xs font-semibold uppercase tracking-[0.24em] text-neutral-500">Asteroid · 数学三自测</div>
+      <div className="my-auto max-w-3xl py-10">
+        <div className="mb-4 inline-flex rounded-md border border-neutral-200 bg-neutral-50 px-3 py-1.5 text-sm font-semibold text-neutral-700">
+          {target === "questions" ? "iPad 题目册" : "标准答案册"}
+        </div>
+        <h1 className="font-headline text-3xl font-bold leading-tight text-neutral-950 sm:text-5xl">{test.title}</h1>
+        <p className="mt-5 max-w-2xl text-sm leading-7 text-neutral-600">
+          {math3SelfTestDifficultyMeta[test.difficulty].label} · {math3SelfTestModeMeta[test.mode].label} · {test.paper.questions.length} 题 · {test.paper.totalScore} 分 · {test.paper.durationMinutes} 分钟
+        </p>
+        {target === "questions" && (
+          <div className="mt-10 grid max-w-2xl gap-5 text-sm sm:grid-cols-2">
+            <div className="border-b border-neutral-300 pb-2 text-neutral-500">姓名</div>
+            <div className="border-b border-neutral-300 pb-2 text-neutral-500">日期</div>
+            <div className="border-b border-neutral-300 pb-2 text-neutral-500">开始时间</div>
+            <div className="border-b border-neutral-300 pb-2 text-neutral-500">完成时间</div>
+          </div>
+        )}
+      </div>
+      <footer className="flex items-end justify-between gap-4 border-t border-neutral-200 pt-4 text-xs text-neutral-500">
+        <span>{orientation === "landscape" ? "iPad 横屏 4:3" : "iPad 竖屏 3:4"}</span>
+        <span>{target === "questions" ? "选填集中排版 · 解答一题一面" : "答案与评分步骤仅供复盘"}</span>
+      </footer>
+    </article>
+  );
+}
+
+function Math3BookletObjectivePage({
+  section,
+  questions,
+  pageIndex,
+  pageCount,
+  orientation,
+}: {
+  section: Math3ObjectiveSection;
+  questions: Math3SelfTestQuestion[];
+  pageIndex: number;
+  pageCount: number;
+  orientation: BookletOrientation;
+}) {
+  const sectionLabel = section === "choice" ? "一、选择题" : "二、填空题";
+  return (
+    <article
+      data-booklet-orientation={orientation}
+      data-booklet-density="compact"
+      data-booklet-page-kind="objective"
+      className={`booklet-page math3-booklet-page flex min-h-[420px] flex-col overflow-hidden rounded-lg border border-outline-variant/25 bg-white p-5 text-neutral-950 shadow-ambient sm:p-6 ${orientation === "landscape" ? "sm:aspect-[4/3]" : "sm:aspect-[3/4]"}`}
+    >
+      <header className="booklet-page-header flex items-start justify-between gap-4 border-b border-neutral-200 pb-3">
+        <div className="math3-booklet-section-heading text-sm font-bold text-neutral-950">{sectionLabel}</div>
+        <span className="shrink-0 text-xs text-neutral-400">客观题页 {pageIndex + 1} / {pageCount}</span>
+      </header>
+
+      <div className="math3-objective-layout mt-4 min-h-0 flex-1">
+        <section className="math3-objective-list min-w-0">
+          {questions.map((question) => (
+            <div key={question.id} className="math3-objective-item break-inside-avoid pb-3 last:pb-0">
+              <div className="mb-1.5 flex items-center justify-between gap-3 text-xs">
+                <span className="font-bold text-neutral-900">{question.index}. <span className="font-medium text-neutral-500">({question.score} 分)</span></span>
+                {section === "fill" && <span className="text-neutral-400">答案：____________</span>}
+              </div>
+              <MarkdownContent content={question.question} className="math3-objective-markdown booklet-markdown text-[13px] leading-6 text-neutral-950" compact />
+              {question.type === "choice" && question.options && question.options.length > 0 && (
+                <div
+                  data-option-layout={getMath3ChoiceOptionLayout(question.options, orientation)}
+                  className="math3-objective-options mt-2 grid gap-x-4 gap-y-1.5"
+                >
+                  {question.options.map((option) => (
+                    <div key={`${question.id}-${option.label}`} className="math3-objective-option grid min-w-0 grid-cols-[1.25rem_minmax(0,1fr)] gap-1.5 text-xs leading-5">
+                      <span className="font-semibold text-neutral-700">{option.label}.</span>
+                      <MarkdownContent content={option.content} className="math3-objective-markdown min-w-0 text-neutral-950" compact />
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          ))}
+        </section>
+      </div>
+      <Math3BookletFooter pageNumber={pageIndex + 1} />
+    </article>
+  );
+}
+
+function Math3BookletSolutionPage({
+  question,
+  orientation,
+  bookletPageNumber,
+}: {
+  question: Math3SelfTestQuestion;
+  orientation: BookletOrientation;
+  bookletPageNumber: number;
+}) {
+  const density = question.question.length > 720 ? "compact" : "comfortable";
+  return (
+    <article
+      data-booklet-orientation={orientation}
+      data-booklet-density={density}
+      data-booklet-page-kind="solution"
+      className={`booklet-page math3-booklet-page flex min-h-[420px] flex-col overflow-hidden rounded-lg border border-outline-variant/25 bg-white p-5 text-neutral-950 shadow-ambient sm:p-6 ${orientation === "landscape" ? "sm:aspect-[4/3]" : "sm:aspect-[3/4]"}`}
+    >
+      <Math3BookletPageHeader question={question} label="解答题 · 一题一面" />
+      <section className="booklet-question mt-5">
+        <MarkdownContent content={question.question} className="booklet-markdown text-[15px] leading-8 text-neutral-950" />
+      </section>
+      <div className="min-h-0 flex-1" aria-hidden="true" />
+      <Math3BookletFooter pageNumber={bookletPageNumber} />
+    </article>
+  );
+}
+
+function Math3BookletFooter({ pageNumber }: { pageNumber: number }) {
+  return (
+    <footer className="math3-booklet-page-footer mt-3 text-center text-[10px] tracking-[0.14em] text-neutral-400">
+      数学（三） · 第 {pageNumber} 页
+    </footer>
+  );
+}
+
+function Math3BookletAnswerPage({
+  question,
+  orientation,
+}: {
+  question: Math3SelfTestQuestion;
+  orientation: BookletOrientation;
+}) {
+  return (
+    <article
+      data-booklet-orientation={orientation}
+      data-booklet-density="compact"
+      data-booklet-page-kind="answer"
+      className={`booklet-page math3-booklet-page flex min-h-[420px] flex-col overflow-hidden rounded-lg border border-outline-variant/25 bg-white p-5 text-neutral-950 shadow-ambient sm:p-6 ${orientation === "landscape" ? "sm:aspect-[4/3]" : "sm:aspect-[3/4]"}`}
+    >
+      <Math3BookletPageHeader question={question} label="答案" />
+      <section className="mt-5 rounded-lg border border-green-200 bg-green-50 p-4">
+        <h3 className="mb-3 text-sm font-semibold text-green-800">标准答案</h3>
+        <MarkdownContent content={question.answer || "暂无标准答案"} className="booklet-markdown text-green-950" />
+      </section>
+      <section className="mt-4 rounded-lg border border-neutral-200 bg-neutral-50 p-4">
+        <h3 className="mb-3 text-sm font-semibold text-neutral-800">解析</h3>
+        <MarkdownContent content={question.explanation || "暂无解析"} className="booklet-markdown text-neutral-950" />
+      </section>
+      {question.rubricSteps.length > 0 && (
+        <section className="mt-4 rounded-lg border border-sky-200 bg-sky-50 p-4">
+          <h3 className="mb-3 text-sm font-semibold text-sky-900">评分步骤</h3>
+          <div className="space-y-2 text-sm leading-6 text-sky-950">
+            {question.rubricSteps.map((step) => (
+              <div key={step.id} className="grid grid-cols-[auto_minmax(0,1fr)_auto] gap-2">
+                <span className="font-semibold">{step.label}</span>
+                <span>{step.expected}</span>
+                <span className="font-semibold tabular-nums">{step.points} 分</span>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+    </article>
+  );
+}
+
+function Math3BookletPageHeader({
+  question,
+  label,
+}: {
+  question: Math3SelfTestQuestion;
+  label: string;
+}) {
+  return (
+    <header className="booklet-page-header flex flex-wrap items-start justify-between gap-3 border-b border-neutral-200 pb-3">
+      <div className="math3-booklet-section-heading min-w-0 text-sm font-bold text-neutral-950">{label}</div>
+      <span className="shrink-0 text-xs font-medium text-neutral-600">第 {question.index} 题 · {question.score} 分</span>
+    </header>
   );
 }
 
@@ -669,6 +1008,14 @@ function PaperPreview({ test, isSaving, onStart }: {
               {math3SelfTestDifficultyMeta[test.difficulty].label}
             </Badge>
             <Badge>{test.paper.durationMinutes} 分钟</Badge>
+            {test.paper.verification?.status === "verified" && (
+              <Badge className="border-emerald-500/20 bg-emerald-500/10 text-emerald-700">
+                <ShieldCheck className="mr-1 h-3 w-3" />
+                {test.paper.verification.finalGateQuestions
+                  ? `${test.paper.verification.checkedQuestions} 题初审 · ${test.paper.verification.finalGateQuestions} 题终审`
+                  : `${test.paper.verification.checkedQuestions} 题审校通过`}
+              </Badge>
+            )}
           </div>
           <h2 className="font-headline text-2xl font-bold text-on-surface">{test.title}</h2>
         </div>

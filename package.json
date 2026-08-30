@@ -8,7 +8,7 @@
     "build:offline": "node scripts/run-offline-next-build.mjs",
     "start": "next start",
     "lint": "eslint",
-    "test:run": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types --test tests/domain-contracts.test.mjs tests/site-cache.test.mjs",
+    "test:run": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types --test --test-isolation=none tests/domain-contracts.test.mjs tests/site-cache.test.mjs tests/math3-paper-verification.test.mjs",
     "import:english-papers": "node scripts/import-english-papers.mjs",
     "import:math3-papers": "node scripts/import-math3-papers.mjs",
     "verify:math3-papers": "node scripts/import-math3-papers.mjs",

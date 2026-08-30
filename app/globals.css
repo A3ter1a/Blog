@@ -1885,11 +1885,18 @@ mark + mark {
 }
 
 /* Problem booklet PDF export */
+.booklet-print-deck,
 .problem-booklet-print {
   display: none;
 }
 
-.booklet-answer-space {
+.booklet-answer-space,
+.booklet-scratch-space {
+  background-color: #ffffff;
+}
+
+.booklet-answer-space[data-paper-style="lined"],
+.booklet-scratch-space[data-paper-style="lined"] {
   background-image: repeating-linear-gradient(
     to bottom,
     transparent 0,
@@ -1898,8 +1905,103 @@ mark + mark {
   );
 }
 
+.booklet-answer-space[data-paper-style="grid"],
+.booklet-scratch-space[data-paper-style="grid"] {
+  background-image:
+    linear-gradient(to right, rgba(156, 163, 175, 0.24) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(156, 163, 175, 0.24) 1px, transparent 1px);
+  background-size: 1.9rem 1.9rem;
+}
+
+.booklet-answer-space[data-paper-style="blank"],
+.booklet-scratch-space[data-paper-style="blank"] {
+  background-image: none;
+}
+
+.math3-objective-layout {
+  display: block;
+}
+
+.math3-objective-list {
+  display: grid;
+  align-content: start;
+  gap: 2rem;
+}
+
+.math3-objective-options[data-option-layout="single-row"] {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.math3-objective-options[data-option-layout="double-row"] {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.booklet-scratch-space {
+  overflow: hidden;
+}
+
 .booklet-page .katex-display {
   max-width: 100%;
+}
+
+.booklet-page :where(img, svg, table, pre) {
+  max-width: 100%;
+}
+
+@font-face {
+  font-family: "Math3 Exam Body";
+  src: local("Times New Roman");
+  unicode-range: U+0000-024f, U+1e00-1eff, U+2000-206f, U+2100-214f, U+2200-22ff;
+}
+
+@font-face {
+  font-family: "Math3 Exam Body";
+  src: local("SimSun"), local("中易宋体");
+  unicode-range: U+2e80-2eff, U+3000-303f, U+31c0-31ef, U+3400-4dbf, U+4e00-9fff, U+f900-faff, U+ff00-ffef;
+}
+
+@font-face {
+  font-family: "Math3 Exam Material";
+  src: local("Times New Roman");
+  unicode-range: U+0000-024f, U+1e00-1eff, U+2000-206f, U+2100-214f, U+2200-22ff;
+}
+
+@font-face {
+  font-family: "Math3 Exam Material";
+  src: local("KaiTi_GB2312"), local("楷体_GB2312"), local("KaiTi"), local("楷体");
+  unicode-range: U+2e80-2eff, U+3000-303f, U+31c0-31ef, U+3400-4dbf, U+4e00-9fff, U+f900-faff, U+ff00-ffef;
+}
+
+@font-face {
+  font-family: "Math3 Exam Heading";
+  src: local("Times New Roman");
+  unicode-range: U+0000-024f, U+1e00-1eff, U+2000-206f, U+2100-214f, U+2200-22ff;
+}
+
+@font-face {
+  font-family: "Math3 Exam Heading";
+  src: local("SimHei"), local("中易黑体");
+  unicode-range: U+2e80-2eff, U+3000-303f, U+31c0-31ef, U+3400-4dbf, U+4e00-9fff, U+f900-faff, U+ff00-ffef;
+}
+
+.math3-booklet-page,
+.math3-booklet-cover {
+  font-family: "Math3 Exam Body", "Times New Roman", SimSun, "Songti SC", serif;
+}
+
+.math3-booklet-page .katex {
+  font-size: 1em;
+}
+
+.math3-booklet-material,
+.math3-booklet-page .booklet-markdown blockquote {
+  font-family: "Math3 Exam Material", "Times New Roman", KaiTi, STKaiti, serif;
+}
+
+.math3-booklet-section-heading,
+.booklet-scratch-label,
+.math3-booklet-cover :where(h1, .font-semibold, .font-bold) {
+  font-family: "Math3 Exam Heading", "Times New Roman", SimHei, sans-serif;
 }
 
 @media print {
@@ -1908,8 +2010,13 @@ mark + mark {
     margin: 14mm;
   }
 
-  @page booklet {
+  @page booklet-landscape {
     size: 280mm 210mm;
+    margin: 0;
+  }
+
+  @page booklet-portrait {
+    size: 210mm 280mm;
     margin: 0;
   }
 
@@ -1919,15 +2026,32 @@ mark + mark {
     background: #ffffff !important;
   }
 
-  body[data-problem-booklet-print] {
-    width: 280mm;
+  body[data-problem-booklet-orientation="landscape"],
+  body[data-math3-booklet-orientation="landscape"] {
+    --booklet-page-width: 280mm;
+    --booklet-page-height: 210mm;
   }
 
-  body[data-problem-booklet-print] * {
+  body[data-problem-booklet-orientation="portrait"],
+  body[data-math3-booklet-orientation="portrait"] {
+    --booklet-page-width: 210mm;
+    --booklet-page-height: 280mm;
+  }
+
+  body[data-problem-booklet-print],
+  body[data-math3-booklet-print] {
+    width: var(--booklet-page-width);
+    color: #111827 !important;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  body[data-problem-booklet-print] *,
+  body[data-math3-booklet-print] * {
     visibility: hidden !important;
   }
 
-  body:not([data-problem-booklet-print]) {
+  body:not([data-problem-booklet-print]):not([data-math3-booklet-print]) {
     color: #111827 !important;
     print-color-adjust: exact;
     -webkit-print-color-adjust: exact;
@@ -1939,12 +2063,12 @@ mark + mark {
     display: none !important;
   }
 
-  body:not([data-problem-booklet-print]) main {
+  body:not([data-problem-booklet-print]):not([data-math3-booklet-print]) main {
     min-height: 0 !important;
     padding: 0 !important;
   }
 
-  body:not([data-problem-booklet-print]) :where(.surface-card, .surface-panel, .surface-toolbar, .command-bar) {
+  body:not([data-problem-booklet-print]):not([data-math3-booklet-print]) :where(.surface-card, .surface-panel, .surface-toolbar, .command-bar) {
     border-color: #d1d5db !important;
     background: #ffffff !important;
     box-shadow: none !important;
@@ -1953,16 +2077,22 @@ mark + mark {
   body[data-problem-booklet-print="questions"] .problem-booklet-questions,
   body[data-problem-booklet-print="questions"] .problem-booklet-questions *,
   body[data-problem-booklet-print="answers"] .problem-booklet-answers,
-  body[data-problem-booklet-print="answers"] .problem-booklet-answers * {
+  body[data-problem-booklet-print="answers"] .problem-booklet-answers *,
+  body[data-math3-booklet-print="questions"] .math3-booklet-questions,
+  body[data-math3-booklet-print="questions"] .math3-booklet-questions *,
+  body[data-math3-booklet-print="answers"] .math3-booklet-answers,
+  body[data-math3-booklet-print="answers"] .math3-booklet-answers * {
     visibility: visible !important;
   }
 
   body[data-problem-booklet-print="questions"] .problem-booklet-questions,
-  body[data-problem-booklet-print="answers"] .problem-booklet-answers {
+  body[data-problem-booklet-print="answers"] .problem-booklet-answers,
+  body[data-math3-booklet-print="questions"] .math3-booklet-questions,
+  body[data-math3-booklet-print="answers"] .math3-booklet-answers {
     position: absolute !important;
     inset: 0 !important;
     display: block !important;
-    width: 280mm !important;
+    width: var(--booklet-page-width) !important;
     max-width: none !important;
     margin: 0 !important;
     padding: 0 !important;
@@ -1974,9 +2104,7 @@ mark + mark {
   }
 
   .booklet-page {
-    page: booklet;
-    width: 280mm !important;
-    min-height: 210mm !important;
+    box-sizing: border-box !important;
     break-after: page;
     page-break-after: always;
     border: 0 !important;
@@ -1984,7 +2112,28 @@ mark + mark {
     box-shadow: none !important;
     background: #ffffff !important;
     color: #111827 !important;
+    overflow: hidden !important;
+  }
+
+  .booklet-page[data-booklet-orientation="landscape"] {
+    page: booklet-landscape;
+    width: 280mm !important;
+    min-height: 210mm !important;
+    height: 210mm !important;
     padding: 14mm 16mm !important;
+  }
+
+  .booklet-page[data-booklet-orientation="portrait"] {
+    page: booklet-portrait;
+    width: 210mm !important;
+    min-height: 280mm !important;
+    height: 280mm !important;
+    padding: 14mm !important;
+  }
+
+  .booklet-page[data-booklet-page-kind="answer"] {
+    height: auto !important;
+    overflow: visible !important;
   }
 
   .booklet-page:last-child {
@@ -1996,6 +2145,101 @@ mark + mark {
     padding-bottom: 5mm !important;
   }
 
+  .booklet-page[data-booklet-page-kind="objective"] .booklet-page-header {
+    padding-bottom: 3mm !important;
+  }
+
+  .math3-booklet-page,
+  .math3-booklet-cover {
+    font-family: "Math3 Exam Body", "Times New Roman", SimSun, "Songti SC", serif !important;
+    font-size: 12pt !important;
+  }
+
+  .math3-booklet-section-heading,
+  .booklet-scratch-label {
+    font-family: "Math3 Exam Heading", "Times New Roman", SimHei, sans-serif !important;
+  }
+
+  .math3-booklet-section-heading {
+    font-size: 13pt !important;
+    line-height: 1.35 !important;
+  }
+
+  .math3-objective-layout {
+    display: block !important;
+    flex: 1 1 0% !important;
+    min-height: 0 !important;
+    margin-top: 5mm !important;
+  }
+
+  .math3-objective-list {
+    display: flex !important;
+    height: 100% !important;
+    flex-direction: column !important;
+    justify-content: space-evenly !important;
+    gap: 8mm !important;
+    min-width: 0 !important;
+  }
+
+  .math3-objective-item {
+    padding-bottom: 0 !important;
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+
+  .math3-objective-markdown {
+    font-size: 12pt !important;
+    line-height: 1.58 !important;
+  }
+
+  .math3-objective-options {
+    display: grid !important;
+    column-gap: 7mm !important;
+    row-gap: 3mm !important;
+    margin-top: 3mm !important;
+  }
+
+  .math3-objective-options[data-option-layout="single-row"] {
+    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  }
+
+  .math3-objective-options[data-option-layout="double-row"] {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .math3-objective-option {
+    font-family: "Math3 Exam Body", "Times New Roman", SimSun, serif !important;
+    font-size: 12pt !important;
+    line-height: 1.5 !important;
+  }
+
+  .booklet-scratch-space {
+    min-height: 62mm !important;
+    border-color: #d1d5db !important;
+    background-color: #ffffff !important;
+    overflow: hidden !important;
+  }
+
+  .booklet-page[data-booklet-orientation="portrait"] .booklet-scratch-space {
+    min-height: 72mm !important;
+  }
+
+  .booklet-scratch-label {
+    font-size: 8.5pt !important;
+  }
+
+  .booklet-page[data-booklet-page-kind="solution"] .booklet-question .booklet-markdown {
+    font-size: 12pt !important;
+    line-height: 1.65 !important;
+  }
+
+  .math3-booklet-page-footer {
+    margin-top: 3mm !important;
+    font-size: 8.8pt !important;
+    letter-spacing: 0.08em !important;
+    color: #6b7280 !important;
+  }
+
   .booklet-question {
     margin-top: 7mm !important;
   }
@@ -2005,6 +2249,15 @@ mark + mark {
     line-height: 1.75 !important;
   }
 
+  .booklet-page[data-booklet-density="compact"] .booklet-markdown {
+    font-size: 10.75pt !important;
+    line-height: 1.55 !important;
+  }
+
+  .booklet-page[data-booklet-density="compact"] .booklet-question {
+    margin-top: 4mm !important;
+  }
+
   .booklet-options {
     display: grid !important;
     grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
@@ -2012,16 +2265,49 @@ mark + mark {
     margin-top: 6mm !important;
   }
 
+  .booklet-page[data-booklet-orientation="portrait"] .booklet-options {
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 3mm !important;
+  }
+
+  .booklet-page[data-booklet-density="compact"] .booklet-options {
+    gap: 3mm !important;
+    margin-top: 4mm !important;
+  }
+
   .booklet-answer-space {
     min-height: 50mm !important;
     margin-top: 8mm !important;
     border-color: #d1d5db !important;
+    background-color: #ffffff !important;
+  }
+
+  .booklet-page[data-booklet-density="compact"] .booklet-answer-space {
+    min-height: 32mm !important;
+    margin-top: 5mm !important;
+  }
+
+  .booklet-answer-space[data-paper-style="lined"],
+  .booklet-scratch-space[data-paper-style="lined"] {
     background-image: repeating-linear-gradient(
       to bottom,
       transparent 0,
       transparent 8mm,
       rgba(156, 163, 175, 0.46) 8.2mm
     ) !important;
+  }
+
+  .booklet-answer-space[data-paper-style="grid"],
+  .booklet-scratch-space[data-paper-style="grid"] {
+    background-image:
+      linear-gradient(to right, rgba(156, 163, 175, 0.36) 0.25mm, transparent 0.25mm),
+      linear-gradient(to bottom, rgba(156, 163, 175, 0.36) 0.25mm, transparent 0.25mm) !important;
+    background-size: 8mm 8mm !important;
+  }
+
+  .booklet-answer-space[data-paper-style="blank"],
+  .booklet-scratch-space[data-paper-style="blank"] {
+    background-image: none !important;
   }
 }
 /* Persistent task center */
