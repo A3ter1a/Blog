@@ -16,6 +16,7 @@ import { AlertTriangle, ArrowUpRight, CheckCircle2, CircleX, Clock3, FileScan, L
 import { buildAuthHeaders } from "@/lib/fetch-with-auth";
 import { useAdminAuth } from "@/hooks/useAdminAuth";
 import { useAiAccountSlot } from "@/hooks/useAiAccountSlot";
+import { useDialogFocus } from "@/hooks/useDialogFocus";
 import { AI_REVIEW_QUEUE_CHANGED_EVENT } from "@/lib/ai-content-contract";
 import {
   CLIENT_JOB_STORAGE_KEY,
@@ -33,10 +34,15 @@ import {
 import {
   deleteOcrDocument,
   deleteProblemOcrAssets,
+  uploadMathPaperOcrAssets,
   uploadProblemOcrAssets,
+  type MathPaperOcrUploadInput,
   type ProblemOcrUploadInput,
 } from "@/lib/supabase-storage";
 import type { ProblemOcrChapterContextItem } from "@/lib/problem-ocr-contract";
+import type { Math3SelfTestDifficulty, Math3SelfTestMode } from "@/lib/math3-self-test";
+import type { Math3ProblemClassifyInput } from "@/lib/math3-classification";
+import type { Math3StepGradeQuestionSnapshot, Math3StepGradeRubricSnapshot } from "@/lib/server-math3-step-grade";
 
 type CreateDocumentOcrJobInput = {
   externalTaskId: string;
@@ -49,6 +55,7 @@ type CreateDocumentOcrJobInput = {
 type CreateMarkdownReviewJobInput = {
   markdown: string;
   model: string;
+  targetId: string;
 };
 
 type CreateProblemOcrJobInput = {
@@ -56,15 +63,71 @@ type CreateProblemOcrJobInput = {
   chapterContext: ProblemOcrChapterContextItem[];
   qwenModel: string;
   deepseekModel: string;
+  targetId: string;
+};
+
+type CreateMath3SelfTestJobInput = {
+  mode: Math3SelfTestMode;
+  difficulty: Math3SelfTestDifficulty;
+};
+
+type CreateMathPaperGradeJobInput = {
+  paperId: string;
+  confirmationId: string;
+};
+
+type CreateMathPaperOcrJobInput = {
+  images: MathPaperOcrUploadInput[];
+  qwenModel: string;
+};
+
+type CreateMath3ClassifyJobInput = {
+  problems: Math3ProblemClassifyInput[];
+  sourceChecksum: string;
+  scopeLabel: string;
+  targetId: string;
+};
+
+type CreateEnglishSubjectiveGradeJobInput = {
+  passageId: string;
+  round: 1 | 2 | 3;
+  answers: Record<string, string>;
+};
+
+type CreateEconomicsGraphJobInput = {
+  prompt: string;
+  model: string;
+  apiKey?: string;
+  targetId: string;
+};
+
+type CreateMath3StepGradeJobInput = {
+  testId: string;
+  question: Math3StepGradeQuestionSnapshot;
+  step: Math3StepGradeRubricSnapshot;
+  studentAnswer: string;
+  model: string;
+  apiKey?: string;
+  targetId: string;
+};
+
+type CreateKnowledgeQuizJobInput = {
+  proposalId: string;
 };
 
 type JobCenterContextValue = {
   jobs: ClientJob[];
   createDocumentOcrJob: (input: CreateDocumentOcrJobInput) => ClientJob;
-  createMarkdownReviewJob: (input: CreateMarkdownReviewJobInput) => Promise<ClientJob | null>;
-  createProblemOcrJob: (input: CreateProblemOcrJobInput) => Promise<ClientJob | null>;
-  createLocalProblemOcrJob: (title: string) => ClientJob;
-  createBatchGradeJob: (title: string) => ClientJob;
+  createMarkdownReviewJob: (input: CreateMarkdownReviewJobInput) => Promise<ClientJob>;
+  createProblemOcrJob: (input: CreateProblemOcrJobInput) => Promise<ClientJob>;
+  createMath3SelfTestJob: (input: CreateMath3SelfTestJobInput) => Promise<ClientJob>;
+  createMathPaperGradeJob: (input: CreateMathPaperGradeJobInput) => Promise<ClientJob>;
+  createMathPaperOcrJob: (input: CreateMathPaperOcrJobInput) => Promise<ClientJob>;
+  createMath3ClassifyJob: (input: CreateMath3ClassifyJobInput) => Promise<ClientJob>;
+  createEnglishSubjectiveGradeJob: (input: CreateEnglishSubjectiveGradeJobInput) => Promise<ClientJob>;
+  createEconomicsGraphJob: (input: CreateEconomicsGraphJobInput) => Promise<ClientJob>;
+  createMath3StepGradeJob: (input: CreateMath3StepGradeJobInput) => Promise<ClientJob>;
+  createKnowledgeQuizJob: (input: CreateKnowledgeQuizJobInput) => Promise<ClientJob>;
   updateJob: (id: string, patch: Partial<ClientJob>) => void;
   cancelJob: (id: string) => void;
   retryJob: (id: string) => void;
@@ -104,7 +167,7 @@ type PendingReviewNotice = {
 const JobCenterContext = createContext<JobCenterContextValue | null>(null);
 const POLL_INTERVAL_MS = 6000;
 const AUTH_RETRY_BACKOFF_MS = 30_000;
-const MAX_HISTORY = 40;
+const MAX_HISTORY = 100;
 
 type JobBucket = "pending" | "running" | "completed";
 
@@ -117,7 +180,7 @@ function getJobBucket(job: ClientJob): JobBucket {
 function getJobBucketLabel(bucket: JobBucket): string {
   if (bucket === "pending") return "待处理";
   if (bucket === "running") return "进行中";
-  return "已完成";
+  return "已结束";
 }
 
 function getJobStatusLabel(job: ClientJob): string {
@@ -153,7 +216,7 @@ async function withBrowserJobLock(jobId: string, task: () => Promise<void>): Pro
 async function fetchRemoteJobLedger(): Promise<ClientJob[]> {
   const headers = await buildAuthHeaders();
   if (!headers.has("Authorization")) return [];
-  const response = await fetch("/api/jobs?limit=40", { headers, cache: "no-store" });
+  const response = await fetch("/api/jobs?limit=100", { headers, cache: "no-store" });
   if (!response.ok) return [];
   const payload = await response.json().catch(() => ({})) as JobLedgerListResponse;
   return normalizeRemoteJobRows(payload.jobs);
@@ -210,7 +273,8 @@ export function JobCenterProvider({ children }: { children: ReactNode }) {
   const { isAdmin } = useAdminAuth();
   const aiAccountSlot = useAiAccountSlot();
   const isUiLab = pathname.startsWith("/ui-lab/");
-  const skipRemoteLedger = isUiLab || Boolean(aiAccountSlot);
+  const skipRemoteLedger = isUiLab;
+  const jobStorageKey = aiAccountSlot ? `${CLIENT_JOB_STORAGE_KEY}:${aiAccountSlot}` : CLIENT_JOB_STORAGE_KEY;
   const [jobs, setJobs] = useState<ClientJob[]>([]);
   const [reviewNotices, setReviewNotices] = useState<PendingReviewNotice[]>([]);
   const [isOpen, setIsOpen] = useState(false);
@@ -219,7 +283,6 @@ export function JobCenterProvider({ children }: { children: ReactNode }) {
   const jobsRef = useRef<ClientJob[]>([]);
   const drawerRef = useRef<HTMLElement>(null);
   const drawerCloseRef = useRef<HTMLButtonElement>(null);
-  const previousFocusRef = useRef<HTMLElement | null>(null);
   const pollingRef = useRef(new Set<string>());
   const cancelledRef = useRef(new Set<string>());
   const resultLoadingRef = useRef(new Set<string>());
@@ -246,7 +309,7 @@ export function JobCenterProvider({ children }: { children: ReactNode }) {
     queueMicrotask(() => {
       try {
         const stored = removeExpiredClientJobs(
-          normalizeStoredJobs(JSON.parse(localStorage.getItem(CLIENT_JOB_STORAGE_KEY) ?? "[]")),
+            normalizeStoredJobs(JSON.parse(localStorage.getItem(jobStorageKey) ?? "[]")),
         );
         const hydrated: ClientJob[] = stored.map((job) => (
           job.class === "internal" && isClientJobActive(job) && !job.remoteJobId
@@ -272,7 +335,7 @@ export function JobCenterProvider({ children }: { children: ReactNode }) {
         hydratedRef.current = true;
       }
     });
-  }, [skipRemoteLedger]);
+  }, [jobStorageKey, skipRemoteLedger]);
 
   useEffect(() => {
     if (skipRemoteLedger) return;
@@ -317,19 +380,19 @@ export function JobCenterProvider({ children }: { children: ReactNode }) {
     if (!hydratedRef.current) return;
     try {
       localStorage.setItem(
-        CLIENT_JOB_STORAGE_KEY,
+        jobStorageKey,
         JSON.stringify(prepareClientJobsForStorage(jobs.slice(0, MAX_HISTORY))),
       );
     } catch {
       // 云端已同步结果不会重复塞进 localStorage；本机存储满时保留当前内存状态。
     }
-  }, [skipRemoteLedger, jobs]);
+  }, [jobStorageKey, skipRemoteLedger, jobs]);
 
   useEffect(() => {
     if (skipRemoteLedger) return;
 
     const sync = (event: StorageEvent) => {
-      if (event.key !== CLIENT_JOB_STORAGE_KEY || !event.newValue) return;
+      if (event.key !== jobStorageKey || !event.newValue) return;
       try {
         const stored = removeExpiredClientJobs(normalizeStoredJobs(JSON.parse(event.newValue)));
         setJobs((current) => mergeClientJobLedgers(
@@ -342,7 +405,7 @@ export function JobCenterProvider({ children }: { children: ReactNode }) {
     };
     window.addEventListener("storage", sync);
     return () => window.removeEventListener("storage", sync);
-  }, [skipRemoteLedger]);
+  }, [jobStorageKey, skipRemoteLedger]);
 
   const updateJob = useCallback((id: string, patch: Partial<ClientJob>) => {
     setJobs((current) => current.map((job) => (
@@ -567,7 +630,6 @@ export function JobCenterProvider({ children }: { children: ReactNode }) {
       cache: "no-store",
     });
     const payload = await response.json().catch(() => ({})) as JobMutationResponse;
-    if (response.status === 503 && payload.availability === "schema_pending") return null;
     if (!response.ok) throw new Error(toText(payload.error) || "Markdown 审阅任务创建失败");
     const remoteJobs = normalizeRemoteJobRows(payload.job ? [payload.job] : []);
     const job = remoteJobs[0];
@@ -583,7 +645,7 @@ export function JobCenterProvider({ children }: { children: ReactNode }) {
     });
     const capability = await capabilityResponse.json().catch(() => ({})) as JobMutationResponse;
     if (!capabilityResponse.ok) throw new Error(toText(capability.error) || "题库 OCR 持久任务能力检查失败");
-    if (capability.available !== true) return null;
+    if (capability.available !== true) throw new Error("题库 OCR 持久任务尚未启用，未开始上传原图");
 
     const assets = await uploadProblemOcrAssets(input.images);
     let response: Response;
@@ -596,6 +658,7 @@ export function JobCenterProvider({ children }: { children: ReactNode }) {
           chapterContext: input.chapterContext,
           qwenModel: input.qwenModel,
           deepseekModel: input.deepseekModel,
+          targetId: input.targetId,
         }),
         cache: "no-store",
       });
@@ -606,7 +669,7 @@ export function JobCenterProvider({ children }: { children: ReactNode }) {
     const payload = await response.json().catch(() => ({})) as JobMutationResponse;
     if (response.status === 503 && payload.availability === "schema_pending") {
       await deleteProblemOcrAssets(assets.map((asset) => asset.path));
-      return null;
+      throw new Error("题库 OCR 持久任务尚未启用，临时源图已清理");
     }
     if ([400, 401, 403].includes(response.status)) {
       await deleteProblemOcrAssets(assets.map((asset) => asset.path)).catch(() => undefined);
@@ -626,43 +689,154 @@ export function JobCenterProvider({ children }: { children: ReactNode }) {
     return job;
   }, []);
 
-  const createLocalProblemOcrJob = useCallback((title: string) => {
-    const now = new Date().toISOString();
-    const job: ClientJob = {
-      id: createJobId(),
-      type: "problem_ocr",
-      class: "internal",
-      title,
-      status: "running",
-      phase: "识别题目",
-      statusText: "正在识别图片并整理题目",
-      createdAt: now,
-      updatedAt: now,
-      heartbeatAt: now,
-      pollCount: 0,
-      progress: 5,
-    };
-    setJobs((current) => [job, ...current].slice(0, MAX_HISTORY));
+  const createMath3SelfTestJob = useCallback(async (input: CreateMath3SelfTestJobInput) => {
+    const response = await fetch("/api/jobs/math3-self-test", {
+      method: "POST",
+      headers: await buildAuthHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify(input),
+      cache: "no-store",
+    });
+    const payload = await response.json().catch(() => ({})) as JobMutationResponse;
+    if (!response.ok) throw new Error(toText(payload.error) || "数学三试卷生成任务创建失败");
+    const remoteJobs = normalizeRemoteJobRows(payload.job ? [payload.job] : []);
+    const job = remoteJobs[0];
+    if (!job || job.type !== "math3_self_test_generation") {
+      throw new Error("任务账本没有返回有效的数学三试卷生成任务");
+    }
+    setJobs((current) => mergeClientJobLedgers(current, [job]));
     return job;
   }, []);
 
-  const createBatchGradeJob = useCallback((title: string) => {
-    const now = new Date().toISOString();
-    const job: ClientJob = {
-      id: createJobId(),
-      type: "batch_grade",
-      class: "internal",
-      title,
-      status: "running",
-      phase: "读取确认版本",
-      statusText: "正在按固定真题与评分细则生成建议分",
-      createdAt: now,
-      updatedAt: now,
-      heartbeatAt: now,
-      pollCount: 0,
-      progress: 10,
-    };
-    setJobs((current) => [job, ...current].slice(0, MAX_HISTORY));
+  const createMathPaperGradeJob = useCallback(async (input: CreateMathPaperGradeJobInput) => {
+    const response = await fetch("/api/jobs/math-paper-grade", {
+      method: "POST",
+      headers: await buildAuthHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify(input),
+      cache: "no-store",
+    });
+    const payload = await response.json().catch(() => ({})) as JobMutationResponse;
+    if (!response.ok) throw new Error(toText(payload.error) || "数学真题建议评分任务创建失败");
+    const remoteJobs = normalizeRemoteJobRows(payload.job ? [payload.job] : []);
+    const job = remoteJobs[0];
+    if (!job || job.type !== "math_paper_grade") {
+      throw new Error("任务账本没有返回有效的数学真题建议评分任务");
+    }
+    setJobs((current) => mergeClientJobLedgers(current, [job]));
+    return job;
+  }, []);
+
+  const createMathPaperOcrJob = useCallback(async (input: CreateMathPaperOcrJobInput) => {
+    const capabilityResponse = await fetch("/api/jobs/math-paper-ocr", {
+      headers: await buildAuthHeaders(),
+      cache: "no-store",
+    });
+    const capability = await capabilityResponse.json().catch(() => ({})) as JobMutationResponse;
+    if (!capabilityResponse.ok) throw new Error(toText(capability.error) || "数学答题纸 OCR 持久任务能力检查失败");
+    if (capability.available !== true) throw new Error("数学答题纸 OCR 持久任务尚未启用，未开始上传原图");
+
+    const assets = await uploadMathPaperOcrAssets(input.images);
+    let response: Response;
+    try {
+      response = await fetch("/api/jobs/math-paper-ocr", {
+        method: "POST",
+        headers: await buildAuthHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify({ assets, qwenModel: input.qwenModel }),
+        cache: "no-store",
+      });
+    } catch (error: unknown) {
+      throw new Error(`${error instanceof Error ? error.message : "数学答题纸 OCR 任务登记请求中断"}；为避免破坏可能已登记的任务，临时原图已保留。`);
+    }
+    const payload = await response.json().catch(() => ({})) as JobMutationResponse;
+    if ([400, 401, 403].includes(response.status)) {
+      await deleteProblemOcrAssets(assets.map((asset) => asset.path)).catch(() => undefined);
+    }
+    if (!response.ok) {
+      const suffix = response.status >= 500 ? "；临时原图已保留，避免破坏可能已经登记的任务" : "";
+      throw new Error(`${toText(payload.error) || "数学答题纸 OCR 持久任务创建失败"}${suffix}`);
+    }
+    const remoteJobs = normalizeRemoteJobRows(payload.job ? [payload.job] : []);
+    const job = remoteJobs[0];
+    if (!job || job.type !== "math_paper_ocr") {
+      throw new Error("任务账本没有返回有效的数学答题纸 OCR 任务；临时原图已保留，请先检查任务中心再重试");
+    }
+    setJobs((current) => mergeClientJobLedgers(current, [job]));
+    return job;
+  }, []);
+
+  const createMath3ClassifyJob = useCallback(async (input: CreateMath3ClassifyJobInput) => {
+    const response = await fetch("/api/jobs/math3-classify", {
+      method: "POST",
+      headers: await buildAuthHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify(input),
+      cache: "no-store",
+    });
+    const payload = await response.json().catch(() => ({})) as JobMutationResponse;
+    if (!response.ok) throw new Error(toText(payload.error) || "数学三批量归类任务创建失败");
+    const remoteJobs = normalizeRemoteJobRows(payload.job ? [payload.job] : []);
+    const job = remoteJobs[0];
+    if (!job || job.type !== "math3_auto_classify") throw new Error("任务账本没有返回有效的数学三批量归类任务");
+    setJobs((current) => mergeClientJobLedgers(current, [job]));
+    return job;
+  }, []);
+
+  const createEnglishSubjectiveGradeJob = useCallback(async (input: CreateEnglishSubjectiveGradeJobInput) => {
+    const response = await fetch("/api/jobs/english-subjective-grade", {
+      method: "POST",
+      headers: await buildAuthHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify(input),
+      cache: "no-store",
+    });
+    const payload = await response.json().catch(() => ({})) as JobMutationResponse;
+    if (!response.ok) throw new Error(toText(payload.error) || "英语主观题建议评分任务创建失败");
+    const remoteJobs = normalizeRemoteJobRows(payload.job ? [payload.job] : []);
+    const job = remoteJobs[0];
+    if (!job || job.type !== "english_subjective_grade") throw new Error("任务账本没有返回有效的英语主观题建议评分任务");
+    setJobs((current) => mergeClientJobLedgers(current, [job]));
+    return job;
+  }, []);
+
+  const createEconomicsGraphJob = useCallback(async (input: CreateEconomicsGraphJobInput) => {
+    const response = await fetch("/api/ai/economics-graph", {
+      method: "POST",
+      headers: await buildAuthHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify(input),
+      cache: "no-store",
+    });
+    const payload = await response.json().catch(() => ({})) as JobMutationResponse;
+    if (!response.ok) throw new Error(toText(payload.error) || "经济学曲线任务创建失败");
+    const job = normalizeRemoteJobRows(payload.job ? [payload.job] : [])[0];
+    if (!job || job.type !== "economics_graph_generation") throw new Error("任务账本没有返回有效的经济学曲线任务");
+    setJobs((current) => mergeClientJobLedgers(current, [job]));
+    return job;
+  }, []);
+
+  const createMath3StepGradeJob = useCallback(async (input: CreateMath3StepGradeJobInput) => {
+    const response = await fetch("/api/ai/math3-self-test/grade-step", {
+      method: "POST",
+      headers: await buildAuthHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify(input),
+      cache: "no-store",
+    });
+    const payload = await response.json().catch(() => ({})) as JobMutationResponse;
+    if (!response.ok) throw new Error(toText(payload.error) || "数学三分步评分任务创建失败");
+    const job = normalizeRemoteJobRows(payload.job ? [payload.job] : [])[0];
+    if (!job || job.type !== "math3_step_grade") throw new Error("任务账本没有返回有效的数学三分步评分任务");
+    setJobs((current) => mergeClientJobLedgers(current, [job]));
+    return job;
+  }, []);
+
+  const createKnowledgeQuizJob = useCallback(async (input: CreateKnowledgeQuizJobInput) => {
+    const response = await fetch(`/api/ai/knowledge-quizzes/${encodeURIComponent(input.proposalId)}/generate`, {
+      method: "POST",
+      headers: await buildAuthHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify({}),
+      cache: "no-store",
+    });
+    const payload = await response.json().catch(() => ({})) as JobMutationResponse;
+    if (!response.ok) throw new Error(toText(payload.error) || "知识点快测任务创建失败");
+    const job = normalizeRemoteJobRows(payload.job ? [payload.job] : [])[0];
+    if (!job || job.type !== "ai_knowledge_quiz_generation") throw new Error("任务账本没有返回有效的知识点快测任务");
+    setJobs((current) => mergeClientJobLedgers(current, [job]));
     return job;
   }, []);
 
@@ -703,7 +877,9 @@ export function JobCenterProvider({ children }: { children: ReactNode }) {
           }
         }
 
-        await cleanupSource({ ...target, status: "cancelled" });
+        if (target.class === "external") {
+          await cleanupSource({ ...target, status: "cancelled" });
+        }
       } catch (error: unknown) {
         cancelledRef.current.delete(id);
         updateJob(id, {
@@ -769,7 +945,25 @@ export function JobCenterProvider({ children }: { children: ReactNode }) {
     resultLoadingRef.current.add(id);
     updateJob(id, {
       phase: "正在恢复结果",
-      statusText: "正在从跨设备任务账本读取 OCR 结果",
+      statusText: target.type === "document_ocr"
+        ? "正在从跨设备任务账本读取 OCR 结果"
+        : target.type === "math3_self_test_generation"
+          ? "正在从跨设备任务账本读取已审校试卷"
+          : target.type === "math_paper_grade"
+            ? "正在从跨设备任务账本读取已保存的数学建议分"
+            : target.type === "math_paper_ocr"
+              ? "正在从跨设备任务账本读取答题纸 OCR 文本"
+              : target.type === "math3_auto_classify"
+                ? "正在从跨设备任务账本读取数学三章节归类结果"
+                : target.type === "english_subjective_grade"
+                  ? "正在从跨设备任务账本读取英语主观题建议评分记录"
+                  : target.type === "economics_graph_generation"
+                    ? "正在从跨设备任务账本读取经济学曲线结构"
+                    : target.type === "math3_step_grade"
+                      ? "正在从跨设备任务账本读取数学三分步评分"
+                      : target.type === "ai_knowledge_quiz_generation"
+                        ? "正在从跨设备任务账本读取知识点快测记录"
+          : "正在从跨设备任务账本读取结构化结果",
       error: undefined,
     });
 
@@ -792,7 +986,23 @@ export function JobCenterProvider({ children }: { children: ReactNode }) {
         phase: "结果待领取",
         statusText: target.type === "document_ocr"
           ? "OCR 结果已恢复，可以继续插入笔记"
-          : "结构化结果已恢复，仍需在目标页面确认后应用",
+          : target.type === "math3_self_test_generation"
+            ? "试卷结果已恢复，打开数学三自测即可保存并开始训练"
+            : target.type === "math_paper_grade"
+              ? "数学建议分已恢复，打开真题 OCR 页面即可逐步核对"
+              : target.type === "math_paper_ocr"
+                ? "答题纸 OCR 文本已恢复，打开真题 OCR 页面逐页核对"
+                : target.type === "math3_auto_classify"
+                  ? "归类结果已恢复，打开题目编辑器校验源题快照后应用"
+                  : target.type === "english_subjective_grade"
+                    ? "英语主观题建议已恢复，打开英语真题训练核对并确认终分"
+                    : target.type === "economics_graph_generation"
+                      ? "曲线结构已恢复，打开编辑页检查后插入正文"
+                      : target.type === "math3_step_grade"
+                        ? "分步评分已恢复，打开数学三自测写入进度"
+                        : target.type === "ai_knowledge_quiz_generation"
+                          ? "快测记录已恢复，打开 AI 内容工作台检查并提交审核"
+            : "结构化结果已恢复，仍需在目标页面确认后应用",
         error: undefined,
       });
     } catch (error: unknown) {
@@ -829,26 +1039,55 @@ export function JobCenterProvider({ children }: { children: ReactNode }) {
   }, [jobs, updateJob]);
 
   const dismissJob = useCallback((id: string) => {
-    setJobs((current) => current.filter((job) => job.id !== id || isClientJobActive(job)));
-  }, []);
+    const target = jobs.find((job) => job.id === id);
+    if (!target || isClientJobActive(target) || (target.status === "succeeded" && !target.resultClaimedAt)) return;
+    setJobs((current) => current.filter((job) => job.id !== id));
+    if (!target.remoteJobId) return;
+
+    void (async () => {
+      try {
+        const response = await fetch(`/api/jobs/${encodeURIComponent(target.remoteJobId ?? "")}`, {
+          method: "DELETE",
+          headers: await buildAuthHeaders(),
+          cache: "no-store",
+        });
+        const payload = await response.json().catch(() => ({})) as { error?: string };
+        if (!response.ok) throw new Error(payload.error || "任务移出历史失败");
+      } catch (error: unknown) {
+        const restored = {
+          ...target,
+          ledgerState: "sync_failed" as const,
+          error: error instanceof Error ? error.message : "任务移出历史失败",
+        };
+        setJobs((current) => mergeClientJobLedgers(current, [restored]));
+      }
+    })();
+  }, [jobs]);
 
   const value = useMemo(() => ({
     jobs,
     createDocumentOcrJob,
     createMarkdownReviewJob,
     createProblemOcrJob,
-    createLocalProblemOcrJob,
-    createBatchGradeJob,
+    createMath3SelfTestJob,
+    createMathPaperGradeJob,
+    createMathPaperOcrJob,
+    createMath3ClassifyJob,
+    createEnglishSubjectiveGradeJob,
+    createEconomicsGraphJob,
+    createMath3StepGradeJob,
+    createKnowledgeQuizJob,
     updateJob,
     cancelJob,
     retryJob,
     loadJobResult,
     claimJobResult,
     dismissJob,
-  }), [cancelJob, claimJobResult, createBatchGradeJob, createDocumentOcrJob, createLocalProblemOcrJob, createMarkdownReviewJob, createProblemOcrJob, dismissJob, jobs, loadJobResult, retryJob, updateJob]);
+  }), [cancelJob, claimJobResult, createDocumentOcrJob, createEconomicsGraphJob, createEnglishSubjectiveGradeJob, createKnowledgeQuizJob, createMarkdownReviewJob, createMath3SelfTestJob, createMath3StepGradeJob, createMathPaperGradeJob, createMathPaperOcrJob, createMath3ClassifyJob, createProblemOcrJob, dismissJob, jobs, loadJobResult, retryJob, updateJob]);
 
   const activeCount = jobs.filter(isClientJobActive).length;
   const unclaimedCount = jobs.filter((job) => job.status === "succeeded" && !job.resultClaimedAt).length;
+  const failedCount = jobs.filter((job) => job.status === "failed").length;
   const bucketCounts = useMemo(() => ({
     pending: jobs.filter((job) => getJobBucket(job) === "pending").length + reviewNotices.length,
     running: jobs.filter((job) => getJobBucket(job) === "running").length,
@@ -857,45 +1096,14 @@ export function JobCenterProvider({ children }: { children: ReactNode }) {
   const displayBucket: JobBucket = activeBucket;
   const visibleJobs = jobs.filter((job) => getJobBucket(job) === displayBucket);
   const hasMessages = jobs.length > 0 || reviewNotices.length > 0;
-  const attentionCount = activeCount + unclaimedCount + reviewNotices.length;
+  const attentionCount = activeCount + failedCount + unclaimedCount + reviewNotices.length;
 
-  useEffect(() => {
-    if (!isOpen || !hasMessages) return;
-
-    previousFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    const focusTimer = window.requestAnimationFrame(() => drawerCloseRef.current?.focus());
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        event.stopPropagation();
-        setIsOpen(false);
-        return;
-      }
-
-      if (event.key !== "Tab" || !drawerRef.current) return;
-      const focusable = Array.from(drawerRef.current.querySelectorAll<HTMLElement>(
-        'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
-      ));
-      if (focusable.length === 0) return;
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
-      }
-    };
-
-    document.addEventListener("keydown", handleKeyDown);
-    return () => {
-      window.cancelAnimationFrame(focusTimer);
-      document.removeEventListener("keydown", handleKeyDown);
-      previousFocusRef.current?.focus();
-      previousFocusRef.current = null;
-    };
-  }, [hasMessages, isOpen]);
+  useDialogFocus({
+    isOpen: isOpen && hasMessages,
+    onClose: () => setIsOpen(false),
+    containerRef: drawerRef,
+    initialFocusRef: drawerCloseRef,
+  });
 
   return (
     <JobCenterContext.Provider value={value}>
@@ -916,22 +1124,16 @@ export function JobCenterProvider({ children }: { children: ReactNode }) {
             }
             refreshReviewNotices();
           }}
-          aria-label={`打开消息中心，${reviewNotices.length} 篇文章待审核，${activeCount} 个进行中，${unclaimedCount} 个待领取`}
+          aria-label={`打开消息中心，${reviewNotices.length} 篇文章待审核，${activeCount} 个进行中，${failedCount} 个失败，${unclaimedCount} 个待领取`}
         >
-          {activeCount > 0 ? <Loader2 className="h-5 w-5 animate-spin" /> : reviewNotices.length > 0 ? <ShieldCheck className="h-5 w-5" /> : <Clock3 className="h-5 w-5" />}
+          {failedCount > 0 ? <AlertTriangle className="h-5 w-5" /> : activeCount > 0 ? <Loader2 className="h-5 w-5 animate-spin" /> : reviewNotices.length > 0 ? <ShieldCheck className="h-5 w-5" /> : <Clock3 className="h-5 w-5" />}
           <span>{attentionCount}</span>
         </button>
       )}
 
       {!isUiLab && isOpen && hasMessages && (
         <div className="job-center-overlay" role="presentation" onClick={() => setIsOpen(false)}>
-          <aside ref={drawerRef} className="job-center-drawer" role="dialog" aria-modal="true" aria-label="消息中心" onClick={(event) => event.stopPropagation()} onKeyDown={(event) => {
-            if (event.key === "Escape") {
-              event.preventDefault();
-              event.stopPropagation();
-              setIsOpen(false);
-            }
-          }}>
+          <aside ref={drawerRef} className="job-center-drawer" role="dialog" aria-modal="true" aria-label="消息中心" tabIndex={-1} onClick={(event) => event.stopPropagation()}>
             <header className="job-center-header">
               <div>
                 <span>任务通知</span>
@@ -959,7 +1161,7 @@ export function JobCenterProvider({ children }: { children: ReactNode }) {
 
             <div className="job-center-list" role="tabpanel">
               {visibleJobs.length === 0 && (
-                <p className="job-center-empty">暂无{getJobBucketLabel(displayBucket)}事项。终态消息会保留 3 天后自动清理。</p>
+                <p className="job-center-empty">暂无{getJobBucketLabel(displayBucket)}事项。已领取、失败或取消的消息保留 30 天；未领取结果持续保留。</p>
               )}
               {displayBucket === "pending" && reviewNotices.map((notice) => (
                 <article className="job-center-item job-center-review-item" key={`review-${notice.id}`}>
@@ -1030,7 +1232,55 @@ export function JobCenterProvider({ children }: { children: ReactNode }) {
                           恢复结果
                         </button>
                       )}
-                      {!isClientJobActive(job) && (
+                      {job.type === "math3_self_test_generation" && job.status === "succeeded" && !job.resultClaimedAt && (
+                        <Link href="/tools/math3-self-test" onClick={() => setIsOpen(false)}>
+                          打开并领取试卷
+                          <ArrowUpRight className="h-4 w-4" />
+                        </Link>
+                      )}
+                      {job.type === "math_paper_grade" && job.status === "succeeded" && !job.resultClaimedAt && (
+                        <Link href="/tools/math-paper-ocr" onClick={() => setIsOpen(false)}>
+                          打开并核对建议分
+                          <ArrowUpRight className="h-4 w-4" />
+                        </Link>
+                      )}
+                      {job.type === "math_paper_ocr" && job.status === "succeeded" && !job.resultClaimedAt && (
+                        <Link href="/tools/math-paper-ocr" onClick={() => setIsOpen(false)}>
+                          打开并核对 OCR
+                          <ArrowUpRight className="h-4 w-4" />
+                        </Link>
+                      )}
+                      {job.type === "math3_auto_classify" && job.status === "succeeded" && !job.resultClaimedAt && (
+                        <Link href="/create" onClick={() => setIsOpen(false)}>
+                          打开并应用归类
+                          <ArrowUpRight className="h-4 w-4" />
+                        </Link>
+                      )}
+                      {job.type === "english_subjective_grade" && job.status === "succeeded" && !job.resultClaimedAt && (
+                        <Link href="/tools/english-training" onClick={() => setIsOpen(false)}>
+                          打开并核对建议分
+                          <ArrowUpRight className="h-4 w-4" />
+                        </Link>
+                      )}
+                      {job.type === "economics_graph_generation" && job.status === "succeeded" && !job.resultClaimedAt && (
+                        <Link href="/create" onClick={() => setIsOpen(false)}>
+                          打开并插入曲线
+                          <ArrowUpRight className="h-4 w-4" />
+                        </Link>
+                      )}
+                      {job.type === "math3_step_grade" && job.status === "succeeded" && !job.resultClaimedAt && (
+                        <Link href="/tools/math3-self-test" onClick={() => setIsOpen(false)}>
+                          打开并写入评分
+                          <ArrowUpRight className="h-4 w-4" />
+                        </Link>
+                      )}
+                      {job.type === "ai_knowledge_quiz_generation" && job.status === "succeeded" && !job.resultClaimedAt && (
+                        <Link href="/tools/ai-content" onClick={() => setIsOpen(false)}>
+                          打开并审核快测
+                          <ArrowUpRight className="h-4 w-4" />
+                        </Link>
+                      )}
+                      {!isClientJobActive(job) && !(job.status === "succeeded" && !job.resultClaimedAt) && (
                         <button type="button" onClick={() => dismissJob(job.id)}>移出历史</button>
                       )}
                     </div>

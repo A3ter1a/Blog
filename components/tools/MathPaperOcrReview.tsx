@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Check, Cloud, FileImage, Loader2, Save, ScanText, ShieldCheck, Sparkles, X } from "lucide-react";
 import { useJobCenter } from "@/components/jobs/JobCenter";
 import { PageHeader, PageShell } from "@/components/ui/PageScaffold";
 import { useToast } from "@/components/ui/Toast";
-import { AI_CONFIG_STORAGE_KEY, ALLOW_CLIENT_AI_KEYS, DEFAULT_AI_CONFIG, DEFAULT_QWEN_ENDPOINT, normalizeAIConfig } from "@/lib/ai-config";
+import { AI_CONFIG_STORAGE_KEY, DEFAULT_AI_CONFIG, normalizeAIConfig } from "@/lib/ai-config";
 import { readJsonStorage, writeJsonStorage } from "@/lib/browser-storage";
 import { buildAuthHeaders } from "@/lib/fetch-with-auth";
 import {
@@ -22,6 +22,11 @@ type LocalOcrPage = MathPaperOcrPage & {
   draftText: string;
   state: "queued" | "recognizing" | "recognized" | "confirmed" | "failed";
   error?: string;
+};
+
+type StoredMathPaperOcrSession = {
+  sourceOcrJobId: string | null;
+  pages: unknown[];
 };
 
 const MATH_PAPER_OCR_SESSION_KEY = "asteroid:math-paper-ocr-session:v1";
@@ -128,9 +133,15 @@ async function fileToPayload(file: File): Promise<{ base64: string; fingerprint:
 
 export function MathPaperOcrReview() {
   const toast = useToast();
-  const { createBatchGradeJob, createLocalProblemOcrJob, updateJob } = useJobCenter();
+  const {
+    jobs,
+    claimJobResult,
+    createMathPaperOcrJob,
+    createMathPaperGradeJob,
+    loadJobResult,
+  } = useJobCenter();
   const [pages, setPages] = useState<LocalOcrPage[]>([]);
-  const [recognizing, setRecognizing] = useState(false);
+  const [sourceOcrJobId, setSourceOcrJobId] = useState<string | null>(null);
   const [coreMode, setCoreMode] = useState<MathCoreMode>("loading");
   const [papers, setPapers] = useState<MathPaperSummary[]>([]);
   const [paperId, setPaperId] = useState("");
@@ -144,10 +155,18 @@ export function MathPaperOcrReview() {
   const [startingAttempt, setStartingAttempt] = useState(false);
   const [restoringSharedState, setRestoringSharedState] = useState(false);
   const [savingConfirmation, setSavingConfirmation] = useState(false);
-  const [grading, setGrading] = useState(false);
   const [confirmingFinal, setConfirmingFinal] = useState(false);
   const pagesRef = useRef<LocalOcrPage[]>([]);
   const hydratedRef = useRef(false);
+  const handledFailedOcrJobsRef = useRef(new Set<string>());
+  const restoredOcrJobsRef = useRef(new Set<string>());
+  const resetSharedConfirmation = useCallback(() => {
+    setConfirmationId(null);
+    setSuggestionGradeId(null);
+    setSuggestion(null);
+    setFinalSteps([]);
+    setFinalFeedback("");
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -174,8 +193,10 @@ export function MathPaperOcrReview() {
   useEffect(() => {
     if (coreMode !== "shared" || !paperId) return;
     let cancelled = false;
-    setRestoringSharedState(true);
     void (async () => {
+      await Promise.resolve();
+      if (cancelled) return;
+      setRestoringSharedState(true);
       try {
         const response = await fetch(`/api/math/attempt?paperId=${encodeURIComponent(paperId)}`, {
           headers: await buildAuthHeaders(),
@@ -200,35 +221,158 @@ export function MathPaperOcrReview() {
   }, [coreMode, paperId, round, toast]);
 
   useEffect(() => {
-    const stored = readJsonStorage<unknown>(MATH_PAPER_OCR_SESSION_KEY, []);
-    if (Array.isArray(stored)) {
-      setPages(stored.flatMap((value): LocalOcrPage[] => {
-        if (!value || typeof value !== "object") return [];
-        const item = value as Partial<LocalOcrPage>;
-        if (typeof item.id !== "string" || typeof item.fileName !== "string" || !Array.isArray(item.ocrRevisions) || !Array.isArray(item.gradeRevisions)) return [];
-        const restored: LocalOcrPage = {
-          id: item.id,
-          fileName: item.fileName,
-          draftText: typeof item.draftText === "string" ? item.draftText : "",
-          state: item.state === "confirmed" ? "confirmed" : item.ocrRevisions.length > 0 ? "recognized" : "failed",
-          ocrRevisions: item.ocrRevisions,
-          gradeRevisions: item.gradeRevisions,
-          error: item.ocrRevisions.length > 0 ? undefined : "原图未保留，请重新选择",
-        };
-        return [restored];
-      }));
+    const completedJob = jobs.find((job) => (
+      job.type === "math_paper_grade"
+      && job.status === "succeeded"
+      && !job.resultClaimedAt
+      && job.targetId === `math-confirmation:${confirmationId}`
+    ));
+    if (!completedJob) return;
+    if (!completedJob.resultPayload) {
+      void loadJobResult(completedJob.id);
+      return;
     }
-    hydratedRef.current = true;
+    const result = asRecord(completedJob.resultPayload);
+    if (result.paperId !== paperId || result.confirmationId !== confirmationId) return;
+    const candidate = asRecord(result.suggestion);
+    const gradeId = typeof result.gradeId === "string" ? result.gradeId : "";
+    if (!gradeId || !Array.isArray(candidate.steps) || typeof candidate.feedback !== "string") return;
+    const nextSuggestion = candidate as unknown as MathGradeSuggestion;
+    let cancelled = false;
+    void (async () => {
+      await Promise.resolve();
+      if (cancelled) return;
+      setSuggestion(nextSuggestion);
+      setSuggestionGradeId(gradeId);
+      setFinalSteps(nextSuggestion.steps.map((step) => ({ ...step })));
+      setFinalFeedback(nextSuggestion.feedback);
+      claimJobResult(completedJob.id);
+      toast.success(`AI 建议 ${nextSuggestion.score}/${nextSuggestion.maxScore} 已保存，请逐步核对后确认终分`);
+    })();
+    return () => { cancelled = true; };
+  }, [claimJobResult, confirmationId, jobs, loadJobResult, paperId, toast]);
+
+  useEffect(() => {
+    const completedJob = jobs.find((job) => (
+      job.type === "math_paper_ocr"
+      && job.status === "succeeded"
+      && !job.resultClaimedAt
+      && (!sourceOcrJobId || job.id === sourceOcrJobId)
+      && !restoredOcrJobsRef.current.has(job.id)
+    ));
+    if (!completedJob) return;
+    if (!completedJob.resultPayload) {
+      void loadJobResult(completedJob.id);
+      return;
+    }
+    const result = asRecord(completedJob.resultPayload);
+    const captures = recordArray(result.pages);
+    if (captures.length === 0) return;
+    const now = new Date().toISOString();
+    let cancelled = false;
+    void (async () => {
+      await Promise.resolve();
+      if (cancelled) return;
+      restoredOcrJobsRef.current.add(completedJob.id);
+      setSourceOcrJobId(completedJob.id);
+      setPages((current) => {
+        const next = [...current];
+        for (const capture of captures) {
+          const pageId = typeof capture.pageId === "string" ? capture.pageId : "";
+          const fileName = typeof capture.fileName === "string" ? capture.fileName : "";
+          const sourceFingerprint = typeof capture.sourceFingerprint === "string" ? capture.sourceFingerprint : "";
+          const text = typeof capture.text === "string" ? capture.text.trim() : "";
+          if (!pageId || !fileName || !sourceFingerprint || !text) continue;
+          const index = next.findIndex((page) => page.id === pageId);
+          const page: LocalOcrPage = index >= 0 ? next[index] : {
+            id: pageId,
+            fileName,
+            draftText: "",
+            state: "recognized",
+            ocrRevisions: [],
+            gradeRevisions: [],
+          };
+          const revised = appendMathPaperOcrRevision(page, { sourceFingerprint, rawText: text, now });
+          const restored: LocalOcrPage = {
+            ...page,
+            ...revised,
+            fileName,
+            draftText: text,
+            state: "recognized",
+            error: undefined,
+          };
+          if (index >= 0) next[index] = restored;
+          else next.push(restored);
+        }
+        return next.slice(0, 20);
+      });
+      resetSharedConfirmation();
+      toast.success(`已恢复 ${captures.length} 页 OCR 文本；结果会保留到逐页核对并持久保存后再归档`);
+    })();
+    return () => { cancelled = true; };
+  }, [jobs, loadJobResult, resetSharedConfirmation, sourceOcrJobId, toast]);
+
+  useEffect(() => {
+    const failedJob = jobs.find((job) => job.type === "math_paper_ocr" && job.status === "failed");
+    if (!failedJob || handledFailedOcrJobsRef.current.has(failedJob.id)) return;
+    handledFailedOcrJobsRef.current.add(failedJob.id);
+    let cancelled = false;
+    void (async () => {
+      await Promise.resolve();
+      if (cancelled) return;
+      setPages((current) => current.map((page) => page.state === "recognizing"
+        ? { ...page, state: "failed", error: failedJob.error || "答题纸 OCR 失败，可从任务中心重试" }
+        : page));
+    })();
+    return () => { cancelled = true; };
+  }, [jobs]);
+
+  useEffect(() => {
+    const stored = readJsonStorage<unknown>(MATH_PAPER_OCR_SESSION_KEY, []);
+    let cancelled = false;
+    void (async () => {
+      await Promise.resolve();
+      if (cancelled) return;
+      const storedSession: StoredMathPaperOcrSession = Array.isArray(stored)
+        ? { sourceOcrJobId: null, pages: stored }
+        : {
+          sourceOcrJobId: typeof asRecord(stored).sourceOcrJobId === "string" ? String(asRecord(stored).sourceOcrJobId) : null,
+          pages: Array.isArray(asRecord(stored).pages) ? asRecord(stored).pages as unknown[] : [],
+        };
+      setSourceOcrJobId(storedSession.sourceOcrJobId);
+      if (storedSession.pages.length > 0) {
+        setPages(storedSession.pages.flatMap((value): LocalOcrPage[] => {
+          if (!value || typeof value !== "object") return [];
+          const item = value as Partial<LocalOcrPage>;
+          if (typeof item.id !== "string" || typeof item.fileName !== "string" || !Array.isArray(item.ocrRevisions) || !Array.isArray(item.gradeRevisions)) return [];
+          const restored: LocalOcrPage = {
+            id: item.id,
+            fileName: item.fileName,
+            draftText: typeof item.draftText === "string" ? item.draftText : "",
+            state: item.state === "confirmed" ? "confirmed" : item.ocrRevisions.length > 0 ? "recognized" : "failed",
+            ocrRevisions: item.ocrRevisions,
+            gradeRevisions: item.gradeRevisions,
+            error: item.ocrRevisions.length > 0 ? undefined : "原图未保留；若任务仍在运行，完成后会自动恢复 OCR 文本",
+          };
+          return [restored];
+        }));
+      }
+      hydratedRef.current = true;
+    })();
+    return () => { cancelled = true; };
   }, []);
 
   useEffect(() => {
     pagesRef.current = pages;
     if (hydratedRef.current) {
-      writeJsonStorage(MATH_PAPER_OCR_SESSION_KEY, pages.map((page) => Object.fromEntries(
-        Object.entries(page).filter(([key]) => key !== "file" && key !== "previewUrl"),
-      )));
+      writeJsonStorage(MATH_PAPER_OCR_SESSION_KEY, {
+        sourceOcrJobId,
+        pages: pages.map((page) => Object.fromEntries(
+          Object.entries(page).filter(([key]) => key !== "file" && key !== "previewUrl"),
+        )),
+      } satisfies StoredMathPaperOcrSession);
     }
-  }, [pages]);
+  }, [pages, sourceOcrJobId]);
   useEffect(() => () => pagesRef.current.forEach((page) => {
     if (page.previewUrl) URL.revokeObjectURL(page.previewUrl);
   }), []);
@@ -237,91 +381,70 @@ export function MathPaperOcrReview() {
   const allConfirmed = pages.length > 0 && confirmedCount === pages.length;
   const recognizedCount = pages.filter((page) => page.state === "recognized" || page.state === "confirmed").length;
   const progress = pages.length > 0 ? Math.round(((recognizedCount + confirmedCount) / (pages.length * 2)) * 100) : 0;
-
-  const resetSharedConfirmation = () => {
-    setConfirmationId(null);
-    setSuggestionGradeId(null);
-    setSuggestion(null);
-    setFinalSteps([]);
-    setFinalFeedback("");
-  };
+  const grading = jobs.some((job) => (
+    job.type === "math_paper_grade"
+    && job.targetId === `math-confirmation:${confirmationId}`
+    && (job.status === "queued" || job.status === "running" || job.status === "waiting_for_trigger")
+  ));
+  const recognizing = jobs.some((job) => (
+    job.type === "math_paper_ocr"
+    && (job.status === "queued" || job.status === "running" || job.status === "waiting_for_trigger")
+  ));
 
   const addFiles = (files: FileList | null) => {
-    const selected = Array.from(files ?? []).filter((file) => file.type.startsWith("image/"));
+    if (sourceOcrJobId) {
+      toast.info("请先核对并保存当前 OCR 批次，或移除全部页面后再选择新图片");
+      return;
+    }
+    const selected = Array.from(files ?? []).filter((file) => ["image/jpeg", "image/png", "image/webp"].includes(file.type));
     if (selected.length === 0) return;
     resetSharedConfirmation();
     setPages((current) => [...current, ...selected.map(createPage)].slice(0, 20));
   };
 
   const removePage = (id: string) => {
+    const discardingLastPage = pages.length === 1 && pages[0]?.id === id;
     resetSharedConfirmation();
     setPages((current) => {
       const target = current.find((page) => page.id === id);
       if (target?.previewUrl) URL.revokeObjectURL(target.previewUrl);
       return current.filter((page) => page.id !== id);
     });
+    if (discardingLastPage && sourceOcrJobId) {
+      claimJobResult(sourceOcrJobId);
+      setSourceOcrJobId(null);
+    }
   };
 
   const recognizeAll = async () => {
     const targets = pages.filter((page) => page.state === "queued" || page.state === "failed");
     if (targets.length === 0 || recognizing) return;
     resetSharedConfirmation();
-    const job = createLocalProblemOcrJob(`${targets.length} 页数学答题纸 OCR`);
-    const config = readJsonStorage(AI_CONFIG_STORAGE_KEY, DEFAULT_AI_CONFIG, normalizeAIConfig);
-    setRecognizing(true);
-    let completed = 0;
-    let failed = 0;
-
-    for (const target of targets) {
-      setPages((current) => current.map((page) => page.id === target.id ? { ...page, state: "recognizing", error: undefined } : page));
-      try {
-        if (!target.file) throw new Error("原图不在当前页面，请移除后重新选择这张图片");
-        const { base64, fingerprint } = await fileToPayload(target.file);
-        const response = await fetch("/api/ai/ocr", {
-          method: "POST",
-          headers: await buildAuthHeaders({ "Content-Type": "application/json" }),
-          body: JSON.stringify({
-            imageBase64: base64,
-            mimeType: target.file.type,
-            apiKey: ALLOW_CLIENT_AI_KEYS ? config.qwenApiKey : undefined,
-            model: config.qwenModel,
-            endpoint: config.qwenApiEndpoint || DEFAULT_QWEN_ENDPOINT,
-          }),
-        });
-        const payload = await response.json() as { text?: unknown; error?: unknown };
-        if (!response.ok || typeof payload.text !== "string" || !payload.text.trim()) {
-          throw new Error(typeof payload.error === "string" ? payload.error : "OCR 没有返回文本");
+    try {
+      const config = readJsonStorage(AI_CONFIG_STORAGE_KEY, DEFAULT_AI_CONFIG, normalizeAIConfig);
+      const images = await Promise.all(targets.map(async (target) => {
+        if (!target.file) throw new Error(`${target.fileName} 的原图不在当前页面，请移除后重新选择`);
+        if (!["image/jpeg", "image/png", "image/webp"].includes(target.file.type)) {
+          throw new Error(`${target.fileName} 不是支持的 JPEG、PNG 或 WebP 图片`);
         }
-        setPages((current) => current.map((page) => page.id === target.id ? {
-          ...page,
-          ...appendMathPaperOcrRevision(page, {
-            sourceFingerprint: fingerprint,
-            rawText: payload.text as string,
-            now: new Date().toISOString(),
-          }),
-          draftText: (payload.text as string).trim(),
-          state: "recognized",
-          error: undefined,
-        } : page));
-      } catch (error) {
-        failed += 1;
-        setPages((current) => current.map((page) => page.id === target.id ? {
-          ...page,
-          state: "failed",
-          error: error instanceof Error ? error.message : "识别失败",
-        } : page));
-      } finally {
-        completed += 1;
-        updateJob(job.id, {
-          progress: Math.round((completed / targets.length) * 100),
-          phase: completed === targets.length ? "等待核对" : `识别第 ${completed + 1} 页`,
-          statusText: `已处理 ${completed}/${targets.length} 页，请逐页核对 OCR 文本`,
-          status: completed === targets.length ? (failed > 0 ? "failed" : "succeeded") : "running",
-          resultPayload: completed === targets.length ? { summary: `OCR 已结束：成功 ${targets.length - failed} 页，失败 ${failed} 页；成功页仍须逐页确认` } : undefined,
-        });
-      }
+        const payload = await fileToPayload(target.file);
+        return {
+          base64: payload.base64,
+          mimeType: target.file.type as "image/jpeg" | "image/png" | "image/webp",
+          name: target.fileName,
+          pageId: target.id,
+          sourceFingerprint: payload.fingerprint,
+        };
+      }));
+      const persistentJob = await createMathPaperOcrJob({ images, qwenModel: config.qwenModel });
+      setSourceOcrJobId(persistentJob.id);
+      setPages((current) => current.map((page) => targets.some((target) => target.id === page.id)
+        ? { ...page, state: "recognizing", error: undefined }
+        : page));
+      toast.info("答题纸原图已安全登记到任务中心；切换页面后仍会继续，完成后请逐页核对");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "数学答题纸 OCR 任务创建失败");
     }
-    setRecognizing(false);
   };
 
   const confirmPage = (id: string) => {
@@ -417,6 +540,10 @@ export function MathPaperOcrReview() {
       setConfirmationId(nextConfirmationId);
       setSuggestionGradeId(null);
       setSuggestion(null);
+      if (sourceOcrJobId) {
+        claimJobResult(sourceOcrJobId);
+        setSourceOcrJobId(null);
+      }
       toast.success(`OCR 确认 v${Number(result.confirmationVersion) || 1} 已保存；现在才能请求建议分`);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "OCR 确认版本保存失败");
@@ -427,68 +554,33 @@ export function MathPaperOcrReview() {
 
   const generateSharedSuggestion = async () => {
     if (!confirmationId || !paperId || grading) return;
-    const job = createBatchGradeJob("数学真题整套建议评分");
-    setGrading(true);
     try {
-      const config = readJsonStorage(AI_CONFIG_STORAGE_KEY, DEFAULT_AI_CONFIG, normalizeAIConfig);
-      const gradeResponse = await fetch("/api/ai/math-paper-grade", {
-        method: "POST",
-        headers: await buildAuthHeaders({ "Content-Type": "application/json" }),
-        body: JSON.stringify({
-          confirmationId,
-          apiKey: ALLOW_CLIENT_AI_KEYS ? config.deepseekApiKey : undefined,
-        }),
-      });
-      const gradePayload = await readResponse(gradeResponse);
-      const candidate = asRecord(gradePayload.suggestion);
-      if (!Array.isArray(candidate.steps) || typeof candidate.feedback !== "string") {
-        throw new Error("建议评分结构不完整");
-      }
-      const nextSuggestion = candidate as unknown as MathGradeSuggestion;
-      updateJob(job.id, { progress: 65, phase: "保存建议分", statusText: "模型已返回，正在写入追加式评分账本" });
-      const persistResponse = await fetch("/api/math/grade", {
-        method: "POST",
-        headers: await buildAuthHeaders({ "Content-Type": "application/json" }),
-        body: JSON.stringify({
-          action: "record_suggestion",
-          paperId,
-          confirmationId,
-          commandId: crypto.randomUUID(),
-          score: nextSuggestion.score,
-          maxScore: nextSuggestion.maxScore,
-          feedback: nextSuggestion.feedback,
-          breakdown: {
-            strengths: nextSuggestion.strengths,
-            issues: nextSuggestion.issues,
-            suggestions: nextSuggestion.suggestions,
-            confidence: nextSuggestion.confidence,
-            model: gradePayload.model,
-          },
-          steps: nextSuggestion.steps,
-        }),
-      });
-      const persisted = await readResponse(persistResponse);
-      const result = asRecord(persisted.result);
-      const gradeId = typeof result.gradeId === "string" ? result.gradeId : "";
-      if (!gradeId) throw new Error("建议分没有写入评分账本");
-      setSuggestion(nextSuggestion);
-      setSuggestionGradeId(gradeId);
-      setFinalSteps(nextSuggestion.steps.map((step) => ({ ...step })));
-      setFinalFeedback(nextSuggestion.feedback);
-      updateJob(job.id, {
-        progress: 100,
-        phase: "等待用户终评",
-        statusText: `AI 建议 ${nextSuggestion.score}/${nextSuggestion.maxScore}，需人工确认后才计入成绩`,
-        status: "succeeded",
-        resultPayload: { summary: "建议分已生成并保存；请回到数学真题页逐步核对后确认终分" },
-      });
+      await createMathPaperGradeJob({ paperId, confirmationId });
+      toast.info("建议评分已并入任务中心；切换页面不会丢失，也可以从任务中心取消");
     } catch (error) {
       const message = error instanceof Error ? error.message : "数学建议评分失败";
-      updateJob(job.id, { status: "failed", phase: "建议评分失败", statusText: "任务保留在任务中心，可重新发起", error: message });
       toast.error(message);
-    } finally {
-      setGrading(false);
     }
+  };
+
+  const archiveLocalOcrResult = () => {
+    if (!allConfirmed || !sourceOcrJobId) {
+      toast.info("请先逐页确认当前 OCR 结果");
+      return;
+    }
+    const persisted = writeJsonStorage(MATH_PAPER_OCR_SESSION_KEY, {
+      sourceOcrJobId: null,
+      pages: pages.map((page) => Object.fromEntries(
+        Object.entries(page).filter(([key]) => key !== "file" && key !== "previewUrl"),
+      )),
+    } satisfies StoredMathPaperOcrSession);
+    if (!persisted) {
+      toast.error("本机无法持久保存核对结果，任务结果仍保留在任务中心");
+      return;
+    }
+    claimJobResult(sourceOcrJobId);
+    setSourceOcrJobId(null);
+    toast.success("OCR 核对结果已保存在本机，来源任务已归档");
   };
 
   const updateFinalStep = (index: number, patch: Partial<MathGradeStep>) => {
@@ -685,8 +777,8 @@ export function MathPaperOcrReview() {
                 </button>
               </div>
             ) : (
-              <button type="button" disabled={!allConfirmed} onClick={() => toast.info("OCR 安全门已通过；真实真题、评分细则和共享迁移接入后才开放建议评分。") } className="control-button control-button-primary mt-5 h-11 w-full px-3 text-sm">
-                {allConfirmed ? "OCR 核对已完成" : "确认全部页面后解锁"}
+              <button type="button" disabled={!allConfirmed} onClick={archiveLocalOcrResult} className="control-button control-button-primary mt-5 h-11 w-full px-3 text-sm">
+                {allConfirmed ? sourceOcrJobId ? "保存核对结果并归档任务" : "OCR 核对已完成" : "确认全部页面后解锁"}
               </button>
             )}
             <p className="mt-3 text-xs leading-5 text-on-surface-variant">缺少固定真题、标准答案、评分细则或数据库确认 ID 时不会请求评分，也不会生成占位分数。</p>

@@ -34,6 +34,14 @@ const REQUIRED_AUDIT_CHECKS = [
 
 const SUSPICIOUS_PLACEHOLDER_RE = /(?:TODO|TBD|待(?:确认|补充|核对)|无法(?:确定|判断)|答案略|解析略|占位|未提供|缺少题干|请核对来源)/i;
 
+const FORMULA_DEGRADATION_PATTERNS = [
+  { code: "unicode_square_root", pattern: /√\s*\(/, message: "根式被降级为 Unicode 根号文本" },
+  { code: "plain_fraction", pattern: /\b(?:[A-Za-z][A-Za-z0-9]*\([^)]*\)|[A-Za-z]|\d+)\s*\/\s*(?:[A-Za-z][A-Za-z0-9]*\([^)]*\)|[A-Za-z]|\d+)\b/i, message: "分式被降级为斜杠文本" },
+  { code: "plain_limit", pattern: /\blim\s+[^$\n]*\/[^$\n]*/i, message: "极限缺少结构化下标或分式排版" },
+  { code: "matrix_literal", pattern: /\[\[/, message: "矩阵被降级为双中括号文本" },
+  { code: "plain_infinity_index", pattern: /∞\s*n/, message: "无穷求和上下标被拆成普通文本" },
+] as const;
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
@@ -63,6 +71,12 @@ function hasBalancedDollarDelimiters(value: string): boolean {
   return count % 2 === 0;
 }
 
+function formulaMarkupIssues(value: string): string[] {
+  return FORMULA_DEGRADATION_PATTERNS
+    .filter((item) => item.pattern.test(value))
+    .map((item) => item.message);
+}
+
 function questionTextIssues(question: Math3SelfTestQuestion): string[] {
   const issues: string[] = [];
   const fields = [
@@ -75,6 +89,14 @@ function questionTextIssues(question: Math3SelfTestQuestion): string[] {
     if (!value.trim()) issues.push(`${label}为空`);
     if (SUSPICIOUS_PLACEHOLDER_RE.test(value)) issues.push(`${label}含待确认占位内容`);
     if (!hasBalancedDollarDelimiters(value)) issues.push(`${label}的 LaTeX $ 分隔符不成对`);
+    for (const issue of formulaMarkupIssues(value)) issues.push(`${label}${issue}`);
+  }
+
+  for (const option of question.options ?? []) {
+    for (const issue of formulaMarkupIssues(option.content)) issues.push(`选项 ${option.label}${issue}`);
+  }
+  for (const step of question.rubricSteps) {
+    for (const issue of formulaMarkupIssues(step.expected)) issues.push(`评分步骤 ${step.label}${issue}`);
   }
   return issues;
 }

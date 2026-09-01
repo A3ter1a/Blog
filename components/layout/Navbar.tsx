@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
@@ -10,6 +10,7 @@ import { SearchOverlay } from "./SearchOverlay";
 import { SettingsPanel } from "./SettingsPanel";
 import { useAdminAuth } from "@/hooks/useAdminAuth";
 import { dialogMotion, overlayMotion, uiMotion } from "@/lib/motion";
+import { useDialogFocus } from "@/hooks/useDialogFocus";
 
 const navItems = [
   { name: "首页", href: "/", icon: Home },
@@ -26,7 +27,16 @@ export function Navbar() {
   const [showSearch, setShowSearch] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
+  const mobileMenuRef = useRef<HTMLDivElement>(null);
+  const mobileMenuCloseRef = useRef<HTMLButtonElement>(null);
   const isReaderRoute = /^\/notes\/(?:private\/)?[^/]+$/.test(pathname);
+
+  useDialogFocus({
+    isOpen: showMobileMenu,
+    onClose: () => setShowMobileMenu(false),
+    containerRef: mobileMenuRef,
+    initialFocusRef: mobileMenuCloseRef,
+  });
 
   const visibleNavItems = navItems.filter((item) => isAdmin || !item.adminOnly);
 
@@ -46,19 +56,9 @@ export function Navbar() {
     return () => window.clearTimeout(timer);
   }, [pathname]);
 
-  useEffect(() => {
-    if (!showMobileMenu) return;
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setShowMobileMenu(false);
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [showMobileMenu]);
-
   return (
     <nav
+      aria-label="主导航"
       data-reader-route={isReaderRoute || undefined}
       className={`site-navbar motion-page fixed top-0 z-50 w-full border-b ${
         scrolled
@@ -96,6 +96,7 @@ export function Navbar() {
               <Link
                 key={item.href}
                 href={item.href}
+                aria-current={isActive ? "page" : undefined}
                 className={`motion-ui relative whitespace-nowrap rounded-lg px-1 py-2 font-headline text-base font-medium after:pointer-events-none after:absolute after:-bottom-1 after:left-1/2 after:h-px after:-translate-x-1/2 after:rounded-full after:bg-primary-container after:transition-all after:duration-300 after:ease-out focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 lg:text-lg ${
                   isActive
                     ? "text-primary-container after:w-full"
@@ -151,18 +152,18 @@ export function Navbar() {
             transition={{ duration: uiMotion.duration.fast }}
             className="fixed inset-0 z-50 md:hidden"
           >
-            <motion.button
-              type="button"
+            <motion.div
               variants={overlayMotion}
               initial="initial"
               animate="animate"
               exit="exit"
               transition={{ duration: uiMotion.duration.fast, ease: uiMotion.ease.standard }}
               className="absolute inset-0 bg-black/35 backdrop-blur-sm"
-              aria-label="关闭导航"
+              aria-hidden="true"
               onClick={() => setShowMobileMenu(false)}
             />
             <motion.div
+              ref={mobileMenuRef}
               variants={dialogMotion}
               initial="initial"
               animate="animate"
@@ -172,6 +173,7 @@ export function Navbar() {
               role="dialog"
               aria-modal="true"
               aria-label="移动端导航"
+              tabIndex={-1}
             >
               <div className="mb-2 flex items-center justify-between gap-3 px-2 py-1">
                 <div className="flex items-center gap-2">
@@ -186,6 +188,7 @@ export function Navbar() {
                 </div>
                 <button
                   type="button"
+                  ref={mobileMenuCloseRef}
                   onClick={() => setShowMobileMenu(false)}
                   className="motion-ui motion-interactive flex h-11 w-11 items-center justify-center rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-primary"
                   aria-label="关闭导航"
@@ -205,6 +208,7 @@ export function Navbar() {
                     <Link
                       key={item.href}
                       href={item.href}
+                      aria-current={isActive ? "page" : undefined}
                       className={`motion-ui flex items-center gap-3 rounded-lg px-3 py-3 text-sm font-medium focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 ${
                         isActive
                           ? "bg-primary/10 text-primary"

@@ -198,6 +198,7 @@ export async function createAiKnowledgeQuiz(
     userId: string;
     profile: Tables<"ai_profiles">;
     proposalId: string;
+    quizId?: string;
     title?: unknown;
     items: unknown;
   },
@@ -217,6 +218,7 @@ export async function createAiKnowledgeQuiz(
   if (!items.length) throw new AiKnowledgeQuizError("至少需要生成一题知识点快测。", 400);
   const title = safeTitle(input.title, `${proposal.title} · 知识点快测`);
   const insert: TablesInsert<"ai_knowledge_quizzes"> = {
+    ...(input.quizId ? { id: input.quizId } : {}),
     proposal_id: input.proposalId,
     note_id: proposal.note_id,
     owner_user_id: input.userId,
@@ -233,6 +235,15 @@ export async function createAiKnowledgeQuiz(
     .insert(insert)
     .select(QUIZ_FIELDS)
     .single();
+  if (quizError?.code === "23505" && input.quizId) {
+    const existing = await getAiKnowledgeQuiz(supabase, input.quizId, input.userId);
+    if (existing?.items.length) return existing;
+    if (existing) {
+      const cleanup = await supabase.from("ai_knowledge_quizzes").delete().eq("id", input.quizId).eq("owner_user_id", input.userId);
+      if (cleanup.error) throw cleanup.error;
+      return createAiKnowledgeQuiz(supabase, input);
+    }
+  }
   if (quizError) throw quizError;
   const quiz = quizData as unknown as AiKnowledgeQuizRow;
 

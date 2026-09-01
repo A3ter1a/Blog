@@ -56,10 +56,11 @@ const mathCoreSql = readRequired("supabase/migrations/0019_math_training_and_boo
 const problemOcrAssetsSql = readRequired("supabase/migrations/0020_problem_ocr_job_assets.sql");
 const privateRagSql = readRequired("supabase/migrations/0021_private_note_rag_and_memory.sql");
 const privateRagOperatorFixSql = readRequired("supabase/migrations/0022_private_note_rag_operator_fix.sql");
+const securityAdvisorCleanupSql = readRequired("supabase/migrations/0036_security_advisor_cleanup.sql");
 const verificationSql = readRequired("supabase/verification.sql");
 const englishImportScript = readRequired("scripts/import-english-papers.mjs");
 const legacySql = readRequired("supabase-init.sql");
-const combinedSql = `${schemaSql}\n${rlsSql}\n${practiceMarkedSql}\n${englishTrainingSql}\n${englishVocabularyContextSql}\n${englishVocabularySourceSql}\n${documentOcrStorageSql}\n${noteVersionSql}\n${planningStatusSql}\n${trainingCoreSql}\n${jobsAndSourcesSql}\n${privateNoteDefaultSql}\n${boundaryPolicySql}\n${jobLeaseSql}\n${contentMigrationSql}\n${englishBackfillSql}\n${englishCommandSql}\n${englishSubjectiveSql}\n${mathCoreSql}\n${problemOcrAssetsSql}\n${privateRagSql}\n${privateRagOperatorFixSql}\n${legacySql}`;
+const combinedSql = `${schemaSql}\n${rlsSql}\n${practiceMarkedSql}\n${englishTrainingSql}\n${englishVocabularyContextSql}\n${englishVocabularySourceSql}\n${documentOcrStorageSql}\n${noteVersionSql}\n${planningStatusSql}\n${trainingCoreSql}\n${jobsAndSourcesSql}\n${privateNoteDefaultSql}\n${boundaryPolicySql}\n${jobLeaseSql}\n${contentMigrationSql}\n${englishBackfillSql}\n${englishCommandSql}\n${englishSubjectiveSql}\n${mathCoreSql}\n${problemOcrAssetsSql}\n${privateRagSql}\n${privateRagOperatorFixSql}\n${securityAdvisorCleanupSql}\n${legacySql}`;
 const docsSqlExamples = [
   readRequired("README.md"),
   readRequired("supabase/README.md"),
@@ -353,6 +354,51 @@ check(
 );
 
 check(
+  "旧 public.is_admin 不再以 SECURITY DEFINER 暴露",
+  /alter\s+function\s+public\.is_admin\(\)\s+security\s+invoker/i.test(securityAdvisorCleanupSql)
+    && /revoke\s+all\s+on\s+function\s+public\.is_admin\(\)\s+from\s+public/i.test(securityAdvisorCleanupSql)
+    && /grant\s+execute\s+on\s+function\s+public\.is_admin\(\)\s+to\s+authenticated/i.test(securityAdvisorCleanupSql),
+  "旧函数若仍以 SECURITY DEFINER 向 anon/PUBLIC 暴露，会扩大不必要的权限面。",
+);
+
+check(
+  "旧管理员策略由规范 RLS 策略取代",
+  [
+    "admin_read_notes",
+    "admin_insert_notes",
+    "admin_update_notes",
+    "admin_delete_notes",
+    "admin_read_chapters",
+    "admin_insert_chapters",
+    "admin_update_chapters",
+    "admin_delete_chapters",
+    "math3_self_tests_admin_select",
+    "math3_self_tests_admin_insert",
+    "math3_self_tests_admin_update",
+    "math3_self_tests_admin_delete",
+    "admin_insert_note_images",
+    "admin_update_note_images",
+    "admin_delete_note_images",
+  ].every((policy) => new RegExp(`drop\\s+policy\\s+if\\s+exists\\s+${policy}\\b`, "i").test(securityAdvisorCleanupSql)),
+  "旧策略与规范策略并存会形成重复 permissive policy 评估，并继续依赖旧权限函数。",
+);
+
+check(
+  "更新时间触发函数固定空 search_path",
+  ["set_updated_at", "set_math3_self_tests_updated_at", "update_updated_at_column"]
+    .every((functionName) => securityAdvisorCleanupSql.includes(`'${functionName}'`))
+    && /alter\s+function\s+public\.%I\(\)\s+set\s+search_path/i.test(securityAdvisorCleanupSql),
+  "可变 search_path 会让数据库对象解析受调用环境影响。",
+);
+
+check(
+  "problem_practice_statuses 重复索引只在等价索引存在时清理",
+  /idx_problem_practice_statuses_user_note[\s\S]*idx_problem_practice_user_note/i.test(securityAdvisorCleanupSql)
+    && /problem_practice_statuses_user_id_note_id_problem_id_key[\s\S]*problem_practice_statuses_user_note_problem_key/i.test(securityAdvisorCleanupSql),
+  "无条件删索引可能破坏全新数据库的唯一性约束；不清理则会持续增加写放大。",
+);
+
+check(
   "Storage bucket note-images 在基础迁移中创建或修正",
   /insert\s+into\s+storage\.buckets/i.test(schemaSql) && schemaSql.includes("'note-images'"),
   "缺少 bucket 定义会导致封面或编辑器图片上传失败。",
@@ -553,6 +599,15 @@ check(
     && verificationSql.includes("math_core:next_round_requires_latest_user_final")
     && verificationSql.includes("math_core:booklet_single_body_source"),
   "若核验脚本不检查 0019，远端可能缺少确认绑定、追加式逐步评分或做题本单一正文门。",
+);
+
+check(
+  "迁移后核验 SQL 检查 advisor 清理结果",
+  verificationSql.includes("advisor_cleanup:legacy_admin_function")
+    && verificationSql.includes("advisor_cleanup:trigger_search_path")
+    && verificationSql.includes("advisor_cleanup:legacy_policies")
+    && verificationSql.includes("advisor_cleanup:duplicate_practice_indexes"),
+  "若核验脚本不检查 0036，生产库可能继续保留旧权限函数、重复策略或重复索引。",
 );
 
 check(

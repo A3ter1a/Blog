@@ -710,6 +710,76 @@ math_core_checks as (
     then 'pass' else 'fail' end,
     'booklets stores metadata only; its linked note must remain private and checksum-addressed'
 ),
+advisor_cleanup_checks as (
+  select
+    'advisor_cleanup:legacy_admin_function' as check_name,
+    case when to_regprocedure('public.is_admin()') is null or exists (
+      select 1
+      from pg_proc function_row
+      where function_row.oid = to_regprocedure('public.is_admin()')
+        and not function_row.prosecdef
+        and not has_function_privilege('anon', function_row.oid, 'execute')
+    ) then 'pass' else 'fail' end as status,
+    'legacy public.is_admin must be SECURITY INVOKER and unavailable to anon, or be absent' as details
+  union all
+  select
+    'advisor_cleanup:trigger_search_path' as check_name,
+    case when not exists (
+      select 1
+      from pg_proc function_row
+      join pg_namespace namespace_row on namespace_row.oid = function_row.pronamespace
+      where namespace_row.nspname = 'public'
+        and function_row.proname in (
+          'set_updated_at',
+          'set_math3_self_tests_updated_at',
+          'update_updated_at_column'
+        )
+        and not coalesce(function_row.proconfig, array[]::text[]) @> array['search_path=']::text[]
+    ) then 'pass' else 'fail' end as status,
+    'updated_at trigger helpers must use an empty search_path' as details
+  union all
+  select
+    'advisor_cleanup:legacy_policies' as check_name,
+    case when not exists (
+      select 1
+      from pg_policies
+      where (schemaname, tablename, policyname) in (
+        ('public', 'notes', 'admin_read_notes'),
+        ('public', 'notes', 'admin_insert_notes'),
+        ('public', 'notes', 'admin_update_notes'),
+        ('public', 'notes', 'admin_delete_notes'),
+        ('public', 'chapters', 'admin_read_chapters'),
+        ('public', 'chapters', 'admin_insert_chapters'),
+        ('public', 'chapters', 'admin_update_chapters'),
+        ('public', 'chapters', 'admin_delete_chapters'),
+        ('public', 'math3_self_tests', 'math3_self_tests_admin_select'),
+        ('public', 'math3_self_tests', 'math3_self_tests_admin_insert'),
+        ('public', 'math3_self_tests', 'math3_self_tests_admin_update'),
+        ('public', 'math3_self_tests', 'math3_self_tests_admin_delete'),
+        ('storage', 'objects', 'admin_insert_note_images'),
+        ('storage', 'objects', 'admin_update_note_images'),
+        ('storage', 'objects', 'admin_delete_note_images')
+      )
+    ) then 'pass' else 'fail' end as status,
+    'legacy permissive policies must not duplicate the canonical owner/admin policies' as details
+  union all
+  select
+    'advisor_cleanup:duplicate_practice_indexes' as check_name,
+    case when not (
+      to_regclass('public.idx_problem_practice_statuses_user_note') is not null
+      and to_regclass('public.idx_problem_practice_user_note') is not null
+    ) and not (
+      to_regclass('public.problem_practice_statuses_user_note_problem_key') is not null
+      and exists (
+        select 1
+        from pg_constraint constraint_row
+        where constraint_row.conrelid = 'public.problem_practice_statuses'::regclass
+          and constraint_row.contype = 'u'
+          and constraint_row.conname = 'problem_practice_statuses_user_id_note_id_problem_id_key'
+      )
+    ) then 'pass' else 'fail' end as status,
+    'problem practice status indexes must not duplicate the same key columns' as details
+),
 expected_buckets(bucket_id, is_public, details) as (
   values
     ('note-images', true, 'note-images must exist and stay public for image URLs'),
@@ -783,6 +853,8 @@ all_checks as (
   select check_name, status, details from english_subjective_checks
   union all
   select check_name, status, details from math_core_checks
+  union all
+  select check_name, status, details from advisor_cleanup_checks
   union all
   select check_name, status, details from bucket_checks
   union all

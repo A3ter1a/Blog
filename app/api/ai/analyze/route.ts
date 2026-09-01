@@ -1,31 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
-import { DEFAULT_DEEPSEEK_MODEL } from "@/lib/ai-config";
-import { analyzeProblemOcrText, ProblemOcrServiceError } from "@/lib/problem-ocr-service";
-import { requireAdminRequest, resolveAIKey } from "@/lib/server-admin-auth";
+import { getAdminRequestContext } from "@/lib/server-admin-auth";
 
-// DeepSeek analysis endpoint — classifies OCR text into structured Problem arrays.
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
 export async function POST(req: NextRequest) {
-  const adminError = await requireAdminRequest(req);
-  if (adminError) return adminError;
-
-  try {
-    const body = await req.json().catch(() => ({})) as Record<string, unknown>;
-    const apiKey = resolveAIKey("deepseek", typeof body.apiKey === "string" ? body.apiKey : undefined);
-    const chapterContext = Array.isArray(body.chapterContext)
-      ? body.chapterContext.filter((item): item is string => typeof item === "string")
-      : [];
-    const result = await analyzeProblemOcrText({
-      apiKey: apiKey ?? "",
-      model: typeof body.model === "string" && body.model.trim() ? body.model.trim() : DEFAULT_DEEPSEEK_MODEL,
-      ocrText: typeof body.ocrText === "string" ? body.ocrText : "",
-      chapterContext,
-    });
-    return NextResponse.json({ ...result, success: true });
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : "题目分析失败";
-    console.error("[Analyze] Error:", message);
-    return NextResponse.json({ error: message, success: false }, {
-      status: error instanceof ProblemOcrServiceError ? error.status : 500,
-    });
-  }
+  const auth = await getAdminRequestContext(req);
+  if (!auth.ok) return auth.response;
+  return NextResponse.json({
+    error: "页面内题目分析入口已停用，请通过任务中心创建完整的题库 OCR 任务。",
+    success: false,
+    replacement: "/api/jobs/problem-ocr",
+  }, { status: 410 });
 }

@@ -503,11 +503,6 @@ export const notesApi = {
     );
   },
 
-  // Backward-compatible alias. Prefer getSummaries() for list pages.
-  async getAll(): Promise<Note[]> {
-    return notesApi.getSummaries();
-  },
-
   // Get note by ID (fetch all fields for detail view)
   async getById(id: string): Promise<Note | null> {
     const supabase = getSupabase();
@@ -826,10 +821,6 @@ export const notesApi = {
       .slice(0, maxResults);
   },
 
-  // Backward-compatible alias. Prefer searchSummaries() for list pages.
-  async search(query: string, type?: NoteType, subject?: Subject): Promise<Note[]> {
-    return notesApi.searchSummaries(query, type, subject);
-  },
 };
 
 export const aiProfilesApi = {

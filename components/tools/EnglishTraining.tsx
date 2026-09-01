@@ -15,7 +15,9 @@ import {
 } from "lucide-react";
 import { PageHeader, PageShell } from "@/components/ui/PageScaffold";
 import { useToast } from "@/components/ui/Toast";
+import { useJobCenter } from "@/components/jobs/JobCenter";
 import { englishTrainingApi, type EnglishAttemptAnswerInput } from "@/lib/english-training-api";
+import { recordDeepSeekUsage } from "@/lib/ai-usage";
 import { encodeEnglishManualScore, parseEnglishManualScore } from "@/lib/english-scoring";
 import { findUnreconciledEnglishLocalHistory, type EnglishTrainingPersistenceMode } from "@/lib/english-training-core";
 import type { EnglishSubjectiveGradeSuggestion } from "@/lib/english-subjective-grade";
@@ -87,10 +89,6 @@ function getCategoryForPassage(passage: EnglishPassage): TrainingCategoryId {
   return "minor";
 }
 
-function isSubmittedAttempt(attempt?: EnglishAttempt): boolean {
-  return attempt?.status === "submitted";
-}
-
 function getRoundProgress(
   passageId: string,
   ledgersByPassageId: Map<string, EnglishPassageRoundLedger>,
@@ -142,20 +140,14 @@ function sortPassagesOldestFirst(left: EnglishPassage, right: EnglishPassage): n
     || left.passageNo.localeCompare(right.passageNo);
 }
 
-function sortPassagesForWindow(
-  passages: EnglishPassage[],
-  attemptsByPassageId: Map<string, EnglishAttempt>,
-): EnglishPassage[] {
-  return [...passages].sort((left, right) => {
-    const leftSubmitted = isSubmittedAttempt(attemptsByPassageId.get(left.id));
-    const rightSubmitted = isSubmittedAttempt(attemptsByPassageId.get(right.id));
-    if (leftSubmitted !== rightSubmitted) return leftSubmitted ? 1 : -1;
-    return sortPassagesOldestFirst(left, right);
-  });
-}
-
 export function EnglishTraining() {
   const toast = useToast();
+  const {
+    jobs,
+    claimJobResult,
+    createEnglishSubjectiveGradeJob,
+    loadJobResult,
+  } = useJobCenter();
   const [data, setData] = useState<EnglishTrainingData>({
     papers: [],
     passages: [],
@@ -315,6 +307,51 @@ export function EnglishTraining() {
     parseEnglishManualScore(answer, Number.MAX_SAFE_INTEGER) !== null
   )));
   const directScoreMode = directScoreModeByRoundKey[activeRoundKey] ?? hasSavedDirectScores;
+  const activeSubjectiveGradeJob = jobs.find((job) => (
+    job.type === "english_subjective_grade"
+    && job.targetId === `english-round:${activePassage?.id ?? "none"}:${activeRoundNo}`
+    && (job.status === "queued" || job.status === "running" || job.status === "waiting_for_trigger")
+  ));
+  const effectiveSubjectiveBusy = activeSubjectiveGradeJob ? "suggest" : subjectiveBusy;
+
+  useEffect(() => {
+    const completedJob = jobs.find((job) => (
+      job.type === "english_subjective_grade"
+      && job.status === "succeeded"
+      && !job.resultClaimedAt
+    ));
+    if (!completedJob) return;
+    if (!completedJob.resultPayload) {
+      void loadJobResult(completedJob.id);
+      return;
+    }
+    const result = completedJob.resultPayload && typeof completedJob.resultPayload === "object" && !Array.isArray(completedJob.resultPayload)
+      ? completedJob.resultPayload as Record<string, unknown>
+      : {};
+    const passageId = typeof result.passageId === "string" ? result.passageId : "";
+    const round = Number(result.round);
+    const ledgers = Array.isArray(result.ledgers) ? result.ledgers as EnglishPassageRoundLedger[] : [];
+    const serverLedger = ledgers.find((ledger) => ledger.passageId === passageId);
+    if (!serverLedger || !Number.isInteger(round) || round < 1 || round > 3) return;
+    let cancelled = false;
+    void (async () => {
+      await Promise.resolve();
+      if (cancelled) return;
+      setPersistenceMode(result.mode === "dual" ? "dual" : "shared");
+      setRoundLedgers((current) => upsertEnglishRoundLedger(current, serverLedger));
+      setDraftAnswersByPassageId((current) => {
+        const next = { ...current };
+        delete next[`${passageId}:${round}`];
+        return next;
+      });
+      setEditingSubmittedRoundKey(null);
+      const tokensUsed = Number(result.tokensUsed);
+      if (Number.isFinite(tokensUsed) && tokensUsed > 0) recordDeepSeekUsage(tokensUsed);
+      claimJobResult(completedJob.id);
+      toast.success(`已恢复 R${round} AI 建议，请核对并确认终分`);
+    })();
+    return () => { cancelled = true; };
+  }, [claimJobResult, jobs, loadJobResult, toast]);
 
   const persistLedger = (ledger: EnglishPassageRoundLedger, writeLocal = persistenceMode === "legacy") => {
     setRoundLedgers((current) => {
@@ -603,7 +640,7 @@ export function EnglishTraining() {
   };
 
   const handleRequestSubjectiveSuggestion = async () => {
-    if (!activePassage || subjectiveBusy || saving || startingNext) return;
+    if (!activePassage || effectiveSubjectiveBusy || saving || startingNext) return;
     if (persistenceMode === "legacy") {
       toast.error("主观题确认流需先完成共享训练核迁移。");
       return;
@@ -613,28 +650,15 @@ export function EnglishTraining() {
       return;
     }
 
-    setSubjectiveBusy("suggest");
     try {
-      const result = await englishTrainingApi.requestSubjectiveSuggestion({
-        passage: activePassage,
+      await createEnglishSubjectiveGradeJob({
+        passageId: activePassage.id,
         round: activeRoundNo,
         answers: activeAnswers,
       });
-      setPersistenceMode(result.mode);
-      const serverLedger = result.ledgers.find((item) => item.passageId === activePassage.id);
-      if (!serverLedger) throw new Error("共享训练核未返回主观题建议记录");
-      persistLedger(serverLedger, false);
-      setDraftAnswersByPassageId((current) => {
-        const next = { ...current };
-        delete next[activeRoundKey];
-        return next;
-      });
-      setEditingSubmittedRoundKey(null);
-      toast.success(`已生成 R${activeRoundNo} AI 建议，请核对并确认终分`);
+      toast.info(`R${activeRoundNo} 主观题建议评分已并入任务中心；切换页面不会丢失，也可以随时取消`);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "主观题建议评分失败");
-    } finally {
-      setSubjectiveBusy(null);
+      toast.error(error instanceof Error ? error.message : "主观题建议评分任务创建失败");
     }
   };
 
@@ -644,7 +668,7 @@ export function EnglishTraining() {
     feedback: string,
     suggestion: EnglishSubjectiveGradeSuggestion,
   ) => {
-    if (!activePassage || subjectiveBusy || saving || startingNext) return;
+    if (!activePassage || effectiveSubjectiveBusy || saving || startingNext) return;
     setSubjectiveBusy("confirm");
     try {
       const result = await englishTrainingApi.confirmSubjectiveGrade({
@@ -701,7 +725,7 @@ export function EnglishTraining() {
           editingSubmitted={editingSubmittedRoundKey === activeRoundKey}
           answers={activeAnswers}
           saving={saving}
-          subjectiveBusy={subjectiveBusy}
+          subjectiveBusy={effectiveSubjectiveBusy}
           startingNext={startingNext}
           persistenceMode={persistenceMode}
           loading={isLoading}

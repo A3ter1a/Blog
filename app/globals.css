@@ -2041,7 +2041,7 @@ mark + mark {
   body[data-problem-booklet-print],
   body[data-math3-booklet-print] {
     width: var(--booklet-page-width);
-    color: #111827 !important;
+    color: #000000 !important;
     print-color-adjust: exact;
     -webkit-print-color-adjust: exact;
   }
@@ -2105,6 +2105,7 @@ mark + mark {
 
   .booklet-page {
     box-sizing: border-box !important;
+    position: relative !important;
     break-after: page;
     page-break-after: always;
     border: 0 !important;
@@ -2120,7 +2121,7 @@ mark + mark {
     width: 280mm !important;
     min-height: 210mm !important;
     height: 210mm !important;
-    padding: 14mm 16mm !important;
+    padding: 20.81mm 18.1mm 18mm !important;
   }
 
   .booklet-page[data-booklet-orientation="portrait"] {
@@ -2128,10 +2129,10 @@ mark + mark {
     width: 210mm !important;
     min-height: 280mm !important;
     height: 280mm !important;
-    padding: 14mm !important;
+    padding: 20.81mm 18.1mm 18mm !important;
   }
 
-  .booklet-page[data-booklet-page-kind="answer"] {
+  .booklet-page[data-booklet-page-kind="answer-solution"] {
     height: auto !important;
     overflow: visible !important;
   }
@@ -2143,6 +2144,7 @@ mark + mark {
 
   .booklet-page-header {
     padding-bottom: 5mm !important;
+    border-color: #000000 !important;
   }
 
   .booklet-page[data-booklet-page-kind="objective"] .booklet-page-header {
@@ -2152,7 +2154,12 @@ mark + mark {
   .math3-booklet-page,
   .math3-booklet-cover {
     font-family: "Math3 Exam Body", "Times New Roman", SimSun, "Songti SC", serif !important;
-    font-size: 12pt !important;
+    font-size: 11.5pt !important;
+    color: #000000 !important;
+  }
+
+  .math3-booklet-page * {
+    color: #000000 !important;
   }
 
   .math3-booklet-section-heading,
@@ -2161,7 +2168,20 @@ mark + mark {
   }
 
   .math3-booklet-section-heading {
-    font-size: 13pt !important;
+    font-size: 11.5pt !important;
+    line-height: 1.54 !important;
+  }
+
+  .math3-booklet-cover-top,
+  .math3-booklet-cover-bottom,
+  .math3-booklet-cover-fields {
+    font-size: 11.5pt !important;
+    line-height: 1.54 !important;
+    color: #000000 !important;
+  }
+
+  .math3-booklet-cover-center h1 {
+    font-size: 19.7pt !important;
     line-height: 1.35 !important;
   }
 
@@ -2177,7 +2197,7 @@ mark + mark {
     height: 100% !important;
     flex-direction: column !important;
     justify-content: space-evenly !important;
-    gap: 8mm !important;
+    gap: 5mm !important;
     min-width: 0 !important;
   }
 
@@ -2188,8 +2208,8 @@ mark + mark {
   }
 
   .math3-objective-markdown {
-    font-size: 12pt !important;
-    line-height: 1.58 !important;
+    font-size: 11.5pt !important;
+    line-height: 1.54 !important;
   }
 
   .math3-objective-options {
@@ -2209,8 +2229,8 @@ mark + mark {
 
   .math3-objective-option {
     font-family: "Math3 Exam Body", "Times New Roman", SimSun, serif !important;
-    font-size: 12pt !important;
-    line-height: 1.5 !important;
+    font-size: 11.5pt !important;
+    line-height: 1.54 !important;
   }
 
   .booklet-scratch-space {
@@ -2229,15 +2249,21 @@ mark + mark {
   }
 
   .booklet-page[data-booklet-page-kind="solution"] .booklet-question .booklet-markdown {
-    font-size: 12pt !important;
-    line-height: 1.65 !important;
+    font-size: 11.5pt !important;
+    line-height: 1.54 !important;
   }
 
   .math3-booklet-page-footer {
-    margin-top: 3mm !important;
-    font-size: 8.8pt !important;
-    letter-spacing: 0.08em !important;
-    color: #6b7280 !important;
+    position: absolute !important;
+    top: 8mm !important;
+    right: 18.1mm !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    font-size: 11.5pt !important;
+    line-height: 1.2 !important;
+    letter-spacing: normal !important;
+    text-align: right !important;
+    color: #000000 !important;
   }
 
   .booklet-question {
@@ -2245,13 +2271,69 @@ mark + mark {
   }
 
   .booklet-markdown {
-    font-size: 12.5pt !important;
-    line-height: 1.75 !important;
+    font-size: 11.5pt !important;
+    line-height: 1.54 !important;
   }
 
-  .booklet-page[data-booklet-density="compact"] .booklet-markdown {
-    font-size: 10.75pt !important;
-    line-height: 1.55 !important;
+  .math3-booklet-page .booklet-markdown,
+  .math3-booklet-page[data-booklet-density="compact"] .booklet-markdown {
+    font-size: 11.5pt !important;
+    line-height: 1.5 !important;
+  }
+
+  .math3-answer-item {
+    padding: 0 0 1.5mm !important;
+    margin: 0 0 1.5mm !important;
+    border-bottom: 0.25mm solid #000000 !important;
+  }
+
+  .math3-answer-item-header {
+    align-items: baseline !important;
+    gap: 3mm !important;
+    line-height: 1.35 !important;
+  }
+
+  .math3-answer-inline {
+    display: inline !important;
+    margin: 0 !important;
+  }
+
+  .math3-answer-explanation {
+    margin-top: 0.8mm !important;
+    line-height: 1.35 !important;
+  }
+
+  .math3-answer-solution-flow {
+    margin-top: 5mm !important;
+  }
+
+  .math3-answer-block {
+    margin-bottom: 4mm !important;
+  }
+
+  .math3-answer-block h3 {
+    margin: 0 0 1.5mm !important;
+    font-family: "Math3 Exam Heading", "Times New Roman", SimHei, sans-serif !important;
+    font-size: 11.5pt !important;
+    line-height: 1.54 !important;
+    font-weight: 700 !important;
+  }
+
+  .math3-rubric-table {
+    border: 0.25mm solid #000000 !important;
+  }
+
+  .math3-rubric-row {
+    display: grid !important;
+    grid-template-columns: 26mm minmax(0, 1fr) 18mm !important;
+    gap: 3mm !important;
+    padding: 2mm 3mm !important;
+    border-bottom: 0.25mm solid #000000 !important;
+    line-height: 1.45 !important;
+  }
+
+  .math3-rubric-row:last-child {
+    border-bottom: 0 !important;
   }
 
   .booklet-page[data-booklet-density="compact"] .booklet-question {
@@ -3391,6 +3473,44 @@ body:has(.note-reader-assistant-open) .job-center-fab {
   transform: translateY(0);
   outline: 3px solid var(--color-primary-fixed-dim);
   outline-offset: 2px;
+}
+
+.toast-region {
+  inset: max(1rem, env(safe-area-inset-top)) 1rem auto;
+}
+
+.toast-card {
+  background: var(--color-surface-container-lowest);
+  color: var(--color-on-surface);
+}
+
+.toast-card[data-type="success"] {
+  border-color: color-mix(in srgb, #15803d 35%, var(--color-outline-variant));
+  background: color-mix(in srgb, #15803d 8%, var(--color-surface-container-lowest));
+  color: color-mix(in srgb, #14532d 88%, var(--color-on-surface));
+}
+
+.toast-card[data-type="error"] {
+  border-color: color-mix(in srgb, var(--color-error) 42%, var(--color-outline-variant));
+  background: color-mix(in srgb, var(--color-error) 8%, var(--color-surface-container-lowest));
+  color: var(--color-error);
+}
+
+.toast-card[data-type="info"] {
+  border-color: color-mix(in srgb, var(--color-primary) 35%, var(--color-outline-variant));
+  background: color-mix(in srgb, var(--color-primary) 8%, var(--color-surface-container-lowest));
+  color: var(--color-primary);
+}
+
+@media (min-width: 640px) {
+  .toast-region {
+    right: 1rem;
+    left: auto;
+  }
+}
+
+html[data-theme="dark"] .toast-card[data-type="success"] {
+  color: #bbf7d0;
 }
 
 .econ-graph-drawing-canvas {

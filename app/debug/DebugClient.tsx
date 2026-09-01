@@ -13,7 +13,7 @@ export function DebugClient() {
     return scheduleDeferredClientWork(() => {
       void (async () => {
         try {
-          const notes = await notesApi.getAll();
+          const notes = await notesApi.getSummaries();
           setResult(JSON.stringify(notes, null, 2));
         } catch (error: unknown) {
           setResult(`Error: ${error instanceof Error ? error.message : "Unknown error"}`);

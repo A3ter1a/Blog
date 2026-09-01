@@ -33,7 +33,14 @@ For a brand-new empty project, run the files in order. **Do not replay `0001`–
 27. `supabase/migrations/0027_ai_knowledge_quizzes.sql`
 28. `supabase/migrations/0028_ai_knowledge_quiz_insert_policy_fix.sql`
 29. `supabase/migrations/0029_ai_content_submission_rpc.sql`
-30. `supabase/verification.sql` as a read-only check after all migrations have finished
+30. `supabase/migrations/0030_note_rag_relevance_gate.sql`
+31. `supabase/migrations/0031_english_manual_score_rpc.sql`
+32. `supabase/migrations/0032_ai_profile_self_edit.sql`
+33. `supabase/migrations/0033_ai_content_image_assets.sql`
+34. `supabase/migrations/0034_job_item_lease_renewal.sql`
+35. `supabase/migrations/0035_job_cancellation_commit_gate.sql`
+36. `supabase/migrations/0036_security_advisor_cleanup.sql`
+37. `supabase/verification.sql` as a read-only check after all migrations have finished
 
 For the existing production project, `0008`–`0012` may only be run after the fixed-shadow rehearsal, production backup verification, and a separate user confirmation. `0013` additionally requires its own fixed-shadow behavior-matrix pass and a new confirmation. `0014` has only passed a local PostgreSQL concurrency rehearsal; it requires a new fixed-shadow transaction rehearsal and separate authorization before any remote write. `0015` has only passed a local immutable-snapshot/apply/rollback rehearsal; it also requires a new fixed-shadow transaction rehearsal and separate authorization. `0016` has passed a rollback/idempotency rehearsal against the local WP1-B production backup. `0017–0018` have passed authenticated RPC, transaction rollback, objective/subjective three-round, correction, idempotency, confirmation, and legacy-projection rehearsals in disposable PostgreSQL only. `0019` has passed a disposable PostgreSQL rollback/RLS/idempotency rehearsal with structure-only math fixtures; no real math paper was imported and it has not run on fixed shadow. None has run on production. Never treat the presence of these files as proof that a remote database has been migrated.
 

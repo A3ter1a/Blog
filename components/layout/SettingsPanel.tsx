@@ -19,6 +19,7 @@ import { collapsibleMotion, overlayMotion, uiMotion } from "@/lib/motion";
 import { setThemePreference, useThemePreference } from "@/components/layout/ThemeController";
 import type { ThemePreference } from "@/lib/theme-contract";
 import { useAiAccountSlot } from "@/hooks/useAiAccountSlot";
+import { useDialogFocus } from "@/hooks/useDialogFocus";
 import {
   AI_ACCOUNT_SLOT_CONFIG,
   clearActiveAiAccountSlot,
@@ -52,52 +53,13 @@ export function SettingsPanel({ isOpen, onClose, mode = "all" }: SettingsPanelPr
   const [isSigningOut, setIsSigningOut] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
-  const previousFocusRef = useRef<HTMLElement | null>(null);
-  const onCloseRef = useRef(onClose);
 
-  useEffect(() => {
-    onCloseRef.current = onClose;
-  }, [onClose]);
-
-  useEffect(() => {
-    if (!isOpen) return;
-
-    previousFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    const focusTimer = window.requestAnimationFrame(() => closeButtonRef.current?.focus());
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        event.stopPropagation();
-        onCloseRef.current();
-        return;
-      }
-
-      if (event.key !== "Tab" || !panelRef.current) return;
-      const focusable = Array.from(panelRef.current.querySelectorAll<HTMLElement>(
-        'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
-      ));
-      if (focusable.length === 0) return;
-
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
-      }
-    };
-
-    document.addEventListener("keydown", handleKeyDown);
-    return () => {
-      window.cancelAnimationFrame(focusTimer);
-      document.removeEventListener("keydown", handleKeyDown);
-      previousFocusRef.current?.focus();
-      previousFocusRef.current = null;
-    };
-  }, [isOpen]);
+  useDialogFocus({
+    isOpen,
+    onClose,
+    containerRef: panelRef,
+    initialFocusRef: closeButtonRef,
+  });
 
   useEffect(() => {
     if (!isOpen || !isAdmin || mode === "reading") return;
@@ -218,13 +180,7 @@ export function SettingsPanel({ isOpen, onClose, mode = "all" }: SettingsPanelPr
             role="dialog"
             aria-modal="true"
             aria-labelledby="settings-panel-title"
-            onKeyDown={(event) => {
-              if (event.key === "Escape") {
-                event.preventDefault();
-                event.stopPropagation();
-                onCloseRef.current();
-              }
-            }}
+            tabIndex={-1}
           >
             {/* Header */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-outline-variant/10 flex-shrink-0">

@@ -44,9 +44,10 @@ Asteroid 的核心目标是把备考期间分散的学习材料变成一个可�
 - OCR 上传识别、笔记分析、文本润色、资料检索和数学三相关生成接口。
 - DeepSeek / Qwen Vision 等配置优先走服务端环境变量。
 - AI 输出统一经过 JSON 解析和错误兜底，降低模型返回格式漂移带来的前端风险。
-- 全局任务中心统一承载两类长任务：百度讲义 OCR 作为外部异步任务，Markdown 审阅和题库图片 OCR 作为站内分块任务。
+- 全局任务中心统一承载长任务：百度讲义 OCR 作为外部异步任务；Markdown 审阅、题库图片 OCR、数学答题纸 OCR、数学整套建议评分、数学三试卷生成、数学三批量归类与英语主观题建议评分作为站内持久任务。
 - 题库图片会先压缩并写入私有 `ocr-documents` 临时路径，每次 Route Handler 只领取一张图片；关闭弹窗、刷新或换页后仍可继续，全部成功后才清理源图。
-- 站内任务依赖 `0014_job_item_lease_rpc.sql` 与 `0020_problem_ocr_job_assets.sql`，且 `WP3_INTERNAL_JOB_LEASE_ENABLED` 默认关闭；迁移未就绪时题库 OCR 保留原页面内识别回退。
+- 数学三试卷生成先登记到任务账本，再依次完成原创命题、分科独立审校与高风险二次终审；结果留在任务中心，回到自测页后以任务 ID 幂等保存，取消后不会进入下一阶段。
+- 站内任务依赖 `0014_job_item_lease_rpc.sql`，图片 OCR 另依赖 `0020_problem_ocr_job_assets.sql`。只要 lease RPC 已迁移就启用持久任务；迁移或服务端 AI Key 缺失时会明确阻止启动，不再退回到关闭页面后会丢失的本地生成。OCR 完成或取消时会按用户路径清理私有原图。
 
 ## 页面地图
 
@@ -115,7 +116,7 @@ npm run dev
 | `ADMIN_EMAILS` | 仅用于部署自检或紧急恢复；运行时管理员真源是 `admin_users` | 否 |
 | `ENGLISH_TRAINING_CORE_MODE` | 英语训练持久化模式：`legacy`（默认）、`dual` 或 `shared`；只能在对应数据库迁移与验收通过后切换 | 否 |
 | `MATH_TRAINING_CORE_MODE` | 数学训练持久化模式：`local`（默认）或 `shared`；只能在 `0019` 与真实题源验收完成后切换 | 否 |
-| `WP3_INTERNAL_JOB_LEASE_ENABLED` | WP3 站内分块任务开关，默认 `false`；仅在数据库 `0014` lease RPC 与 `0020` 私有 OCR 图片配置均已执行并验收后设为 `true` | 否 |
+| `WP3_INTERNAL_JOB_LEASE_ENABLED` | 旧版 WP3 灰度兼容项，默认 `false`；当前用户自动化入口以 `0014` lease RPC 实际可用性为准并采用 fail-closed 语义 | 否 |
 | `DEEPSEEK_API_KEY` | 服务端 DeepSeek API Key | 否 |
 | `QWEN_API_KEY` | 服务端 Qwen Vision API Key | 否 |
 

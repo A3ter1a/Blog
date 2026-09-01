@@ -1,0 +1,4 @@
+interface:
+  display_name: "数学三套卷模拟"
+  short_description: "生成、审校并维护符合真题结构与打印规则的数学三模拟套卷"
+  default_prompt: "Use $math3-paper-simulation to explain, generate, audit, or maintain the Math III paper simulation rules in this project."

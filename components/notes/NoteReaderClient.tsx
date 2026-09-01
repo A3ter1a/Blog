@@ -376,7 +376,7 @@ export function NoteReaderClient({
         setChapters((current) => noteReaderValuesEqual(current, nextChapters) ? current : nextChapters);
       })
       .catch(() => setChapters([]));
-  }, [accessScope, initialChaptersLoaded, note?.type, noteId]);
+  }, [accessScope, initialChapters, initialChaptersLoaded, note?.type, noteId]);
 
   useEffect(() => {
     const manifest = extractBookletSourceManifest(note?.content ?? "");
@@ -812,8 +812,6 @@ export function NoteReaderClient({
             <ArrowLeft className="h-4 w-4" />
             返回
           </Link>
-
-          <span className="reader-toolbar__title" title={note.title}>{note.title}</span>
 
           {readerDirectoriesHidden && !assistantOpen && (
             <button

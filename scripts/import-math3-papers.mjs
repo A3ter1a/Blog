@@ -448,7 +448,7 @@ async function main() {
 
   if (args.emitSql) {
     const outputPath = resolve(rootDir, args.emitSql);
-    outputPath && mkdirSync(dirname(outputPath), { recursive: true });
+    mkdirSync(dirname(outputPath), { recursive: true });
     writeFileSync(outputPath, buildSql(papers), "utf8");
     console.log(`已生成 SQL: ${outputPath}`);
   }

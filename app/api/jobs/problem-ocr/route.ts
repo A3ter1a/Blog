@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { DEFAULT_DEEPSEEK_MODEL, DEFAULT_QWEN_MODEL } from "@/lib/ai-config";
 import type { ProblemOcrChapterContextItem, ProblemOcrSourceAsset } from "@/lib/problem-ocr-contract";
-import { createProblemOcrJob, internalJobLeaseAvailable } from "@/lib/server-internal-job-runner";
+import { createProblemOcrJob, internalJobLeaseSchemaAvailable } from "@/lib/server-internal-job-runner";
 import { getAdminRequestContext, resolveAIKey } from "@/lib/server-admin-auth";
 import { sanitizeJobSummaryRow } from "@/lib/server-job-ledger";
+import { scheduleInternalJobDrain } from "@/lib/server-internal-job-background";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const maxDuration = 900;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -39,7 +41,7 @@ export async function GET(req: NextRequest) {
   const auth = await getAdminRequestContext(req);
   if (!auth.ok) return auth.response;
   try {
-    const available = await internalJobLeaseAvailable(auth.context.supabase);
+    const available = await internalJobLeaseSchemaAvailable(auth.context.supabase);
     return NextResponse.json({
       success: true,
       available: available && Boolean(resolveAIKey("qwen")) && Boolean(resolveAIKey("deepseek")),
@@ -64,20 +66,31 @@ export async function POST(req: NextRequest) {
     if (!resolveAIKey("qwen") || !resolveAIKey("deepseek")) {
       return NextResponse.json({ error: "服务器 Qwen 或 DeepSeek API Key 未配置", success: false }, { status: 503 });
     }
+    const targetId = typeof body.targetId === "string" ? body.targetId.trim().slice(0, 200) : "";
+    if (!/^[A-Za-z0-9:_-]{8,200}$/.test(targetId)) {
+      return NextResponse.json({ error: "题库 OCR 缺少有效的编辑目标", success: false }, { status: 400 });
+    }
     const ledger = await createProblemOcrJob(auth.context.supabase, {
       userId: auth.context.user.id,
       assets,
       chapterContext: parseChapterContext(body.chapterContext),
       qwenModel: typeof body.qwenModel === "string" && body.qwenModel.trim() ? body.qwenModel.trim() : DEFAULT_QWEN_MODEL,
       deepseekModel: typeof body.deepseekModel === "string" && body.deepseekModel.trim() ? body.deepseekModel.trim() : DEFAULT_DEEPSEEK_MODEL,
+      targetId,
     });
     if (ledger.availability !== "synced" || !ledger.data) {
       return NextResponse.json({
-        error: "题库 OCR 持久任务尚未启用，继续使用当前页面内识别流程",
+        error: "题库 OCR 持久任务尚未启用，不能安全开始识别",
         success: false,
         availability: ledger.availability,
       }, { status: 503 });
     }
+    scheduleInternalJobDrain(auth.context.supabase, {
+      userId: auth.context.user.id,
+      jobId: ledger.data.id,
+      deepseekApiKey: resolveAIKey("deepseek") ?? "",
+      qwenApiKey: resolveAIKey("qwen") ?? "",
+    });
     return NextResponse.json({ success: true, job: sanitizeJobSummaryRow(ledger.data) }, {
       headers: { "Cache-Control": "no-store" },
     });

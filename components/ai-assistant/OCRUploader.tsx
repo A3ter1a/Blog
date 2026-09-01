@@ -7,7 +7,6 @@ import { fileToBase64 } from '@/lib/utils';
 import { AIProgressIndicator } from './AIProgressIndicator';
 import { AIExtractionResult } from './AIExtractionResult';
 import {
-  AI_SCAN_CONCURRENT_LIMIT,
   useAIScan,
   type ChapterContextItem,
   type ScanImageInput,
@@ -21,6 +20,7 @@ interface OCRUploaderProps {
   onClose: () => void;
   onAccept: (problems: Problem[]) => void;
   chapterContext?: ChapterContextItem[];
+  targetId: string;
 }
 
 const MAX_SCAN_IMAGES = 10;
@@ -89,11 +89,11 @@ async function prepareScanImage(file: File): Promise<ScanImageInput & { previewU
   }
 }
 
-export function OCRUploader({ isOpen, onClose, onAccept, chapterContext }: OCRUploaderProps) {
+export function OCRUploader({ isOpen, onClose, onAccept, chapterContext, targetId }: OCRUploaderProps) {
   const [previewUrls, setPreviewUrls] = useState<string[]>([]);
   const [fileError, setFileError] = useState<string | null>(null);
   const [prepareProgress, setPrepareProgress] = useState<{ total: number; completed: number } | null>(null);
-  const { scanState, startScan, resetScan, claimScanResult, isPersistentScan } = useAIScan();
+  const { scanState, startScan, resetScan, claimScanResult, isPersistentScan } = useAIScan(targetId);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const prepareRunRef = useRef(0);
 
@@ -299,7 +299,7 @@ export function OCRUploader({ isOpen, onClose, onAccept, chapterContext }: OCRUp
                 <div className="text-center">
                   <p className="text-sm font-medium text-on-surface">点击上传题目照片</p>
                   <p className="text-xs text-on-surface-variant/50 mt-1">
-                    支持 JPG、PNG、WebP，一次最多 {MAX_SCAN_IMAGES} 张，最多 {AI_SCAN_CONCURRENT_LIMIT} 张并行识别
+                    支持 JPG、PNG、WebP，一次最多 {MAX_SCAN_IMAGES} 张；上传后由任务中心逐张识别
                   </p>
                 </div>
                 <input
@@ -353,7 +353,7 @@ export function OCRUploader({ isOpen, onClose, onAccept, chapterContext }: OCRUp
                 )}
                 {totalImages > 1 && (
                   <p className="text-xs text-on-surface-variant/60 text-center">
-                    最多 {AI_SCAN_CONCURRENT_LIMIT} 张并行识别，当前更新第 {currentImage}/{totalImages} 张，已完成 {completedImages} 张，失败 {failedImages} 张
+                    后台逐张识别，当前更新第 {currentImage}/{totalImages} 张，已完成 {completedImages} 张，失败 {failedImages} 张
                   </p>
                 )}
               </div>

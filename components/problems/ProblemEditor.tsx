@@ -31,6 +31,8 @@ interface ProblemEditorProps {
   problems: Problem[];
   onChange: (problems: Problem[]) => void;
   noteId?: string;
+  taskTargetId: string;
+  onMath3ClassificationApplied?: (jobId: string) => void;
   subject?: Subject;
   hasUnsavedChanges?: boolean;
   chapterRefreshKey?: number;
@@ -48,6 +50,8 @@ export function ProblemEditor({
   problems,
   onChange,
   noteId,
+  taskTargetId,
+  onMath3ClassificationApplied,
   subject = "math",
   hasUnsavedChanges = false,
   chapterRefreshKey = 0,
@@ -72,6 +76,8 @@ export function ProblemEditor({
     problems,
     subject,
     onChange,
+    targetId: taskTargetId,
+    onResultApplied: onMath3ClassificationApplied,
   });
 
   // One shared chapter load powers OCR context and all editor chapter selectors.
@@ -618,6 +624,7 @@ export function ProblemEditor({
         onClose={() => setShowAIScan(false)}
         onAccept={handleAcceptAI}
         chapterContext={chapterContext}
+        targetId={taskTargetId}
       />
 
       <BulkProblemActionBar

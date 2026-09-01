@@ -1,24 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
-import { advanceInternalJob, internalJobLeaseRolloutEnabled } from "@/lib/server-internal-job-runner";
-import { getAdminRequestContext, resolveAIKey } from "@/lib/server-admin-auth";
+import { advanceInternalJob } from "@/lib/server-internal-job-runner";
+import { resolveAIKey } from "@/lib/server-admin-auth";
+import { getJobRequestContext } from "@/lib/server-job-auth";
 import { sanitizeJobSummaryRow } from "@/lib/server-job-ledger";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 300;
+export const maxDuration = 900;
 
 function isUuid(value: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const auth = await getAdminRequestContext(req);
+  const auth = await getJobRequestContext(req);
   if (!auth.ok) return auth.response;
   const { id } = await params;
   if (!isUuid(id)) return NextResponse.json({ error: "任务 ID 无效", success: false }, { status: 400 });
-  if (!internalJobLeaseRolloutEnabled()) {
-    return NextResponse.json({ error: "站内任务 lease 尚未启用", success: false, availability: "schema_pending" }, { status: 503 });
-  }
   try {
     const ledger = await advanceInternalJob(auth.context.supabase, {
       userId: auth.context.user.id,

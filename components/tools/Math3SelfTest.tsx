@@ -20,12 +20,13 @@ import {
   Target,
 } from "lucide-react";
 import { BookletFormatControl } from "@/components/tools/BookletFormatControl";
+import { useJobCenter } from "@/components/jobs/JobCenter";
 import { MarkdownContent } from "@/components/ui/MarkdownContent";
 import { PageHeader, PageShell } from "@/components/ui/PageScaffold";
 import { useToast } from "@/components/ui/Toast";
 import { useAdminAuth } from "@/hooks/useAdminAuth";
 import { useBookletPrint, type BookletOrientation } from "@/hooks/useBookletPrint";
-import { buildAuthHeaders } from "@/lib/fetch-with-auth";
+import { DEFAULT_DEEPSEEK_MODEL } from "@/lib/ai-config";
 import { recordDeepSeekUsage } from "@/lib/ai-usage";
 import {
   getMath3ChoiceOptionLayout,
@@ -40,6 +41,7 @@ import {
   math3SelfTestModeMeta,
   math3SelfTestStatusMeta,
   math3SelfTestTypeLabels,
+  normalizeMath3SelfTestPaper,
   sumMath3SelfTestScore,
   type Math3SelfTestAttempt,
   type Math3SelfTestDifficulty,
@@ -63,6 +65,12 @@ function formatDate(value?: Date): string {
     hour: "2-digit",
     minute: "2-digit",
   }).format(value);
+}
+
+function formatExamDate(value: string): string {
+  const date = new Date(value);
+  const resolvedDate = Number.isNaN(date.getTime()) ? new Date() : date;
+  return `${resolvedDate.getFullYear()}年${String(resolvedDate.getMonth() + 1).padStart(2, "0")}月${String(resolvedDate.getDate()).padStart(2, "0")}日`;
 }
 
 function formatDuration(totalSeconds: number): string {
@@ -198,14 +206,24 @@ function toggleMarkedQuestion(attempt: Math3SelfTestAttempt, questionId: string)
 export function Math3SelfTest() {
   const toast = useToast();
   const { loading: authLoading, isAdmin } = useAdminAuth();
+  const {
+    jobs,
+    createMath3SelfTestJob,
+    createMath3StepGradeJob,
+    cancelJob,
+    loadJobResult,
+    claimJobResult,
+  } = useJobCenter();
   const autoSubmittedTestIdRef = useRef<string | null>(null);
+  const materializingGenerationJobsRef = useRef(new Set<string>());
+  const materializingStepGradeJobsRef = useRef(new Set<string>());
   const [mode, setMode] = useState<Math3SelfTestMode>("quick");
   const [difficulty, setDifficulty] = useState<Math3SelfTestDifficulty>("simulation");
   const [tests, setTests] = useState<Math3SelfTestRecord[]>([]);
   const [activeTest, setActiveTest] = useState<Math3SelfTestRecord | null>(null);
   const [activeIndex, setActiveIndex] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
-  const [isGenerating, setIsGenerating] = useState(false);
+  const [isRegisteringGeneration, setIsRegisteringGeneration] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [scoringStepId, setScoringStepId] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -218,6 +236,17 @@ export function Math3SelfTest() {
 
   const activeQuestion = activeTest?.paper.questions[activeIndex] ?? null;
   const isExamRunning = activeTest?.status === "in_progress";
+  const activeGenerationJob = jobs.find((job) => (
+    job.type === "math3_self_test_generation"
+    && (job.status === "queued" || job.status === "running" || job.status === "waiting_for_trigger")
+  ));
+  const isGenerating = isRegisteringGeneration || Boolean(activeGenerationJob);
+  const activeStepGradeJob = activeTest ? jobs.find((job) => (
+    job.type === "math3_step_grade"
+    && job.targetId?.startsWith(`math3-step:${activeTest.id}:`)
+    && (job.status === "queued" || job.status === "running" || job.status === "waiting_for_trigger")
+  )) : undefined;
+  const effectiveScoringStepId = scoringStepId ?? activeStepGradeJob?.targetId?.split(":").at(-1) ?? null;
 
   useEffect(() => {
     if (authLoading || !isAdmin) return;
@@ -281,53 +310,156 @@ export function Math3SelfTest() {
     setActiveTest(test);
   }, []);
 
+  useEffect(() => {
+    if (authLoading || !isAdmin) return;
+    const pendingResults = jobs.filter((job) => (
+      job.type === "math3_self_test_generation"
+      && job.status === "succeeded"
+      && !job.resultClaimedAt
+    ));
+
+    pendingResults.forEach((job) => {
+      if (!job.resultPayload) {
+        void loadJobResult(job.id);
+        return;
+      }
+      if (materializingGenerationJobsRef.current.has(job.id)) return;
+      materializingGenerationJobsRef.current.add(job.id);
+
+      void (async () => {
+        try {
+          const payload = job.resultPayload && typeof job.resultPayload === "object" && !Array.isArray(job.resultPayload)
+            ? job.resultPayload as Record<string, unknown>
+            : {};
+          const jobMode: Math3SelfTestMode = payload.mode === "full" ? "full" : "quick";
+          const jobDifficulty: Math3SelfTestDifficulty = payload.difficulty === "comfort" || payload.difficulty === "challenge"
+            ? payload.difficulty
+            : "simulation";
+          const paper = normalizeMath3SelfTestPaper(payload.paper, jobMode, jobDifficulty, {
+            enforceRealPaperProfile: true,
+          });
+          if (paper.verification?.status !== "verified") {
+            throw new Error("任务结果缺少已通过的双重审校记录");
+          }
+
+          const durableId = job.remoteJobId ?? job.id;
+          const existing = await math3SelfTestsApi.getById(durableId);
+          const saved = existing ?? await math3SelfTestsApi.createFromGenerationJob(durableId, {
+            title: paper.title,
+            mode: jobMode,
+            difficulty: jobDifficulty,
+            status: "draft",
+            paper,
+            attempt: createEmptyMath3SelfTestAttempt(),
+            score: 0,
+            maxScore: paper.totalScore,
+          });
+          if (!existing && typeof payload.tokensUsed === "number") recordDeepSeekUsage(payload.tokensUsed);
+          replaceTest(saved);
+          claimJobResult(job.id);
+
+          const checkedQuestions = paper.verification.checkedQuestions;
+          const finalGateQuestions = paper.verification.finalGateQuestions ?? 0;
+          const correctedQuestions = paper.verification.correctedQuestionIndexes.length;
+          const finalGateLabel = finalGateQuestions > 0 ? `，${finalGateQuestions} 题二次终审通过` : "";
+          toast.success(
+            correctedQuestions > 0
+              ? `真题风格试卷已恢复，${checkedQuestions} 题审校通过并修正 ${correctedQuestions} 题${finalGateLabel}`
+              : `真题风格试卷已恢复，${checkedQuestions} 题独立审校通过${finalGateLabel}`,
+          );
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "未知错误";
+          toast.error(`试卷结果领取失败：${message}`);
+        }
+      })();
+    });
+  }, [authLoading, claimJobResult, isAdmin, jobs, loadJobResult, replaceTest, toast]);
+
+  useEffect(() => {
+    if (!activeTest || authLoading || !isAdmin) return;
+    const completedJobs = jobs.filter((job) => (
+      job.type === "math3_step_grade"
+      && job.targetId?.startsWith(`math3-step:${activeTest.id}:`)
+      && job.status === "succeeded"
+      && !job.resultClaimedAt
+    ));
+    completedJobs.forEach((job) => {
+      if (!job.resultPayload) {
+        void loadJobResult(job.id);
+        return;
+      }
+      if (materializingStepGradeJobsRef.current.has(job.id)) return;
+      materializingStepGradeJobsRef.current.add(job.id);
+      void (async () => {
+        try {
+          const result = job.resultPayload && typeof job.resultPayload === "object" && !Array.isArray(job.resultPayload)
+            ? job.resultPayload as Record<string, unknown>
+            : {};
+          const gradeRecord = result.grade && typeof result.grade === "object" && !Array.isArray(result.grade)
+            ? result.grade as Record<string, unknown>
+            : null;
+          const testId = typeof result.testId === "string" ? result.testId : "";
+          const questionId = typeof result.questionId === "string" ? result.questionId : "";
+          const stepId = typeof result.stepId === "string" ? result.stepId : "";
+          const sourceAnswer = typeof result.studentAnswer === "string" ? result.studentAnswer : "";
+          const question = activeTest.paper.questions.find((item) => item.id === questionId);
+          const step = question?.rubricSteps.find((item) => item.id === stepId);
+          if (!gradeRecord || testId !== activeTest.id || !question || !step || sourceAnswer !== (activeTest.attempt.answers[questionId] ?? "").trim()) {
+            throw new Error("分步评分结果与当前试卷、题目或作答快照不匹配");
+          }
+          const awardedPoints = Number(gradeRecord.awardedPoints);
+          const confidence = Number(gradeRecord.confidence);
+          const grade: Math3SelfTestStepGrade = {
+            stepId,
+            awardedPoints: Number.isFinite(awardedPoints) ? Math.min(step.points, Math.max(0, awardedPoints)) : 0,
+            maxPoints: step.points,
+            feedback: typeof gradeRecord.feedback === "string" && gradeRecord.feedback.trim() ? gradeRecord.feedback.trim() : "本步骤已评分。",
+            confidence: Number.isFinite(confidence) ? Math.min(1, Math.max(0, confidence)) : 0,
+            gradedAt: typeof gradeRecord.gradedAt === "string" ? gradeRecord.gradedAt : new Date().toISOString(),
+          };
+          const previousGrades = getStepGrades(activeTest.attempt, question.id).filter((item) => item.stepId !== stepId);
+          const nextAttempt: Math3SelfTestAttempt = {
+            ...activeTest.attempt,
+            stepGrades: { ...activeTest.attempt.stepGrades, [question.id]: [...previousGrades, grade] },
+            questionScores: { ...activeTest.attempt.questionScores, [question.id]: 0 },
+          };
+          nextAttempt.questionScores[question.id] = getSolutionScore(nextAttempt, question);
+          nextAttempt.totalScore = sumMath3SelfTestScore(nextAttempt);
+          const nextStatus: Math3SelfTestStatus = hasAllSolutionStepsGraded(activeTest, nextAttempt) ? "reviewed" : "submitted";
+          const saved = await math3SelfTestsApi.update(activeTest.id, {
+            status: nextStatus,
+            attempt: nextAttempt,
+            score: nextAttempt.totalScore,
+          });
+          replaceTest(saved);
+          if (typeof result.tokensUsed === "number") recordDeepSeekUsage(result.tokensUsed);
+          claimJobResult(job.id);
+          setScoringStepId(null);
+          const nextPendingStepIndex = findNextUngradedSolutionIndex(saved, activeIndex);
+          if (nextPendingStepIndex >= 0) setActiveIndex(nextPendingStepIndex);
+          toast.success(nextPendingStepIndex >= 0 ? "已写入一个步骤评分，已定位到下一步" : "分步评分已完成");
+        } catch (error) {
+          toast.error(`分步评分结果写入失败：${error instanceof Error ? error.message : "未知错误"}`);
+        }
+      })();
+    });
+  }, [activeIndex, activeTest, authLoading, claimJobResult, isAdmin, jobs, loadJobResult, replaceTest, toast]);
+
   const patchActiveAttempt = (updater: (attempt: Math3SelfTestAttempt) => Math3SelfTestAttempt) => {
     setActiveTest((current) => current ? { ...current, attempt: updater(current.attempt) } : current);
   };
 
   const handleGenerate = async () => {
     if (isGenerating) return;
-    setIsGenerating(true);
+    setIsRegisteringGeneration(true);
     try {
-      const response = await fetch("/api/ai/math3-self-test/generate", {
-        method: "POST",
-        headers: await buildAuthHeaders({ "Content-Type": "application/json" }),
-        body: JSON.stringify({ mode, difficulty }),
-      });
-
-      const payload = await response.json().catch(() => ({}));
-      if (typeof payload.tokensUsed === "number") recordDeepSeekUsage(payload.tokensUsed);
-      if (!response.ok || !payload.paper) {
-        throw new Error(typeof payload.error === "string" ? payload.error : "试卷生成失败");
-      }
-
-      const paper = payload.paper;
-      const saved = await math3SelfTestsApi.create({
-        title: paper.title,
-        mode,
-        difficulty,
-        status: "draft",
-        paper,
-        attempt: createEmptyMath3SelfTestAttempt(),
-        score: 0,
-        maxScore: paper.totalScore,
-      });
-
-      replaceTest(saved);
-      const checkedQuestions = paper.verification?.checkedQuestions ?? paper.questions.length;
-      const finalGateQuestions = paper.verification?.finalGateQuestions ?? 0;
-      const correctedQuestions = paper.verification?.correctedQuestionIndexes?.length ?? 0;
-      const finalGateLabel = finalGateQuestions > 0 ? `，${finalGateQuestions} 题二次终审通过` : "";
-      toast.success(
-        correctedQuestions > 0
-          ? `真题风格试卷已生成，${checkedQuestions} 题审校通过并修正 ${correctedQuestions} 题${finalGateLabel}`
-          : `真题风格试卷已生成，${checkedQuestions} 题独立审校通过${finalGateLabel}`,
-      );
+      await createMath3SelfTestJob({ mode, difficulty });
+      toast.success("试卷生成已加入任务中心；切换页面会继续推进，关闭窗口后可在下次打开时恢复");
     } catch (error) {
       const message = error instanceof Error ? error.message : "未知错误";
       toast.error(message);
     } finally {
-      setIsGenerating(false);
+      setIsRegisteringGeneration(false);
     }
   };
 
@@ -407,63 +539,38 @@ export function Math3SelfTest() {
   }, [activeTest, remainingSeconds, isSaving, handleSubmit]);
 
   const handleGradeNextStep = async (question: Math3SelfTestQuestion) => {
-    if (!activeTest || scoringStepId) return;
+    if (!activeTest || effectiveScoringStepId) return;
     const step = getNextUngradedStep(activeTest.attempt, question);
     if (!step) return;
 
     setScoringStepId(step.id);
     try {
-      const response = await fetch("/api/ai/math3-self-test/grade-step", {
-        method: "POST",
-        headers: await buildAuthHeaders({ "Content-Type": "application/json" }),
-        body: JSON.stringify({
-          question,
-          step,
-          studentAnswer: activeTest.attempt.answers[question.id] ?? "",
-        }),
-      });
-
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok || !payload.grade) {
-        throw new Error(typeof payload.error === "string" ? payload.error : "分步评分失败");
-      }
-
-      if (typeof payload.tokensUsed === "number") recordDeepSeekUsage(payload.tokensUsed);
-
-      const previousGrades = getStepGrades(activeTest.attempt, question.id)
-        .filter((grade) => grade.stepId !== payload.grade.stepId);
-      const nextAttempt: Math3SelfTestAttempt = {
-        ...activeTest.attempt,
-        stepGrades: {
-          ...activeTest.attempt.stepGrades,
-          [question.id]: [...previousGrades, payload.grade],
+      await createMath3StepGradeJob({
+        testId: activeTest.id,
+        question: {
+          id: question.id,
+          question: question.question,
+          answer: question.answer,
+          explanation: question.explanation,
         },
-        questionScores: {
-          ...activeTest.attempt.questionScores,
-          [question.id]: 0,
+        step: {
+          id: step.id,
+          label: step.label,
+          points: step.points,
+          expected: step.expected,
         },
-      };
-      nextAttempt.questionScores[question.id] = getSolutionScore(nextAttempt, question);
-      nextAttempt.totalScore = sumMath3SelfTestScore(nextAttempt);
-
-      const nextStatus: Math3SelfTestStatus = hasAllSolutionStepsGraded(activeTest, nextAttempt)
-        ? "reviewed"
-        : "submitted";
-
-      const saved = await math3SelfTestsApi.update(activeTest.id, {
-        status: nextStatus,
-        attempt: nextAttempt,
-        score: nextAttempt.totalScore,
+        studentAnswer: activeTest.attempt.answers[question.id] ?? "",
+        model: DEFAULT_DEEPSEEK_MODEL,
+        targetId: `math3-step:${activeTest.id}:${question.id}:${step.id}`,
       });
-      replaceTest(saved);
-      const nextPendingStepIndex = findNextUngradedSolutionIndex(saved, activeIndex);
-      if (nextPendingStepIndex >= 0) setActiveIndex(nextPendingStepIndex);
-      toast.success(nextPendingStepIndex >= 0 ? "已完成一个步骤评分，已定位到下一步" : "分步评分已完成");
+      toast.info("分步评分已并入任务中心；切换页面不会丢失，也可以随时取消");
     } catch (error) {
       const message = error instanceof Error ? error.message : "未知错误";
       toast.error(message);
     } finally {
+      if (!jobs.some((job) => job.type === "math3_step_grade" && job.targetId === `math3-step:${activeTest.id}:${question.id}:${step.id}` && ["queued", "running", "waiting_for_trigger"].includes(job.status))) {
       setScoringStepId(null);
+      }
     }
   };
 
@@ -481,12 +588,12 @@ export function Math3SelfTest() {
       return;
     }
 
-    const orientationLabel = bookletOrientation === "landscape" ? "横版" : "竖版";
+    const orientationLabel = bookletOrientation === "landscape" ? "横屏" : "竖屏";
     startPrint(target, {
       orientation: bookletOrientation,
       title: target === "questions"
-        ? `Asteroid-数学三模拟题目册-${orientationLabel}-${activeTest.paper.questions.length}题`
-        : `Asteroid-数学三模拟答案册-${orientationLabel}-${activeTest.paper.questions.length}题`,
+        ? `数学（三）模拟卷-题目册-${orientationLabel}`
+        : `数学（三）模拟卷-标准答案册-${orientationLabel}`,
     });
   };
 
@@ -567,8 +674,24 @@ export function Math3SelfTest() {
               className="mt-4 inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-on-primary transition-colors hover:bg-primary/90 disabled:opacity-50"
             >
               {isGenerating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-              {isGenerating ? "命题、初审与终审中" : "生成并双重审校"}
+              {activeGenerationJob ? "生成任务正在后台推进" : isRegisteringGeneration ? "正在登记任务" : "生成并双重审校"}
             </button>
+            {activeGenerationJob && (
+              <div className="mt-3 rounded-lg border border-primary/20 bg-primary/5 p-3 text-xs text-on-surface-variant">
+                <p className="font-medium text-on-surface">{activeGenerationJob.phase}</p>
+                <p className="mt-1">{activeGenerationJob.statusText}</p>
+                <div className="mt-2 flex items-center justify-between gap-3">
+                  <span>任务与结果已写入任务中心；关闭窗口不会丢失，下次打开会继续。</span>
+                  <button
+                    type="button"
+                    onClick={() => cancelJob(activeGenerationJob.id)}
+                    className="shrink-0 rounded-md border border-error/25 px-2.5 py-1.5 font-medium text-error hover:bg-error/5"
+                  >
+                    取消生成
+                  </button>
+                </div>
+              </div>
+            )}
           </section>
 
           <section className="rounded-lg border border-outline-variant/20 bg-surface-container-lowest p-4">
@@ -644,7 +767,7 @@ export function Math3SelfTest() {
               test={activeTest}
               activeIndex={activeIndex}
               activeQuestion={activeQuestion}
-              scoringStepId={scoringStepId}
+              scoringStepId={effectiveScoringStepId}
               onMove={setActiveIndex}
               onGradeNextStep={handleGradeNextStep}
             />
@@ -716,41 +839,50 @@ function Math3BookletPrintDeck({
   target: Math3BookletExportTarget;
   orientation: BookletOrientation;
 }) {
-  const objectivePages = paginateMath3ObjectiveQuestions(test.paper.questions, orientation);
+  const objectivePages = paginateMath3ObjectiveQuestions(test.paper.questions, orientation, test.mode);
   const solutionQuestions = test.paper.questions.filter((question) => question.type === "solution");
   return (
     <div className={`booklet-print-deck math3-booklet-print math3-booklet-${target}`}>
-      <Math3BookletCover test={test} target={target} orientation={orientation} />
-      {target === "questions" ? (
-        <>
-          {objectivePages.map((page, pageIndex) => (
-            <Math3BookletObjectivePage
-              key={`${page.section}-${page.questions[0]?.id ?? pageIndex}`}
-              section={page.section}
-              questions={page.questions}
-              pageIndex={pageIndex}
-              pageCount={objectivePages.length}
-              orientation={orientation}
-            />
-          ))}
-          {solutionQuestions.map((question, solutionIndex) => (
-            <Math3BookletSolutionPage
-              key={question.id}
-              question={question}
-              orientation={orientation}
-              bookletPageNumber={objectivePages.length + solutionIndex + 1}
-            />
-          ))}
-        </>
-      ) : (
-        test.paper.questions.map((question) => (
-          <Math3BookletAnswerPage
-            key={question.id}
-            question={question}
+      {target === "answers" && <Math3BookletCover test={test} target={target} orientation={orientation} />}
+      {objectivePages.map((page, pageIndex) => {
+        const isSectionFirstPage = pageIndex === 0 || objectivePages[pageIndex - 1]?.section !== page.section;
+        return target === "questions" ? (
+          <Math3BookletObjectivePage
+            key={`${page.section}-${page.questions[0]?.id ?? pageIndex}`}
+            section={page.section}
+            questions={page.questions}
+            pageIndex={pageIndex}
             orientation={orientation}
+            showSectionHeading={isSectionFirstPage}
           />
-        ))
-      )}
+        ) : (
+          <Math3BookletAnswerObjectivePage
+            key={`answer-${page.section}-${page.questions[0]?.id ?? pageIndex}`}
+            section={page.section}
+            questions={page.questions}
+            pageIndex={pageIndex}
+            orientation={orientation}
+            showSectionHeading={isSectionFirstPage}
+          />
+        );
+      })}
+      {solutionQuestions.map((question, solutionIndex) => target === "questions" ? (
+        <Math3BookletSolutionPage
+          key={question.id}
+          question={question}
+          orientation={orientation}
+          bookletPageNumber={objectivePages.length + solutionIndex + 1}
+          showSectionHeading={solutionIndex === 0}
+        />
+      ) : (
+        <Math3BookletAnswerSolutionPage
+          key={`answer-${question.id}`}
+          question={question}
+          orientation={orientation}
+          bookletPageNumber={objectivePages.length + solutionIndex + 1}
+          showSectionHeading={solutionIndex === 0}
+        />
+      ))}
     </div>
   );
 }
@@ -771,27 +903,20 @@ function Math3BookletCover({
       data-booklet-page-kind="cover"
       className={`booklet-page math3-booklet-cover flex min-h-[420px] flex-col overflow-hidden rounded-lg border border-outline-variant/25 bg-white p-7 text-neutral-950 shadow-ambient sm:p-10 ${orientation === "landscape" ? "sm:aspect-[4/3]" : "sm:aspect-[3/4]"}`}
     >
-      <div className="text-xs font-semibold uppercase tracking-[0.24em] text-neutral-500">Asteroid · 数学三自测</div>
-      <div className="my-auto max-w-3xl py-10">
-        <div className="mb-4 inline-flex rounded-md border border-neutral-200 bg-neutral-50 px-3 py-1.5 text-sm font-semibold text-neutral-700">
-          {target === "questions" ? "iPad 题目册" : "标准答案册"}
-        </div>
-        <h1 className="font-headline text-3xl font-bold leading-tight text-neutral-950 sm:text-5xl">{test.title}</h1>
-        <p className="mt-5 max-w-2xl text-sm leading-7 text-neutral-600">
-          {math3SelfTestDifficultyMeta[test.difficulty].label} · {math3SelfTestModeMeta[test.mode].label} · {test.paper.questions.length} 题 · {test.paper.totalScore} 分 · {test.paper.durationMinutes} 分钟
-        </p>
+      <div className="math3-booklet-cover-top text-center">数学（三）模拟卷</div>
+      <div className="math3-booklet-cover-center my-auto text-center">
+        <h1 className="font-headline font-bold leading-tight text-neutral-950">
+          {target === "questions" ? "题目册" : "标准答案册"}
+        </h1>
         {target === "questions" && (
-          <div className="mt-10 grid max-w-2xl gap-5 text-sm sm:grid-cols-2">
-            <div className="border-b border-neutral-300 pb-2 text-neutral-500">姓名</div>
-            <div className="border-b border-neutral-300 pb-2 text-neutral-500">日期</div>
-            <div className="border-b border-neutral-300 pb-2 text-neutral-500">开始时间</div>
-            <div className="border-b border-neutral-300 pb-2 text-neutral-500">完成时间</div>
+          <div className="math3-booklet-cover-fields mx-auto mt-12 grid max-w-2xl gap-5 text-left sm:grid-cols-2">
+            <div className="border-b border-neutral-300 pb-2">姓名：________________</div>
+            <div className="border-b border-neutral-300 pb-2">日期：________________</div>
           </div>
         )}
       </div>
-      <footer className="flex items-end justify-between gap-4 border-t border-neutral-200 pt-4 text-xs text-neutral-500">
-        <span>{orientation === "landscape" ? "iPad 横屏 4:3" : "iPad 竖屏 3:4"}</span>
-        <span>{target === "questions" ? "选填集中排版 · 解答一题一面" : "答案与评分步骤仅供复盘"}</span>
+      <footer className="math3-booklet-cover-bottom text-center">
+        {target === "answers" ? formatExamDate(test.paper.generatedAt) : "日期：________________"}
       </footer>
     </article>
   );
@@ -801,14 +926,14 @@ function Math3BookletObjectivePage({
   section,
   questions,
   pageIndex,
-  pageCount,
   orientation,
+  showSectionHeading,
 }: {
   section: Math3ObjectiveSection;
   questions: Math3SelfTestQuestion[];
   pageIndex: number;
-  pageCount: number;
   orientation: BookletOrientation;
+  showSectionHeading: boolean;
 }) {
   const sectionLabel = section === "choice" ? "一、选择题" : "二、填空题";
   return (
@@ -818,28 +943,29 @@ function Math3BookletObjectivePage({
       data-booklet-page-kind="objective"
       className={`booklet-page math3-booklet-page flex min-h-[420px] flex-col overflow-hidden rounded-lg border border-outline-variant/25 bg-white p-5 text-neutral-950 shadow-ambient sm:p-6 ${orientation === "landscape" ? "sm:aspect-[4/3]" : "sm:aspect-[3/4]"}`}
     >
-      <header className="booklet-page-header flex items-start justify-between gap-4 border-b border-neutral-200 pb-3">
-        <div className="math3-booklet-section-heading text-sm font-bold text-neutral-950">{sectionLabel}</div>
-        <span className="shrink-0 text-xs text-neutral-400">客观题页 {pageIndex + 1} / {pageCount}</span>
-      </header>
+      {showSectionHeading && (
+        <header className="booklet-page-header math3-booklet-section-heading font-bold text-neutral-950">
+          {sectionLabel}
+        </header>
+      )}
 
-      <div className="math3-objective-layout mt-4 min-h-0 flex-1">
+      <div className={`math3-objective-layout min-h-0 flex-1 ${showSectionHeading ? "mt-4" : "mt-0"}`}>
         <section className="math3-objective-list min-w-0">
           {questions.map((question) => (
             <div key={question.id} className="math3-objective-item break-inside-avoid pb-3 last:pb-0">
-              <div className="mb-1.5 flex items-center justify-between gap-3 text-xs">
-                <span className="font-bold text-neutral-900">{question.index}. <span className="font-medium text-neutral-500">({question.score} 分)</span></span>
+              <div className="mb-1.5 flex items-center justify-between gap-3">
+                <span className="font-bold text-neutral-900">{question.index}. <span className="font-medium">({question.score} 分)</span></span>
                 {section === "fill" && <span className="text-neutral-400">答案：____________</span>}
               </div>
-              <MarkdownContent content={question.question} className="math3-objective-markdown booklet-markdown text-[13px] leading-6 text-neutral-950" compact />
+              <MarkdownContent content={question.question} className="math3-objective-markdown booklet-markdown text-neutral-950" compact />
               {question.type === "choice" && question.options && question.options.length > 0 && (
                 <div
                   data-option-layout={getMath3ChoiceOptionLayout(question.options, orientation)}
                   className="math3-objective-options mt-2 grid gap-x-4 gap-y-1.5"
                 >
                   {question.options.map((option) => (
-                    <div key={`${question.id}-${option.label}`} className="math3-objective-option grid min-w-0 grid-cols-[1.25rem_minmax(0,1fr)] gap-1.5 text-xs leading-5">
-                      <span className="font-semibold text-neutral-700">{option.label}.</span>
+                    <div key={`${question.id}-${option.label}`} className="math3-objective-option grid min-w-0 grid-cols-[1.25rem_minmax(0,1fr)] gap-1.5">
+                      <span className="font-semibold text-neutral-900">{option.label}.</span>
                       <MarkdownContent content={option.content} className="math3-objective-markdown min-w-0 text-neutral-950" compact />
                     </div>
                   ))}
@@ -858,10 +984,12 @@ function Math3BookletSolutionPage({
   question,
   orientation,
   bookletPageNumber,
+  showSectionHeading,
 }: {
   question: Math3SelfTestQuestion;
   orientation: BookletOrientation;
   bookletPageNumber: number;
+  showSectionHeading: boolean;
 }) {
   const density = question.question.length > 720 ? "compact" : "comfortable";
   return (
@@ -871,9 +999,12 @@ function Math3BookletSolutionPage({
       data-booklet-page-kind="solution"
       className={`booklet-page math3-booklet-page flex min-h-[420px] flex-col overflow-hidden rounded-lg border border-outline-variant/25 bg-white p-5 text-neutral-950 shadow-ambient sm:p-6 ${orientation === "landscape" ? "sm:aspect-[4/3]" : "sm:aspect-[3/4]"}`}
     >
-      <Math3BookletPageHeader question={question} label="解答题 · 一题一面" />
+      <Math3BookletPageHeader
+        question={question}
+        label={showSectionHeading ? "三、解答题：第 17～22 题" : undefined}
+      />
       <section className="booklet-question mt-5">
-        <MarkdownContent content={question.question} className="booklet-markdown text-[15px] leading-8 text-neutral-950" />
+        <MarkdownContent content={question.question} className="booklet-markdown text-neutral-950" />
       </section>
       <div className="min-h-0 flex-1" aria-hidden="true" />
       <Math3BookletFooter pageNumber={bookletPageNumber} />
@@ -882,20 +1013,23 @@ function Math3BookletSolutionPage({
 }
 
 function Math3BookletFooter({ pageNumber }: { pageNumber: number }) {
-  return (
-    <footer className="math3-booklet-page-footer mt-3 text-center text-[10px] tracking-[0.14em] text-neutral-400">
-      数学（三） · 第 {pageNumber} 页
-    </footer>
-  );
+  return <footer className="math3-booklet-page-footer text-right">数学（三）· 第 {pageNumber} 页</footer>;
 }
 
-function Math3BookletAnswerPage({
-  question,
+function Math3BookletAnswerObjectivePage({
+  section,
+  questions,
+  pageIndex,
   orientation,
+  showSectionHeading,
 }: {
-  question: Math3SelfTestQuestion;
+  section: Math3ObjectiveSection;
+  questions: Math3SelfTestQuestion[];
+  pageIndex: number;
   orientation: BookletOrientation;
+  showSectionHeading: boolean;
 }) {
+  const sectionLabel = section === "choice" ? "一、选择题" : "二、填空题";
   return (
     <article
       data-booklet-orientation={orientation}
@@ -903,29 +1037,71 @@ function Math3BookletAnswerPage({
       data-booklet-page-kind="answer"
       className={`booklet-page math3-booklet-page flex min-h-[420px] flex-col overflow-hidden rounded-lg border border-outline-variant/25 bg-white p-5 text-neutral-950 shadow-ambient sm:p-6 ${orientation === "landscape" ? "sm:aspect-[4/3]" : "sm:aspect-[3/4]"}`}
     >
-      <Math3BookletPageHeader question={question} label="答案" />
-      <section className="mt-5 rounded-lg border border-green-200 bg-green-50 p-4">
-        <h3 className="mb-3 text-sm font-semibold text-green-800">标准答案</h3>
-        <MarkdownContent content={question.answer || "暂无标准答案"} className="booklet-markdown text-green-950" />
-      </section>
-      <section className="mt-4 rounded-lg border border-neutral-200 bg-neutral-50 p-4">
-        <h3 className="mb-3 text-sm font-semibold text-neutral-800">解析</h3>
-        <MarkdownContent content={question.explanation || "暂无解析"} className="booklet-markdown text-neutral-950" />
-      </section>
-      {question.rubricSteps.length > 0 && (
-        <section className="mt-4 rounded-lg border border-sky-200 bg-sky-50 p-4">
-          <h3 className="mb-3 text-sm font-semibold text-sky-900">评分步骤</h3>
-          <div className="space-y-2 text-sm leading-6 text-sky-950">
-            {question.rubricSteps.map((step) => (
-              <div key={step.id} className="grid grid-cols-[auto_minmax(0,1fr)_auto] gap-2">
-                <span className="font-semibold">{step.label}</span>
-                <span>{step.expected}</span>
-                <span className="font-semibold tabular-nums">{step.points} 分</span>
-              </div>
-            ))}
-          </div>
+      {showSectionHeading && <header className="booklet-page-header math3-booklet-section-heading font-bold text-neutral-950">{sectionLabel}</header>}
+      <div className={`math3-answer-list min-h-0 flex-1 ${showSectionHeading ? "mt-4" : "mt-0"}`}>
+        {questions.map((question) => (
+          <section key={question.id} className="math3-answer-item break-inside-avoid">
+            <header className="math3-answer-item-header flex items-baseline justify-between gap-3">
+              <span className="font-bold">{question.index}.（{question.score} 分）</span>
+              <span className="font-bold">标准答案：</span>
+              <MarkdownContent content={question.answer || "暂无标准答案"} className="math3-answer-inline booklet-markdown" compact />
+            </header>
+            <div className="math3-answer-explanation">
+              <span className="font-bold">解析：</span>
+              <MarkdownContent content={question.explanation || "暂无解析"} className="booklet-markdown" compact />
+            </div>
+          </section>
+        ))}
+      </div>
+      <Math3BookletFooter pageNumber={pageIndex + 1} />
+    </article>
+  );
+}
+
+function Math3BookletAnswerSolutionPage({
+  question,
+  orientation,
+  bookletPageNumber,
+  showSectionHeading,
+}: {
+  question: Math3SelfTestQuestion;
+  orientation: BookletOrientation;
+  bookletPageNumber: number;
+  showSectionHeading: boolean;
+}) {
+  return (
+    <article
+      data-booklet-orientation={orientation}
+      data-booklet-density="compact"
+      data-booklet-page-kind="answer-solution"
+      className={`booklet-page math3-booklet-page flex min-h-[420px] flex-col overflow-hidden rounded-lg border border-outline-variant/25 bg-white p-5 text-neutral-950 shadow-ambient sm:p-6 ${orientation === "landscape" ? "sm:aspect-[4/3]" : "sm:aspect-[3/4]"}`}
+    >
+      <Math3BookletPageHeader question={question} label={showSectionHeading ? "三、解答题：第 17～22 题" : undefined} />
+      <div className="math3-answer-solution-flow min-h-0 flex-1">
+        <section className="math3-answer-block">
+          <h3>结论</h3>
+          <MarkdownContent content={question.answer || "暂无标准答案"} className="booklet-markdown" compact />
         </section>
-      )}
+        <section className="math3-answer-block">
+          <h3>解析</h3>
+          <MarkdownContent content={question.explanation || "暂无解析"} className="booklet-markdown" compact />
+        </section>
+        {question.rubricSteps.length > 0 && (
+          <section className="math3-answer-block">
+            <h3>评分要点</h3>
+            <div className="math3-rubric-table">
+              {question.rubricSteps.map((step) => (
+                <div key={step.id} className="math3-rubric-row">
+                  <span className="font-bold">{step.label}</span>
+                  <MarkdownContent content={step.expected} className="booklet-markdown" compact />
+                  <span className="font-bold tabular-nums">{step.points} 分</span>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+      </div>
+      <Math3BookletFooter pageNumber={bookletPageNumber} />
     </article>
   );
 }
@@ -935,12 +1111,12 @@ function Math3BookletPageHeader({
   label,
 }: {
   question: Math3SelfTestQuestion;
-  label: string;
+  label?: string;
 }) {
   return (
-    <header className="booklet-page-header flex flex-wrap items-start justify-between gap-3 border-b border-neutral-200 pb-3">
-      <div className="math3-booklet-section-heading min-w-0 text-sm font-bold text-neutral-950">{label}</div>
-      <span className="shrink-0 text-xs font-medium text-neutral-600">第 {question.index} 题 · {question.score} 分</span>
+    <header className={`booklet-page-header flex flex-wrap items-start justify-between gap-3 ${label ? "border-b border-neutral-200 pb-3" : "pb-0"}`}>
+      {label ? <div className="math3-booklet-section-heading min-w-0 font-bold text-neutral-950">{label}</div> : <span className="math3-booklet-section-heading font-bold text-neutral-950">第 {question.index} 题</span>}
+      <span className="shrink-0 font-medium text-neutral-950">{label ? `第 ${question.index} 题 · ${question.score} 分` : `${question.score} 分`}</span>
     </header>
   );
 }

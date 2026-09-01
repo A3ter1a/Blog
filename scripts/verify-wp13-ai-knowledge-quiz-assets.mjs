@@ -7,11 +7,11 @@ const required = [
   ["supabase/migrations/0028_ai_knowledge_quiz_insert_policy_fix.sql", ["ai_knowledge_quizzes_owner_insert", "review_status in ('draft', 'self_checked')"]],
   ["lib/ai-knowledge-quiz-contract.ts", ["runAiKnowledgeQuizSelfCheck", "toPublicAiKnowledgeQuizItem", "answersEqual"]],
   ["lib/server-ai-knowledge-quiz.ts", ["submitAiKnowledgeQuiz", "transitionAiKnowledgeQuiz", "publishAiKnowledgeQuiz", "gradeAiKnowledgeQuizAttempt"]],
-  ["app/api/ai/knowledge-quizzes/[id]/generate/route.ts", ["resolveAIKey", "createAiKnowledgeQuiz"]],
+  ["app/api/ai/knowledge-quizzes/[id]/generate/route.ts", ["resolveAIKey", "createAiKnowledgeQuizJob", "scheduleInternalJobDrain"]],
   ["app/api/ai/knowledge-quizzes/[id]/submit/route.ts", ["submitAiKnowledgeQuiz"]],
   ["app/api/ai/knowledge-quiz-review/[id]/route.ts", ["transitionAiKnowledgeQuiz", "publishAiKnowledgeQuiz"]],
   ["app/api/knowledge-quizzes/[id]/attempt/route.ts", ["gradeAiKnowledgeQuizAttempt"]],
-  ["components/ai-content/AiContentWorkspace.tsx", ["生成知识点快测", "提交快测审核", "/api/ai/knowledge-quizzes/"]],
+  ["components/ai-content/AiContentWorkspace.tsx", ["生成知识点快测", "提交快测审核", "createKnowledgeQuizJob"]],
   ["components/ai-content/AiKnowledgeQuizReviewPanel.tsx", ["题目、答案与解析独立于 Markdown", "退回返修", "发布/绑定讲义"]],
   ["components/ai-assistant/AssistantDock.tsx", ["/api/knowledge-quizzes?noteId=", "提交快测", "答案与解析"]],
 ];

@@ -1,11 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, FileJson, FileText, BookOpen } from "lucide-react";
 import { Note } from "@/lib/types";
 import { exportAsJSON, exportAsMarkdown, exportAsObsidian } from "@/lib/export";
 import { dialogMotion, overlayMotion, uiMotion } from "@/lib/motion";
+import { useDialogFocus } from "@/hooks/useDialogFocus";
 
 interface ExportDialogProps {
   isOpen: boolean;
@@ -15,6 +16,15 @@ interface ExportDialogProps {
 
 export function ExportDialog({ isOpen, onClose, notes }: ExportDialogProps) {
   const [selectedFormat, setSelectedFormat] = useState<string>("json");
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+
+  useDialogFocus({
+    isOpen,
+    onClose,
+    containerRef: dialogRef,
+    initialFocusRef: closeButtonRef,
+  });
 
   const formats = [
     {
@@ -78,14 +88,22 @@ export function ExportDialog({ isOpen, onClose, notes }: ExportDialogProps) {
             onClick={onClose}
           >
             <div
+              ref={dialogRef}
               className="bg-surface-container-lowest rounded-2xl shadow-elevated max-w-md w-full overflow-hidden"
               onClick={(e) => e.stopPropagation()}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="export-dialog-title"
+              tabIndex={-1}
             >
               {/* Header */}
               <div className="flex items-center justify-between px-6 py-4 border-b border-outline-variant/10">
-                <h2 className="text-xl font-bold text-on-surface font-headline">选择导出格式</h2>
+                <h2 id="export-dialog-title" className="text-xl font-bold text-on-surface font-headline">选择导出格式</h2>
                 <button
+                  ref={closeButtonRef}
+                  type="button"
                   onClick={onClose}
+                  aria-label="关闭导出选项"
                   className="motion-ui motion-interactive p-2 rounded-full hover:bg-surface-container-high"
                 >
                   <X className="w-5 h-5 text-on-surface-variant" />
@@ -98,6 +116,7 @@ export function ExportDialog({ isOpen, onClose, notes }: ExportDialogProps) {
                   const Icon = format.icon;
                   return (
                     <button
+                      type="button"
                       key={format.value}
                       onClick={() => setSelectedFormat(format.value)}
                       className={`motion-ui motion-interactive w-full flex items-center gap-4 p-4 rounded-xl ${
@@ -127,12 +146,14 @@ export function ExportDialog({ isOpen, onClose, notes }: ExportDialogProps) {
               {/* Footer */}
               <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-outline-variant/10 bg-surface-container-low">
                 <button
+                  type="button"
                   onClick={onClose}
                   className="motion-ui motion-interactive px-4 py-2 rounded-lg bg-surface-container-high text-on-surface-variant text-sm font-medium hover:bg-surface-container-highest"
                 >
                   取消
                 </button>
                 <button
+                  type="button"
                   onClick={handleExport}
                   className="motion-ui motion-interactive px-4 py-2 rounded-lg editorial-gradient text-on-primary text-sm font-medium hover:opacity-90"
                 >

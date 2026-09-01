@@ -124,7 +124,8 @@ export async function callQwenVision(
   endpoint: string,
   imageBase64: string,
   prompt: string,
-  mimeType: string = 'image/jpeg'
+  mimeType: string = 'image/jpeg',
+  signal?: AbortSignal,
 ): Promise<{ text: string }> {
   const baseUrl = endpoint.replace(/\/+$/, '');
 
@@ -156,7 +157,7 @@ export async function callQwenVision(
       max_tokens: 4096,
       stream: false,
     }),
-    signal: AbortSignal.timeout(180000),
+    signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(180_000)]) : AbortSignal.timeout(180_000),
   });
 
   if (!res.ok) {

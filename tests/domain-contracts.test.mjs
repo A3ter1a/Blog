@@ -82,6 +82,7 @@ import {
   parseEconomicsGraphSpec,
 } from "../lib/economics-graphs.ts";
 import { normalizeMarkdownSyntax } from "../lib/markdown-normalizer.ts";
+import { extractTocItems, renderMarkdownToHtml } from "../lib/markdown.ts";
 import {
   AI_CONTENT_MAX_CHARS,
   runAiContentSelfCheck,
@@ -104,6 +105,7 @@ import {
   toUnixTimestamp,
 } from "../lib/utils.ts";
 import { repairAIJsonText } from "../lib/ai-json-repair.ts";
+import { getProblemValidationIssues, normalizeProblem } from "../lib/problem-utils.ts";
 import {
   buildMarkdownReviewProposal,
   canApplyMarkdownReviewProposal,
@@ -878,6 +880,28 @@ test("LaTeX 规范化先收敛过度转义命令，再识别真正的矩阵换�
   assert.equal(normalizeLatexForKatex(String.raw`a \\\\ b`), String.raw`a \\ b`);
 });
 
+test("Markdown 最终渲染保持目录锚点、KaTeX 与危险链接边界一致", () => {
+  const markdown = String.raw`# 重复标题
+
+行内公式 $\frac{1}{2}$。
+
+# 重复标题
+
+[危险链接](javascript:alert(1))`;
+  const toc = extractTocItems(markdown);
+  const html = renderMarkdownToHtml(markdown);
+
+  assert.deepEqual(toc.map(({ id, level }) => ({ id, level })), [
+    { id: "重复标题", level: 1 },
+    { id: "重复标题-1", level: 1 },
+  ]);
+  assert.match(html, /<h1 id="重复标题">/);
+  assert.match(html, /<h1 id="重复标题-1">/);
+  assert.match(html, /class="katex-inline"/);
+  assert.doesNotMatch(html, /AsteroidMathSpanToken/);
+  assert.doesNotMatch(html, /href="javascript:/i);
+});
+
 test("30 条生产历史 Markdown 难例保持哈希证据、幂等且高风险不自动改写", (context) => {
   const corpusPath = resolve(".local-backups/wp2-markdown-corpus/historical-cases.json");
   if (!existsSync(corpusPath)) {
@@ -952,22 +976,22 @@ test("客户端任务账本可从刷新缓存恢复，并区分重试与结果�
   assert.equal(getClientJobProgressLabel({ ...jobs[0], status: "succeeded" }), "等待领取结果");
 });
 
-test("消息中心保留失败/取消终态三天，并持续保留进行中任务", () => {
-  const now = Date.parse("2026-07-31T00:00:00.000Z");
+test("消息中心保留失败/取消终态三十天，并持续保留进行中任务", () => {
+  const now = Date.parse("2026-08-31T00:00:00.000Z");
   const jobs = normalizeStoredJobs([
     {
       id: "terminal-fresh",
       title: "新失败任务",
       status: "failed",
-      updatedAt: "2026-07-29T00:00:00.000Z",
-      createdAt: "2026-07-29T00:00:00.000Z",
+      updatedAt: "2026-08-02T00:00:00.000Z",
+      createdAt: "2026-08-02T00:00:00.000Z",
     },
     {
       id: "terminal-expired",
       title: "旧取消任务",
       status: "cancelled",
-      updatedAt: "2026-07-27T23:59:59.000Z",
-      createdAt: "2026-07-27T23:59:59.000Z",
+      updatedAt: "2026-07-30T23:59:59.000Z",
+      createdAt: "2026-07-30T23:59:59.000Z",
     },
     {
       id: "active",
@@ -990,6 +1014,45 @@ test("消息中心接入真实 AI 待审核提案并提供精确审核入口", (
   assert.match(center, /AI_REVIEW_QUEUE_CHANGED_EVENT/);
   assert.match(reviewEntry, /useAdminAuth/);
   assert.match(reviewEntry, /AI 内容审核/);
+});
+
+test("数学三试卷生成登记为可恢复、可取消的持久任务", () => {
+  const component = readFileSync(resolve("components/tools/Math3SelfTest.tsx"), "utf8");
+  const center = readFileSync(resolve("components/jobs/JobCenter.tsx"), "utf8");
+  const clientContract = readFileSync(resolve("lib/job-client.ts"), "utf8");
+  const runner = readFileSync(resolve("lib/server-internal-job-runner.ts"), "utf8");
+  const jobRoute = readFileSync(resolve("app/api/jobs/math3-self-test/route.ts"), "utf8");
+  const generationService = readFileSync(resolve("lib/server-math3-self-test-generation.ts"), "utf8");
+  const selfTestApi = readFileSync(resolve("lib/math3-self-test-api.ts"), "utf8");
+
+  assert.doesNotMatch(component, /fetch\(["']\/api\/ai\/math3-self-test\/generate/);
+  assert.match(component, /useJobCenter/);
+  assert.match(component, /createMath3SelfTestJob/);
+  assert.match(center, /createMath3SelfTestJob/);
+  assert.match(clientContract, /math3_self_test_generation/);
+  assert.match(runner, /createMath3SelfTestGenerationJob/);
+  assert.match(runner, /advanceMath3SelfTestGenerationJob/);
+  assert.match(runner, /任务已取消或不再处于可推进状态/);
+  assert.match(jobRoute, /createMath3SelfTestGenerationJob/);
+  assert.match(jobRoute, /internalJobLeaseSchemaAvailable/);
+  assert.match(generationService, /正在进行分科独立审校/);
+  assert.match(generationService, /正在进行高风险二次终审/);
+  assert.match(selfTestApi, /createFromGenerationJob/);
+
+  const [normalized] = normalizeRemoteJobRows([{
+    id: "22222222-2222-4222-8222-222222222222",
+    job_class: "internal",
+    job_kind: "math3_self_test_generation",
+    status: "running",
+    title: "数学三快速自测 · 模拟卷",
+    progress_current: 1,
+    progress_total: 3,
+    payload: { phase: "正在进行分科独立审校" },
+    created_at: "2026-08-31T01:00:00.000Z",
+    updated_at: "2026-08-31T01:01:00.000Z",
+  }]);
+  assert.equal(normalized.type, "math3_self_test_generation");
+  assert.ok(Math.abs((normalized.progress ?? 0) - (100 / 3)) < 1e-10);
 });
 
 test("数据库任务账本恢复时按外部任务身份合并且远端状态优先", () => {
@@ -1138,6 +1201,21 @@ test("Qwen 题库 OCR 只对模型或配额类错误切换候选模型", async (
     throw new Error("network timeout");
   }));
   assert.equal(networkAttempts.length, 1);
+
+  const cancelledAttempts = [];
+  const controller = new AbortController();
+  await assert.rejects(() => recognizeProblemImage({
+    apiKey: "test-key",
+    model: "qwen3.7-plus",
+    imageBase64: "ZmFrZQ==",
+    mimeType: "image/jpeg",
+    signal: controller.signal,
+  }, async (_apiKey, model) => {
+    cancelledAttempts.push(model);
+    controller.abort();
+    throw new Error("quota exceeded");
+  }));
+  assert.equal(cancelledAttempts.length, 1, "取消后不能继续尝试备用 OCR 模型");
 });
 
 test("DeepSeek 题目分析覆盖多题、JSON 修复、空结果补救与 OCR 低置信度兜底", async () => {
@@ -1193,6 +1271,59 @@ test("DeepSeek 题目分析覆盖多题、JSON 修复、空结果补救与 OCR �
   assert.equal(fallback.extractionMode, "ocrFallback");
   assert.equal(fallback.problems.length, 1);
   assert.equal(fallback.problems[0].confidence, 0.25);
+
+  let cancelledCalls = 0;
+  const controller = new AbortController();
+  await assert.rejects(() => analyzeProblemOcrText({
+    apiKey: "test-key",
+    model: "deepseek-v4-flash",
+    ocrText: "计算 $\\int_0^1 x^2 dx$",
+    signal: controller.signal,
+  }, async () => {
+    cancelledCalls += 1;
+    if (cancelledCalls === 1) return { content: '{"problems":[]}', tokensUsed: 1 };
+    controller.abort();
+    throw new Error("cancelled");
+  }));
+  assert.equal(cancelledCalls, 2, "取消后的补救分析不能降级为看似成功的 OCR 兜底");
+});
+
+test("题库编辑器与阅读页共享同一题目规范化和选择题校验", () => {
+  const normalized = normalizeProblem({
+    id: "problem-contract",
+    type: "choice",
+    difficulty: "medium",
+    question: " 题干 ",
+    answer: "B",
+    explanation: "旧解析",
+    options: [
+      { label: " a ", content: " 选项一 " },
+      { label: "b", content: " 选项二 " },
+    ],
+  });
+
+  assert.deepEqual(normalized.options, [
+    { label: "A", content: "选项一" },
+    { label: "B", content: "选项二" },
+  ]);
+  assert.deepEqual(getProblemValidationIssues(normalized), []);
+  assert.deepEqual(
+    getProblemValidationIssues({
+      ...normalized,
+      options: [
+        { label: "A", content: "有效选项" },
+        { label: " a ", content: "" },
+      ],
+    }),
+    ["选择题选项内容不能为空", "选择题选项标签不能重复：A"],
+  );
+
+  const editor = readFileSync(resolve("components/problems/ProblemEditor.tsx"), "utf8");
+  const reader = readFileSync(resolve("components/notes/NoteReaderClient.tsx"), "utf8");
+  const noteSave = readFileSync(resolve("hooks/useNoteSave.ts"), "utf8");
+  assert.match(editor, /getProblemValidationIssues/);
+  assert.match(reader, /normalizeProblem[\s\S]*getProblemValidationIssues/);
+  assert.match(noteSave, /getProblemsValidationIssues/);
 });
 
 test("主题跟随北京日出日落，并允许恒亮与恒暗覆盖", () => {
@@ -1881,7 +2012,7 @@ test("所有现有写入型 Route Handler 都先验证管理员身份", () => {
   for (const routePath of mutationRoutes) {
     const route = readFileSync(resolve(routePath), "utf8");
     assert.equal(
-      route.includes("requireAdminRequest(req)") || route.includes("getAdminRequestContext(req)"),
+      route.includes("requireAdminRequest(req)") || route.includes("getAdminRequestContext(req)") || route.includes("getJobRequestContext(req)"),
       true,
       routePath,
     );
@@ -2072,6 +2203,11 @@ test("本地预部署构建显式离线且不会尝试 Supabase 预加载", () =
   const notesPage = readFileSync(resolve("app/notes/page.tsx"), "utf8");
   const sitemap = readFileSync(resolve("app/sitemap.ts"), "utf8");
   assert.equal(packageJson.scripts["verify:predeploy"].includes("build:offline"), true);
+  assert.match(
+    packageJson.scripts["test:run"] ?? "",
+    /--test-isolation=none/,
+    "Windows 受管环境中的领域测试不得依赖测试文件子进程",
+  );
   assert.equal(runner.includes('ASTEROID_OFFLINE_BUILD: "1"'), true);
   assert.equal(notesPage.includes('process.env.ASTEROID_OFFLINE_BUILD === "1"'), true);
   assert.equal(sitemap.includes('process.env.ASTEROID_OFFLINE_BUILD === "1"'), true);
@@ -2142,7 +2278,7 @@ test("笔记阅读器与元数据恢复缓存序列化后的日期字段", () =>
   assert.equal(toUnixTimestamp("invalid-date"), 0);
 });
 
-test("阅读器只移除与文章标题完全一致的正文首个一级标题", () => {
+test("阅读器移除与文章标题匹配的章节首个一级标题及内部生成说明", () => {
   assert.equal(
     stripRedundantLeadingMarkdownTitle("# 宏观经济学\n\n## 第一节\n正文", "宏观经济学"),
     "## 第一节\n正文",
@@ -2158,6 +2294,20 @@ test("阅读器只移除与文章标题完全一致的正文首个一级标题",
   assert.equal(
     stripRedundantLeadingMarkdownTitle("## 宏观经济学\n正文", "宏观经济学"),
     "## 宏观经济学\n正文",
+  );
+  assert.equal(
+    stripRedundantLeadingMarkdownTitle(
+      "<!-- GENERATED_BY_ECON_READING_LECTURES_V2 -->\n# 第01章 宏观经济学的科学\n\n> 本章为整合阅读正文：概念、机制、公式、图形、易错点和卷面表达已经合并在同一篇笔记中。\n\n## 一、研究对象\n正文",
+      "第01章 宏观经济学的科学",
+    ),
+    "## 一、研究对象\n正文",
+  );
+  assert.equal(
+    stripRedundantLeadingMarkdownTitle(
+      "# 宏观经济学·第 1 章：宏观经济学的科学\n\n正文",
+      "第01章 宏观经济学的科学",
+    ),
+    "正文",
   );
 });
 
@@ -2310,4 +2460,226 @@ test("月度规划接口契约使用专用只读认证并支持条件请求", ()
   assert.equal(envExample.includes("BLOG_PLANNING_ALLOWED_ORIGINS="), true);
   assert.equal(documentation.includes("planning_task_status"), true);
   assert.equal(documentation.includes("<REDACTED>"), true);
+});
+
+test("数学真题整套建议评分由可恢复任务持久执行并原子写入评分账本", () => {
+  const review = readFileSync(resolve("components/tools/MathPaperOcrReview.tsx"), "utf8");
+  const jobCenter = readFileSync(resolve("components/jobs/JobCenter.tsx"), "utf8");
+  const runner = readFileSync(resolve("lib/server-internal-job-runner.ts"), "utf8");
+
+  assert.equal(review.includes("createMathPaperGradeJob"), true);
+  assert.equal(review.includes('fetch("/api/ai/math-paper-grade"'), false);
+  assert.equal(review.includes('action: "record_suggestion"'), false);
+  assert.equal(jobCenter.includes("createMathPaperGradeJob"), true);
+  assert.equal(runner.includes('case "math_paper_grade"'), true);
+  assert.equal(existsSync(resolve("app/api/jobs/math-paper-grade/route.ts")), true);
+  assert.equal(existsSync(resolve("lib/server-math-paper-grade.ts")), true);
+});
+
+test("数学答题纸 OCR 先持久化原图并由任务中心恢复识别结果", () => {
+  const review = readFileSync(resolve("components/tools/MathPaperOcrReview.tsx"), "utf8");
+  const jobCenter = readFileSync(resolve("components/jobs/JobCenter.tsx"), "utf8");
+  const runner = readFileSync(resolve("lib/server-internal-job-runner.ts"), "utf8");
+  const storage = readFileSync(resolve("lib/supabase-storage.ts"), "utf8");
+
+  assert.equal(review.includes("createMathPaperOcrJob"), true);
+  assert.equal(review.includes("createLocalProblemOcrJob"), false);
+  assert.equal(review.includes('fetch("/api/ai/ocr"'), false);
+  assert.equal(jobCenter.includes("createMathPaperOcrJob"), true);
+  assert.equal(runner.includes('case "math_paper_ocr"'), true);
+  assert.equal(storage.includes("uploadMathPaperOcrAssets"), true);
+  assert.equal(existsSync(resolve("app/api/jobs/math-paper-ocr/route.ts")), true);
+  assert.equal(existsSync(resolve("lib/math-paper-ocr-job.ts")), true);
+});
+
+test("数学三批量归类持久分批执行且只应用到未变化的题目快照", () => {
+  const hook = readFileSync(resolve("hooks/useMath3AutoClassify.ts"), "utf8");
+  const jobCenter = readFileSync(resolve("components/jobs/JobCenter.tsx"), "utf8");
+  const runner = readFileSync(resolve("lib/server-internal-job-runner.ts"), "utf8");
+
+  assert.equal(hook.includes("createMath3ClassifyJob"), true);
+  assert.equal(hook.includes('fetch("/api/ai/math3-classify"'), false);
+  assert.equal(hook.includes("calculateMath3ClassificationChecksum"), true);
+  assert.equal(jobCenter.includes("createMath3ClassifyJob"), true);
+  assert.equal(runner.includes('case "math3_auto_classify"'), true);
+  assert.equal(runner.includes("normalizeMath3ChapterAssignments"), true);
+  assert.equal(existsSync(resolve("app/api/jobs/math3-classify/route.ts")), true);
+  assert.equal(existsSync(resolve("lib/server-math3-classification.ts")), true);
+  assert.equal(existsSync(resolve("lib/math3-classification-job.ts")), true);
+});
+
+test("英语主观题建议评分在持久任务内生成并幂等追加训练记录", () => {
+  const training = readFileSync(resolve("components/tools/EnglishTraining.tsx"), "utf8");
+  const api = readFileSync(resolve("lib/english-training-api.ts"), "utf8");
+  const jobCenter = readFileSync(resolve("components/jobs/JobCenter.tsx"), "utf8");
+  const runner = readFileSync(resolve("lib/server-internal-job-runner.ts"), "utf8");
+
+  assert.equal(training.includes("createEnglishSubjectiveGradeJob"), true);
+  assert.equal(api.includes('fetch("/api/ai/english-subjective-grade"'), false);
+  assert.equal(api.includes('action: "record_suggestion"'), false);
+  assert.equal(jobCenter.includes("createEnglishSubjectiveGradeJob"), true);
+  assert.equal(runner.includes('case "english_subjective_grade"'), true);
+  assert.equal(existsSync(resolve("app/api/jobs/english-subjective-grade/route.ts")), true);
+  assert.equal(existsSync(resolve("lib/server-english-subjective-grade.ts")), true);
+});
+
+test("持久任务能力不可用时自动化入口不会退回页面内 AI 调用", () => {
+  const createPage = readFileSync(resolve("app/create/page.tsx"), "utf8");
+  const scanHook = readFileSync(resolve("hooks/useAIScan.ts"), "utf8");
+  const jobCenter = readFileSync(resolve("components/jobs/JobCenter.tsx"), "utf8");
+  const markdownRoute = readFileSync(resolve("app/api/jobs/markdown-review/route.ts"), "utf8");
+  const problemRoute = readFileSync(resolve("app/api/jobs/problem-ocr/route.ts"), "utf8");
+
+  assert.equal(createPage.includes('fetch("/api/ai/document-markdown-review"'), false);
+  assert.equal(scanHook.includes("createLocalProblemOcrJob"), false);
+  assert.equal(scanHook.includes("/api/ai/ocr"), false);
+  assert.equal(scanHook.includes("/api/ai/analyze"), false);
+  assert.equal(jobCenter.includes("createLocalProblemOcrJob"), false);
+  assert.equal(markdownRoute.includes("不能安全开始 Markdown 审阅"), true);
+  assert.equal(problemRoute.includes("不能安全开始识别"), true);
+});
+
+test("取消持久 OCR 任务会按用户边界清理私有源图", () => {
+  const ledger = readFileSync(resolve("lib/server-job-ledger.ts"), "utf8");
+  const jobCenter = readFileSync(resolve("components/jobs/JobCenter.tsx"), "utf8");
+
+  assert.equal(ledger.includes("getOwnedInternalOcrAssetPaths"), true);
+  assert.equal(ledger.includes('`problem-ocr/${userId}/`'), true);
+  assert.equal(ledger.includes('`math-paper-ocr/${userId}/`'), true);
+  assert.equal(ledger.includes("supabase.storage.from(OCR_DOCUMENT_BUCKET).remove(sourcePaths)"), true);
+  assert.equal(ledger.includes('status: "cancelled"'), true);
+  assert.equal(ledger.includes('statusText: "任务已取消，临时源图已清理"'), true);
+  assert.equal(jobCenter.includes('if (target.class === "external")'), true);
+});
+
+test("单分块生成任务在首次登记中断后可从输入快照幂等补齐", () => {
+  const runner = readFileSync(resolve("lib/server-internal-job-runner.ts"), "utf8");
+
+  assert.equal(runner.includes('const singleItemRegistrationKinds = ['), true);
+  for (const kind of [
+    "math3_self_test_generation",
+    "math_paper_grade",
+    "english_subjective_grade",
+    "economics_graph_generation",
+    "math3_step_grade",
+    "ai_knowledge_quiz_generation",
+  ]) {
+    assert.equal(runner.includes(`"${kind}"`), true, kind);
+  }
+  assert.equal(runner.includes('select("id").eq("job_id", job.id).limit(1)'), true);
+  assert.equal(runner.includes('statusText: "任务输入快照仍保留，正在幂等补齐缺失分块"'), true);
+  assert.equal(runner.includes('statusText: "缺失分块已补齐，任务中心将继续推进"'), true);
+});
+
+test("任务中心剩余可靠性缺口都有可执行保护", () => {
+  const classificationHook = readFileSync(resolve("hooks/useMath3AutoClassify.ts"), "utf8");
+  const mathPaperReview = readFileSync(resolve("components/tools/MathPaperOcrReview.tsx"), "utf8");
+  const runner = readFileSync(resolve("lib/server-internal-job-runner.ts"), "utf8");
+  const ledger = readFileSync(resolve("lib/server-job-ledger.ts"), "utf8");
+
+  assert.equal(classificationHook.includes("targetId"), true, "归类结果必须绑定编辑目标");
+  assert.equal(
+    classificationHook.includes("claimJobResult(completedJob.id)"),
+    false,
+    "归类结果在笔记真正保存前不能提前领取",
+  );
+  assert.equal(mathPaperReview.includes("sourceOcrJobId"), true, "整卷 OCR 草稿必须记录来源任务");
+  const ocrResumeEffect = mathPaperReview.slice(
+    mathPaperReview.indexOf('job.type === "math_paper_ocr"'),
+    mathPaperReview.indexOf("const failedJob"),
+  );
+  assert.equal(
+    ocrResumeEffect.includes("claimJobResult(completedJob.id)"),
+    false,
+    "整卷 OCR 结果在确认内容持久化前不能提前领取",
+  );
+  assert.equal(runner.includes("retryingMarkdownReviewRegistration"), true, "Markdown 登记中断后必须幂等补齐");
+  assert.equal(runner.includes("renewInternalJobItemLease"), true, "长任务必须在调用模型期间续租");
+  assert.equal(ledger.includes("cleanupOrphanedUserOcrAssets"), true, "过期和登记不确定的 OCR 源文件必须有清理器");
+  assert.equal(ledger.includes("await cleanupOwnedJobAssets"), true, "删除过期任务元数据前必须先清理源文件");
+});
+
+test("所有生成型 AI 入口都先登记持久任务并支持服务端续跑", () => {
+  const runner = readFileSync(resolve("lib/server-internal-job-runner.ts"), "utf8");
+  const background = readFileSync(resolve("lib/server-internal-job-background.ts"), "utf8");
+  const jobClient = readFileSync(resolve("lib/job-client.ts"), "utf8");
+  const jobCenter = readFileSync(resolve("components/jobs/JobCenter.tsx"), "utf8");
+  const createPage = readFileSync(resolve("app/create/page.tsx"), "utf8");
+  const mathSelfTest = readFileSync(resolve("components/tools/Math3SelfTest.tsx"), "utf8");
+  const aiWorkspace = readFileSync(resolve("components/ai-content/AiContentWorkspace.tsx"), "utf8");
+  const commitGate = readFileSync(resolve("supabase/migrations/0035_job_cancellation_commit_gate.sql"), "utf8");
+
+  for (const jobKind of [
+    "economics_graph_generation",
+    "math3_step_grade",
+    "ai_knowledge_quiz_generation",
+  ]) {
+    assert.equal(runner.includes(jobKind), true, jobKind);
+    assert.equal(jobClient.includes(jobKind), true, jobKind);
+  }
+  assert.match(background, /after\(async \(\) =>/);
+  for (const routePath of [
+    "app/api/jobs/markdown-review/route.ts",
+    "app/api/jobs/problem-ocr/route.ts",
+    "app/api/jobs/math3-self-test/route.ts",
+    "app/api/jobs/math-paper-grade/route.ts",
+    "app/api/jobs/math-paper-ocr/route.ts",
+    "app/api/jobs/math3-classify/route.ts",
+    "app/api/jobs/english-subjective-grade/route.ts",
+    "app/api/ai/economics-graph/route.ts",
+    "app/api/ai/math3-self-test/grade-step/route.ts",
+    "app/api/ai/knowledge-quizzes/[id]/generate/route.ts",
+  ]) {
+    const route = readFileSync(resolve(routePath), "utf8");
+    assert.match(route, /scheduleInternalJobDrain/);
+    assert.match(route, /maxDuration = 900/);
+  }
+  assert.equal(createPage.includes('<EconomicsGraphComposer onInsert={handleInsertEconomicsGraphMarkdown} targetId={taskTargetId} />'), true);
+  assert.equal(mathSelfTest.includes('fetch("/api/ai/math3-self-test/grade-step"'), false);
+  assert.equal(aiWorkspace.includes("fetchWithAuth(`/api/ai/knowledge-quizzes/${encodeURIComponent(selectedId)}/generate`"), false);
+  assert.match(jobCenter, /createEconomicsGraphJob/);
+  assert.match(jobCenter, /createMath3StepGradeJob/);
+  assert.match(jobCenter, /createKnowledgeQuizJob/);
+  assert.match(commitGate, /assert_active_job_backed_insert/);
+  assert.match(commitGate, /job\.status in \('queued', 'running', 'waiting_for_trigger', 'stalled'\)/);
+  assert.match(commitGate, /before insert on public\.attempt_revisions/);
+  assert.doesNotMatch(commitGate, /answer_revisions/);
+  assert.match(commitGate, /revoke all on function private\.assert_active_job_backed_insert\(\) from public, anon, authenticated/);
+});
+
+test("遗留同步生成接口不能绕过任务中心", () => {
+  const retiredRoutes = new Map([
+    ["app/api/ai/document-markdown-review/route.ts", "/api/jobs/markdown-review"],
+    ["app/api/ai/ocr/route.ts", "/api/jobs/problem-ocr"],
+    ["app/api/ai/analyze/route.ts", "/api/jobs/problem-ocr"],
+    ["app/api/ai/math3-classify/route.ts", "/api/jobs/math3-classify"],
+    ["app/api/ai/math3-self-test/generate/route.ts", "/api/jobs/math3-self-test"],
+    ["app/api/ai/math-paper-grade/route.ts", "/api/jobs/math-paper-grade"],
+    ["app/api/ai/english-subjective-grade/route.ts", "/api/jobs/english-subjective-grade"],
+  ]);
+  for (const [routePath, replacement] of retiredRoutes) {
+    const route = readFileSync(resolve(routePath), "utf8");
+    assert.match(route, /getAdminRequestContext\(req\)/, routePath);
+    assert.match(route, /status:\s*410/, routePath);
+    assert.equal(route.includes(replacement), true, routePath);
+    assert.doesNotMatch(
+      route,
+      /callDeepSeek|callQwenVision|reviewDocumentMarkdown|recognizeProblemImage|analyzeProblemOcrText|classifyMath3Problems|generateVerifiedMath3SelfTestPaper|generateMathPaperGradeSuggestion|generateEnglishSubjectiveGradeSuggestion/,
+      routePath,
+    );
+  }
+});
+
+test("任务结果保留规则不会清除尚未领取的成功结果", () => {
+  const jobClient = readFileSync(resolve("lib/job-client.ts"), "utf8");
+  const ledger = readFileSync(resolve("lib/server-job-ledger.ts"), "utf8");
+  const jobCenter = readFileSync(resolve("components/jobs/JobCenter.tsx"), "utf8");
+  const dismissRoute = readFileSync(resolve("app/api/jobs/[id]/route.ts"), "utf8");
+  assert.match(jobClient, /status === "succeeded" && !job\.resultClaimedAt/);
+  assert.match(jobClient, /30 \* 24 \* 60 \* 60 \* 1000/);
+  assert.match(ledger, /\.in\("status", \["failed", "claimed", "cancelled"\]\)/);
+  assert.match(ledger, /export async function dismissTerminalUserJob/);
+  assert.match(jobCenter, /target\.status === "succeeded" && !target\.resultClaimedAt/);
+  assert.match(jobCenter, /method: "DELETE"/);
+  assert.match(dismissRoute, /dismissTerminalUserJob/);
 });

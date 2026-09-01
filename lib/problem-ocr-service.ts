@@ -46,7 +46,7 @@ function shouldTryNextOcrModel(message: string): boolean {
 }
 
 export async function recognizeProblemImage(
-  input: { apiKey: string; model: string; imageBase64: string; mimeType: string },
+  input: { apiKey: string; model: string; imageBase64: string; mimeType: string; signal?: AbortSignal },
   callVision: VisionCaller = callQwenVision,
 ): Promise<{ text: string; model: string }> {
   if (!input.apiKey.trim() || !input.imageBase64.trim()) {
@@ -68,11 +68,12 @@ Please follow these rules:
   const failures: string[] = [];
   for (const candidateModel of getQwenOcrModelCandidates(input.model)) {
     try {
-      const result = await callVision(input.apiKey, candidateModel, DEFAULT_QWEN_ENDPOINT, input.imageBase64, prompt, mimeType);
+      const result = await callVision(input.apiKey, candidateModel, DEFAULT_QWEN_ENDPOINT, input.imageBase64, prompt, mimeType, input.signal);
       const text = result.text.trim();
       if (text) return { text, model: candidateModel };
       failures.push(`${candidateModel}: OCR 返回空文本`);
     } catch (error: unknown) {
+      if (input.signal?.aborted) throw error;
       const message = getErrorMessage(error, "OCR 识别失败");
       failures.push(`${candidateModel}: ${message}`);
       if (!shouldTryNextOcrModel(message)) break;
@@ -154,7 +155,7 @@ function buildOcrFallbackProblem(ocrText: string): ExtractedProblem {
   }, "ai") as ExtractedProblem;
 }
 
-async function parseOrRepairAIJson(content: string, apiKey: string, model: string, callText: TextCaller) {
+async function parseOrRepairAIJson(content: string, apiKey: string, model: string, callText: TextCaller, signal?: AbortSignal) {
   try {
     return { parsed: parseAIJson(content), tokensUsed: 0 };
   } catch {
@@ -163,13 +164,13 @@ async function parseOrRepairAIJson(content: string, apiKey: string, model: strin
       { role: "user", content: `Repair the following AI output into one valid JSON object only.
 It must match this shape: {"problems":[{"question":"","answer":"","type":"calculation","difficulty":"medium","suggestedChapter":null,"options":[],"confidence":0.5}]}.
 Keep the original math content. Escape all LaTeX backslashes correctly for JSON strings. Return JSON only.\n\nBroken output:\n${content}` },
-    ], { temperature: 0, maxTokens: 3072, responseFormat: "json_object" });
+    ], { temperature: 0, maxTokens: 3072, responseFormat: "json_object", signal });
     return { parsed: parseAIJson(repaired.content), tokensUsed: repaired.tokensUsed };
   }
 }
 
 export async function analyzeProblemOcrText(
-  input: { apiKey: string; model: string; ocrText: string; chapterContext?: string[] },
+  input: { apiKey: string; model: string; ocrText: string; chapterContext?: string[]; signal?: AbortSignal },
   callText: TextCaller = callDeepSeek,
 ): Promise<{ problems: ExtractedProblem[]; tokensUsed: number; extractionMode: "primary" | "rescue" | "ocrFallback"; warning?: string }> {
   const ocrText = input.ocrText.trim();
@@ -194,11 +195,11 @@ Rules:
   const primary = await callText(input.apiKey, input.model, [
     { role: "system", content: systemPrompt },
     { role: "user", content: ocrText },
-  ], { temperature: 0.2, maxTokens: 3072, responseFormat: "json_object" });
+  ], { temperature: 0.2, maxTokens: 3072, responseFormat: "json_object", signal: input.signal });
   let totalTokensUsed = primary.tokensUsed;
   let parsed;
   try {
-    parsed = await parseOrRepairAIJson(primary.content, input.apiKey, input.model, callText);
+    parsed = await parseOrRepairAIJson(primary.content, input.apiKey, input.model, callText, input.signal);
   } catch (error: unknown) {
     throw new ProblemOcrServiceError(`AI 返回格式解析失败，已尝试自动修复但仍失败：${getErrorMessage(error, "未知格式错误")}`, 422);
   }
@@ -212,16 +213,17 @@ Rules:
       const rescue = await callText(input.apiKey, input.model, [
         { role: "system", content: `The previous extraction returned no usable problems, but the OCR text appears to contain an exam question. Extract at least one visible problem whenever possible. Keep incomplete visible text, leave uncertain answers empty, use confidence 0.2-0.5, preserve LaTeX and choice options, and return valid JSON only with the same problems-array shape.${chapterHint}` },
         { role: "user", content: ocrText },
-      ], { temperature: 0, maxTokens: 2048, responseFormat: "json_object" });
+      ], { temperature: 0, maxTokens: 2048, responseFormat: "json_object", signal: input.signal });
       totalTokensUsed += rescue.tokensUsed;
-      const rescueParsed = await parseOrRepairAIJson(rescue.content, input.apiKey, input.model, callText);
+      const rescueParsed = await parseOrRepairAIJson(rescue.content, input.apiKey, input.model, callText, input.signal);
       totalTokensUsed += rescueParsed.tokensUsed;
       const rescued = normalizeProblems(rescueParsed.parsed);
       if (rescued.length > 0) {
         problems = rescued;
         extractionMode = "rescue";
       }
-    } catch {
+    } catch (error: unknown) {
+      if (input.signal?.aborted) throw error;
       // The deterministic OCR fallback below preserves visible evidence.
     }
   }

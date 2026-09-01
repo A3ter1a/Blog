@@ -7,7 +7,10 @@ import type { Database, Json, Tables, TablesInsert, TablesUpdate } from "@/lib/s
 
 export const DOCUMENT_OCR_PROVIDER = "baidu-unlimited-ocr";
 export const OCR_DOCUMENT_BUCKET = "ocr-documents";
-export const TERMINAL_JOB_RETENTION_MS = 3 * 24 * 60 * 60 * 1000;
+export const TERMINAL_JOB_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
+export const ORPHANED_OCR_ASSET_RETENTION_MS = 24 * 60 * 60 * 1000;
+const ORPHAN_CLEANUP_THROTTLE_MS = 60 * 60 * 1000;
+const orphanCleanupAtByUser = new Map<string, number>();
 
 export type JobLedgerAvailability = "synced" | "schema_pending";
 export type JobRow = Tables<"jobs">;
@@ -59,11 +62,114 @@ function sanitizeJobSummaryPayload(value: Json): Json {
     "chunkCount",
     "imageCount",
     "model",
+    "mode",
+    "difficulty",
     "cleanupError",
+    "targetId",
   ];
   return Object.fromEntries(
     allowedKeys.flatMap((key) => key in value ? [[key, value[key] as Json]] : []),
   ) as Json;
+}
+
+function getOwnedInternalOcrAssetPaths(job: JobRow, userId: string): string[] {
+  if (job.source_storage_bucket !== OCR_DOCUMENT_BUCKET || !isRecord(job.payload)) return [];
+  const assets = Array.isArray(job.payload.assets) ? job.payload.assets : [];
+  const ownedPrefixes = [`problem-ocr/${userId}/`, `math-paper-ocr/${userId}/`];
+  return Array.from(new Set(assets.flatMap((asset): string[] => {
+    if (!isRecord(asset) || typeof asset.path !== "string") return [];
+    const path = asset.path.trim().replace(/\\/g, "/");
+    if (
+      !path
+      || path.length > 300
+      || path.split("/").some((segment) => segment === "." || segment === "..")
+      || !ownedPrefixes.some((prefix) => path.startsWith(prefix))
+    ) return [];
+    return [path];
+  })));
+}
+
+async function cleanupOwnedJobAssets(
+  supabase: SupabaseClient<Database>,
+  job: JobRow,
+  userId: string,
+): Promise<void> {
+  const paths = getOwnedInternalOcrAssetPaths(job, userId);
+  const externalPath = job.source_storage_bucket === OCR_DOCUMENT_BUCKET
+    ? normalizeOcrSourcePath(job.source_storage_path)
+    : undefined;
+  const ownedPaths = Array.from(new Set([...paths, ...(externalPath ? [externalPath] : [])]));
+  if (ownedPaths.length === 0) return;
+  const removed = await supabase.storage.from(OCR_DOCUMENT_BUCKET).remove(ownedPaths);
+  if (removed.error) throw new Error(`临时源文件清理失败：${removed.error.message}`);
+}
+
+function readStorageTimestamp(value: Record<string, unknown>): number {
+  for (const key of ["created_at", "updated_at", "last_accessed_at"]) {
+    if (typeof value[key] !== "string") continue;
+    const timestamp = Date.parse(value[key]);
+    if (Number.isFinite(timestamp)) return timestamp;
+  }
+  return Number.NaN;
+}
+
+export async function cleanupOrphanedUserOcrAssets(
+  supabase: SupabaseClient<Database>,
+  userId: string,
+  now = Date.now(),
+): Promise<JobLedgerResult<number>> {
+  const lastCleanupAt = orphanCleanupAtByUser.get(userId) ?? 0;
+  if (now - lastCleanupAt < ORPHAN_CLEANUP_THROTTLE_MS) return { availability: "synced", data: 0 };
+  orphanCleanupAtByUser.set(userId, now);
+
+  const referenced = await supabase
+    .from("jobs")
+    .select("payload")
+    .eq("user_id", userId)
+    .eq("source_storage_bucket", OCR_DOCUMENT_BUCKET);
+  if (referenced.error) {
+    orphanCleanupAtByUser.delete(userId);
+    if (isJobLedgerSchemaPending(referenced.error)) return { availability: "schema_pending", data: 0 };
+    throw referenced.error;
+  }
+  const referencedPaths = new Set<string>();
+  for (const row of referenced.data ?? []) {
+    if (!isRecord(row.payload) || !Array.isArray(row.payload.assets)) continue;
+    for (const asset of row.payload.assets) {
+      if (isRecord(asset) && typeof asset.path === "string") referencedPaths.add(asset.path.replace(/\\/g, "/"));
+    }
+  }
+
+  const cutoff = now - ORPHANED_OCR_ASSET_RETENTION_MS;
+  const orphanPaths: string[] = [];
+  for (const kind of ["problem-ocr", "math-paper-ocr"] as const) {
+    const userPrefix = `${kind}/${userId}`;
+    const batches = await supabase.storage.from(OCR_DOCUMENT_BUCKET).list(userPrefix, {
+      limit: 20,
+      sortBy: { column: "created_at", order: "asc" },
+    });
+    if (batches.error) continue;
+    for (const batch of batches.data ?? []) {
+      if (!/^[0-9a-f-]{36}$/i.test(batch.name)) continue;
+      const batchPrefix = `${userPrefix}/${batch.name}`;
+      const files = await supabase.storage.from(OCR_DOCUMENT_BUCKET).list(batchPrefix, {
+        limit: 100,
+        sortBy: { column: "created_at", order: "asc" },
+      });
+      if (files.error) continue;
+      for (const file of files.data ?? []) {
+        if (!/^\d{2}\.(?:jpg|png|webp)$/i.test(file.name)) continue;
+        const path = `${batchPrefix}/${file.name}`;
+        if (referencedPaths.has(path)) continue;
+        const createdAt = readStorageTimestamp(file as unknown as Record<string, unknown>);
+        if (Number.isFinite(createdAt) && createdAt < cutoff) orphanPaths.push(path);
+      }
+    }
+  }
+  if (orphanPaths.length === 0) return { availability: "synced", data: 0 };
+  const removed = await supabase.storage.from(OCR_DOCUMENT_BUCKET).remove(orphanPaths);
+  if (removed.error) throw new Error(`孤立 OCR 源文件清理失败：${removed.error.message}`);
+  return { availability: "synced", data: orphanPaths.length };
 }
 
 export function sanitizeJobSummaryRow(row: JobRow): JobSummaryRow {
@@ -284,7 +390,30 @@ export async function cancelUserJob(
   userId: string,
   jobId: string,
 ): Promise<JobLedgerResult<JobRow | null>> {
+  const activeStatuses = ["queued", "dispatched", "running", "waiting_for_trigger", "stalled"];
+  const selected = await supabase
+    .from("jobs")
+    .select("*")
+    .eq("id", jobId)
+    .eq("user_id", userId)
+    .in("status", activeStatuses)
+    .maybeSingle();
+  if (selected.error) {
+    if (isJobLedgerSchemaPending(selected.error)) return { availability: "schema_pending", data: null };
+    throw selected.error;
+  }
+  if (!selected.data) return { availability: "synced", data: null };
+
+  const selectedJob = selected.data as JobRow;
+  const originalPayload = isRecord(selectedJob.payload) ? selectedJob.payload : {};
+  const sourcePaths = getOwnedInternalOcrAssetPaths(selectedJob, userId);
   const now = new Date().toISOString();
+  const cancelledPayload = {
+    ...originalPayload,
+    operation: "cancelled",
+    phase: "已取消",
+    statusText: sourcePaths.length > 0 ? "任务已取消，正在清理临时源图" : "任务已取消，已停止本地跟踪",
+  } satisfies Record<string, Json>;
   const cancelled = await supabase
     .from("jobs")
     .update({
@@ -292,15 +421,11 @@ export async function cancelUserJob(
       error: "用户已取消任务",
       finished_at: now,
       heartbeat_at: now,
-      payload: {
-        operation: "cancelled",
-        phase: "已取消",
-        statusText: "任务已取消，已停止本地跟踪",
-      },
+      payload: cancelledPayload,
     })
     .eq("id", jobId)
     .eq("user_id", userId)
-    .in("status", ["queued", "dispatched", "running", "waiting_for_trigger", "stalled"])
+    .in("status", activeStatuses)
     .select("*")
     .maybeSingle();
 
@@ -308,7 +433,42 @@ export async function cancelUserJob(
     if (isJobLedgerSchemaPending(cancelled.error)) return { availability: "schema_pending", data: null };
     throw cancelled.error;
   }
-  return { availability: "synced", data: cancelled.data as JobRow | null };
+  if (!cancelled.data || sourcePaths.length === 0) {
+    return { availability: "synced", data: cancelled.data as JobRow | null };
+  }
+
+  const removed = await supabase.storage.from(OCR_DOCUMENT_BUCKET).remove(sourcePaths);
+  const cleanupError = removed.error
+    ? `任务已取消，但临时源图清理失败：${removed.error.message}`
+    : null;
+  const finalPayload = cleanupError
+    ? { ...cancelledPayload, phase: "已取消，源文件待清理", statusText: cleanupError, cleanupError }
+    : { operation: "cancelled", phase: "已取消", statusText: "任务已取消，临时源图已清理" };
+  const finalized = await supabase
+    .from("jobs")
+    .update({
+      payload: finalPayload,
+      source_storage_bucket: cleanupError ? selectedJob.source_storage_bucket : null,
+      source_storage_path: cleanupError ? selectedJob.source_storage_path : null,
+    })
+    .eq("id", jobId)
+    .eq("user_id", userId)
+    .eq("status", "cancelled")
+    .select("*")
+    .maybeSingle();
+
+  if (!finalized.error && finalized.data) {
+    return { availability: "synced", data: finalized.data as JobRow };
+  }
+  return {
+    availability: "synced",
+    data: {
+      ...(cancelled.data as JobRow),
+      payload: finalPayload as Json,
+      source_storage_bucket: cleanupError ? selectedJob.source_storage_bucket : null,
+      source_storage_path: cleanupError ? selectedJob.source_storage_path : null,
+    },
+  };
 }
 
 export async function cleanupExpiredUserJobs(
@@ -317,17 +477,62 @@ export async function cleanupExpiredUserJobs(
   now = Date.now(),
 ): Promise<JobLedgerResult<number>> {
   const cutoff = new Date(now - TERMINAL_JOB_RETENTION_MS).toISOString();
-  const deleted = await supabase
+  const expired = await supabase
     .from("jobs")
-    .delete({ count: "exact" })
+    .select("*")
     .eq("user_id", userId)
-    .in("status", ["succeeded", "failed", "stalled", "claimed", "cancelled"])
+    .in("status", ["failed", "claimed", "cancelled"])
     .lt("updated_at", cutoff);
-  if (deleted.error) {
-    if (isJobLedgerSchemaPending(deleted.error)) return { availability: "schema_pending", data: 0 };
-    throw deleted.error;
+  if (expired.error) {
+    if (isJobLedgerSchemaPending(expired.error)) return { availability: "schema_pending", data: 0 };
+    throw expired.error;
   }
-  return { availability: "synced", data: deleted.count ?? 0 };
+  let deletedCount = 0;
+  for (const row of expired.data ?? []) {
+    const job = row as JobRow;
+    try {
+      await cleanupOwnedJobAssets(supabase, job, userId);
+    } catch {
+      // Keep the job metadata so a later cleanup pass can still discover and
+      // remove its private source assets instead of orphaning them forever.
+      continue;
+    }
+    const deleted = await supabase.from("jobs").delete({ count: "exact" })
+      .eq("id", job.id)
+      .eq("user_id", userId)
+      .eq("status", job.status);
+    if (deleted.error) throw deleted.error;
+    deletedCount += deleted.count ?? 0;
+  }
+  return { availability: "synced", data: deletedCount };
+}
+
+export async function dismissTerminalUserJob(
+  supabase: SupabaseClient<Database>,
+  userId: string,
+  jobId: string,
+): Promise<JobLedgerResult<boolean>> {
+  const selected = await supabase
+    .from("jobs")
+    .select("*")
+    .eq("id", jobId)
+    .eq("user_id", userId)
+    .in("status", ["failed", "claimed", "cancelled"])
+    .maybeSingle();
+  if (selected.error) {
+    if (isJobLedgerSchemaPending(selected.error)) return { availability: "schema_pending", data: false };
+    throw selected.error;
+  }
+  if (!selected.data) return { availability: "synced", data: false };
+
+  const job = selected.data as JobRow;
+  await cleanupOwnedJobAssets(supabase, job, userId);
+  const deleted = await supabase.from("jobs").delete({ count: "exact" })
+    .eq("id", job.id)
+    .eq("user_id", userId)
+    .eq("status", job.status);
+  if (deleted.error) throw deleted.error;
+  return { availability: "synced", data: (deleted.count ?? 0) > 0 };
 }
 
 export async function getUserJobResult(

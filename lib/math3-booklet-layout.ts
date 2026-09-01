@@ -1,4 +1,4 @@
-import type { Math3SelfTestQuestion } from "./math3-self-test";
+import type { Math3SelfTestMode, Math3SelfTestQuestion } from "./math3-self-test";
 
 export type Math3BookletOrientation = "landscape" | "portrait";
 export type Math3ObjectiveSection = "choice" | "fill";
@@ -83,12 +83,32 @@ function paginateSection<TQuestion extends ObjectiveQuestionLike>(
   return pages;
 }
 
+function chunkSection<TQuestion extends ObjectiveQuestionLike>(
+  questions: TQuestion[],
+  section: Math3ObjectiveSection,
+  chunkSize: number,
+): Math3ObjectiveBookletPage<TQuestion>[] {
+  const pages: Math3ObjectiveBookletPage<TQuestion>[] = [];
+  for (let start = 0; start < questions.length; start += chunkSize) {
+    pages.push({ section, questions: questions.slice(start, start + chunkSize) });
+  }
+  return pages;
+}
+
 export function paginateMath3ObjectiveQuestions<TQuestion extends ObjectiveQuestionLike>(
   questions: TQuestion[],
   orientation: Math3BookletOrientation,
+  mode: Math3SelfTestMode = "quick",
 ): Math3ObjectiveBookletPage<TQuestion>[] {
   const choices = questions.filter((question) => question.type === "choice");
   const fills = questions.filter((question) => question.type === "fill");
+  if (mode === "full") {
+    return [
+      ...chunkSection(choices, "choice", 5),
+      ...chunkSection(fills, "fill", 6),
+    ];
+  }
+
   return [
     ...paginateSection(choices, "choice", orientation),
     ...paginateSection(fills, "fill", orientation),

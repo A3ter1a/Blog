@@ -1,28 +1,21 @@
 "use client";
 
-import { useMemo, useRef, useState, type PointerEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type PointerEvent } from "react";
 import { CheckCircle2, Eraser, Loader2, Sparkles } from "lucide-react";
 import { MarkdownContent } from "@/components/ui/MarkdownContent";
 import { useToast } from "@/components/ui/Toast";
-import { buildAuthHeaders } from "@/lib/fetch-with-auth";
+import { useJobCenter } from "@/components/jobs/JobCenter";
 import {
   buildEconomicsGraphMarkdown,
   economicsGraphTemplateSummaries,
   normalizeEconomicsGraphAIDraft,
-  type EconomicsGraphAIDraft,
 } from "@/lib/economics-graph-ai";
 import { checkEconomicsGraphLayers, type EconomicsGraphStroke } from "@/lib/economics-graphs";
 import { AI_CONFIG_STORAGE_KEY, normalizeAIConfig } from "@/lib/ai-config";
 
-type EconomicsGraphAIResponse = {
-  draft?: EconomicsGraphAIDraft;
-  markdown?: string;
-  error?: string;
-  success?: boolean;
-};
-
 interface EconomicsGraphComposerProps {
   onInsert: (markdown: string) => void;
+  targetId: string;
 }
 
 function readLocalAIConfig() {
@@ -36,10 +29,6 @@ function readLocalAIConfig() {
   }
 }
 
-function getResponseError(data: EconomicsGraphAIResponse, fallback: string): string {
-  return typeof data.error === "string" && data.error.trim() ? data.error : fallback;
-}
-
 function parseJsonDraft(value: string) {
   try {
     return normalizeEconomicsGraphAIDraft(JSON.parse(value));
@@ -48,13 +37,19 @@ function parseJsonDraft(value: string) {
   }
 }
 
-export function EconomicsGraphComposer({ onInsert }: EconomicsGraphComposerProps) {
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
+}
+
+export function EconomicsGraphComposer({ onInsert, targetId }: EconomicsGraphComposerProps) {
   const toast = useToast();
+  const { jobs, claimJobResult, createEconomicsGraphJob, loadJobResult, updateJob } = useJobCenter();
   const [prompt, setPrompt] = useState("");
   const [jsonText, setJsonText] = useState("");
   const [rationale, setRationale] = useState("");
   const [reviewNotes, setReviewNotes] = useState<string[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [sourceJobId, setSourceJobId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [drawPoints, setDrawPoints] = useState<Array<{ x: number; y: number }>>([]);
   const [isDrawing, setIsDrawing] = useState(false);
@@ -75,8 +70,48 @@ export function EconomicsGraphComposer({ onInsert }: EconomicsGraphComposerProps
     : null;
   const previewMarkdown = previewSpec ? buildEconomicsGraphMarkdown(previewSpec) : "";
   const layerChecks = previewSpec ? checkEconomicsGraphLayers(previewSpec) : [];
-  const canGenerate = prompt.trim().length > 0 && !isGenerating;
+  const activeJob = jobs.find((job) => job.type === "economics_graph_generation" && job.targetId === targetId && ["queued", "running", "waiting_for_trigger"].includes(job.status));
+  const canGenerate = prompt.trim().length > 0 && Boolean(targetId) && !isGenerating && !activeJob && !sourceJobId;
   const canInsert = Boolean(validation?.ok);
+
+  useEffect(() => {
+    if (!targetId || sourceJobId) return;
+    const completedJob = jobs.find((job) => (
+      job.type === "economics_graph_generation"
+      && job.targetId === targetId
+      && job.status === "succeeded"
+      && !job.resultClaimedAt
+    ));
+    if (!completedJob) return;
+    if (!completedJob.resultPayload) {
+      void loadJobResult(completedJob.id);
+      return;
+    }
+    const result = asRecord(completedJob.resultPayload);
+    const draft = asRecord(result?.draft);
+    const spec = asRecord(draft?.spec);
+    const normalized = normalizeEconomicsGraphAIDraft(spec ? {
+      ...spec,
+      rationale: draft?.rationale,
+      reviewNotes: draft?.reviewNotes,
+    } : null);
+    if (!normalized.ok || result?.targetId !== targetId) {
+      updateJob(completedJob.id, {
+        phase: "结果校验失败",
+        statusText: "经济学曲线结果结构或编辑目标不匹配，未载入编辑器",
+        error: normalized.ok ? "经济学曲线编辑目标不匹配" : normalized.message,
+      });
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      setJsonText(JSON.stringify({ ...normalized.draft.spec, customStrokes }, null, 2));
+      setRationale(normalized.draft.rationale);
+      setReviewNotes(normalized.draft.reviewNotes);
+      setSourceJobId(completedJob.id);
+      toast.success("后台曲线结构已恢复，插入正文后才会归档任务");
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [customStrokes, jobs, loadJobResult, sourceJobId, targetId, toast, updateJob]);
 
   async function generateGraph() {
     const trimmedPrompt = prompt.trim();
@@ -87,26 +122,13 @@ export function EconomicsGraphComposer({ onInsert }: EconomicsGraphComposerProps
 
     try {
       const localConfig = readLocalAIConfig();
-      const headers = await buildAuthHeaders({ "Content-Type": "application/json" });
-      const res = await fetch("/api/ai/economics-graph", {
-        method: "POST",
-        headers,
-        body: JSON.stringify({
-          prompt: trimmedPrompt,
-          apiKey: localConfig?.deepseekApiKey,
-          model: localConfig?.deepseekModel,
-        }),
+      await createEconomicsGraphJob({
+        prompt: trimmedPrompt,
+        apiKey: localConfig?.deepseekApiKey,
+        model: localConfig?.deepseekModel ?? "",
+        targetId,
       });
-      const data: EconomicsGraphAIResponse = await res.json().catch(() => ({}));
-
-      if (!res.ok || !data.success || !data.draft) {
-        throw new Error(getResponseError(data, "曲线生成失败"));
-      }
-
-      setJsonText(JSON.stringify({ ...data.draft.spec, customStrokes }, null, 2));
-      setRationale(data.draft.rationale);
-      setReviewNotes(data.draft.reviewNotes);
-      toast.success("曲线结构已生成");
+      toast.info("曲线生成已并入任务中心；切换页面不会丢失，也可以随时取消");
     } catch (requestError) {
       const message = requestError instanceof Error ? requestError.message : "曲线生成失败";
       setError(message);
@@ -123,6 +145,10 @@ export function EconomicsGraphComposer({ onInsert }: EconomicsGraphComposerProps
     }
 
     onInsert(buildEconomicsGraphMarkdown(previewSpec ?? validation.draft.spec));
+    if (sourceJobId) {
+      claimJobResult(sourceJobId);
+      setSourceJobId(null);
+    }
     toast.success("曲线卡片已插入正文");
   }
 

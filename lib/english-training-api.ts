@@ -7,8 +7,6 @@ import {
   buildEnglishSubjectiveGradeBreakdown,
   type EnglishSubjectiveGradeSuggestion,
 } from "./english-subjective-grade";
-import { AI_CONFIG_STORAGE_KEY, ALLOW_CLIENT_AI_KEYS, DEFAULT_AI_CONFIG, normalizeAIConfig } from "./ai-config";
-import { readJsonStorage } from "./browser-storage";
 import type {
   EnglishAttempt,
   EnglishAttemptAnswer,
@@ -40,10 +38,6 @@ export type EnglishTrainingRoundHistory = {
 
 export type EnglishTrainingCommandResult = EnglishTrainingRoundHistory & {
   attempt?: EnglishAttempt;
-};
-
-export type EnglishSubjectiveSuggestionResult = EnglishTrainingRoundHistory & {
-  suggestion: EnglishSubjectiveGradeSuggestion;
 };
 
 async function readRoundHistoryResponse(response: Response, fallback: string): Promise<EnglishTrainingRoundHistory> {
@@ -341,53 +335,6 @@ export const englishTrainingApi = {
       ledgers: Array.isArray(payload.ledgers) ? payload.ledgers : [],
       ...(payload.attempt ? { attempt: mapAttempt(payload.attempt, (payload.answers ?? []).map(mapAttemptAnswer)) } : {}),
     };
-  },
-
-  async requestSubjectiveSuggestion({
-    passage,
-    round,
-    answers,
-  }: {
-    passage: EnglishPassage;
-    round: 1 | 2 | 3;
-    answers: EnglishAttemptAnswerInput;
-  }): Promise<EnglishSubjectiveSuggestionResult> {
-    const config = readJsonStorage(AI_CONFIG_STORAGE_KEY, DEFAULT_AI_CONFIG, normalizeAIConfig);
-    const suggestionResponse = await fetch("/api/ai/english-subjective-grade", {
-      method: "POST",
-      headers: await buildAuthHeaders({ "Content-Type": "application/json" }),
-      body: JSON.stringify({
-        passageId: passage.id,
-        answers,
-        apiKey: ALLOW_CLIENT_AI_KEYS ? config.deepseekApiKey : undefined,
-      }),
-    });
-    const suggestionPayload = await suggestionResponse.json().catch(() => ({})) as {
-      suggestion?: EnglishSubjectiveGradeSuggestion;
-      error?: string;
-    };
-    if (!suggestionResponse.ok || !suggestionPayload.suggestion) {
-      throw new Error(suggestionPayload.error || "英语主观题建议评分失败");
-    }
-
-    const suggestion = suggestionPayload.suggestion;
-    const recordResponse = await fetch("/api/english/subjective", {
-      method: "POST",
-      headers: await buildAuthHeaders({ "Content-Type": "application/json" }),
-      body: JSON.stringify({
-        action: "record_suggestion",
-        passageId: passage.id,
-        round,
-        answers,
-        commandId: crypto.randomUUID(),
-        suggestion: {
-          score: suggestion.score,
-          feedback: suggestion.feedback,
-          breakdown: buildEnglishSubjectiveGradeBreakdown(suggestion),
-        },
-      }),
-    });
-    return { ...await readRoundHistoryResponse(recordResponse, "AI 建议保存失败"), suggestion };
   },
 
   async confirmSubjectiveGrade({

@@ -22,13 +22,15 @@ export function readJsonStorage<T>(
   }
 }
 
-export function writeJsonStorage<T>(key: string, value: T): void {
-  if (!canUseStorage()) return;
+export function writeJsonStorage<T>(key: string, value: T): boolean {
+  if (!canUseStorage()) return false;
 
   try {
     window.localStorage.setItem(key, JSON.stringify(value));
+    return true;
   } catch {
     // Ignore unavailable storage, quota errors, and private-mode restrictions.
+    return false;
   }
 }
 

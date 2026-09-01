@@ -29,15 +29,41 @@ function normalizeMarkdownHeadingText(value: string): string {
     .trim();
 }
 
+const GENERATED_READING_MARKER = /^\s*<!--\s*GENERATED_BY_ECON_READING_LECTURES_V2\s*-->\s*/;
+const INTERNAL_READING_NOTE = "本章为整合阅读正文：概念、机制、公式、图形、易错点和卷面表达已经合并在同一篇笔记中。";
+
+function normalizeChapterTitle(value: string): string {
+  return normalizeMarkdownHeadingText(value)
+    .replace(/[：:]/g, "")
+    .replace(/\s+/g, "")
+    .replace(/第0*(\d+)章/g, "第$1章")
+    .replace(/^(?:微观经济学|宏观经济学)[·。\s]*/, "")
+    .replace(/^(?:微观经济学|宏观经济学)/, "");
+}
+
+function headingsRepresentSameChapter(heading: string, title: string): boolean {
+  const normalizedHeading = normalizeChapterTitle(heading);
+  const normalizedTitle = normalizeChapterTitle(title);
+  return normalizedHeading === normalizedTitle || (
+    normalizedHeading.length > 0
+    && normalizedTitle.length > 0
+    && normalizedHeading.endsWith(normalizedTitle)
+  );
+}
+
 export function stripRedundantLeadingMarkdownTitle(content: string, title: string): string {
   if (!content || !title.trim()) return content;
 
-  const leadingTitle = content.match(/^(?:\uFEFF)?[\t ]*(?:\r?\n[\t ]*)*#(?!#)[\t ]+(.+?)[\t ]*#*[\t ]*(?:\r?\n|$)/);
-  if (!leadingTitle || normalizeMarkdownHeadingText(leadingTitle[1]) !== title.trim()) {
-    return content;
+  let visibleContent = content.replace(GENERATED_READING_MARKER, "");
+  const leadingTitle = visibleContent.match(/^(?:\uFEFF)?[\t ]*(?:\r?\n[\t ]*)*#(?!#)[\t ]+(.+?)[\t ]*#*[\t ]*(?:\r?\n|$)/);
+  if (leadingTitle && headingsRepresentSameChapter(leadingTitle[1], title)) {
+    visibleContent = visibleContent.slice(leadingTitle[0].length).replace(/^[\t ]*\r?\n/, "");
   }
 
-  return content.slice(leadingTitle[0].length).replace(/^[\t ]*\r?\n/, "");
+  const escapedNote = INTERNAL_READING_NOTE.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return visibleContent
+    .replace(new RegExp(`^(?:[\\t ]*\\r?\\n)*[\\t ]*>[\\t ]*${escapedNote}(?:[\\t ]*\\r?\\n|$)`), "")
+    .replace(/^[\t ]*\r?\n/, "");
 }
 
 const LATEX_LINE_BREAK_MARKER = "AsteroidLatexLineBreakToken";

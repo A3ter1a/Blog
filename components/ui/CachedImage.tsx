@@ -58,8 +58,9 @@ async function fetchAndCacheBlob(source: string): Promise<Blob | null> {
   }
 }
 
-type CachedImageProps = Omit<ImgHTMLAttributes<HTMLImageElement>, "src"> & {
+type CachedImageProps = Omit<ImgHTMLAttributes<HTMLImageElement>, "src" | "alt"> & {
   src: string;
+  alt: string;
 };
 
 /**
@@ -67,7 +68,7 @@ type CachedImageProps = Omit<ImgHTMLAttributes<HTMLImageElement>, "src"> & {
  * URL remains the immediate fallback, so a restricted webview or a CDN
  * without CORS still renders normally.
  */
-export function CachedImage({ src, ...props }: CachedImageProps) {
+export function CachedImage({ src, alt, ...props }: CachedImageProps) {
   const [resolvedImage, setResolvedImage] = useState({ source: src, value: src });
   const objectUrlRef = useRef<string | null>(null);
 
@@ -116,5 +117,8 @@ export function CachedImage({ src, ...props }: CachedImageProps) {
     };
   }, [src]);
 
-  return <img {...props} src={resolvedImage.source === src ? resolvedImage.value : src} />;
+  // Native img is intentional: the cache-first object URL cannot be passed
+  // through next/image's optimizer, while callers must still provide alt text.
+  // eslint-disable-next-line @next/next/no-img-element
+  return <img {...props} src={resolvedImage.source === src ? resolvedImage.value : src} alt={alt} />;
 }

@@ -6,8 +6,9 @@ import { ParsedNote } from "@/lib/import";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/components/ui/Toast";
 import { notesApi, type NoteCreateInput } from "@/lib/supabase";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { overlayMotion, uiMotion } from "@/lib/motion";
+import { useDialogFocus } from "@/hooks/useDialogFocus";
 
 interface ImportPreviewProps {
   isOpen: boolean;
@@ -39,6 +40,15 @@ export function ImportPreview({ isOpen, onClose, parsedNotes, onImported }: Impo
   const router = useRouter();
   const toast = useToast();
   const [isSaving, setIsSaving] = useState(false);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+
+  useDialogFocus({
+    isOpen,
+    onClose,
+    containerRef: panelRef,
+    initialFocusRef: closeButtonRef,
+  });
 
   const handleEdit = (index: number) => {
     const note = parsedNotes[index];
@@ -104,17 +114,25 @@ export function ImportPreview({ isOpen, onClose, parsedNotes, onImported }: Impo
 
           {/* Preview Panel */}
           <motion.div
+            ref={panelRef}
             initial={{ x: "100%" }}
             animate={{ x: 0 }}
             exit={{ x: "100%" }}
             transition={uiMotion.spring.panel}
             className="fixed right-0 top-0 h-full w-full max-w-lg z-50 bg-surface-container-lowest shadow-elevated flex flex-col"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="import-preview-title"
+            tabIndex={-1}
           >
             {/* Header */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-outline-variant/10 flex-shrink-0">
-              <h2 className="text-xl font-bold text-on-surface font-headline">导入预览</h2>
+              <h2 id="import-preview-title" className="text-xl font-bold text-on-surface font-headline">导入预览</h2>
               <button
+                ref={closeButtonRef}
+                type="button"
                 onClick={onClose}
+                aria-label="关闭导入预览"
                 className="motion-ui motion-interactive p-2 rounded-full hover:bg-surface-container-high"
               >
                 <X className="w-5 h-5 text-on-surface-variant" />
@@ -153,6 +171,7 @@ export function ImportPreview({ isOpen, onClose, parsedNotes, onImported }: Impo
             {/* Footer */}
             <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-outline-variant/10 bg-surface-container-low flex-shrink-0">
               <button
+                type="button"
                 onClick={onClose}
                 className="motion-ui motion-interactive px-4 py-2 rounded-lg bg-surface-container-high text-on-surface-variant text-sm font-medium hover:bg-surface-container-highest"
               >
@@ -160,6 +179,7 @@ export function ImportPreview({ isOpen, onClose, parsedNotes, onImported }: Impo
               </button>
               {parsedNotes.length === 1 && (
                 <button
+                  type="button"
                   onClick={() => handleEdit(0)}
                   disabled={isSaving}
                   className="motion-ui motion-interactive px-4 py-2 rounded-lg editorial-gradient text-on-primary text-sm font-medium hover:opacity-90 disabled:opacity-40 flex items-center gap-2"
@@ -169,6 +189,7 @@ export function ImportPreview({ isOpen, onClose, parsedNotes, onImported }: Impo
               )}
               {parsedNotes.length > 1 && (
                 <button
+                  type="button"
                   onClick={handleSaveAll}
                   disabled={isSaving}
                   className="motion-ui motion-interactive px-4 py-2 rounded-lg editorial-gradient text-on-primary text-sm font-medium hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2"

@@ -1,12 +1,12 @@
 export const CLIENT_JOB_STORAGE_KEY = "asteroid:jobs:v1";
-export const TERMINAL_JOB_RETENTION_MS = 3 * 24 * 60 * 60 * 1000;
+export const TERMINAL_JOB_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 
 export type ClientJobStatus = "queued" | "running" | "waiting_for_trigger" | "succeeded" | "failed" | "claimed" | "cancelled";
 export type ClientJobLedgerState = "local_only" | "synced" | "schema_pending" | "sync_failed";
 
 export type ClientJob = {
   id: string;
-  type: "document_ocr" | "problem_ocr" | "markdown_review" | "markdown_migration" | "rag_index" | "batch_grade";
+  type: "document_ocr" | "problem_ocr" | "markdown_review" | "markdown_migration" | "rag_index" | "batch_grade" | "math3_self_test_generation" | "math_paper_grade" | "math_paper_ocr" | "math3_auto_classify" | "english_subjective_grade" | "economics_graph_generation" | "math3_step_grade" | "ai_knowledge_quiz_generation";
   class: "external" | "internal";
   provider?: string;
   externalTaskId?: string;
@@ -29,6 +29,7 @@ export type ClientJob = {
   resultClaimedAt?: string;
   error?: string;
   cleanupError?: string;
+  targetId?: string;
 };
 
 type RemoteJobLedgerRow = {
@@ -62,7 +63,7 @@ function optionalText(value: unknown): string | undefined {
 }
 
 function normalizeClientJobType(value: unknown): ClientJob["type"] {
-  return ["document_ocr", "problem_ocr", "markdown_review", "markdown_migration", "rag_index", "batch_grade"].includes(String(value))
+  return ["document_ocr", "problem_ocr", "markdown_review", "markdown_migration", "rag_index", "batch_grade", "math3_self_test_generation", "math_paper_grade", "math_paper_ocr", "math3_auto_classify", "english_subjective_grade", "economics_graph_generation", "math3_step_grade", "ai_knowledge_quiz_generation"].includes(String(value))
     ? value as ClientJob["type"]
     : "document_ocr";
 }
@@ -144,6 +145,7 @@ export function normalizeRemoteJobRows(value: unknown): ClientJob[] {
       resultClaimedAt: optionalText(row.claimed_at),
       error: optionalText(row.error),
       cleanupError: optionalText(payload?.cleanupError),
+      targetId: optionalText(payload?.targetId),
     }];
   }).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 }
@@ -199,7 +201,7 @@ export function mergeClientJobLedgers(localJobs: ClientJob[], remoteJobs: Client
   return [
     ...mergedRemote,
     ...localJobs.filter((job) => !mergedLocalIds.has(job.id)),
-  ].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0, 40);
+  ].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0, 100);
 }
 
 export function normalizeStoredJobs(value: unknown): ClientJob[] {
@@ -243,6 +245,7 @@ export function normalizeStoredJobs(value: unknown): ClientJob[] {
       resultClaimedAt: candidate.resultClaimedAt,
       error: candidate.error,
       cleanupError: candidate.cleanupError,
+      targetId: candidate.targetId,
     }];
   }).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
@@ -265,6 +268,7 @@ export function isClientJobTerminal(job: ClientJob): boolean {
 export function removeExpiredClientJobs(jobs: ClientJob[], now = Date.now()): ClientJob[] {
   return jobs.filter((job) => {
     if (!isClientJobTerminal(job)) return true;
+    if (job.status === "succeeded" && !job.resultClaimedAt) return true;
     const updatedAt = Date.parse(job.updatedAt);
     return !Number.isFinite(updatedAt) || now - updatedAt < TERMINAL_JOB_RETENTION_MS;
   });

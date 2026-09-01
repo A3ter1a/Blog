@@ -1,102 +1,51 @@
 import { NextRequest, NextResponse } from "next/server";
-import { callDeepSeek } from "@/lib/ai-client";
 import { DEFAULT_DEEPSEEK_MODEL } from "@/lib/ai-config";
-import {
-  buildEconomicsGraphMarkdown,
-  economicsGraphTemplateSummaries,
-  normalizeEconomicsGraphAIDraft,
-} from "@/lib/economics-graph-ai";
-import { requireAdminRequest, resolveAIKey } from "@/lib/server-admin-auth";
+import { getAdminRequestContext, resolveAIKey } from "@/lib/server-admin-auth";
+import { scheduleInternalJobDrain } from "@/lib/server-internal-job-background";
+import { createEconomicsGraphJob, internalJobLeaseSchemaAvailable } from "@/lib/server-internal-job-runner";
+import { sanitizeJobSummaryRow } from "@/lib/server-job-ledger";
 
 export const runtime = "nodejs";
-export const maxDuration = 90;
+export const dynamic = "force-dynamic";
+export const maxDuration = 900;
 
-function getPrompt(value: unknown): string {
-  if (typeof value !== "string") return "";
-  return value.replace(/\s+/g, " ").trim().slice(0, 1200);
-}
-
-function parseJsonObject(content: string): unknown {
-  try {
-    return JSON.parse(content);
-  } catch {
-    const match = content.match(/\{[\s\S]*\}/);
-    if (!match) throw new Error("AI 没有返回 JSON 对象");
-    return JSON.parse(match[0]);
-  }
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
 }
 
 export async function POST(req: NextRequest) {
+  const auth = await getAdminRequestContext(req);
+  if (!auth.ok) return auth.response;
   try {
-    const adminError = await requireAdminRequest(req);
-    if (adminError) return adminError;
-
-    const body: unknown = await req.json().catch(() => ({}));
-    const record = body && typeof body === "object" && !Array.isArray(body)
-      ? body as Record<string, unknown>
-      : {};
-
-    const prompt = getPrompt(record.prompt);
-    if (!prompt) {
-      return NextResponse.json({ error: "请输入曲线需求", success: false }, { status: 400 });
+    if (!await internalJobLeaseSchemaAvailable(auth.context.supabase)) {
+      return NextResponse.json({ error: "站内持久任务尚未启用", availability: "schema_pending", success: false }, { status: 503 });
     }
-
-    const apiKey = resolveAIKey("deepseek", record.apiKey);
-    const model = typeof record.model === "string" && record.model.trim()
-      ? record.model.trim()
-      : DEFAULT_DEEPSEEK_MODEL;
-
-    if (!apiKey) {
-      return NextResponse.json({ error: "DeepSeek API key 未配置", success: false }, { status: 400 });
-    }
-
-    const systemPrompt = `你是宏微观经济学图像结构化助手。你只为博客的 econgraph 交互图选择模板，不生成 SVG、HTML、React 代码。
-
-可用模板和元素：
-${JSON.stringify(economicsGraphTemplateSummaries, null, 2)}
-
-必须只返回 JSON 对象，格式：
-{
-  "template": "可用模板中的一个 id",
-  "title": "不超过 30 个汉字的图名",
-  "focus": ["元素 id"],
-  "rationale": "为什么选择这个模板，1 到 2 句话",
-  "reviewNotes": ["用户插入前应检查的点"]
-}
-
-规则：
-- template 必须来自可用模板 id。
-- focus 只能使用该模板下存在的元素 id，最多 6 个。
-- 优先选择标题和元素语义与需求最贴合的专属模板，不要用通用模板替代已有专属模板。
-- 只有在确实没有专属模板时，才使用 demand-supply、monopoly-mr-mc 或 cost-curves。
-- 不确定时选择最接近的模板，并在 reviewNotes 里提醒用户审查。`;
-
-    const userPrompt = `曲线需求：${prompt}`;
-
-    const { content, tokensUsed } = await callDeepSeek(
-      apiKey,
+    const body = asRecord(await req.json().catch(() => ({})));
+    const prompt = typeof body.prompt === "string" ? body.prompt : "";
+    const targetId = typeof body.targetId === "string" ? body.targetId : "";
+    const model = typeof body.model === "string" && body.model.trim() ? body.model.trim() : DEFAULT_DEEPSEEK_MODEL;
+    const apiKey = resolveAIKey("deepseek", body.apiKey);
+    if (!apiKey) return NextResponse.json({ error: "DeepSeek API key 未配置", success: false }, { status: 503 });
+    const ledger = await createEconomicsGraphJob(auth.context.supabase, {
+      userId: auth.context.user.id,
+      prompt,
       model,
-      [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt },
-      ],
-      { temperature: 0.18, maxTokens: 1100, responseFormat: "json_object" },
-    );
-
-    const normalized = normalizeEconomicsGraphAIDraft(parseJsonObject(content));
-    if (!normalized.ok) {
-      return NextResponse.json({ error: normalized.message, success: false }, { status: 422 });
+      targetId,
+    });
+    if (ledger.availability !== "synced" || !ledger.data) {
+      return NextResponse.json({ error: "经济学曲线任务登记失败", availability: ledger.availability, success: false }, { status: 503 });
     }
-
-    return NextResponse.json({
-      draft: normalized.draft,
-      markdown: buildEconomicsGraphMarkdown(normalized.draft.spec),
-      tokensUsed,
-      success: true,
+    scheduleInternalJobDrain(auth.context.supabase, {
+      userId: auth.context.user.id,
+      jobId: ledger.data.id,
+      deepseekApiKey: apiKey,
+      qwenApiKey: "",
+    });
+    return NextResponse.json({ success: true, job: sanitizeJobSummaryRow(ledger.data) }, {
+      status: 202,
+      headers: { "Cache-Control": "no-store" },
     });
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : "曲线生成失败";
-    console.error("[EconomicsGraphAI] Error:", message);
-    return NextResponse.json({ error: message, success: false }, { status: 500 });
+    return NextResponse.json({ error: error instanceof Error ? error.message : "曲线任务创建失败", success: false }, { status: 500 });
   }
 }

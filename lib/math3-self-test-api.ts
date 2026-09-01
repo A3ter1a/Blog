@@ -121,6 +121,45 @@ export const math3SelfTestsApi = {
     return mapMath3SelfTestSnakeToCamel(data);
   },
 
+  async createFromGenerationJob(jobId: string, test: Math3SelfTestCreateInput): Promise<Math3SelfTestRecord> {
+    const userId = await assertAdminWrite();
+    const supabase = getSupabase();
+    const now = new Date().toISOString();
+    const payload: Math3SelfTestInsert = {
+      id: jobId,
+      user_id: userId,
+      title: test.title,
+      mode: test.mode,
+      difficulty: test.difficulty,
+      status: test.status,
+      paper: toJson(test.paper),
+      attempt: toJson(test.attempt),
+      score: test.score,
+      max_score: test.maxScore,
+      started_at: test.startedAt?.toISOString(),
+      submitted_at: test.submittedAt?.toISOString(),
+      created_at: now,
+      updated_at: now,
+    };
+
+    const inserted = await supabase
+      .from("math3_self_tests")
+      .insert([payload])
+      .select(MATH3_SELF_TEST_FIELDS)
+      .maybeSingle();
+    if (!inserted.error && inserted.data) return mapMath3SelfTestSnakeToCamel(inserted.data);
+    if (inserted.error?.code !== "23505") throw inserted.error ?? new Error("生成试卷保存失败");
+
+    const existing = await supabase
+      .from("math3_self_tests")
+      .select(MATH3_SELF_TEST_FIELDS)
+      .eq("id", jobId)
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (existing.error || !existing.data) throw existing.error ?? new Error("生成试卷已存在但无法读取");
+    return mapMath3SelfTestSnakeToCamel(existing.data);
+  },
+
   async update(id: string, updates: Partial<Math3SelfTestRecord>): Promise<Math3SelfTestRecord> {
     const userId = await assertAdminWrite();
     const supabase = getSupabase();

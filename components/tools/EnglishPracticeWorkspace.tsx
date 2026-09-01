@@ -813,6 +813,7 @@ export function EnglishPracticeWorkspace({
   useEffect(() => {
     if (!questionDockOpen || passage?.section !== "reading") return;
 
+    const questionDockTrigger = questionDockTriggerRef.current;
     const focusTimer = window.setTimeout(() => questionDockCloseRef.current?.focus(), 0);
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
@@ -840,7 +841,7 @@ export function EnglishPracticeWorkspace({
     return () => {
       window.clearTimeout(focusTimer);
       document.removeEventListener("keydown", handleKeyDown);
-      questionDockTriggerRef.current?.focus();
+      questionDockTrigger?.focus();
     };
   }, [passage?.section, questionDockOpen]);
 

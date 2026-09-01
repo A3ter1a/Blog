@@ -27,12 +27,6 @@ const iconMap = {
   info: AlertCircle,
 };
 
-const colorMap = {
-  success: "bg-green-50 border-green-200 text-green-800",
-  error: "bg-red-50 border-red-200 text-red-800",
-  info: "bg-blue-50 border-blue-200 text-blue-800",
-};
-
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
 
@@ -57,7 +51,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   return (
     <ToastContext.Provider value={value}>
       {children}
-      <div className="fixed top-4 right-4 z-[100] flex flex-col gap-3 pointer-events-none">
+      <div className="toast-region pointer-events-none fixed z-[180] flex flex-col gap-3" aria-label="通知">
         <AnimatePresence>
           {toasts.map((toast) => {
             const Icon = iconMap[toast.type];
@@ -68,15 +62,21 @@ export function ToastProvider({ children }: { children: ReactNode }) {
                 animate={{ opacity: 1, x: 0, scale: 1 }}
                 exit={{ opacity: 0, x: 100, scale: 0.9 }}
                 transition={uiMotion.spring.gentle}
-                className={`pointer-events-auto flex items-center gap-3 px-4 py-3 rounded-xl border shadow-lg min-w-[280px] max-w-[400px] ${colorMap[toast.type]}`}
+                className="toast-card pointer-events-auto flex w-full items-center gap-3 rounded-xl border px-4 py-3 shadow-lg sm:w-auto sm:min-w-[280px] sm:max-w-[400px]"
+                data-type={toast.type}
+                role={toast.type === "error" ? "alert" : "status"}
+                aria-live={toast.type === "error" ? "assertive" : "polite"}
+                aria-atomic="true"
               >
-                <Icon className="w-5 h-5 flex-shrink-0" />
+                <Icon className="w-5 h-5 flex-shrink-0" aria-hidden="true" />
                 <p className="text-sm font-medium flex-1">{toast.message}</p>
                 <button
+                  type="button"
                   onClick={() => removeToast(toast.id)}
                   className="motion-ui motion-interactive p-1 rounded-lg hover:bg-black/10 flex-shrink-0"
+                  aria-label="关闭这条提示"
                 >
-                  <X className="w-4 h-4" />
+                  <X className="w-4 h-4" aria-hidden="true" />
                 </button>
               </motion.div>
             );

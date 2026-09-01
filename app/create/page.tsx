@@ -14,27 +14,21 @@ import { EditorToolbar } from "@/components/editor/EditorToolbar";
 import { DocumentOcrDialog } from "@/components/editor/DocumentOcrDialog";
 import { MarkdownReviewProposalDialog } from "@/components/editor/MarkdownReviewProposalDialog";
 import { EconomicsGraphComposer } from "@/components/editor/EconomicsGraphComposer";
-import { recordDeepSeekUsage } from "@/lib/ai-usage";
 import {
   AI_CONFIG_STORAGE_KEY,
-  ALLOW_CLIENT_AI_KEYS,
   DEFAULT_AI_CONFIG,
   normalizeAIConfig,
   sanitizeAIConfig,
 } from "@/lib/ai-config";
-import { readJsonStorage } from "@/lib/browser-storage";
-import { splitMarkdownForReview } from "@/lib/document-markdown-review";
+import { readJsonStorage, removeStorage, writeJsonStorage } from "@/lib/browser-storage";
 import {
-  buildMarkdownReviewProposal,
   extractMarkdownReviewProposal,
-  type MarkdownReviewChunkCapture,
   type MarkdownReviewProposal,
   validateMarkdownReviewProposal,
   verifyMarkdownReviewProposalChecksums,
 } from "@/lib/markdown-review-proposal";
 import { useJobCenter } from "@/components/jobs/JobCenter";
 import { isClientJobActive } from "@/lib/job-client";
-import { buildAuthHeaders } from "@/lib/fetch-with-auth";
 import { uploadImage, generateFileName } from "@/lib/supabase-storage";
 import { getMarkdownTextStats } from "@/lib/markdown-format";
 import { splitMath3PracticeTags } from "@/lib/math3-practice";
@@ -45,6 +39,16 @@ import { useCoverUpload } from "@/hooks/useCoverUpload";
 import { useNoteSave } from "@/hooks/useNoteSave";
 import { type ImportDraft, type NoteEditorDraft, useNoteEditorRoute } from "@/hooks/useNoteEditorRoute";
 import { collapsibleMotion, surfaceMotion, uiMotion } from "@/lib/motion";
+
+const CREATE_TASK_TARGET_STORAGE_KEY = "asteroid:create-task-target:v1";
+
+function isTaskTargetId(value: unknown): value is string {
+  return typeof value === "string" && /^draft:[0-9a-f-]{36}$/i.test(value);
+}
+
+function createDraftTaskTargetId(): string {
+  return `draft:${crypto.randomUUID()}`;
+}
 
 const ProblemEditor = dynamic(
   () => import("@/components/problems/ProblemEditor").then((module) => module.ProblemEditor),
@@ -149,6 +153,8 @@ function CreateEditorPage() {
   const [isReviewingMarkdown, setIsReviewingMarkdown] = useState(false);
   const [markdownReviewProposal, setMarkdownReviewProposal] = useState<MarkdownReviewProposal | null>(null);
   const [markdownReviewJobId, setMarkdownReviewJobId] = useState<string | null>(null);
+  const [draftTaskTargetId, setDraftTaskTargetId] = useState("");
+  const pendingMath3ClassificationJobsRef = useRef(new Set<string>());
   const [showEconomicsGraphComposer, setShowEconomicsGraphComposer] = useState(false);
   const [viewMode, setViewMode] = useState<"split" | "editor" | "preview">("editor");
   const editorRef = useRef<RichTextEditorRef>(null);
@@ -158,54 +164,6 @@ function CreateEditorPage() {
   const isSyncingScroll = useRef(false);
   const handledMarkdownReviewJobsRef = useRef(new Set<string>());
   const contentStats = useMemo(() => getMarkdownTextStats(content), [content]);
-  const hasActiveMarkdownReviewJob = useMemo(
-    () => jobs.some((job) => job.type === "markdown_review" && isClientJobActive(job)),
-    [jobs],
-  );
-
-  useEffect(() => {
-    const resumableJob = jobs.find((job) => (
-      job.type === "markdown_review"
-      && job.status === "succeeded"
-      && !job.resultClaimedAt
-      && !handledMarkdownReviewJobsRef.current.has(job.id)
-    ));
-    if (!resumableJob) return;
-
-    if (!resumableJob.resultPayload) {
-      void loadJobResult(resumableJob.id);
-      return;
-    }
-
-    handledMarkdownReviewJobsRef.current.add(resumableJob.id);
-    const result = isRecord(resumableJob.resultPayload) ? resumableJob.resultPayload : null;
-    const proposal = extractMarkdownReviewProposal(result?.proposal);
-    if (!proposal || !validateMarkdownReviewProposal(proposal).valid) {
-      updateJob(resumableJob.id, {
-        phase: "结果校验失败",
-        statusText: "云端审阅结果结构不完整，未写入正文",
-        error: "Markdown 审阅提案结构校验失败",
-      });
-      toast.error("后台 Markdown 审阅结果不完整，已阻止应用");
-      return;
-    }
-
-    void verifyMarkdownReviewProposalChecksums(proposal).then((checksumValid) => {
-      if (!checksumValid) {
-        updateJob(resumableJob.id, {
-          phase: "结果校验失败",
-          statusText: "云端审阅结果 checksum 不匹配，未写入正文",
-          error: "Markdown 审阅提案 checksum 校验失败",
-        });
-        toast.error("后台 Markdown 审阅结果 checksum 不匹配，已阻止应用");
-        return;
-      }
-
-      setMarkdownReviewJobId(resumableJob.id);
-      setMarkdownReviewProposal(proposal);
-      toast.success("后台审阅建议已恢复，确认后才会应用到正文");
-    });
-  }, [jobs, loadJobResult, toast, updateJob]);
 
   const applyDraft = useCallback((draft: NoteEditorDraft) => {
     setNoteType(draft.noteType);
@@ -245,6 +203,69 @@ function CreateEditorPage() {
     applyDraft,
     resetDraft,
   });
+  const taskTargetId = isEditMode && editingId ? `note:${editingId}` : draftTaskTargetId;
+  const hasActiveMarkdownReviewJob = useMemo(
+    () => jobs.some((job) => job.type === "markdown_review" && job.targetId === taskTargetId && isClientJobActive(job)),
+    [jobs, taskTargetId],
+  );
+
+  useEffect(() => {
+    if (isEditMode || draftTaskTargetId) return;
+    const stored = readJsonStorage<unknown>(CREATE_TASK_TARGET_STORAGE_KEY, null);
+    const nextTargetId = isTaskTargetId(stored) ? stored : createDraftTaskTargetId();
+    if (!isTaskTargetId(stored)) writeJsonStorage(CREATE_TASK_TARGET_STORAGE_KEY, nextTargetId);
+    const timer = window.setTimeout(() => setDraftTaskTargetId(nextTargetId), 0);
+    return () => window.clearTimeout(timer);
+  }, [draftTaskTargetId, isEditMode]);
+
+  const handleMath3ClassificationApplied = useCallback((jobId: string) => {
+    pendingMath3ClassificationJobsRef.current.add(jobId);
+  }, []);
+
+  useEffect(() => {
+    if (!taskTargetId) return;
+    const resumableJob = jobs.find((job) => (
+      job.type === "markdown_review"
+      && job.targetId === taskTargetId
+      && job.status === "succeeded"
+      && !job.resultClaimedAt
+      && !handledMarkdownReviewJobsRef.current.has(job.id)
+    ));
+    if (!resumableJob) return;
+    if (!resumableJob.resultPayload) {
+      void loadJobResult(resumableJob.id);
+      return;
+    }
+
+    const result = isRecord(resumableJob.resultPayload) ? resumableJob.resultPayload : null;
+    if (result?.targetId !== taskTargetId) return;
+    handledMarkdownReviewJobsRef.current.add(resumableJob.id);
+    const proposal = extractMarkdownReviewProposal(result.proposal);
+    if (!proposal || !validateMarkdownReviewProposal(proposal).valid) {
+      updateJob(resumableJob.id, {
+        phase: "结果校验失败",
+        statusText: "云端审阅结果结构不完整，未写入正文",
+        error: "Markdown 审阅提案结构校验失败",
+      });
+      toast.error("后台 Markdown 审阅结果不完整，已阻止应用");
+      return;
+    }
+
+    void verifyMarkdownReviewProposalChecksums(proposal).then((checksumValid) => {
+      if (!checksumValid) {
+        updateJob(resumableJob.id, {
+          phase: "结果校验失败",
+          statusText: "云端审阅结果 checksum 不匹配，未写入正文",
+          error: "Markdown 审阅提案 checksum 校验失败",
+        });
+        toast.error("后台 Markdown 审阅结果 checksum 不匹配，已阻止应用");
+        return;
+      }
+      setMarkdownReviewJobId(resumableJob.id);
+      setMarkdownReviewProposal(proposal);
+      toast.success("后台审阅建议已恢复，确认后才会应用到正文");
+    });
+  }, [jobs, loadJobResult, taskTargetId, toast, updateJob]);
 
   // Synchronize scroll between editor and preview panels
   const syncScroll = useCallback((source: HTMLDivElement, target: HTMLDivElement) => {
@@ -309,6 +330,9 @@ function CreateEditorPage() {
     });
 
     if (!result) return;
+    for (const jobId of pendingMath3ClassificationJobsRef.current) claimJobResult(jobId);
+    pendingMath3ClassificationJobsRef.current.clear();
+    if (!isEditMode) removeStorage(CREATE_TASK_TARGET_STORAGE_KEY);
     setHasProblemChanges(false);
     router.push(getNoteReadPath({
       id: result.id,
@@ -319,6 +343,10 @@ function CreateEditorPage() {
   const handleClear = () => {
     if (isSaving) return;
     resetDraft();
+    const nextTargetId = createDraftTaskTargetId();
+    writeJsonStorage(CREATE_TASK_TARGET_STORAGE_KEY, nextTargetId);
+    setDraftTaskTargetId(nextTargetId);
+    pendingMath3ClassificationJobsRef.current.clear();
     setHasProblemChanges(true);
   };
 
@@ -411,104 +439,18 @@ function CreateEditorPage() {
       const aiConfig = sanitizeAIConfig(
         readJsonStorage(AI_CONFIG_STORAGE_KEY, DEFAULT_AI_CONFIG, normalizeAIConfig),
       );
-      const backgroundJob = await createMarkdownReviewJob({
+      await createMarkdownReviewJob({
         markdown: content,
         model: aiConfig.deepseekModel,
+        targetId: taskTargetId,
       });
-      if (backgroundJob) {
-        toast.success("Markdown 审阅已转入后台任务，可安全切换页面");
-        return;
-      }
-
-      const chunks = splitMarkdownForReview(content);
-      if (chunks.length === 0) {
-        throw new Error("正文为空，无法审查");
-      }
-
-      if (chunks.length > 1) {
-        toast.info(`正文较长，已自动分成 ${chunks.length} 段审查，可能需要几分钟`);
-      }
-
-      const reviewedChunks: string[] = [];
-      const capturedChunks: MarkdownReviewChunkCapture[] = [];
-      let lastSummary = "";
-
-      for (let index = 0; index < chunks.length; index += 1) {
-        const body: { markdown: string; model: string; apiKey?: string; chunkIndex: number; chunkCount: number } = {
-          markdown: chunks[index],
-          model: aiConfig.deepseekModel,
-          chunkIndex: index + 1,
-          chunkCount: chunks.length,
-        };
-        if (ALLOW_CLIENT_AI_KEYS) {
-          body.apiKey = aiConfig.deepseekApiKey;
-        }
-
-        const res = await fetch("/api/ai/document-markdown-review", {
-          method: "POST",
-          headers: await buildAuthHeaders({ "Content-Type": "application/json" }),
-          body: JSON.stringify(body),
-        });
-        const rawData: unknown = await res.json().catch(() => ({}));
-        const data = isRecord(rawData) ? rawData : {};
-
-        if (!res.ok || data.success !== true) {
-          const message = typeof data.error === "string" ? data.error : "Markdown 审查失败";
-          throw new Error(chunks.length > 1 ? `第 ${index + 1}/${chunks.length} 段失败：${message}` : message);
-        }
-
-        const chunkMarkdown = typeof data.markdown === "string" ? data.markdown : "";
-        if (!chunkMarkdown.trim()) {
-          throw new Error(`DeepSeek 返回了空内容，已中止替换${chunks.length > 1 ? `（第 ${index + 1}/${chunks.length} 段）` : ""}`);
-        }
-
-        reviewedChunks.push(chunkMarkdown.trim());
-
-        const chunkSummary = typeof data.summary === "string" ? data.summary.trim() : "";
-        const chunkTokensUsed = typeof data.tokensUsed === "number" && data.tokensUsed > 0
-          ? data.tokensUsed
-          : 0;
-        capturedChunks.push({
-          chunkIndex: index + 1,
-          chunkCount: chunks.length,
-          sourceMarkdown: chunks[index],
-          reviewedMarkdown: chunkMarkdown.trim(),
-          summary: chunkSummary,
-          tokensUsed: chunkTokensUsed,
-        });
-
-        if (chunkTokensUsed > 0) {
-          recordDeepSeekUsage(chunkTokensUsed);
-        }
-
-        if (chunkSummary) {
-          lastSummary = chunkSummary;
-        }
-      }
-
-      const reviewedMarkdown = reviewedChunks.join("\n\n").replace(/\n{4,}/g, "\n\n\n").trim();
-
-      const summary = chunks.length > 1
-        ? `已分 ${chunks.length} 段审查公式和标题层级`
-        : lastSummary
-        ? lastSummary
-        : "已审查公式和标题层级";
-      const proposal = await buildMarkdownReviewProposal({
-        sourceMarkdown: content,
-        reviewedMarkdown,
-        model: aiConfig.deepseekModel,
-        summary,
-        chunks: capturedChunks,
-      });
-      setMarkdownReviewJobId(null);
-      setMarkdownReviewProposal(proposal);
-      toast.success("审阅建议已生成，确认后才会应用到正文");
+      toast.success("Markdown 审阅已转入后台任务，可安全切换页面");
     } catch (error: unknown) {
       toast.error(`Markdown 审查失败：${error instanceof Error ? error.message : "未知错误"}`);
     } finally {
       setIsReviewingMarkdown(false);
     }
-  }, [content, createMarkdownReviewJob, hasActiveMarkdownReviewJob, isReviewingMarkdown, toast]);
+  }, [content, createMarkdownReviewJob, hasActiveMarkdownReviewJob, isReviewingMarkdown, taskTargetId, toast]);
 
   const handleApplyMarkdownReviewProposal = useCallback((proposal: MarkdownReviewProposal) => {
     if (content !== proposal.sourceMarkdown) {
@@ -816,6 +758,8 @@ function CreateEditorPage() {
                 problems={problems}
                 onChange={handleProblemsChange}
                 noteId={isEditMode ? editingId : undefined}
+                taskTargetId={taskTargetId}
+                onMath3ClassificationApplied={handleMath3ClassificationApplied}
                 subject={subject}
                 hasUnsavedChanges={isEditMode && hasProblemChanges}
                 chapterRefreshKey={chapterRefreshKey}
@@ -893,7 +837,7 @@ function CreateEditorPage() {
               />
 
               {isEconomicsNote && showEconomicsGraphComposer && (
-                <EconomicsGraphComposer onInsert={handleInsertEconomicsGraphMarkdown} />
+                <EconomicsGraphComposer onInsert={handleInsertEconomicsGraphMarkdown} targetId={taskTargetId} />
               )}
 
               {viewMode === "split" && (

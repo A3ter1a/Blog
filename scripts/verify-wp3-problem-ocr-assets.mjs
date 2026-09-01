@@ -41,16 +41,19 @@ assert.match(contract, /isOwnedProblemOcrAssetPath/, "服务端必须验证源�
 assert.match(contract, /题库 OCR 分块序号或总数不连续/, "聚合结果必须拒绝缺号或错序分块");
 assert.match(contract, /extractProblemOcrJobResult/, "客户端恢复前必须校验结构化结果");
 
+assert.match(createRoute, /getAdminRequestContext\(req\)/, "题库 OCR 创建路由必须经过管理员鉴权");
+for (const route of [advanceRoute, retryRoute]) {
+  assert.match(route, /getJobRequestContext\(req\)/, "通用任务操作路由必须经过 owner 鉴权");
+}
 for (const route of [createRoute, advanceRoute, retryRoute]) {
-  assert.match(route, /getAdminRequestContext\(req\)/, "题库 OCR 写路由必须经过管理员鉴权");
   assert.doesNotMatch(route, /service[_-]?role/i, "题库 OCR 不得使用 service-role 绕过用户边界");
   assert.match(route, /force-dynamic|Cache-Control/, "题库 OCR 用户状态不得缓存");
 }
-assert.match(createRoute, /internalJobLeaseAvailable/, "上传前必须先检查 0014 lease 能力");
+assert.match(createRoute, /internalJobLeaseSchemaAvailable/, "上传前必须先检查 0014 lease 能力");
 assert.match(createRoute, /resolveAIKey\("qwen"\)/, "持久 OCR 必须只读服务端 Qwen key");
 assert.match(createRoute, /resolveAIKey\("deepseek"\)/, "持久 OCR 必须只读服务端 DeepSeek key");
 
-const problemAdvance = runner.match(/export async function advanceProblemOcrJob[\s\S]*?export async function advanceInternalJob/)?.[0] ?? "";
+const problemAdvance = runner.match(/export async function advanceProblemOcrJob[\s\S]*?export async function advanceMathPaperOcrJob/)?.[0] ?? "";
 assert.equal((problemAdvance.match(/"claim_next_job_item"/g) ?? []).length, 1, "题库 OCR 每次 advance 只能领取一张图片");
 assert.match(problemAdvance, /storage\.from\(PROBLEM_OCR_BUCKET\)\.download/, "worker 必须从私有 Storage 读取源图");
 assert.match(problemAdvance, /recognizeProblemImage/, "worker 必须调用共享 Qwen OCR 服务");
@@ -78,7 +81,8 @@ assert.doesNotMatch(
   "任务列表不得批量返回私有源图路径或章节上下文",
 );
 assert.match(scanHook, /await createProblemOcrJob\(/, "题库扫描必须优先创建持久任务");
-assert.match(scanHook, /createLocalProblemOcrJob/, "schema 或 flag 未就绪时必须保留页面内回退");
+assert.doesNotMatch(scanHook, /createLocalProblemOcrJob|\/api\/ai\/(?:ocr|analyze)/, "持久能力未就绪时不得退回页面内 AI 任务");
+assert.doesNotMatch(jobCenter, /createLocalProblemOcrJob/, "任务中心不得再暴露不可恢复的本地 OCR 任务");
 assert.match(scanHook, /extractProblemOcrJobResult/, "恢复结果必须通过结构校验");
 assert.match(scanHook, /loadJobResult/, "成功任务必须可跨页读取结果");
 assert.match(uploader, /关闭弹窗、刷新或切换页面都不会丢失任务/, "界面必须明确说明持久任务可离页恢复");

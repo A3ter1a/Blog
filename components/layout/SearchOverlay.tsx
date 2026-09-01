@@ -10,6 +10,7 @@ import type { Note } from "@/lib/types";
 import { getNoteReadPath } from "@/lib/note-routes";
 import { dialogMotion, overlayMotion, uiMotion } from "@/lib/motion";
 import { getSiteCacheKey, readSiteCache, writeSiteCache } from "@/lib/site-cache";
+import { useDialogFocus } from "@/hooks/useDialogFocus";
 
 interface SearchOverlayProps {
   isOpen: boolean;
@@ -22,7 +23,15 @@ export function SearchOverlay({ isOpen, onClose }: SearchOverlayProps) {
   const [isSearching, setIsSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
   const latestSearchId = useRef(0);
+
+  useDialogFocus({
+    isOpen,
+    onClose,
+    containerRef: dialogRef,
+    initialFocusRef: inputRef,
+  });
 
   // Debounced search
   const searchNotes = useCallback(async (searchQuery: string) => {
@@ -77,33 +86,18 @@ export function SearchOverlay({ isOpen, onClose }: SearchOverlayProps) {
     return () => clearTimeout(timer);
   }, [query, searchNotes]);
 
-  // Focus input when opened
+  // Discard stale query state only after the overlay closes.
   useEffect(() => {
-    if (isOpen && inputRef.current) {
-      setTimeout(() => inputRef.current?.focus(), 100);
-    }
-    if (!isOpen) {
-      const timer = window.setTimeout(() => {
-        latestSearchId.current += 1;
-        setQuery("");
-        setResults([]);
-        setIsSearching(false);
-        setSearchError(null);
-      }, 0);
-      return () => window.clearTimeout(timer);
-    }
+    if (isOpen) return;
+    const timer = window.setTimeout(() => {
+      latestSearchId.current += 1;
+      setQuery("");
+      setResults([]);
+      setIsSearching(false);
+      setSearchError(null);
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, [isOpen]);
-
-  // Close on Escape
-  useEffect(() => {
-    const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    if (isOpen) {
-      document.addEventListener("keydown", handleEscape);
-      return () => document.removeEventListener("keydown", handleEscape);
-    }
-  }, [isOpen, onClose]);
 
   return (
     <AnimatePresence>
@@ -111,6 +105,7 @@ export function SearchOverlay({ isOpen, onClose }: SearchOverlayProps) {
         <>
           {/* Backdrop */}
           <motion.div
+            ref={dialogRef}
             variants={overlayMotion}
             initial="initial"
             animate="animate"
@@ -131,6 +126,7 @@ export function SearchOverlay({ isOpen, onClose }: SearchOverlayProps) {
             role="dialog"
             aria-modal="true"
             aria-label="全局搜索"
+            tabIndex={-1}
           >
             <div className="bg-surface-container-lowest rounded-2xl shadow-elevated overflow-hidden">
               {/* Input */}

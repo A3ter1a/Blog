@@ -22,6 +22,16 @@ export type UploadedProblemOcrAsset = {
   name: string;
 };
 
+export type MathPaperOcrUploadInput = ProblemOcrUploadInput & {
+  pageId: string;
+  sourceFingerprint: string;
+};
+
+export type UploadedMathPaperOcrAsset = UploadedProblemOcrAsset & {
+  pageId: string;
+  sourceFingerprint: string;
+};
+
 // 检查 Supabase 是否已配置
 function checkSupabaseConfig() {
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
@@ -162,6 +172,43 @@ export async function uploadProblemOcrAssets(inputs: ProblemOcrUploadInput[]): P
       );
       if (error) throw new Error(`题库 OCR 图片上传失败：${error.message}。请确认已执行 WP3 图片临时源迁移`);
       uploaded.push({ path, mimeType: input.mimeType, name: input.name });
+    }
+    return uploaded;
+  } catch (error: unknown) {
+    if (uploaded.length > 0) {
+      await supabase.storage.from(OCR_DOCUMENT_BUCKET_NAME).remove(uploaded.map((asset) => asset.path));
+    }
+    throw error;
+  }
+}
+
+export async function uploadMathPaperOcrAssets(inputs: MathPaperOcrUploadInput[]): Promise<UploadedMathPaperOcrAsset[]> {
+  if (inputs.length === 0 || inputs.length > 20) throw new Error("数学答题纸 OCR 每次必须上传 1–20 张图片");
+  checkSupabaseConfig();
+  await assertAdminWrite();
+  const supabase = getSupabase();
+  const userResult = await supabase.auth.getUser();
+  if (userResult.error || !userResult.data.user) throw new Error("登录状态已失效，无法上传数学答题纸图片");
+
+  const batchId = crypto.randomUUID();
+  const uploaded: UploadedMathPaperOcrAsset[] = [];
+  try {
+    for (let index = 0; index < inputs.length; index += 1) {
+      const input = inputs[index];
+      const path = `math-paper-ocr/${userResult.data.user.id}/${batchId}/${String(index + 1).padStart(2, "0")}.${getProblemOcrExtension(input.mimeType)}`;
+      const { error } = await supabase.storage.from(OCR_DOCUMENT_BUCKET_NAME).upload(
+        path,
+        decodeBase64Image(input.base64),
+        { contentType: input.mimeType, upsert: false },
+      );
+      if (error) throw new Error(`数学答题纸图片上传失败：${error.message}。请确认已执行 WP3 图片临时源迁移`);
+      uploaded.push({
+        path,
+        mimeType: input.mimeType,
+        name: input.name,
+        pageId: input.pageId,
+        sourceFingerprint: input.sourceFingerprint,
+      });
     }
     return uploaded;
   } catch (error: unknown) {

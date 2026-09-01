@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAdminRequestContext } from "@/lib/server-admin-auth";
+import { getJobRequestContext } from "@/lib/server-job-auth";
 import { cancelUserJob, sanitizeJobSummaryRow } from "@/lib/server-job-ledger";
 
 export const runtime = "nodejs";
@@ -10,7 +10,7 @@ function isUuid(value: string): boolean {
 }
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const auth = await getAdminRequestContext(req);
+  const auth = await getJobRequestContext(req);
   if (!auth.ok) return auth.response;
 
   const { id } = await params;
