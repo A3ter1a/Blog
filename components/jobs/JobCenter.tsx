@@ -63,6 +63,7 @@ type CreateProblemOcrJobInput = {
   chapterContext: ProblemOcrChapterContextItem[];
   qwenModel: string;
   deepseekModel: string;
+  ocrProvider?: "deepseek" | "qwen";
   targetId: string;
 };
 
@@ -639,7 +640,7 @@ export function JobCenterProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const createProblemOcrJob = useCallback(async (input: CreateProblemOcrJobInput) => {
-    const capabilityResponse = await fetch("/api/jobs/problem-ocr", {
+    const capabilityResponse = await fetch(`/api/jobs/problem-ocr?provider=${input.ocrProvider === "qwen" ? "qwen" : "deepseek"}`, {
       headers: await buildAuthHeaders(),
       cache: "no-store",
     });
@@ -658,6 +659,7 @@ export function JobCenterProvider({ children }: { children: ReactNode }) {
           chapterContext: input.chapterContext,
           qwenModel: input.qwenModel,
           deepseekModel: input.deepseekModel,
+          ocrProvider: input.ocrProvider ?? "deepseek",
           targetId: input.targetId,
         }),
         cache: "no-store",

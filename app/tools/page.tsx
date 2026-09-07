@@ -1,5 +1,7 @@
 import {
   BookOpenText,
+  Bot,
+  Brain,
   Calculator,
   GraduationCap,
   Layers3,
@@ -7,10 +9,11 @@ import {
 import { PageHeader, PageShell } from "@/components/ui/PageScaffold";
 import { ToolHubCard, ToolHubGrid, type ToolHubCardItem } from "@/components/tools/ToolHubCard";
 import { createPageMetadata } from "@/lib/site-metadata";
+import { AdminReviewToolCard } from "@/components/tools/AdminReviewToolCard";
 
 export const metadata = createPageMetadata({
   title: "工具",
-  description: "进入 Asteroid 的学习工具台，按真题、数学训练和经济学术语选择复习入口。",
+  description: "按阅读理解、刷题复盘和 AI 资料整理选择学习任务。",
   path: "/tools",
   keywords: ["学习工具", "真题中心", "数学训练", "经济学术语"],
 });
@@ -40,14 +43,6 @@ const toolHubs: ToolHubCardItem[] = [
     icon: BookOpenText,
     tone: "border-amber-500/20 bg-amber-500/10 text-amber-700",
   },
-  {
-    id: "collections",
-    title: "合集工作台",
-    description: "按章节或主题逐篇追加内容，随时调整顺序、移除或发布。",
-    href: "/tools/collections",
-    icon: Layers3,
-    tone: "border-violet-500/20 bg-violet-500/10 text-violet-700",
-  },
 ];
 
 export default function ToolsPage() {
@@ -57,14 +52,25 @@ export default function ToolsPage() {
         width="normal"
         template="training"
         title="工具"
-        description="先选复习方向，再进入具体操作。"
+        description="读懂知识点 → 独立练习 → 核对与复盘。AI 的解释、识别和评分建议都可回到原文或答案核对。"
       />
 
       <PageShell width="normal" topPadding="content" template="training">
+        <div className="mx-auto mb-5 max-w-4xl"><h2 className="font-headline text-lg font-semibold text-on-surface">阅读与理解</h2></div>
+        <ToolHubGrid>
+          <ToolHubCard item={{ title: "读笔记 · 问 AI · 做快测", description: "打开一篇笔记，在阅读页使用「问助手」解释难点；有已发布快测的笔记可在助手中自测。助手与快测需登录。", href: "/notes", icon: Bot, actionLabel: "选一篇笔记" }} />
+        </ToolHubGrid>
+        <div className="mx-auto mb-5 mt-8 max-w-4xl"><h2 className="font-headline text-lg font-semibold text-on-surface">练习与复盘</h2><p className="mt-1 text-sm text-on-surface-variant">先作答，再查看解析或 AI 建议；个人训练记录需登录后保存。</p></div>
         <ToolHubGrid>
           {toolHubs.map((tool) => (
             <ToolHubCard key={tool.href} item={tool} />
           ))}
+        </ToolHubGrid>
+        <div className="mx-auto mb-5 mt-8 max-w-4xl"><h2 className="font-headline text-lg font-semibold text-on-surface">资料整理与 AI 协作</h2></div>
+        <ToolHubGrid>
+          <ToolHubCard item={{ title: "合集工作台", description: "把笔记整理成章节或专题，按自己的复习顺序阅读。", href: "/tools/collections", icon: Layers3 }} />
+          <ToolHubCard item={{ title: "助手记忆", description: "核对从问答中保存的候选内容，确认后才用于后续回答。需登录你的博客账号。", href: "/tools/assistant-memory", icon: Brain, actionLabel: "查看候选" }} />
+          <AdminReviewToolCard />
         </ToolHubGrid>
       </PageShell>
     </>

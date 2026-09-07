@@ -38,10 +38,10 @@ export function ToolHubCard({ item }: { item: ToolHubCardItem }) {
         </p>
       </div>
       <div className="ml-auto flex shrink-0 items-center gap-2 text-sm font-medium text-primary">
-        <span className="hidden sm:inline">
+        <span className={item.href ? "hidden sm:inline" : "text-xs sm:text-sm"}>
           {item.href ? item.actionLabel ?? "进入" : item.disabledLabel ?? "待接入"}
         </span>
-        <ChevronRight className={`motion-icon-shift h-4 w-4 ${item.href ? "group-hover:translate-x-1" : ""}`} />
+        {item.href && <ChevronRight className="motion-icon-shift h-4 w-4 group-hover:translate-x-1" />}
       </div>
     </>
   );

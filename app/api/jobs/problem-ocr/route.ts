@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { DEFAULT_DEEPSEEK_MODEL, DEFAULT_QWEN_MODEL } from "@/lib/ai-config";
+import { DEFAULT_DEEPSEEK_MODEL, DEFAULT_QWEN_MODEL, normalizeOcrProvider } from "@/lib/ai-config";
 import type { ProblemOcrChapterContextItem, ProblemOcrSourceAsset } from "@/lib/problem-ocr-contract";
 import { createProblemOcrJob, internalJobLeaseSchemaAvailable } from "@/lib/server-internal-job-runner";
 import { getAdminRequestContext, resolveAIKey } from "@/lib/server-admin-auth";
@@ -8,7 +8,7 @@ import { scheduleInternalJobDrain } from "@/lib/server-internal-job-background";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 900;
+export const maxDuration = 300;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -44,7 +44,7 @@ export async function GET(req: NextRequest) {
     const available = await internalJobLeaseSchemaAvailable(auth.context.supabase);
     return NextResponse.json({
       success: true,
-      available: available && Boolean(resolveAIKey("qwen")) && Boolean(resolveAIKey("deepseek")),
+      available: available && Boolean(resolveAIKey("deepseek")) && (normalizeOcrProvider(req.nextUrl.searchParams.get("provider")) === "deepseek" || Boolean(resolveAIKey("qwen"))),
       availability: available ? "synced" : "schema_pending",
     }, { headers: { "Cache-Control": "no-store" } });
   } catch (error: unknown) {
@@ -63,8 +63,9 @@ export async function POST(req: NextRequest) {
     if (assets.length < 1 || assets.length > 10) {
       return NextResponse.json({ error: "题库 OCR 每次必须包含 1–10 张有效私有源图", success: false }, { status: 400 });
     }
-    if (!resolveAIKey("qwen") || !resolveAIKey("deepseek")) {
-      return NextResponse.json({ error: "服务器 Qwen 或 DeepSeek API Key 未配置", success: false }, { status: 503 });
+    const ocrProvider = normalizeOcrProvider(body.ocrProvider);
+    if (!resolveAIKey("deepseek") || (ocrProvider === "qwen" && !resolveAIKey("qwen"))) {
+      return NextResponse.json({ error: "所选 OCR 服务或题目分析所需的服务端 API Key 未配置", success: false }, { status: 503 });
     }
     const targetId = typeof body.targetId === "string" ? body.targetId.trim().slice(0, 200) : "";
     if (!/^[A-Za-z0-9:_-]{8,200}$/.test(targetId)) {
@@ -76,6 +77,7 @@ export async function POST(req: NextRequest) {
       chapterContext: parseChapterContext(body.chapterContext),
       qwenModel: typeof body.qwenModel === "string" && body.qwenModel.trim() ? body.qwenModel.trim() : DEFAULT_QWEN_MODEL,
       deepseekModel: typeof body.deepseekModel === "string" && body.deepseekModel.trim() ? body.deepseekModel.trim() : DEFAULT_DEEPSEEK_MODEL,
+      ocrProvider,
       targetId,
     });
     if (ledger.availability !== "synced" || !ledger.data) {

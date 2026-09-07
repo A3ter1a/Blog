@@ -12,13 +12,14 @@ import {
   DEFAULT_AI_CONFIG,
   DEFAULT_QWEN_ENDPOINT,
   QWEN_OCR_MODEL_OPTIONS,
+  DEFAULT_DEEPSEEK_OCR_MODEL,
   normalizeAIConfig,
   sanitizeAIConfig,
 } from '@/lib/ai-config';
 import { readJsonStorage, writeJsonStorage } from '@/lib/browser-storage';
 
 type ConfigTestBody = {
-  provider: 'deepseek' | 'qwen' | 'baidu-ocr';
+  provider: 'deepseek' | 'deepseek-ocr' | 'qwen' | 'baidu-ocr';
   apiKey?: string;
   model?: string;
 };
@@ -90,7 +91,7 @@ export function AISettings() {
     setTestResult(null);
     try {
       const body: ConfigTestBody = { provider };
-      if (provider === 'deepseek') {
+      if (provider === 'deepseek' || provider === 'deepseek-ocr') {
         if (ALLOW_CLIENT_AI_KEYS) body.apiKey = config.deepseekApiKey;
         body.model = config.deepseekModel;
       } else if (provider === 'qwen') {
@@ -108,11 +109,13 @@ export function AISettings() {
       if (data.success) {
         const providerName = provider === 'deepseek'
           ? 'DeepSeek'
-          : provider === 'qwen'
+          : provider === 'deepseek-ocr'
+            ? 'DeepSeek Vision OCR'
+            : provider === 'qwen'
             ? 'Qwen'
             : '讲义 OCR';
         setTestResult({ success: true, message: `${providerName} 连接成功！` });
-        if (provider === 'deepseek' && data.tokensUsed) {
+        if ((provider === 'deepseek' || provider === 'deepseek-ocr') && data.tokensUsed) {
           recordDeepSeekUsage(data.tokensUsed);
           setUsage(getUsageStats());
         }
@@ -243,6 +246,14 @@ export function AISettings() {
               </select>
             </div>
             <button
+              onClick={() => testConnection('deepseek-ocr')}
+              disabled={!deepseekConfigured || testing !== null}
+              className="flex items-center gap-2 px-3 py-2 rounded-lg bg-primary/10 text-primary text-xs font-medium hover:bg-primary/20 transition-colors disabled:opacity-40"
+            >
+              {testing === 'deepseek-ocr' ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Plug className="w-3.5 h-3.5" />}
+              测试 DeepSeek Vision OCR
+            </button>
+            <button
               onClick={() => testConnection('deepseek')}
               disabled={!deepseekConfigured || testing !== null}
               className="flex items-center gap-2 px-3 py-2 rounded-lg bg-primary/10 text-primary text-xs font-medium hover:bg-primary/20 transition-colors disabled:opacity-40"
@@ -254,6 +265,16 @@ export function AISettings() {
               )}
               测试 DeepSeek 连接
             </button>
+          </div>
+
+          {/* OCR Priority */}
+          <div className="bg-surface-container-low rounded-xl p-4 space-y-3">
+            <p className="text-xs font-medium text-on-surface">题目图片 OCR 优先服务</p>
+            <select aria-label="题目图片 OCR 优先服务" value={config.ocrProvider ?? "deepseek"} onChange={e => setConfig({ ...config, ocrProvider: e.target.value === "qwen" ? "qwen" : "deepseek" })} className="w-full px-3 py-2 bg-surface-container-highest rounded-lg text-sm text-on-surface outline-none focus:ring-2 focus:ring-primary/20">
+              <option value="deepseek">DeepSeek Vision（优先，{DEFAULT_DEEPSEEK_OCR_MODEL}）</option>
+              <option value="qwen">Qwen Vision（备用）</option>
+            </select>
+            <p className="text-[11px] leading-5 text-on-surface-variant/60">用于题集图片 OCR，复用 DeepSeek 密钥。数学答题纸暂用 Qwen，PDF 讲义使用百度 OCR。</p>
           </div>
 
           {/* Qwen Configuration */}

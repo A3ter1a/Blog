@@ -105,7 +105,6 @@ export function SearchOverlay({ isOpen, onClose }: SearchOverlayProps) {
         <>
           {/* Backdrop */}
           <motion.div
-            ref={dialogRef}
             variants={overlayMotion}
             initial="initial"
             animate="animate"
@@ -117,6 +116,7 @@ export function SearchOverlay({ isOpen, onClose }: SearchOverlayProps) {
 
           {/* Search Bar */}
           <motion.div
+            ref={dialogRef}
             variants={dialogMotion}
             initial="initial"
             animate="animate"
@@ -152,6 +152,9 @@ export function SearchOverlay({ isOpen, onClose }: SearchOverlayProps) {
                     <X className="w-4 h-4 text-on-surface-variant" />
                   </button>
                 )}
+                <button type="button" onClick={onClose} aria-label="关闭搜索" className="motion-ui motion-interactive flex h-11 w-11 shrink-0 items-center justify-center rounded-full hover:bg-surface-container-high">
+                  <X className="h-5 w-5 text-on-surface-variant" />
+                </button>
               </div>
 
               {/* Results */}

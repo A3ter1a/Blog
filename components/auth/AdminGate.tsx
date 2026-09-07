@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { Loader2, LockKeyhole } from "lucide-react";
 import { useAdminAuth } from "@/hooks/useAdminAuth";
 
@@ -9,6 +10,7 @@ type AdminGateProps = {
 };
 
 export function AdminGate({ children }: AdminGateProps) {
+  const pathname = usePathname();
   const { loading, user, isAdmin } = useAdminAuth();
 
   if (loading) {
@@ -31,13 +33,13 @@ export function AdminGate({ children }: AdminGateProps) {
           </div>
           <h1 className="text-xl font-bold text-on-surface font-headline">需要管理员登录</h1>
           <p className="text-sm text-on-surface-variant">
-            这个页面会修改公开网站数据，必须登录后才能继续。
+            登录你的博客账号后即可继续，并保存个人学习记录或管理资料。
           </p>
           <Link
-            href="/login"
-            className="control-button control-button-primary px-5 py-2.5 text-sm"
+            href={`/login?next=${encodeURIComponent(pathname)}`}
+            className="control-button control-button-primary min-h-11 px-5 py-2.5 text-sm"
           >
-            前往登录
+            登录后继续当前任务
           </Link>
         </div>
       </main>
@@ -57,7 +59,7 @@ export function AdminGate({ children }: AdminGateProps) {
           </p>
           <Link
             href="/"
-            className="control-button px-5 py-2.5 text-sm"
+            className="control-button min-h-11 px-5 py-2.5 text-sm"
           >
             返回首页
           </Link>

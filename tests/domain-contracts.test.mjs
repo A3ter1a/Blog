@@ -2632,7 +2632,7 @@ test("所有生成型 AI 入口都先登记持久任务并支持服务端续跑"
   ]) {
     const route = readFileSync(resolve(routePath), "utf8");
     assert.match(route, /scheduleInternalJobDrain/);
-    assert.match(route, /maxDuration = 900/);
+    assert.match(route, /maxDuration = 300/);
   }
   assert.equal(createPage.includes('<EconomicsGraphComposer onInsert={handleInsertEconomicsGraphMarkdown} targetId={taskTargetId} />'), true);
   assert.equal(mathSelfTest.includes('fetch("/api/ai/math3-self-test/grade-step"'), false);

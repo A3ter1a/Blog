@@ -3,14 +3,17 @@
 import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import Image from "next/image";
+import dynamic from "next/dynamic";
+import logo from "@/public/logo.png";
 import { usePathname } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import { BookOpen, Home, Menu, PenLine, Search, Settings, UserRound, Wrench, X } from "lucide-react";
-import { SearchOverlay } from "./SearchOverlay";
-import { SettingsPanel } from "./SettingsPanel";
 import { useAdminAuth } from "@/hooks/useAdminAuth";
 import { dialogMotion, overlayMotion, uiMotion } from "@/lib/motion";
 import { useDialogFocus } from "@/hooks/useDialogFocus";
+
+const SearchOverlay = dynamic(() => import("./SearchOverlay").then((module) => module.SearchOverlay));
+const SettingsPanel = dynamic(() => import("./SettingsPanel").then((module) => module.SettingsPanel));
 
 const navItems = [
   { name: "首页", href: "/", icon: Home },
@@ -26,6 +29,9 @@ export function Navbar() {
   const [scrolled, setScrolled] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  // Preserve panel state and exit animations after first use.
+  const [searchLoaded, setSearchLoaded] = useState(false);
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const mobileMenuRef = useRef<HTMLDivElement>(null);
   const mobileMenuCloseRef = useRef<HTMLButtonElement>(null);
@@ -62,7 +68,7 @@ export function Navbar() {
       data-reader-route={isReaderRoute || undefined}
       className={`site-navbar motion-page fixed top-0 z-50 w-full border-b ${
         scrolled
-          ? "border-slate-100/50 bg-white/70 shadow-ambient backdrop-blur-md"
+          ? "border-outline-variant/30 bg-surface/90 shadow-ambient backdrop-blur-md"
           : "border-transparent bg-transparent"
       }`}
     >
@@ -73,14 +79,14 @@ export function Navbar() {
           className="motion-ui motion-interactive flex min-w-0 items-center gap-2 justify-self-start rounded-lg hover:opacity-80 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
         >
           <Image
-            src="/logo.png"
+            src={logo}
             alt="Asteroid Logo"
             width={48}
             height={48}
             className="h-12 w-12 shrink-0 object-contain"
             priority
           />
-          <span className="hidden truncate whitespace-nowrap font-headline text-2xl font-bold text-primary-container sm:block">
+          <span className="hidden truncate whitespace-nowrap font-headline text-2xl font-bold text-primary sm:block">
             Asteroid
           </span>
         </Link>
@@ -97,10 +103,10 @@ export function Navbar() {
                 key={item.href}
                 href={item.href}
                 aria-current={isActive ? "page" : undefined}
-                className={`motion-ui relative whitespace-nowrap rounded-lg px-1 py-2 font-headline text-base font-medium after:pointer-events-none after:absolute after:-bottom-1 after:left-1/2 after:h-px after:-translate-x-1/2 after:rounded-full after:bg-primary-container after:transition-all after:duration-300 after:ease-out focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 lg:text-lg ${
+                className={`motion-ui relative whitespace-nowrap rounded-lg px-1 py-2 font-headline text-base font-medium after:pointer-events-none after:absolute after:-bottom-1 after:left-1/2 after:h-px after:-translate-x-1/2 after:rounded-full after:bg-primary after:transition-all after:duration-300 after:ease-out focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 lg:text-lg ${
                   isActive
-                    ? "text-primary-container after:w-full"
-                    : "text-on-surface-variant hover:text-primary-container hover:after:w-full after:w-0"
+                    ? "text-primary after:w-full"
+                    : "text-on-surface-variant hover:text-primary hover:after:w-full after:w-0"
                 }`}
               >
                 {item.name}
@@ -114,8 +120,8 @@ export function Navbar() {
           {/* Search */}
           <button
             type="button"
-            onClick={() => setShowSearch(true)}
-            className="motion-ui motion-interactive flex h-11 w-11 items-center justify-center rounded-lg text-primary-container hover:bg-surface-container-high focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+            onClick={() => { setSearchLoaded(true); setShowSearch(true); }}
+            className="motion-ui motion-interactive flex h-11 w-11 items-center justify-center rounded-lg text-primary hover:bg-surface-container-high focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
             aria-label="搜索"
           >
             <Search className="w-5 h-5" />
@@ -124,8 +130,8 @@ export function Navbar() {
           {/* Settings */}
           <button
             type="button"
-            onClick={() => setShowSettings(true)}
-            className="motion-ui motion-interactive flex h-11 w-11 items-center justify-center rounded-lg text-primary-container hover:bg-surface-container-high focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+            onClick={() => { setSettingsLoaded(true); setShowSettings(true); }}
+            className="motion-ui motion-interactive flex h-11 w-11 items-center justify-center rounded-lg text-primary hover:bg-surface-container-high focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
             aria-label="设置"
           >
             <Settings className="w-5 h-5" />
@@ -134,7 +140,7 @@ export function Navbar() {
           <button
             type="button"
             onClick={() => setShowMobileMenu(true)}
-            className="motion-ui motion-interactive flex h-11 w-11 items-center justify-center rounded-lg text-primary-container hover:bg-surface-container-high focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 md:hidden"
+            className="motion-ui motion-interactive flex h-11 w-11 items-center justify-center rounded-lg text-primary hover:bg-surface-container-high focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 md:hidden"
             aria-label="打开导航"
             aria-expanded={showMobileMenu}
           >
@@ -178,13 +184,13 @@ export function Navbar() {
               <div className="mb-2 flex items-center justify-between gap-3 px-2 py-1">
                 <div className="flex items-center gap-2">
                   <Image
-                    src="/logo.png"
+                    src={logo}
                     alt="Asteroid Logo"
                     width={32}
                     height={32}
                     className="h-8 w-8 object-contain"
                   />
-                  <span className="font-headline text-lg font-bold text-primary-container">Asteroid</span>
+                  <span className="font-headline text-lg font-bold text-primary">Asteroid</span>
                 </div>
                 <button
                   type="button"
@@ -227,8 +233,8 @@ export function Navbar() {
       </AnimatePresence>
 
       {/* Overlays */}
-      <SearchOverlay isOpen={showSearch} onClose={() => setShowSearch(false)} />
-      <SettingsPanel isOpen={showSettings} onClose={() => setShowSettings(false)} />
+      {searchLoaded && <SearchOverlay isOpen={showSearch} onClose={() => setShowSearch(false)} />}
+      {settingsLoaded && <SettingsPanel isOpen={showSettings} onClose={() => setShowSettings(false)} />}
     </nav>
   );
 }

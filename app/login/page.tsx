@@ -1,8 +1,9 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, Suspense, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
+import { getLoginReturnPath } from "@/lib/login-return";
 import { Loader2, LogIn, LogOut } from "lucide-react";
 import { getSupabase } from "@/lib/supabase";
 import { getCachedAuthSession, invalidateCachedAuthSession } from "@/lib/fetch-with-auth";
@@ -24,8 +25,10 @@ function getApiError(value: unknown, fallback: string): string {
   return typeof error === "string" && error ? error : fallback;
 }
 
-export default function LoginPage() {
+function LoginContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const returnPath = getLoginReturnPath(searchParams.get("next"));
   const { loading, user, isAdmin } = useAdminAuth();
   const accountSlot = useAiAccountSlot();
   const [email, setEmail] = useState("");
@@ -111,7 +114,7 @@ export default function LoginPage() {
         return;
       }
 
-      router.push("/create");
+      router.push(returnPath);
     } catch (error: unknown) {
       setMessage(error instanceof Error ? error.message : "登录失败，请稍后重试。");
     } finally {
@@ -162,6 +165,11 @@ export default function LoginPage() {
             {accountSlot && currentEmailMatchesSlot && (
               <Link href={getAiAccountSlotPath("/tools/ai-content", accountSlot)} className="control-button control-button-primary inline-flex h-11 w-full items-center justify-center px-4 text-sm">
                 打开 AI 内容工作台
+              </Link>
+            )}
+            {!accountSlot && isAdmin && (
+              <Link href={returnPath} className="control-button control-button-primary min-h-11 w-full px-4 text-sm">
+                继续学习
               </Link>
             )}
             <button
@@ -222,5 +230,13 @@ export default function LoginPage() {
         )}
       </div>
     </PageShell>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<PageShell width="compact"><p role="status" className="text-on-surface-variant">正在准备登录…</p></PageShell>}>
+      <LoginContent />
+    </Suspense>
   );
 }

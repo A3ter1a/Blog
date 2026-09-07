@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { callDeepSeek } from '@/lib/ai-client';
+import { callDeepSeek, callDeepSeekVision } from '@/lib/ai-client';
 import { requireAdminRequest, resolveAIKey } from '@/lib/server-admin-auth';
 import {
   DEFAULT_DEEPSEEK_MODEL,
@@ -103,7 +103,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: true });
     }
 
-    if (provider !== 'deepseek' && provider !== 'qwen') {
+    if (provider !== 'deepseek' && provider !== 'deepseek-ocr' && provider !== 'qwen') {
       return NextResponse.json({ error: `未知的 provider: ${provider}` }, { status: 400 });
     }
 
@@ -115,7 +115,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Prefer server-side env vars, fall back to client-provided keys
-    const apiKey = provider === 'deepseek'
+    const apiKey = provider === 'deepseek' || provider === 'deepseek-ocr'
       ? resolveAIKey('deepseek', clientApiKey)
       : resolveAIKey('qwen', clientApiKey);
     const model = typeof clientModel === 'string' && clientModel.trim()
@@ -137,6 +137,11 @@ export async function POST(req: NextRequest) {
         { maxTokens: 5 }
       );
       return NextResponse.json({ success: true, tokensUsed });
+    }
+    if (provider === 'deepseek-ocr') {
+      // One tiny inline PNG verifies the multimodal endpoint without user data.
+      const result = await callDeepSeekVision(apiKey, 'iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAIAAAD8GO2jAAAAJ0lEQVR4nO3NMQ0AAAwDoPoXWh1VsWMJGCA9FoFAIBAIBAKBQPAlGGDAyJeRYyAFAAAAAElFTkSuQmCC', '请用一个词描述这张图片的主要颜色。', 'image/png');
+      return NextResponse.json({ success: true, tokensUsed: result.tokensUsed });
     }
 
     if (provider === 'qwen') {

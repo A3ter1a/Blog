@@ -229,6 +229,7 @@ export function useAIScan(targetId: string) {
         })),
         chapterContext: chapterContext ?? [],
         qwenModel: config.qwenModel,
+        ocrProvider: config.ocrProvider ?? "deepseek",
         deepseekModel: config.deepseekModel || DEFAULT_DEEPSEEK_MODEL,
         targetId,
       });

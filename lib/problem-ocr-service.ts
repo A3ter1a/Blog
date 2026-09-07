@@ -1,7 +1,9 @@
-import { callDeepSeek, callQwenVision } from "./ai-client.ts";
+import { callDeepSeek, callQwenVision, callDeepSeekVision } from "./ai-client.ts";
 import { parseAIJson } from "./ai-json.ts";
 import {
   DEFAULT_QWEN_ENDPOINT,
+  DEFAULT_DEEPSEEK_OCR_MODEL,
+  type OcrProvider,
   getQwenOcrModelCandidates,
   isQwenOcrModel,
 } from "./ai-config.ts";
@@ -29,7 +31,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function toText(value: unknown): string {
   if (value === null || value === undefined) return "";
-  return typeof value === "string" ? value.trim() : String(value).trim();
+  return typeof value === "string" ? value.trim() : typeof value === "number" || typeof value === "boolean" ? String(value) : "";
 }
 
 function getErrorMessage(error: unknown, fallback: string): string {
@@ -46,13 +48,14 @@ function shouldTryNextOcrModel(message: string): boolean {
 }
 
 export async function recognizeProblemImage(
-  input: { apiKey: string; model: string; imageBase64: string; mimeType: string; signal?: AbortSignal },
+  input: { apiKey: string; model: string; imageBase64: string; mimeType: string; signal?: AbortSignal; provider?: OcrProvider },
   callVision: VisionCaller = callQwenVision,
+  callDeepSeekImage: typeof callDeepSeekVision = callDeepSeekVision,
 ): Promise<{ text: string; model: string }> {
   if (!input.apiKey.trim() || !input.imageBase64.trim()) {
     throw new ProblemOcrServiceError("缺少必要参数 (imageBase64, apiKey)", 400);
   }
-  if (!isQwenOcrModel(input.model)) {
+  if (input.provider !== "deepseek" && !isQwenOcrModel(input.model)) {
     throw new ProblemOcrServiceError(`模型 ${input.model} 不支持图片输入，不能用于 OCR。请改用 Qwen3.7 Plus 或 Qwen3-VL 系列。`, 400);
   }
   const mimeType = input.mimeType.trim().toLowerCase().startsWith("image/") ? input.mimeType.trim().toLowerCase() : "image/jpeg";
@@ -64,6 +67,11 @@ Please follow these rules:
 4. Correct only obvious OCR noise, and keep uncertain characters as close to the image as possible
 5. Output ONLY the extracted text, no additional commentary
 6. For Chinese text, preserve original characters`;
+
+  if (input.provider === "deepseek") {
+    const result = await callDeepSeekImage(input.apiKey, input.imageBase64, prompt, mimeType, input.signal);
+    return { ...result, model: DEFAULT_DEEPSEEK_OCR_MODEL };
+  }
 
   const failures: string[] = [];
   for (const candidateModel of getQwenOcrModelCandidates(input.model)) {
@@ -88,10 +96,15 @@ const ALLOWED_DIFFICULTIES = new Set(["easy", "medium", "hard"]);
 
 function normalizeProblems(parsed: unknown): ExtractedProblem[] {
   const record = isRecord(parsed) ? parsed : {};
-  const candidates = Array.isArray(parsed) ? parsed : Array.isArray(record.problems) ? record.problems : record.question || record.type ? [record] : [];
+  // Providers can follow the JSON instruction while using common question-field aliases.
+  // Only accept known containers and a textual stem; never stringify arbitrary objects.
+  const candidates = Array.isArray(parsed) ? parsed
+    : Array.isArray(record.problems) && record.problems.length > 0 ? record.problems
+    : Array.isArray(record.questions) ? record.questions
+    : toText(record.question) || toText(record.stem) ? [record] : [];
   return candidates.flatMap((value) => {
     const raw = isRecord(value) ? value : {};
-    const question = toText(raw.question);
+    const question = toText(raw.question) || toText(raw.stem);
     if (!question) return [];
     const typeText = toText(raw.type);
     const difficultyText = toText(raw.difficulty);
@@ -101,7 +114,7 @@ function normalizeProblems(parsed: unknown): ExtractedProblem[] {
     const options = Array.isArray(raw.options)
       ? raw.options.flatMap((option, index) => {
           const candidate = isRecord(option) ? option : {};
-          const content = toText(isRecord(option) ? candidate.content : option);
+          const content = isRecord(option) ? toText(candidate.content) || toText(candidate.text) : toText(option);
           return content ? [{ label: toText(candidate.label) || String.fromCharCode(65 + index), content }] : [];
         })
       : undefined;
@@ -155,6 +168,14 @@ function buildOcrFallbackProblem(ocrText: string): ExtractedProblem {
   }, "ai") as ExtractedProblem;
 }
 
+const OCR_JSON_MAX_TOKENS = 8192;
+
+function requireCompleteExtraction(result: Awaited<ReturnType<TextCaller>>): void {
+  if (result.finishReason === "length") {
+    throw new ProblemOcrServiceError("图片文字已识别，但题目整理输出被截断。请把这张图片按题目分成较小区域后重试，避免漏题。", 422);
+  }
+}
+
 async function parseOrRepairAIJson(content: string, apiKey: string, model: string, callText: TextCaller, signal?: AbortSignal) {
   try {
     return { parsed: parseAIJson(content), tokensUsed: 0 };
@@ -164,7 +185,8 @@ async function parseOrRepairAIJson(content: string, apiKey: string, model: strin
       { role: "user", content: `Repair the following AI output into one valid JSON object only.
 It must match this shape: {"problems":[{"question":"","answer":"","type":"calculation","difficulty":"medium","suggestedChapter":null,"options":[],"confidence":0.5}]}.
 Keep the original math content. Escape all LaTeX backslashes correctly for JSON strings. Return JSON only.\n\nBroken output:\n${content}` },
-    ], { temperature: 0, maxTokens: 3072, responseFormat: "json_object", signal });
+    ], { temperature: 0, maxTokens: OCR_JSON_MAX_TOKENS, thinking: "disabled", responseFormat: "json_object", signal });
+    requireCompleteExtraction(repaired);
     return { parsed: parseAIJson(repaired.content), tokensUsed: repaired.tokensUsed };
   }
 }
@@ -195,12 +217,14 @@ Rules:
   const primary = await callText(input.apiKey, input.model, [
     { role: "system", content: systemPrompt },
     { role: "user", content: ocrText },
-  ], { temperature: 0.2, maxTokens: 3072, responseFormat: "json_object", signal: input.signal });
+  ], { temperature: 0.2, maxTokens: OCR_JSON_MAX_TOKENS, thinking: "disabled", responseFormat: "json_object", signal: input.signal });
+  requireCompleteExtraction(primary);
   let totalTokensUsed = primary.tokensUsed;
   let parsed;
   try {
     parsed = await parseOrRepairAIJson(primary.content, input.apiKey, input.model, callText, input.signal);
   } catch (error: unknown) {
+    if (input.signal?.aborted || error instanceof ProblemOcrServiceError) throw error;
     throw new ProblemOcrServiceError(`AI 返回格式解析失败，已尝试自动修复但仍失败：${getErrorMessage(error, "未知格式错误")}`, 422);
   }
   totalTokensUsed += parsed.tokensUsed;
@@ -213,7 +237,8 @@ Rules:
       const rescue = await callText(input.apiKey, input.model, [
         { role: "system", content: `The previous extraction returned no usable problems, but the OCR text appears to contain an exam question. Extract at least one visible problem whenever possible. Keep incomplete visible text, leave uncertain answers empty, use confidence 0.2-0.5, preserve LaTeX and choice options, and return valid JSON only with the same problems-array shape.${chapterHint}` },
         { role: "user", content: ocrText },
-      ], { temperature: 0, maxTokens: 2048, responseFormat: "json_object", signal: input.signal });
+      ], { temperature: 0, maxTokens: OCR_JSON_MAX_TOKENS, thinking: "disabled", responseFormat: "json_object", signal: input.signal });
+      requireCompleteExtraction(rescue);
       totalTokensUsed += rescue.tokensUsed;
       const rescueParsed = await parseOrRepairAIJson(rescue.content, input.apiKey, input.model, callText, input.signal);
       totalTokensUsed += rescueParsed.tokensUsed;
@@ -223,7 +248,7 @@ Rules:
         extractionMode = "rescue";
       }
     } catch (error: unknown) {
-      if (input.signal?.aborted) throw error;
+      if (input.signal?.aborted || error instanceof ProblemOcrServiceError) throw error;
       // The deterministic OCR fallback below preserves visible evidence.
     }
   }
@@ -233,7 +258,7 @@ Rules:
     extractionMode = "ocrFallback";
   }
   const warning = extractionMode === "ocrFallback"
-    ? "AI 没有稳定拆出结构化题目，已把 OCR 原文作为低置信度题干保留，请人工核对。"
+    ? "图片文字已识别，但尚未成功拆分为独立题目。下面保留的是整张图片的原文草稿，不代表已完成逐题提取；请核对并拆分，或按题目裁图重试。"
     : extractionMode === "rescue"
       ? "首次分析为空，已通过补救提取生成题目，请快速核对题干与答案。"
       : undefined;

@@ -3,7 +3,7 @@ import "server-only";
 import { Buffer } from "node:buffer";
 import { randomUUID } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { DEFAULT_DEEPSEEK_MODEL } from "./ai-config";
+import { DEFAULT_DEEPSEEK_MODEL, DEFAULT_DEEPSEEK_OCR_MODEL } from "./ai-config";
 import { resolveAIProviderRoute } from "./ai-provider-routing";
 import { splitMarkdownForReview } from "./document-markdown-review";
 import {
@@ -92,6 +92,7 @@ type CreateProblemOcrJobInput = {
   chapterContext: ProblemOcrChapterContextItem[];
   qwenModel: string;
   deepseekModel: string;
+  ocrProvider: "deepseek" | "qwen";
   targetId: string;
 };
 
@@ -526,6 +527,7 @@ async function enqueueProblemOcrItems(
   chapterContext: ProblemOcrChapterContextItem[],
   qwenModel: string,
   deepseekModel: string,
+  ocrProvider: "deepseek" | "qwen" = "qwen",
 ): Promise<void> {
   for (let index = 0; index < assets.length; index += 1) {
     const asset = assets[index];
@@ -545,6 +547,7 @@ async function enqueueProblemOcrItems(
         chapterContext,
         qwenModel,
         deepseekModel,
+        ocrProvider,
       },
     });
   }
@@ -1527,6 +1530,7 @@ export async function createProblemOcrJob(
         chapterContext,
         qwenModel,
         deepseekModel,
+        ocrProvider: input.ocrProvider,
         targetId,
         registrationComplete: false,
         phase: "源图已持久化",
@@ -1545,7 +1549,7 @@ export async function createProblemOcrJob(
   const job = inserted.data as JobRow;
 
   try {
-    await enqueueProblemOcrItems(supabase, job.id, assets, chapterContext, qwenModel, deepseekModel);
+    await enqueueProblemOcrItems(supabase, job.id, assets, chapterContext, qwenModel, deepseekModel, input.ocrProvider);
   } catch (error: unknown) {
     const message = getErrorMessage(error, "题库 OCR 分块登记失败");
     await supabase.from("jobs").update({
@@ -2003,7 +2007,7 @@ export async function advanceProblemOcrJob(
   const job = await selectOwnedInternalJob(supabase, input.userId, input.jobId);
   if (!job || job.job_kind !== "problem_ocr") return { availability: "synced", data: null };
   if (["succeeded", "failed", "claimed", "cancelled"].includes(job.status)) return { availability: "synced", data: job };
-  if (!input.qwenApiKey.trim()) throw new Error("服务器 Qwen API Key 未配置");
+  if (getJobPayload(job).ocrProvider !== "deepseek" && !input.qwenApiKey.trim()) throw new Error("服务器 Qwen API Key 未配置");
   if (!input.deepseekApiKey.trim()) throw new Error("服务器 DeepSeek API Key 未配置");
 
   const workerId = `route-${randomUUID()}`;
@@ -2024,6 +2028,7 @@ export async function advanceProblemOcrJob(
   const mimeType = toText(payload?.mimeType);
   const qwenModel = toText(payload?.qwenModel);
   const deepseekModel = toText(payload?.deepseekModel);
+  const ocrProvider = payload?.ocrProvider === "deepseek" ? "deepseek" : "qwen";
   const chapterContext = parseProblemOcrChapterContext(payload?.chapterContext);
   if (
     !Number.isInteger(imageIndex)
@@ -2062,8 +2067,9 @@ export async function advanceProblemOcrJob(
       signal.throwIfAborted();
       const imageBase64 = Buffer.from(await downloaded.data.arrayBuffer()).toString("base64");
       const recognized = await recognizeProblemImage({
-        apiKey: input.qwenApiKey,
-        model: qwenModel,
+        apiKey: ocrProvider === "deepseek" ? input.deepseekApiKey : input.qwenApiKey,
+        model: ocrProvider === "deepseek" ? DEFAULT_DEEPSEEK_OCR_MODEL : qwenModel,
+        provider: ocrProvider,
         imageBase64,
         mimeType,
         signal,
@@ -2089,6 +2095,7 @@ export async function advanceProblemOcrJob(
         problems,
         warning: analyzed.warning ?? null,
         qwenModel: recognized.model,
+        ocrProvider,
         deepseekModel,
         tokensUsed: analyzed.tokensUsed,
       };
@@ -3166,7 +3173,7 @@ export async function retryInternalJob(
     if (!reopened.data) return { availability: "synced", data: await selectOwnedInternalJob(supabase, input.userId, job.id) };
 
     try {
-      await enqueueProblemOcrItems(supabase, job.id, assets, chapterContext, qwenModel, deepseekModel);
+      await enqueueProblemOcrItems(supabase, job.id, assets, chapterContext, qwenModel, deepseekModel, jobPayload.ocrProvider === "deepseek" ? "deepseek" : "qwen");
     } catch (error: unknown) {
       const message = getErrorMessage(error, "题库 OCR 分块重新登记失败");
       const failed = await supabase.from("jobs").update({

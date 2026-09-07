@@ -51,6 +51,11 @@ const nextConfig: NextConfig = {
         source: "/:path*",
         headers: securityHeaders,
       },
+      // Stable URLs can be reused for an hour, then validated for replacements.
+      ...["/icons/:path*", "/logo.png", "/logo-hero.webp", "/favicon-64.png", "/apple-touch-icon.png"].map((source) => ({
+        source,
+        headers: [{ key: "Cache-Control", value: "public, max-age=3600, must-revalidate" }],
+      })),
     ];
   },
 };

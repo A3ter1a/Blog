@@ -73,6 +73,8 @@ type NoteReaderClientProps = {
 
 type PracticeStatusLoadState = "idle" | "loading" | "ready" | "error";
 
+// Keep the omitted prop stable: a fresh [] would retrigger the reader reset on every render.
+const EMPTY_INITIAL_CHAPTERS: Chapter[] = [];
 const INITIAL_PROBLEM_WINDOW_SIZE = 12;
 const PROBLEM_WINDOW_INCREMENT = 12;
 const NOTE_READ_TIMEOUT_MS = 12_000;
@@ -113,7 +115,7 @@ function getFlatProblemWindowKey(selectedChapterId?: string): string {
 export function NoteReaderClient({
   noteId,
   initialNote,
-  initialChapters = [],
+  initialChapters = EMPTY_INITIAL_CHAPTERS,
   initialChaptersLoaded = false,
   initialLoadError = false,
   accessScope = "public",
@@ -258,7 +260,11 @@ export function NoteReaderClient({
     }, 0);
 
     return () => window.clearTimeout(timer);
-  }, [accessScope, initialChapters, initialChaptersLoaded, initialLoadError, normalizedInitialNote, noteId, ownerUserId]);
+  // Reset reader-local UI only when the note or access scope changes. Depending
+  // on whole server-provided arrays here makes a panel close during a normal
+  // interaction when a parent refreshes its data references.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [accessScope, noteId, ownerUserId]);
 
   const loadNote = useCallback(async () => {
     try {
@@ -878,6 +884,7 @@ export function NoteReaderClient({
             )}
               {isProblem && allProblems.length > 0 && (
               <button
+                type="button"
                 onClick={() => setShowProblemTools((value) => !value)}
                 className={`control-button min-h-11 px-3 text-sm ${showProblemTools ? "control-button-selected" : ""}`}
                 title="题集导航"
@@ -1313,6 +1320,7 @@ export function NoteReaderClient({
       <SettingsPanel isOpen={readerSettingsOpen} onClose={() => setReaderSettingsOpen(false)} mode="reading" />
 
       <AssistantDock
+        key={note.id}
         noteId={note.id}
         noteTitle={note.title}
         sourcePath={getNoteReadPath(note)}

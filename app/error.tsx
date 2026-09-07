@@ -19,7 +19,7 @@ export default function Error({
     <RouteFallback
       eyebrow="页面错误"
       title="这一页暂时没有加载成功"
-      description="这通常是临时网络、数据读取或页面渲染异常导致的。可以先重试一次；如果反复出现，再根据控制台日志定位具体模块。"
+      description="页面暂时无法打开。请先重试；如果仍未恢复，可以返回笔记列表继续学习，稍后再打开这一页。"
       icon={AlertTriangle}
       retryLabel="重新加载"
       onRetry={unstable_retry}

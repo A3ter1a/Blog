@@ -84,6 +84,7 @@ export interface ChapterStats {
 
 // AI API 配置
 export interface AIConfig {
+  ocrProvider?: "deepseek" | "qwen";
   deepseekApiKey: string;
   deepseekModel: string;
   qwenApiKey: string;

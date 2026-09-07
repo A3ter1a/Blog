@@ -18,7 +18,7 @@ export default function AiReviewPage() {
         template="training"
         eyebrow="AI REVIEW"
         title="AI 内容审核"
-        description="审核与发布独立于 AI 工作台；正文只在批准并发布后进入现有 notes 数据结构。"
+        description="检查 AI 整理的知识点、推导和例题，确认无误后发布；需要修改时可批注并退回。"
         icon={<ShieldCheck className="h-5 w-5" />}
       />
       <PageShell width="wide" topPadding="content" template="training">

@@ -14,6 +14,8 @@ import {
   Sparkles,
 } from "lucide-react";
 import { PageHeader, PageShell } from "@/components/ui/PageScaffold";
+import { useAdminAuth } from "@/hooks/useAdminAuth";
+import { useEnglishDraftAnswers } from "@/hooks/useEnglishDraftAnswers";
 import { useToast } from "@/components/ui/Toast";
 import { useJobCenter } from "@/components/jobs/JobCenter";
 import { englishTrainingApi, type EnglishAttemptAnswerInput } from "@/lib/english-training-api";
@@ -141,6 +143,12 @@ function sortPassagesOldestFirst(left: EnglishPassage, right: EnglishPassage): n
 }
 
 export function EnglishTraining() {
+  const { user } = useAdminAuth();
+  if (!user) return <PageShell width="workspace"><p role="status" className="text-on-surface-variant">正在恢复学习账号…</p></PageShell>;
+  return <EnglishTrainingWorkspace key={user.id} userId={user.id} />;
+}
+
+function EnglishTrainingWorkspace({ userId }: { userId: string | null }) {
   const toast = useToast();
   const {
     jobs,
@@ -159,7 +167,7 @@ export function EnglishTraining() {
   const [stage, setStage] = useState<TrainingStage>("types");
   const [activeCategoryId, setActiveCategoryId] = useState<TrainingCategoryId | null>(null);
   const [activePassageId, setActivePassageId] = useState<string | null>(null);
-  const [draftAnswersByPassageId, setDraftAnswersByPassageId] = useState<Record<string, EnglishAttemptAnswerInput>>({});
+  const { answers: draftAnswersByPassageId, setAnswers: setDraftAnswersByPassageId, storageFailed, stored: draftsStored } = useEnglishDraftAnswers(userId);
   const [roundLedgers, setRoundLedgers] = useState<EnglishPassageRoundLedger[]>([]);
   const [persistenceMode, setPersistenceMode] = useState<EnglishTrainingPersistenceMode>("legacy");
   const [activeRoundByPassageId, setActiveRoundByPassageId] = useState<Record<string, 1 | 2 | 3>>({});
@@ -306,7 +314,10 @@ export function EnglishTraining() {
   const hasSavedDirectScores = Boolean(activeRoundRevision && Object.values(activeRoundRevision.answers).some((answer) => (
     parseEnglishManualScore(answer, Number.MAX_SAFE_INTEGER) !== null
   )));
-  const directScoreMode = directScoreModeByRoundKey[activeRoundKey] ?? hasSavedDirectScores;
+  const draftDirectScores = draftAnswersByPassageId[activeRoundKey];
+  const directScoreMode = directScoreModeByRoundKey[activeRoundKey] ?? (draftDirectScores
+    ? Object.values(draftDirectScores).some((answer) => parseEnglishManualScore(answer, Number.MAX_SAFE_INTEGER) !== null)
+    : hasSavedDirectScores);
   const activeSubjectiveGradeJob = jobs.find((job) => (
     job.type === "english_subjective_grade"
     && job.targetId === `english-round:${activePassage?.id ?? "none"}:${activeRoundNo}`
@@ -351,7 +362,7 @@ export function EnglishTraining() {
       toast.success(`已恢复 R${round} AI 建议，请核对并确认终分`);
     })();
     return () => { cancelled = true; };
-  }, [claimJobResult, jobs, loadJobResult, toast]);
+  }, [claimJobResult, jobs, loadJobResult, setDraftAnswersByPassageId, toast]);
 
   const persistLedger = (ledger: EnglishPassageRoundLedger, writeLocal = persistenceMode === "legacy") => {
     setRoundLedgers((current) => {
@@ -712,6 +723,15 @@ export function EnglishTraining() {
           onSelect={handleOpenPassage}
         />
       )}
+      {Object.keys(draftAnswersByPassageId).length > 0 && (
+        <p role="status" className={`mb-3 rounded-lg border px-4 py-3 text-sm leading-6 ${storageFailed ? "border-error/30 text-error" : "border-outline-variant/20 text-on-surface-variant"}`}>
+          {storageFailed
+            ? "浏览器暂存不可用。离开或刷新前，请点击「保存」保留作答。"
+            : draftsStored
+              ? "未保存作答已暂存在本窗口，刷新或返回可恢复；点击「保存」后才写入训练记录。"
+              : "正在暂存作答…"}
+        </p>
+      )}
       {stage === "practice" && (
         <EnglishPracticeWorkspace
           key={activePassage?.id ?? "empty-practice"}
@@ -722,7 +742,7 @@ export function EnglishTraining() {
           activeRound={activeRoundNo}
           roundRecord={activeRound}
           roundRevision={activeRoundRevision}
-          editingSubmitted={editingSubmittedRoundKey === activeRoundKey}
+          editingSubmitted={editingSubmittedRoundKey === activeRoundKey || Boolean(draftAnswersByPassageId[activeRoundKey] && activeRoundRevision)}
           answers={activeAnswers}
           saving={saving}
           subjectiveBusy={effectiveSubjectiveBusy}

@@ -13,6 +13,7 @@ import { buildAuthHeaders } from "@/lib/fetch-with-auth";
 import type { AiKnowledgeQuizItemPublic } from "@/lib/ai-knowledge-quiz-contract";
 import type { NoteQARetrievalSummary, NoteQASource } from "@/lib/note-qa";
 import { useAdminAuth } from "@/hooks/useAdminAuth";
+import { isQuizAnswerProvided, shouldSendAssistantQuestion } from "@/lib/study-interactions";
 
 type AssistantDockProps = {
   noteId: string;
@@ -35,6 +36,8 @@ type AssistantChatMessage = {
   totalChunks?: number;
   retrieval?: NoteQARetrievalSummary;
   complete?: boolean;
+  interrupted?: boolean;
+  quotedText?: string;
 };
 
 type AssistantQuizSet = {
@@ -116,7 +119,9 @@ function normalizeStoredMessages(value: unknown): AssistantChatMessage[] {
       sources: Array.isArray(candidate.sources) ? candidate.sources.slice(0, 12) as NoteQASource[] : undefined,
       totalChunks: typeof candidate.totalChunks === "number" ? candidate.totalChunks : undefined,
       retrieval: normalizeRetrievalSummary(candidate.retrieval),
-      complete: candidate.role === "assistant" ? true : undefined,
+      complete: candidate.role === "assistant" ? candidate.complete !== false : undefined,
+      interrupted: candidate.role === "assistant" && candidate.complete === false,
+      quotedText: typeof candidate.quotedText === "string" ? candidate.quotedText.slice(0, 1_600) : undefined,
     }];
   }).slice(-MAX_STORED_MESSAGES);
 }
@@ -145,6 +150,7 @@ export function AssistantDock({
   const [reasoning, setReasoning] = useState<"fast" | "deep">("fast");
   const [quizSets, setQuizSets] = useState<AssistantQuizSet[]>([]);
   const [activeQuiz, setActiveQuiz] = useState<AssistantQuizSet | null>(null);
+  const [showQuiz, setShowQuiz] = useState(false);
   const [quizAnswers, setQuizAnswers] = useState<Record<string, string | string[] | boolean>>({});
   const [quizResult, setQuizResult] = useState<AssistantQuizResult | null>(null);
   const [quizLoading, setQuizLoading] = useState(false);
@@ -167,9 +173,15 @@ export function AssistantDock({
   const followLatestRef = useRef(true);
   const abortControllerRef = useRef<AbortController | null>(null);
   const conversationReady = loadedConversationNoteId === noteId;
+  const unansweredQuizCount = activeQuiz?.items.filter((item) => !isQuizAnswerProvided(quizAnswers[item.id])).length ?? 0;
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
+      setActiveQuiz(null);
+      setShowQuiz(false);
+      setQuizAnswers({});
+      setQuizResult(null);
+      setQuizSets([]);
       try {
         const current = window.localStorage.getItem(getConversationStorageKey(noteId));
         const legacy = window.sessionStorage.getItem(getLegacyConversationStorageKey(noteId));
@@ -187,7 +199,7 @@ export function AssistantDock({
     if (loadedConversationNoteId !== noteId) return;
     try {
       const persistedMessages = messages
-        .filter((message) => message.role !== "assistant" || message.complete !== false)
+        .filter((message) => message.role !== "assistant" || message.complete !== false || message.interrupted)
         .slice(-MAX_STORED_MESSAGES);
       window.localStorage.setItem(getConversationStorageKey(noteId), JSON.stringify(persistedMessages));
     } catch {
@@ -309,7 +321,11 @@ export function AssistantDock({
       createdAt: new Date().toISOString(),
     };
     const assistantMessageId = createMessageId();
+    const incompleteMessageIds = new Set(messages
+      .filter((message) => message.role === "assistant" && message.complete === false)
+      .flatMap((message) => [message.id, message.userMessageId]));
     const conversation = messages
+      .filter((message) => !incompleteMessageIds.has(message.id))
       .filter((message) => message.id !== retryMessageId && message.id !== retryUserMessageId)
       .slice(-10)
       .map((message) => ({
@@ -322,6 +338,7 @@ export function AssistantDock({
       content: "",
       createdAt: new Date().toISOString(),
       question: userQuestion,
+      quotedText: quoteSnapshot,
       sources: [],
       totalChunks: 0,
       userMessageId: retryUserMessageId ?? userMessage.id,
@@ -341,6 +358,7 @@ export function AssistantDock({
       : [...previousMessages, userMessage, assistantMessage].slice(-MAX_STORED_MESSAGES));
     setQuestion("");
     setActiveQuote("");
+    let streamedAnswer = "";
     let activeStreamReader: ReadableStreamDefaultReader<Uint8Array> | null = null;
     let flushDeltaNow: (() => void) | null = null;
     try {
@@ -424,6 +442,7 @@ export function AssistantDock({
               : message));
           } else if (payload.type === "delta" && typeof payload.delta === "string") {
             answer += payload.delta;
+            streamedAnswer = answer;
             pendingDelta += payload.delta;
             if (flushTimer === null) {
               flushTimer = window.setTimeout(() => {
@@ -485,9 +504,16 @@ export function AssistantDock({
     } catch (error) {
       const cancelled = controller.signal.aborted || (error instanceof DOMException && error.name === "AbortError");
       flushDeltaNow?.();
-      setMessages(previousMessages);
-      setQuestion(userQuestion);
-      setActiveQuote(quoteSnapshot);
+      if (streamedAnswer.trim()) {
+        setMessages((current) => current.map((message) => message.id === assistantMessageId
+          ? { ...message, content: streamedAnswer, complete: false, interrupted: true }
+          : message));
+        setFailedRequest({ question: userQuestion, quote: quoteSnapshot, retryMessageId: assistantMessageId });
+      } else {
+        setMessages(previousMessages);
+        setQuestion(userQuestion);
+        setActiveQuote(quoteSnapshot);
+      }
       if (!cancelled) {
         const message = error instanceof Error ? error.message : "未知错误";
         setLastError(message);
@@ -515,7 +541,7 @@ export function AssistantDock({
   };
 
   const proposeMemory = async (message: AssistantChatMessage) => {
-    if (message.role !== "assistant" || memoryProposalIds.has(message.id)) return;
+    if (message.role !== "assistant" || message.complete === false || memoryProposalIds.has(message.id)) return;
     setMemoryProposalIds((current) => new Set(current).add(message.id));
     try {
       const request = await fetch("/api/assistant/memories", {
@@ -531,7 +557,7 @@ export function AssistantDock({
       });
       const payload = await request.json() as { memory?: unknown; error?: unknown };
       if (!request.ok || !payload.memory) throw new Error(typeof payload.error === "string" ? payload.error : "记忆候选保存失败");
-      toast.success("已送到工具页的助手记忆，等待你审核");
+      toast.success("已保存为候选，可到工具 → 助手记忆中确认");
     } catch (error) {
       setMemoryProposalIds((current) => {
         const next = new Set(current);
@@ -543,13 +569,19 @@ export function AssistantDock({
   };
 
   const startQuiz = (quiz: AssistantQuizSet) => {
+    setShowQuiz(true);
+    if (activeQuiz?.quiz.id === quiz.quiz.id) return;
     setActiveQuiz(quiz);
     setQuizAnswers({});
     setQuizResult(null);
   };
 
   const submitQuiz = async () => {
-    if (!activeQuiz || quizLoading) return;
+    if (!activeQuiz || quizLoading || quizResult) return;
+    if (unansweredQuizCount > 0) {
+      toast.error(`还有 ${unansweredQuizCount} 题未作答，请完成后提交`);
+      return;
+    }
     setQuizLoading(true);
     try {
       const request = await fetch(`/api/knowledge-quizzes/${encodeURIComponent(activeQuiz.quiz.id)}/attempt`, {
@@ -633,24 +665,27 @@ export function AssistantDock({
           <span className="assistant-model-badge" title="当前笔记助手使用 DeepSeek V4 Flash 正式模型">V4 Flash</span>
           <button type="button" aria-pressed={reasoning === "fast"} onClick={() => setReasoning("fast")} className={reasoning === "fast" ? "is-active" : ""}>快速</button>
           <button type="button" aria-pressed={reasoning === "deep"} onClick={() => setReasoning("deep")} className={reasoning === "deep" ? "is-active" : ""}>深度</button>
-          {quizSets.length > 0 && <button type="button" onClick={() => startQuiz(quizSets[0])} className={activeQuiz ? "is-active ml-auto" : "ml-auto"}><ListChecks className="h-4 w-4" />快测</button>}
+          {quizSets.length > 0 && <button type="button" disabled={loading} onClick={() => startQuiz(activeQuiz ?? quizSets[0])} className={showQuiz ? "is-active ml-auto" : "ml-auto"}><ListChecks className="h-4 w-4" />快测</button>}
         </div>
       </header>
 
       <div className="assistant-dock-body">
-        {activeQuiz ? (
+        {showQuiz && activeQuiz ? (
             <section className="space-y-4">
-              <div className="flex items-start justify-between gap-3"><div><p className="text-xs font-semibold uppercase tracking-[0.14em] text-primary">知识点快测</p><h3 className="mt-1 font-headline text-base font-semibold text-on-surface">{activeQuiz.quiz.title}</h3><p className="mt-1 text-xs text-on-surface-variant">先独立作答，提交后才显示答案与解析。</p></div><button type="button" className="control-button h-8 px-2 text-xs" onClick={() => { setActiveQuiz(null); setQuizResult(null); }}>返回问答</button></div>
+              <div className="flex items-start justify-between gap-3"><div><p className="text-xs font-semibold uppercase tracking-[0.14em] text-primary">知识点快测</p><h3 className="mt-1 font-headline text-base font-semibold text-on-surface">{activeQuiz.quiz.title}</h3><p className="mt-1 text-xs text-on-surface-variant">先独立作答，提交后显示解析。返回问答会保留本次作答。</p></div><button type="button" disabled={quizLoading} className="control-button min-h-11 shrink-0 px-3 text-xs" onClick={() => setShowQuiz(false)}>返回问答</button></div>
               {activeQuiz.items.map((item) => (
-                <div key={item.id} className="rounded-xl border border-outline-variant/20 bg-surface-container-low p-3">
-                  <p className="text-sm font-medium leading-6 text-on-surface">{item.ordinal}. {item.question}</p>
+                <fieldset key={item.id} disabled={quizLoading || Boolean(quizResult)} className="min-w-0 rounded-xl border border-outline-variant/20 bg-surface-container-low p-3">
+                  <legend className="text-sm font-medium leading-6 text-on-surface">{item.ordinal}. {item.question}</legend>
                   {item.options.length > 0 && <div className="mt-2 space-y-1.5">{item.options.map((option) => <label key={option.label} className="flex items-start gap-2 text-xs leading-5 text-on-surface-variant"><input type={item.itemType === "multiple_choice" ? "checkbox" : "radio"} name={`quiz-${item.id}`} checked={Array.isArray(quizAnswers[item.id]) ? (quizAnswers[item.id] as string[]).includes(option.label) : quizAnswers[item.id] === option.label} onChange={(event) => { if (item.itemType === "multiple_choice") { const current = Array.isArray(quizAnswers[item.id]) ? quizAnswers[item.id] as string[] : []; setQuizAnswers({ ...quizAnswers, [item.id]: event.target.checked ? [...current, option.label] : current.filter((label) => label !== option.label) }); } else { setQuizAnswers({ ...quizAnswers, [item.id]: option.label }); } }} /> <span><strong>{option.label}.</strong> {option.text}</span></label>)}</div>}
-                  {item.itemType === "true_false" && <select className="field-control mt-2 h-9 w-full px-2 text-xs" value={typeof quizAnswers[item.id] === "boolean" ? String(quizAnswers[item.id]) : ""} onChange={(event) => setQuizAnswers({ ...quizAnswers, [item.id]: event.target.value === "true" })}><option value="">选择判断</option><option value="true">正确</option><option value="false">错误</option></select>}
-                  {item.itemType === "short_answer" && <input className="field-control mt-2 h-9 w-full px-2 text-xs" value={typeof quizAnswers[item.id] === "string" ? quizAnswers[item.id] as string : ""} onChange={(event) => setQuizAnswers({ ...quizAnswers, [item.id]: event.target.value })} placeholder="输入你的答案" />}
+                  {item.itemType === "true_false" && <select aria-label={`第 ${item.ordinal} 题答案`} className="field-control mt-2 min-h-11 w-full px-2 text-sm" value={typeof quizAnswers[item.id] === "boolean" ? String(quizAnswers[item.id]) : ""} onChange={(event) => setQuizAnswers({ ...quizAnswers, [item.id]: event.target.value === "" ? "" : event.target.value === "true" })}><option value="">选择判断</option><option value="true">正确</option><option value="false">错误</option></select>}
+                  {item.itemType === "short_answer" && <input aria-label={`第 ${item.ordinal} 题答案`} className="field-control mt-2 min-h-11 w-full px-2 text-sm" value={typeof quizAnswers[item.id] === "string" ? quizAnswers[item.id] as string : ""} onChange={(event) => setQuizAnswers({ ...quizAnswers, [item.id]: event.target.value })} placeholder="输入你的答案" />}
                   {quizResult && <div className={`mt-3 border-t border-outline-variant/15 pt-2 text-xs leading-5 ${quizResult.details.find((detail) => detail.itemId === item.id)?.correct ? "text-emerald-700" : "text-amber-700"}`}>{quizResult.details.find((detail) => detail.itemId === item.id)?.correct ? "回答正确" : "需要复盘"}：{quizResult.details.find((detail) => detail.itemId === item.id)?.explanation}</div>}
-                </div>
+                </fieldset>
               ))}
-              {quizResult ? <div className="rounded-xl border border-primary/20 bg-primary/5 px-3 py-3 text-sm text-primary">本次得分 {quizResult.score} 分 · {quizResult.correctCount}/{quizResult.total} 题正确</div> : <button type="button" className="control-button control-button-primary h-10 w-full px-3 text-sm" onClick={() => void submitQuiz()} disabled={quizLoading}>{quizLoading ? "正在判定" : "提交快测"}</button>}
+              {quizResult ? <div role="status" className="rounded-xl border border-primary/20 bg-primary/5 px-3 py-3 text-sm text-primary">本次得分 {quizResult.score} 分 · {quizResult.correctCount}/{quizResult.total} 题正确</div> : <>
+                <p role="status" className="text-sm text-on-surface-variant">已完成 {activeQuiz.items.length - unansweredQuizCount}/{activeQuiz.items.length} 题{unansweredQuizCount > 0 ? `，还有 ${unansweredQuizCount} 题待作答` : "，可以提交核对"}</p>
+                <button type="button" className="control-button control-button-primary min-h-11 w-full px-3 text-sm" onClick={() => void submitQuiz()} disabled={quizLoading || unansweredQuizCount > 0 || activeQuiz.items.length === 0}>{quizLoading ? "正在判定" : "提交快测"}</button>
+              </>}
             </section>
           ) : !conversationReady ? (
             <div className="assistant-dock-loading"><Loader2 className="h-5 w-5 animate-spin" />恢复本篇对话…</div>
@@ -675,6 +710,15 @@ export function AssistantDock({
                       ? <MarkdownContent content={message.content} className="text-sm leading-7 text-on-surface" />
                       : <div className="assistant-message-placeholder"><Loader2 className="h-4 w-4 animate-spin" />正在生成回答…</div>}
                   </div>
+                  {message.role === "assistant" && message.interrupted && (
+                    <div className="assistant-message-meta">
+                      <span role="status">回答未完成 · 已保留生成片段</span>
+                      <div className="assistant-message-actions">
+                        <button type="button" onClick={() => void copyAnswer(`【未完成回答】\n${message.content}`)}><Copy className="h-3.5 w-3.5" />复制片段</button>
+                        <button type="button" disabled={loading} onClick={() => void ask(message.question, message.quotedText ?? "", message.id)}><RefreshCw className="h-3.5 w-3.5" />重新生成</button>
+                      </div>
+                    </div>
+                  )}
                   {message.role === "assistant" && message.content && message.complete !== false && (
                     <div className="assistant-message-meta">
                       <span>
@@ -684,8 +728,9 @@ export function AssistantDock({
                       </span>
                       <div className="assistant-message-actions">
                         <button type="button" onClick={() => void copyAnswer(message.content)} title="复制回答"><Copy className="h-3.5 w-3.5" />复制</button>
-                        {message.question && <button type="button" onClick={() => void ask(message.question, "", message.id)} disabled={loading} title="重新生成回答"><RefreshCw className="h-3.5 w-3.5" />重答</button>}
+                        {message.question && <button type="button" onClick={() => void ask(message.question, message.quotedText ?? "", message.id)} disabled={loading} title="重新生成回答"><RefreshCw className="h-3.5 w-3.5" />重答</button>}
                         <button type="button" disabled={memoryProposalIds.has(message.id)} onClick={() => void proposeMemory(message)}><MemoryStick className="h-3.5 w-3.5" />{memoryProposalIds.has(message.id) ? "已提交" : "记忆候选"}</button>
+                        {memoryProposalIds.has(message.id) && <Link href="/tools/assistant-memory" onClick={() => onOpenChange(false)}>核对记忆</Link>}
                       </div>
                     </div>
                   )}
@@ -738,7 +783,7 @@ export function AssistantDock({
           )}
       </div>
 
-      {!activeQuiz && (
+      {!showQuiz && (
         <footer className="assistant-composer">
           {lastError && (
             <div className="assistant-error-card" role="alert">
@@ -761,7 +806,7 @@ export function AssistantDock({
           )}
           <label htmlFor="assistant-question" className="sr-only">询问当前笔记</label>
           <textarea id="assistant-question" ref={composerRef} value={question} disabled={loading || !conversationReady} onChange={(event) => setQuestion(event.target.value)} onKeyDown={(event) => {
-            if (event.key === "Enter" && !event.shiftKey) {
+            if (shouldSendAssistantQuestion(event.nativeEvent)) {
               event.preventDefault();
               void ask();
             }

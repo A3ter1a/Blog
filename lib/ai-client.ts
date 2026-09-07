@@ -1,3 +1,5 @@
+import { DEFAULT_DEEPSEEK_OCR_MODEL, DEEPSEEK_OCR_ENDPOINT } from "./ai-config.ts";
+
 // AI API client — server-side wrappers for DeepSeek and Qwen Vision
 // Called only from app/api/ai/* route handlers, never from client directly.
 
@@ -40,7 +42,7 @@ export async function callDeepSeek(
   model: string,
   messages: { role: string; content: string }[],
   options?: DeepSeekRequestOptions,
-): Promise<{ content: string; tokensUsed: number }> {
+): Promise<{ content: string; tokensUsed: number; finishReason?: string }> {
   const body: Record<string, unknown> = {
     model,
     messages,
@@ -70,7 +72,8 @@ export async function callDeepSeek(
   const content = data.choices?.[0]?.message?.content || '';
   const tokensUsed = data.usage?.total_tokens || 0;
 
-  return { content, tokensUsed };
+  const finishReason = data.choices?.[0]?.finish_reason;
+  return { content, tokensUsed, ...(typeof finishReason === "string" ? { finishReason } : {}) };
 }
 
 /**
@@ -169,4 +172,18 @@ export async function callQwenVision(
   const text = data.choices?.[0]?.message?.content || '';
 
   return { text };
+}
+
+
+export async function callDeepSeekVision(apiKey: string, imageBase64: string, prompt: string, mimeType = "image/jpeg", signal?: AbortSignal): Promise<{ text: string; tokensUsed: number }> {
+  if (!apiKey.trim() || !imageBase64.trim()) throw new Error("DeepSeek OCR 缺少图片或 API Key");
+  if (!["image/jpeg", "image/png", "image/webp", "image/gif"].includes(mimeType)) throw new Error("DeepSeek OCR 不支持此图片格式");
+  if (imageBase64.length > 44 * 1024 * 1024) throw new Error("图片过大，请压缩或分图后重试");
+  const response = await fetch(DEEPSEEK_OCR_ENDPOINT, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` }, body: JSON.stringify({ model: DEFAULT_DEEPSEEK_OCR_MODEL, messages: [{ role: "user", content: [{ type: "text", text: prompt }, { type: "image_url", image_url: { url: `data:${mimeType};base64,${imageBase64}`, detail: "original" } }] }], thinking: { type: "disabled" }, max_tokens: 8192, stream: false }), signal: createDeepSeekSignal(signal) });
+  if (!response.ok) { const payload = await response.json().catch(() => ({})); throw new Error(payload.error?.message || `DeepSeek OCR 请求失败 (${response.status})`); }
+  const data = await response.json();
+  if (data.choices?.[0]?.finish_reason === "length") throw new Error("DeepSeek OCR 文字输出被截断，请按题目裁图后重试");
+  const text = data.choices?.[0]?.message?.content;
+  if (typeof text !== "string" || !text.trim()) throw new Error("DeepSeek OCR 未返回有效文字，请检查图片或切换 Qwen OCR");
+  return { text: text.trim(), tokensUsed: Number(data.usage?.total_tokens) || 0 };
 }
