@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { AlertTriangle, ArrowLeft, Calendar, Tag, Edit2, Trash2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, BookOpen, BookMarked, ListTree, Loader2, Clock, Layers, MessageCircle, PanelLeftClose, PanelLeftOpen, Settings2, SlidersHorizontal } from "lucide-react";
 import { notesApi } from "@/lib/supabase";
@@ -17,7 +18,6 @@ import { problemPracticeApi } from "@/lib/problem-practice-api";
 import { getProblemValidationIssues, normalizeProblem } from "@/lib/problem-utils";
 import { Playlist } from "@/components/video/Playlist";
 import { VideoPlayer } from "@/components/video/VideoPlayer";
-import { AssistantDock } from "@/components/ai-assistant/AssistantDock";
 import { ProblemCard } from "@/components/problems/ProblemCard";
 import { ProblemList } from "@/components/problems/ProblemList";
 import { ChapterFilter } from "@/components/chapters/ChapterFilter";
@@ -34,6 +34,7 @@ import { detectBookletSourceDrift, extractBookletSourceManifest, type BookletPro
 import {
   clearOwnerNoteCache,
   clearPublicNoteCache,
+  getNoteReaderCacheKey,
   normalizeNoteReaderValue,
   noteReaderValuesEqual,
   readPublicAuthorProfileCache,
@@ -47,10 +48,27 @@ import {
 } from "@/lib/note-reader-cache";
 import { subscribeSiteCache } from "@/lib/site-cache";
 import { extractTocItems } from "@/lib/markdown";
-import { SettingsPanel } from "@/components/layout/SettingsPanel";
 import { ReaderTocDrawer } from "@/components/notes/ReaderTocDrawer";
 import { useReadingPosition } from "@/hooks/useReadingPosition";
 import { useTabletLandscape } from "@/hooks/useTabletLandscape";
+
+function ReaderPanelLoading() {
+  return (
+    <div role="status" className="fixed bottom-6 right-6 z-[100] flex items-center gap-2 rounded-xl border border-outline-variant/30 bg-surface px-4 py-3 text-on-surface shadow-lg">
+      <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />
+      正在打开面板…
+    </div>
+  );
+}
+
+const AssistantDock = dynamic(
+  () => import("@/components/ai-assistant/AssistantDock").then((module) => module.AssistantDock),
+  { loading: ReaderPanelLoading },
+);
+const SettingsPanel = dynamic(
+  () => import("@/components/layout/SettingsPanel").then((module) => module.SettingsPanel),
+  { loading: ReaderPanelLoading },
+);
 
 export type CollectionReaderNavigation = {
   collectionTitle: string;
@@ -156,10 +174,13 @@ export function NoteReaderClient({
   const [visibleProblemStarts, setVisibleProblemStarts] = useState<Record<string, number>>({});
   const [bookletDriftCount, setBookletDriftCount] = useState<number | null>(null);
   const [assistantOpen, setAssistantOpen] = useState(false);
+  // Mount on first use, then preserve conversation state and exit animations.
+  const [assistantLoadedNoteId, setAssistantLoadedNoteId] = useState<string | null>(null);
   const [assistantQuotedText, setAssistantQuotedText] = useState("");
   const [readerDirectoriesHidden, setReaderDirectoriesHidden] = useState(false);
   const [tocDrawerOpen, setTocDrawerOpen] = useState(false);
   const [readerSettingsOpen, setReaderSettingsOpen] = useState(false);
+  const [readerSettingsLoaded, setReaderSettingsLoaded] = useState(false);
   const [toolbarVisible, setToolbarVisible] = useState(true);
   const isTabletLandscape = useTabletLandscape();
   const displayContent = useMemo(
@@ -172,6 +193,7 @@ export function NoteReaderClient({
   const immersivePreviousFocusRef = useRef<HTMLElement | null>(null);
   const skipInitialChapterFetchRef = useRef(initialChaptersLoaded);
   const lastHashScrollRef = useRef("");
+  const latestNoteLoadRef = useRef(0);
 
   useReadingPosition({
     noteId,
@@ -266,7 +288,13 @@ export function NoteReaderClient({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [accessScope, noteId, ownerUserId]);
 
+  useEffect(() => () => {
+    // Invalidate pending reads when leaving this note or changing access scope.
+    latestNoteLoadRef.current += 1;
+  }, [accessScope, noteId, ownerUserId]);
+
   const loadNote = useCallback(async () => {
+    const loadId = ++latestNoteLoadRef.current;
     try {
       const cached = accessScope === "public"
         ? readPublicNoteCache(noteId)
@@ -282,17 +310,19 @@ export function NoteReaderClient({
           ? notesApi.getEditableById(noteId)
           : notesApi.getPublishedById(noteId),
       );
+      if (loadId !== latestNoteLoadRef.current) return;
       if (data && accessScope === "public") writePublicNoteCache(data);
       if (data && accessScope === "owner") writeOwnerNoteCache(data, ownerUserId);
       setNote((current) => noteReaderValuesEqual(current, data) ? current : data);
       setLoadError(null);
     } catch (error) {
+      if (loadId !== latestNoteLoadRef.current) return;
       console.error("Failed to load note:", error);
       setLoadError(error instanceof Error && error.message === NOTE_READ_TIMEOUT_MESSAGE
         ? NOTE_READ_TIMEOUT_MESSAGE
         : NOTE_READ_ERROR_MESSAGE);
     } finally {
-      setLoading(false);
+      if (loadId === latestNoteLoadRef.current) setLoading(false);
     }
   }, [accessScope, noteId, ownerUserId]);
 
@@ -323,30 +353,42 @@ export function NoteReaderClient({
 
   useEffect(() => {
     if (accessScope !== "public") return undefined;
-    return subscribeSiteCache(() => {
+    return subscribeSiteCache((event) => {
+      if (event.type === "write") {
+        const cached = readPublicNoteCache(noteId);
+        if (cached) {
+          setNote((current) => noteReaderValuesEqual(current, cached.value) ? current : cached.value);
+          return;
+        }
+      }
       void loadNote();
-    }, { namespace: "note-reader" });
-  }, [accessScope, loadNote]);
+    }, { namespace: "note-reader", key: getNoteReaderCacheKey(noteId) });
+  }, [accessScope, loadNote, noteId]);
 
   useEffect(() => {
+    let cancelled = false;
     const timer = window.setTimeout(() => {
       if (!note?.id || accessScope !== "public") {
         setAuthorProfile(null);
         return;
       }
       const cached = readPublicAuthorProfileCache(note.id);
-      if (cached) setAuthorProfile(cached.value);
+      setAuthorProfile(cached?.value ?? null);
       if (cached && !cached.stale) return;
       void notesApi.getAiAuthorProfile(note.id)
         .then((profile) => {
+          if (cancelled) return;
           writePublicAuthorProfileCache(note.id, profile);
           setAuthorProfile((current) => noteReaderValuesEqual(current, profile) ? current : profile);
         })
         .catch(() => {
-          if (!cached) setAuthorProfile(null);
+          if (!cancelled && !cached) setAuthorProfile(null);
         });
     }, 0);
-    return () => window.clearTimeout(timer);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
   }, [accessScope, note?.id]);
 
   // Load chapters for problem notes
@@ -368,20 +410,27 @@ export function NoteReaderClient({
       return;
     }
 
+    let cancelled = false;
+    const cleanup = () => { cancelled = true; };
     const cached = accessScope === "public" ? readPublicChaptersCache(noteId) : null;
     if (cached && !initialChaptersLoaded) {
       queueMicrotask(() => {
+        if (cancelled) return;
         setChapters((current) => noteReaderValuesEqual(current, cached.value) ? current : cached.value);
       });
     }
-    if (cached && !cached.stale && !initialChaptersLoaded) return;
+    if (cached && !cached.stale && !initialChaptersLoaded) return cleanup;
 
     chaptersApi.getByNoteId(noteId)
       .then((nextChapters) => {
+        if (cancelled) return;
         if (accessScope === "public") writePublicChaptersCache(noteId, nextChapters);
         setChapters((current) => noteReaderValuesEqual(current, nextChapters) ? current : nextChapters);
       })
-      .catch(() => setChapters([]));
+      .catch(() => {
+        // A failed background refresh must not erase the usable directory.
+      });
+    return cleanup;
   }, [accessScope, initialChapters, initialChaptersLoaded, note?.type, noteId]);
 
   useEffect(() => {
@@ -698,12 +747,13 @@ export function NoteReaderClient({
   const handleAssistantOpenChange = useCallback((nextOpen: boolean) => {
     setAssistantOpen(nextOpen);
     if (nextOpen) {
+      setAssistantLoadedNoteId(noteId);
       if (!assistantOpen) readerDirectoriesBeforeAssistantRef.current = readerDirectoriesHidden;
       setReaderDirectoriesHidden(true);
       return;
     }
     setReaderDirectoriesHidden(readerDirectoriesBeforeAssistantRef.current);
-  }, [assistantOpen, readerDirectoriesHidden]);
+  }, [assistantOpen, noteId, readerDirectoriesHidden]);
 
   const captureAssistantSelection = useCallback(() => {
     const selection = window.getSelection();
@@ -847,7 +897,10 @@ export function NoteReaderClient({
             {!isProblem && (
               <button
                 type="button"
-                onClick={() => setReaderSettingsOpen(true)}
+                onClick={() => {
+                  setReaderSettingsLoaded(true);
+                  setReaderSettingsOpen(true);
+                }}
                 className="reader-toolbar__tablet-only reader-toolbar__icon"
                 aria-label="打开阅读设置"
                 aria-expanded={readerSettingsOpen}
@@ -1317,9 +1370,9 @@ export function NoteReaderClient({
       )}
 
       <ReaderTocDrawer open={tocDrawerOpen && !isProblem && hasArticleToc} content={displayContent} onClose={() => setTocDrawerOpen(false)} />
-      <SettingsPanel isOpen={readerSettingsOpen} onClose={() => setReaderSettingsOpen(false)} mode="reading" />
+      {readerSettingsLoaded && <SettingsPanel isOpen={readerSettingsOpen} onClose={() => setReaderSettingsOpen(false)} mode="reading" />}
 
-      <AssistantDock
+      {assistantLoadedNoteId === note.id && <AssistantDock
         key={note.id}
         noteId={note.id}
         noteTitle={note.title}
@@ -1328,7 +1381,7 @@ export function NoteReaderClient({
         onOpenChange={handleAssistantOpenChange}
         quotedText={assistantQuotedText}
         onQuotedTextConsumed={handleAssistantQuotedTextConsumed}
-      />
+      />}
 
       {/* Immersive Reading Mode */}
       {isImmersiveMode && (

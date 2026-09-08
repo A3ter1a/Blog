@@ -121,6 +121,7 @@ export function NotesClient({
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isDeletingNotes, setIsDeletingNotes] = useState(false);
   const latestLoadId = useRef(0);
+  const handledRetryToken = useRef(0);
   const latestCoverLoadId = useRef(0);
   const latestCollectionsLoadId = useRef(0);
   const notesRef = useRef<Note[]>(initialNotes);
@@ -337,7 +338,10 @@ export function NotesClient({
     let fetchTimer: number | undefined;
 
     const prepareTimer = window.setTimeout(() => {
+      const forceRefresh = retryToken !== handledRetryToken.current;
+      handledRetryToken.current = retryToken;
       setIsLoadingMore(false);
+      setIsRefreshingNotes(false);
       setSelectedNoteIds(new Set());
 
       const cacheKey = getNotesCacheKey(
@@ -364,6 +368,10 @@ export function NotesClient({
         setHasMoreNotes(cached.hasMoreNotes);
         setLoading(false);
         renderedNotesScopeRef.current = notesScopeKey;
+        if (!forceRefresh && cached.expiresAt > Date.now()) {
+          setLoadError(null);
+          return;
+        }
       } else if (canKeepInitialRouteData) {
         setLoading(false);
         setIsRefreshingNotes(false);
@@ -420,7 +428,11 @@ export function NotesClient({
           sortOrder,
           canReadUnpublishedNotes,
         );
-        if (cacheKey && !searchQuery.trim()) writeNotesCache(cacheKey, nextNotes, hasMoreNotes);
+        if (cacheKey && !searchQuery.trim()) {
+          // Filling in covers does not make the underlying list any newer.
+          const cachedAt = readNotesCache(cacheKey)?.cachedAt;
+          writeNotesCache(cacheKey, nextNotes, hasMoreNotes, cachedAt);
+        }
       })
       .catch((error) => {
         if (latestCoverLoadId.current === loadId) {

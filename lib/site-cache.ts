@@ -113,11 +113,14 @@ function pruneStorage(storage: StorageLike, requiredBytes: number, protectedKey:
     return;
   }
 
-  for (let index = 0; index < storageLength; index += 1) {
+  // Removing an expired entry shifts subsequent indexes; walk backwards.
+  for (let index = storageLength - 1; index >= 0; index -= 1) {
     let key: string | null = null;
     let raw: string | null = null;
     try {
       key = storage.key(index);
+      // The incoming value replaces this entry; count only its new size.
+      if (key === protectedKey) continue;
       raw = key ? storage.getItem(key) : null;
     } catch {
       continue;
@@ -147,7 +150,6 @@ function pruneStorage(storage: StorageLike, requiredBytes: number, protectedKey:
   if (totalBytes + requiredBytes <= SITE_CACHE_STORAGE_LIMIT_BYTES) return;
 
   entries
-    .filter((entry) => entry.key !== protectedKey)
     .sort((left, right) => left.lastAccessedAt - right.lastAccessedAt)
     .some((entry) => {
       try {
@@ -235,14 +237,14 @@ export function readSiteCache<T>(
   return newest;
 }
 
-export function writeSiteCache<T>(key: string, value: T): void {
+export function writeSiteCache<T>(key: string, value: T, options: { cachedAt?: number } = {}): void {
   if (typeof window === "undefined") return;
   let serialized: string;
   try {
     serialized = JSON.stringify({
       version: SITE_CACHE_VERSION,
       value,
-      cachedAt: Date.now(),
+      cachedAt: options.cachedAt ?? Date.now(),
       lastAccessedAt: Date.now(),
     });
   } catch {
@@ -251,6 +253,8 @@ export function writeSiteCache<T>(key: string, value: T): void {
 
   // A single unusually large article should not evict the entire site cache.
   if (getStorageEntrySize(serialized) > SITE_CACHE_ENTRY_MAX_BYTES) return;
+  const previous = readSiteCache<T>(key);
+  const valueChanged = !previous || !siteCacheValuesEqual(previous.value, value);
   let wrote = false;
   for (const storage of getStorages()) {
     try {
@@ -277,7 +281,8 @@ export function writeSiteCache<T>(key: string, value: T): void {
       }
     }
   }
-  if (wrote) broadcastSiteCacheEvent({ type: "write", key, namespace: namespaceFromKey(key) });
+  // Refresh TTLs without making other tabs fetch and write the same data back.
+  if (wrote && valueChanged) broadcastSiteCacheEvent({ type: "write", key, namespace: namespaceFromKey(key) });
 }
 
 export function clearSiteCache(key: string): void {
@@ -312,23 +317,30 @@ export function clearSiteCacheNamespace(namespace: string): void {
 /** Subscribe to cache changes made by another tab or in-app browser context. */
 export function subscribeSiteCache(
   listener: SiteCacheListener,
-  options: { namespace?: string } = {},
+  options: { namespace?: string; key?: string } = {},
 ): () => void {
   if (typeof window === "undefined") return () => undefined;
 
   const filteredListener: SiteCacheListener = (event) => {
     if (options.namespace && event.namespace !== options.namespace) return;
+    if (options.key && event.type !== "namespace" && event.key !== options.key) return;
     listener(event);
   };
   siteCacheListeners.add(filteredListener);
   getSiteCacheChannel();
 
   const handleStorage = (event: StorageEvent) => {
-    if (!event.key) return;
+    const namespace = namespaceFromKey(event.key);
+    if (!event.key || !namespace) return;
+    if (event.oldValue && event.newValue) {
+      const previous = parseCacheEnvelope(event.oldValue);
+      const next = parseCacheEnvelope(event.newValue);
+      if (previous && next && siteCacheValuesEqual(previous.value, next.value)) return;
+    }
     const cacheEvent: SiteCacheEvent = {
       type: event.newValue === null ? "clear" : "write",
       key: event.key,
-      namespace: namespaceFromKey(event.key),
+      namespace,
     };
     filteredListener(cacheEvent);
   };

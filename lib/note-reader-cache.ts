@@ -82,7 +82,7 @@ function normalizeProfile(value: unknown): PublicAiProfile | null {
   };
 }
 
-function noteKey(noteId: string, scope = "public"): string {
+export function getNoteReaderCacheKey(noteId: string, scope = "public"): string {
   return getSiteCacheKey("note-reader", `${scope}-${noteId}`);
 }
 
@@ -97,23 +97,23 @@ function profileKey(noteId: string): string {
 const readOptions = { ttlMs: NOTE_READER_CACHE_TTL_MS, maxAgeMs: NOTE_READER_CACHE_MAX_AGE_MS };
 
 export function readPublicNoteCache(noteId: string): SiteCacheRead<Note> | null {
-  return readSiteCache(noteKey(noteId), normalizeNoteReaderValue, readOptions);
+  return readSiteCache(getNoteReaderCacheKey(noteId), normalizeNoteReaderValue, readOptions);
 }
 
 export function writePublicNoteCache(note: Note): void {
   if (!note.isPublished) return;
-  writeSiteCache(noteKey(note.id), note);
+  writeSiteCache(getNoteReaderCacheKey(note.id), note);
 }
 
 /** Private reader snapshots are keyed by the authenticated user id. */
 export function readOwnerNoteCache(noteId: string, userId: string | null | undefined): SiteCacheRead<Note> | null {
   if (!userId) return null;
-  return readSiteCache(noteKey(noteId, `owner-${userId}`), normalizeNoteReaderValue, readOptions);
+  return readSiteCache(getNoteReaderCacheKey(noteId, `owner-${userId}`), normalizeNoteReaderValue, readOptions);
 }
 
 export function writeOwnerNoteCache(note: Note, userId: string | null | undefined): void {
   if (!userId) return;
-  writeSiteCache(noteKey(note.id, `owner-${userId}`), note);
+  writeSiteCache(getNoteReaderCacheKey(note.id, `owner-${userId}`), note);
 }
 
 export function readPublicChaptersCache(noteId: string): SiteCacheRead<Chapter[]> | null {
@@ -134,14 +134,14 @@ export function writePublicAuthorProfileCache(noteId: string, profile: PublicAiP
 }
 
 export function clearPublicNoteCache(noteId: string): void {
-  clearSiteCache(noteKey(noteId));
+  clearSiteCache(getNoteReaderCacheKey(noteId));
   clearSiteCache(chapterKey(noteId));
   clearSiteCache(profileKey(noteId));
 }
 
 export function clearOwnerNoteCache(noteId: string, userId: string | null | undefined): void {
   if (!userId) return;
-  clearSiteCache(noteKey(noteId, `owner-${userId}`));
+  clearSiteCache(getNoteReaderCacheKey(noteId, `owner-${userId}`));
 }
 
 export function noteReaderValuesEqual(left: unknown, right: unknown): boolean {

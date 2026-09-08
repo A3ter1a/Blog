@@ -10,6 +10,9 @@ const NOTES_CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 type NotesCachePayload = {
   notes: Note[];
   hasMoreNotes: boolean;
+};
+
+type NotesCacheSnapshot = NotesCachePayload & {
   cachedAt: number;
   expiresAt: number;
 };
@@ -52,7 +55,6 @@ function normalizeCachedNote(value: unknown): Note | null {
 function normalizeNotesCache(value: unknown): NotesCachePayload | null {
   if (!isRecord(value) || !Array.isArray(value.notes)) return null;
   if (typeof value.hasMoreNotes !== "boolean") return null;
-  if (typeof value.cachedAt !== "number" || typeof value.expiresAt !== "number") return null;
 
   const notes = value.notes
     .map(normalizeCachedNote)
@@ -61,8 +63,6 @@ function normalizeNotesCache(value: unknown): NotesCachePayload | null {
   return {
     notes,
     hasMoreNotes: value.hasMoreNotes,
-    cachedAt: value.cachedAt,
-    expiresAt: value.expiresAt,
   };
 }
 
@@ -85,26 +85,27 @@ export function getNotesCacheKey(
   return getSiteCacheKey("notes-list", `${accountScope}-${filterScope}`);
 }
 
-export function readNotesCache(key: string | null): NotesCachePayload | null {
+export function readNotesCache(key: string | null): NotesCacheSnapshot | null {
   if (!key) return null;
 
   const cached = readSiteCache<NotesCachePayload>(key, normalizeNotesCache, {
     ttlMs: NOTES_CACHE_TTL_MS,
     maxAgeMs: NOTES_CACHE_MAX_AGE_MS,
   });
-  return cached?.value ?? null;
+  return cached ? {
+    ...cached.value,
+    cachedAt: cached.cachedAt,
+    expiresAt: cached.cachedAt + NOTES_CACHE_TTL_MS,
+  } : null;
 }
 
-export function writeNotesCache(key: string | null, notes: Note[], hasMoreNotes: boolean): void {
+export function writeNotesCache(key: string | null, notes: Note[], hasMoreNotes: boolean, cachedAt?: number): void {
   if (!key) return;
 
-  const cachedAt = Date.now();
   writeSiteCache<NotesCachePayload>(key, {
     notes,
     hasMoreNotes,
-    cachedAt,
-    expiresAt: cachedAt + NOTES_CACHE_TTL_MS,
-  });
+  }, { cachedAt });
 }
 
 export function clearNotesListCache(): void {
