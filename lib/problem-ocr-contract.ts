@@ -1,3 +1,4 @@
+import { mergeSingleImageProblems } from "./problem-ocr-single-image.ts";
 import { normalizeProblemForWrite } from "./content-contract.ts";
 import type { Difficulty, Problem, ProblemOption, ProblemType } from "./types.ts";
 import { extractOptions } from "./utils.ts";
@@ -130,7 +131,13 @@ export function materializeProblemOcrProblem(
 }
 
 export function buildProblemOcrJobResult(captures: ProblemOcrItemCapture[]): ProblemOcrJobResult {
-  const sorted = [...captures].sort((left, right) => left.imageIndex - right.imageIndex);
+  const sorted = captures.map((capture) => ({
+    ...capture,
+    problems: mergeSingleImageProblems(capture.problems, capture.ocrText),
+    warning: capture.problems.length > 1
+      ? [capture.warning, "按一图一题合并了原先拆开的小问，保留完整原文和答案，请核对。"].filter(Boolean).join("；")
+      : capture.warning,
+  })).sort((left, right) => left.imageIndex - right.imageIndex);
   const totalImages = sorted.length;
   if (sorted.some((capture, index) => capture.imageIndex !== index + 1 || capture.imageCount !== totalImages)) {
     throw new Error("题库 OCR 分块序号或总数不连续，拒绝生成聚合结果。");
@@ -227,14 +234,7 @@ export function extractProblemOcrJobResult(value: unknown): ProblemOcrJobResult 
     return null;
   }
 
-  return {
-    resultVersion: 1,
-    totalImages,
-    completedImages,
-    failedImages,
-    extractedProblems: value.extractedProblems as Partial<Problem>[],
-    imageProgress: value.imageProgress as ProblemOcrJobResult["imageProgress"],
-    warnings: value.warnings.filter((item): item is string => typeof item === "string"),
-    captures,
-  };
+  const result = buildProblemOcrJobResult(captures);
+  result.warnings = [...new Set([...value.warnings as string[], ...result.warnings])];
+  return result;
 }

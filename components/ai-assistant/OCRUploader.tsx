@@ -1,8 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { AlertCircle, CheckCircle2, Image as ImageIcon, Loader2, Upload, X, Scan } from 'lucide-react';
+import { AlertCircle, CheckCircle2, Image as ImageIcon, Loader2, Upload } from 'lucide-react';
 import { fileToBase64 } from '@/lib/utils';
 import { AIProgressIndicator } from './AIProgressIndicator';
 import { AIExtractionResult } from './AIExtractionResult';
@@ -13,7 +12,7 @@ import {
   type ScanImageProgress,
 } from '@/hooks/useAIScan';
 import type { Problem } from '@/lib/types';
-import { dialogMotion, overlayMotion, uiMotion } from '@/lib/motion';
+import { AIScanDialog } from './AIScanDialog';
 
 interface OCRUploaderProps {
   isOpen: boolean;
@@ -255,41 +254,7 @@ export function OCRUploader({ isOpen, onClose, onAccept, chapterContext, targetI
     : 0;
 
   return (
-    <AnimatePresence>
-      <motion.div
-        variants={overlayMotion}
-        initial="initial"
-        animate="animate"
-        exit="exit"
-        transition={{ duration: uiMotion.duration.fast, ease: uiMotion.ease.standard }}
-        className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm"
-        onClick={() => { if (!isBusy) handleClose(); }}
-      >
-        <motion.div
-          variants={dialogMotion}
-          initial="initial"
-          animate="animate"
-          exit="exit"
-          transition={uiMotion.spring.gentle}
-          className="absolute inset-4 md:inset-auto md:top-1/2 md:left-1/2 md:-translate-x-1/2 md:-translate-y-1/2 md:w-full md:max-w-3xl md:h-auto max-h-[90vh] bg-surface-container-lowest rounded-2xl shadow-elevated flex flex-col overflow-hidden"
-          onClick={e => e.stopPropagation()}
-        >
-          {/* Header */}
-          <div className="flex items-center justify-between px-5 py-4 border-b border-outline-variant/10">
-            <h2 className="text-lg font-bold text-on-surface font-headline flex items-center gap-2">
-              <Scan className="w-5 h-5 text-primary" />
-              AI 扫描题目
-            </h2>
-            <button
-              onClick={handleClose}
-              className="motion-ui motion-interactive p-2 rounded-full hover:bg-surface-container-high"
-              title={isProcessing && isPersistentScan ? '关闭弹窗，任务继续运行' : isBusy ? '关闭' : '关闭'}
-            >
-              <X className="w-5 h-5 text-on-surface-variant" />
-            </button>
-          </div>
-
-          <div className="flex-1 overflow-y-auto p-5 space-y-4">
+    <AIScanDialog isOpen={isOpen} onClose={handleClose} closeOnBackdrop={!isBusy}>
             {/* Upload zone */}
             {scanState.stage === 'idle' && !isPreparing && (
               <label className="motion-ui motion-interactive flex flex-col items-center justify-center gap-3 p-8 border-2 border-dashed border-outline-variant/30 rounded-xl hover:border-primary/50 hover:bg-primary/[0.02] cursor-pointer">
@@ -299,7 +264,7 @@ export function OCRUploader({ isOpen, onClose, onAccept, chapterContext, targetI
                 <div className="text-center">
                   <p className="text-sm font-medium text-on-surface">点击上传题目照片</p>
                   <p className="text-xs text-on-surface-variant/50 mt-1">
-                    支持 JPG、PNG、WebP，一次最多 {MAX_SCAN_IMAGES} 张；上传后由任务中心逐张识别
+                    每张图片只放一道完整题目，所有小问保留在同一张图内。支持 JPG、PNG、WebP，一次最多 {MAX_SCAN_IMAGES} 张
                   </p>
                 </div>
                 <input
@@ -439,10 +404,7 @@ export function OCRUploader({ isOpen, onClose, onAccept, chapterContext, targetI
                 </button>
               </div>
             )}
-          </div>
-        </motion.div>
-      </motion.div>
-    </AnimatePresence>
+    </AIScanDialog>
   );
 }
 

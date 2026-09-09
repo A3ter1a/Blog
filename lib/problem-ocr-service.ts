@@ -1,3 +1,4 @@
+import { mergeSingleImageProblems } from "./problem-ocr-single-image.ts";
 import { callDeepSeek, callQwenVision, callDeepSeekVision } from "./ai-client.ts";
 import { parseAIJson } from "./ai-json.ts";
 import {
@@ -59,7 +60,7 @@ export async function recognizeProblemImage(
     throw new ProblemOcrServiceError(`模型 ${input.model} 不支持图片输入，不能用于 OCR。请改用 Qwen3.7 Plus 或 Qwen3-VL 系列。`, 400);
   }
   const mimeType = input.mimeType.trim().toLowerCase().startsWith("image/") ? input.mimeType.trim().toLowerCase() : "image/jpeg";
-  const prompt = `Extract all text from this image. This is likely an exam problem or math question.
+  const prompt = `Extract all text from this image. This image contains exactly ONE complete exam problem, including its shared stem and all subquestions.
 Please follow these rules:
 1. Preserve ALL mathematical formulas in LaTeX format: inline formulas use $...$, display formulas use $$...$$
 2. Maintain the original structure: title/number, question, options, and short answer if visible
@@ -172,7 +173,7 @@ const OCR_JSON_MAX_TOKENS = 8192;
 
 function requireCompleteExtraction(result: Awaited<ReturnType<TextCaller>>): void {
   if (result.finishReason === "length") {
-    throw new ProblemOcrServiceError("图片文字已识别，但题目整理输出被截断。请把这张图片按题目分成较小区域后重试，避免漏题。", 422);
+    throw new ProblemOcrServiceError("图片文字已识别，但题目整理输出被截断。请去除图片中无关的边缘内容后重试，并保留完整题干和所有小问。", 422);
   }
 }
 
@@ -201,10 +202,10 @@ export async function analyzeProblemOcrText(
   const chapterHint = chapters.length > 0
     ? `\nAvailable chapters: ${chapters.join(", ")}. Suggest the best matching chapter from this list, or suggest a new chapter name if none match.`
     : "\nSuggest an appropriate chapter name for this problem.";
-  const systemPrompt = `You are a math problem extraction assistant for a Chinese exam-study knowledge base. Given OCR text that may contain ONE or MULTIPLE math problems, return one JSON object with this structure:
+  const systemPrompt = `You are a math problem extraction assistant for a Chinese exam-study knowledge base. Each image contains EXACTLY ONE complete exam problem, possibly with multiple subquestions. Given OCR text from ONE image, return one JSON object with this structure:
 {"problems":[{"question":"problem text with preserved LaTeX","answer":"short answer only","type":"choice|fill|calculation|proof|proofEssay","difficulty":"easy|medium|hard","suggestedChapter":null,"options":[{"label":"A","content":"option text"}],"confidence":0.5}]}.
 Rules:
-- Separate distinct problems into individual array items; one problem must still use the problems array
+- Return EXACTLY ONE problems-array item for this image. NEVER split (1), (2), ①, ② or other subquestions into separate problems. Keep the shared stem and ALL subquestions together in question, with their numbering intact
 - If the image contains no usable problem, return {"problems":[]}
 - Preserve ALL LaTeX formulas and delimiters in question, answer, and options
 - Correct obvious OCR mistakes only when the intended content is clear; do not silently rewrite uncertain text
@@ -235,7 +236,7 @@ Rules:
   if (shouldRescue) {
     try {
       const rescue = await callText(input.apiKey, input.model, [
-        { role: "system", content: `The previous extraction returned no usable problems, but the OCR text appears to contain an exam question. Extract at least one visible problem whenever possible. Keep incomplete visible text, leave uncertain answers empty, use confidence 0.2-0.5, preserve LaTeX and choice options, and return valid JSON only with the same problems-array shape.${chapterHint}` },
+        { role: "system", content: `The previous extraction returned no usable problems, but the OCR text appears to contain an exam question. Extract exactly one complete problem whenever possible. Keep the shared stem and every subquestion together; never split subquestions. Keep incomplete visible text, leave uncertain answers empty, use confidence 0.2-0.5, preserve LaTeX and choice options, and return valid JSON only with the same problems-array shape.${chapterHint}` },
         { role: "user", content: ocrText },
       ], { temperature: 0, maxTokens: OCR_JSON_MAX_TOKENS, thinking: "disabled", responseFormat: "json_object", signal: input.signal });
       requireCompleteExtraction(rescue);
@@ -257,8 +258,10 @@ Rules:
     problems = [buildOcrFallbackProblem(ocrText)];
     extractionMode = "ocrFallback";
   }
-  const warning = extractionMode === "ocrFallback"
-    ? "图片文字已识别，但尚未成功拆分为独立题目。下面保留的是整张图片的原文草稿，不代表已完成逐题提取；请核对并拆分，或按题目裁图重试。"
+  const wasSplit = problems.length > 1;
+  problems = mergeSingleImageProblems(problems, ocrText);
+  const warning = wasSplit ? "模型将小问拆开，已按一图一题保留完整原文并合并答案，请核对小问编号。" : extractionMode === "ocrFallback"
+    ? "图片文字已识别，已将整张图片保留为一道题目的原文草稿，请核对题干、所有小问和答案。"
     : extractionMode === "rescue"
       ? "首次分析为空，已通过补救提取生成题目，请快速核对题干与答案。"
       : undefined;

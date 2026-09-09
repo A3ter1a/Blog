@@ -92,6 +92,7 @@ export interface ChapterContextItem {
 export function useAIScan(targetId: string) {
   const {
     jobs,
+    requestedJobId,
     createProblemOcrJob,
     loadJobResult,
     claimJobResult,
@@ -106,7 +107,8 @@ export function useAIScan(targetId: string) {
     const current = jobIdRef.current
       ? jobs.find((job) => job.id === jobIdRef.current)
       : undefined;
-    const resumable = current ?? (scanState.stage === 'idle'
+    const requested = jobs.find((job) => job.id === requestedJobId && job.type === 'problem_ocr' && job.targetId === targetId && !job.resultClaimedAt);
+    const resumable = requested ?? current ?? (scanState.stage === 'idle'
       ? jobs.find((job) => (
         job.type === 'problem_ocr'
         && job.targetId === targetId
@@ -185,7 +187,7 @@ export function useAIScan(targetId: string) {
       resultLoadRequestedRef.current.add(resumable.id);
       void loadJobResult(resumable.id);
     }
-  }, [jobs, loadJobResult, scanState.stage, targetId]);
+  }, [jobs, loadJobResult, requestedJobId, scanState.stage, targetId]);
 
   const resetScan = useCallback(() => {
     activeRunRef.current += 1;

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo, type ReactNode } from "react";
+import { useState, useEffect, useMemo, useRef, type ReactNode } from "react";
 import { motion, AnimatePresence, Reorder, useDragControls } from "framer-motion";
 import { AlertCircle, Plus, X, ChevronDown, ChevronUp, GripVertical, Sparkles, Scan, Copy, Trash2, FolderTree, CheckSquare, SlidersHorizontal, Loader2 } from "lucide-react";
 import { problemTypeMap, difficultyMap, difficultyColorMap } from "@/lib/types";
@@ -10,6 +10,7 @@ import { ChapterSelector } from "@/components/chapters/ChapterSelector";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { ProblemPreview } from "./ProblemPreview";
 import { MarkdownContent } from "@/components/ui/MarkdownContent";
+import { useJobCenter } from "@/components/jobs/JobCenter";
 import { OCRUploader } from "@/components/ai-assistant/OCRUploader";
 import type { ChapterContextItem } from "@/hooks/useAIScan";
 import { useMath3AutoClassify } from "@/hooks/useMath3AutoClassify";
@@ -59,6 +60,14 @@ export function ProblemEditor({
   const toast = useToast();
   const [showAddForm, setShowAddForm] = useState(false);
   const [showAIScan, setShowAIScan] = useState(false);
+  const { jobs: resultJobs, requestedJobId } = useJobCenter();
+  const openedResultRef = useRef<string | null>(null);
+  useEffect(() => {
+    const job = resultJobs.find((item) => item.id === requestedJobId && item.type === "problem_ocr" && item.targetId === taskTargetId);
+    if (!job || openedResultRef.current === job.id) return;
+    openedResultRef.current = job.id;
+    setShowAIScan(true);
+  }, [requestedJobId, resultJobs, taskTargetId]);
   const [showOrganizeTools, setShowOrganizeTools] = useState(false);
   const [newProblem, setNewProblem] = useState<Partial<Problem>>(createEmptyProblemDraft());
   const [newProblemError, setNewProblemError] = useState<string | null>(null);

@@ -12,8 +12,10 @@ import {
 } from "react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { AlertTriangle, ArrowUpRight, CheckCircle2, CircleX, Clock3, FileScan, Loader2, RotateCcw, ShieldCheck, X } from "lucide-react";
 import { buildAuthHeaders } from "@/lib/fetch-with-auth";
+import { selectJobResults } from "@/lib/job-result-navigation";
 import { useAdminAuth } from "@/hooks/useAdminAuth";
 import { useAiAccountSlot } from "@/hooks/useAiAccountSlot";
 import { useDialogFocus } from "@/hooks/useDialogFocus";
@@ -43,6 +45,10 @@ import type { ProblemOcrChapterContextItem } from "@/lib/problem-ocr-contract";
 import type { Math3SelfTestDifficulty, Math3SelfTestMode } from "@/lib/math3-self-test";
 import type { Math3ProblemClassifyInput } from "@/lib/math3-classification";
 import type { Math3StepGradeQuestionSnapshot, Math3StepGradeRubricSnapshot } from "@/lib/server-math3-step-grade";
+
+const JobResultDialog = dynamic(() => import("./JobResultDialog").then((module) => module.JobResultDialog), {
+  loading: () => <div role="status" className="fixed bottom-6 right-6 z-[140] rounded-xl bg-surface p-4 shadow-lg">正在打开成果…</div>,
+});
 
 type CreateDocumentOcrJobInput = {
   externalTaskId: string;
@@ -117,6 +123,7 @@ type CreateKnowledgeQuizJobInput = {
 };
 
 type JobCenterContextValue = {
+  requestedJobId?: string | null;
   jobs: ClientJob[];
   createDocumentOcrJob: (input: CreateDocumentOcrJobInput) => ClientJob;
   createMarkdownReviewJob: (input: CreateMarkdownReviewJobInput) => Promise<ClientJob>;
@@ -277,6 +284,12 @@ export function JobCenterProvider({ children }: { children: ReactNode }) {
   const skipRemoteLedger = isUiLab;
   const jobStorageKey = aiAccountSlot ? `${CLIENT_JOB_STORAGE_KEY}:${aiAccountSlot}` : CLIENT_JOB_STORAGE_KEY;
   const [jobs, setJobs] = useState<ClientJob[]>([]);
+  const [requestedJobId, setRequestedJobId] = useState<string | null | undefined>(undefined);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setRequestedJobId(new URLSearchParams(window.location.search).get("job")), 0);
+    return () => window.clearTimeout(timer);
+  }, [pathname]);
+  const consumerJobs = useMemo(() => selectJobResults(jobs, requestedJobId), [jobs, requestedJobId]);
   const [reviewNotices, setReviewNotices] = useState<PendingReviewNotice[]>([]);
   const [isOpen, setIsOpen] = useState(false);
   const [activeBucket, setActiveBucket] = useState<JobBucket>("pending");
@@ -590,6 +603,7 @@ export function JobCenterProvider({ children }: { children: ReactNode }) {
   }, [activeJobPollKey, skipRemoteLedger, pollJob]);
 
   const createDocumentOcrJob = useCallback((input: CreateDocumentOcrJobInput) => {
+    setRequestedJobId(null);
     const now = new Date().toISOString();
     const localJob: ClientJob = {
       id: createJobId(),
@@ -624,6 +638,7 @@ export function JobCenterProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const createMarkdownReviewJob = useCallback(async (input: CreateMarkdownReviewJobInput) => {
+    setRequestedJobId(null);
     const response = await fetch("/api/jobs/markdown-review", {
       method: "POST",
       headers: await buildAuthHeaders({ "Content-Type": "application/json" }),
@@ -640,6 +655,7 @@ export function JobCenterProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const createProblemOcrJob = useCallback(async (input: CreateProblemOcrJobInput) => {
+    setRequestedJobId(null);
     const capabilityResponse = await fetch(`/api/jobs/problem-ocr?provider=${input.ocrProvider === "qwen" ? "qwen" : "deepseek"}`, {
       headers: await buildAuthHeaders(),
       cache: "no-store",
@@ -692,6 +708,7 @@ export function JobCenterProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const createMath3SelfTestJob = useCallback(async (input: CreateMath3SelfTestJobInput) => {
+    setRequestedJobId(null);
     const response = await fetch("/api/jobs/math3-self-test", {
       method: "POST",
       headers: await buildAuthHeaders({ "Content-Type": "application/json" }),
@@ -710,6 +727,7 @@ export function JobCenterProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const createMathPaperGradeJob = useCallback(async (input: CreateMathPaperGradeJobInput) => {
+    setRequestedJobId(null);
     const response = await fetch("/api/jobs/math-paper-grade", {
       method: "POST",
       headers: await buildAuthHeaders({ "Content-Type": "application/json" }),
@@ -728,6 +746,7 @@ export function JobCenterProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const createMathPaperOcrJob = useCallback(async (input: CreateMathPaperOcrJobInput) => {
+    setRequestedJobId(null);
     const capabilityResponse = await fetch("/api/jobs/math-paper-ocr", {
       headers: await buildAuthHeaders(),
       cache: "no-store",
@@ -766,6 +785,7 @@ export function JobCenterProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const createMath3ClassifyJob = useCallback(async (input: CreateMath3ClassifyJobInput) => {
+    setRequestedJobId(null);
     const response = await fetch("/api/jobs/math3-classify", {
       method: "POST",
       headers: await buildAuthHeaders({ "Content-Type": "application/json" }),
@@ -782,6 +802,7 @@ export function JobCenterProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const createEnglishSubjectiveGradeJob = useCallback(async (input: CreateEnglishSubjectiveGradeJobInput) => {
+    setRequestedJobId(null);
     const response = await fetch("/api/jobs/english-subjective-grade", {
       method: "POST",
       headers: await buildAuthHeaders({ "Content-Type": "application/json" }),
@@ -798,6 +819,7 @@ export function JobCenterProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const createEconomicsGraphJob = useCallback(async (input: CreateEconomicsGraphJobInput) => {
+    setRequestedJobId(null);
     const response = await fetch("/api/ai/economics-graph", {
       method: "POST",
       headers: await buildAuthHeaders({ "Content-Type": "application/json" }),
@@ -813,6 +835,7 @@ export function JobCenterProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const createMath3StepGradeJob = useCallback(async (input: CreateMath3StepGradeJobInput) => {
+    setRequestedJobId(null);
     const response = await fetch("/api/ai/math3-self-test/grade-step", {
       method: "POST",
       headers: await buildAuthHeaders({ "Content-Type": "application/json" }),
@@ -828,6 +851,7 @@ export function JobCenterProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const createKnowledgeQuizJob = useCallback(async (input: CreateKnowledgeQuizJobInput) => {
+    setRequestedJobId(null);
     const response = await fetch(`/api/ai/knowledge-quizzes/${encodeURIComponent(input.proposalId)}/generate`, {
       method: "POST",
       headers: await buildAuthHeaders({ "Content-Type": "application/json" }),
@@ -1067,7 +1091,8 @@ export function JobCenterProvider({ children }: { children: ReactNode }) {
   }, [jobs]);
 
   const value = useMemo(() => ({
-    jobs,
+    jobs: consumerJobs,
+    requestedJobId,
     createDocumentOcrJob,
     createMarkdownReviewJob,
     createProblemOcrJob,
@@ -1085,8 +1110,10 @@ export function JobCenterProvider({ children }: { children: ReactNode }) {
     loadJobResult,
     claimJobResult,
     dismissJob,
-  }), [cancelJob, claimJobResult, createDocumentOcrJob, createEconomicsGraphJob, createEnglishSubjectiveGradeJob, createKnowledgeQuizJob, createMarkdownReviewJob, createMath3SelfTestJob, createMath3StepGradeJob, createMathPaperGradeJob, createMathPaperOcrJob, createMath3ClassifyJob, createProblemOcrJob, dismissJob, jobs, loadJobResult, retryJob, updateJob]);
+  }), [cancelJob, claimJobResult, createDocumentOcrJob, createEconomicsGraphJob, createEnglishSubjectiveGradeJob, createKnowledgeQuizJob, createMarkdownReviewJob, createMath3SelfTestJob, createMath3StepGradeJob, createMathPaperGradeJob, createMathPaperOcrJob, createMath3ClassifyJob, createProblemOcrJob, dismissJob, consumerJobs, requestedJobId, loadJobResult, retryJob, updateJob]);
 
+  const [resultJobId, setResultJobId] = useState<string | null>(null);
+  const resultJob = jobs.find((job) => job.id === resultJobId);
   const activeCount = jobs.filter(isClientJobActive).length;
   const unclaimedCount = jobs.filter((job) => job.status === "succeeded" && !job.resultClaimedAt).length;
   const failedCount = jobs.filter((job) => job.status === "failed").length;
@@ -1229,58 +1256,11 @@ export function JobCenterProvider({ children }: { children: ReactNode }) {
                           {job.cleanupError ? "重试临时源图清理" : job.class === "internal" ? "重试失败分块" : "重新查询"}
                         </button>
                       )}
-                      {job.status === "succeeded" && !job.resultMarkdown && !job.resultPayload && job.remoteJobId && (
-                        <button type="button" onClick={() => { void loadJobResult(job.id); }}>
-                          恢复结果
+                      {(job.status === "succeeded" || job.status === "claimed") && (
+                        <button type="button" onClick={() => { setResultJobId(job.id); setIsOpen(false); }}>
+                          {job.resultClaimedAt ? "查看成果" : "查看并领取成果"}
+                          <ArrowUpRight className="h-4 w-4" />
                         </button>
-                      )}
-                      {job.type === "math3_self_test_generation" && job.status === "succeeded" && !job.resultClaimedAt && (
-                        <Link href="/tools/math3-self-test" onClick={() => setIsOpen(false)}>
-                          打开并领取试卷
-                          <ArrowUpRight className="h-4 w-4" />
-                        </Link>
-                      )}
-                      {job.type === "math_paper_grade" && job.status === "succeeded" && !job.resultClaimedAt && (
-                        <Link href="/tools/math-paper-ocr" onClick={() => setIsOpen(false)}>
-                          打开并核对建议分
-                          <ArrowUpRight className="h-4 w-4" />
-                        </Link>
-                      )}
-                      {job.type === "math_paper_ocr" && job.status === "succeeded" && !job.resultClaimedAt && (
-                        <Link href="/tools/math-paper-ocr" onClick={() => setIsOpen(false)}>
-                          打开并核对 OCR
-                          <ArrowUpRight className="h-4 w-4" />
-                        </Link>
-                      )}
-                      {job.type === "math3_auto_classify" && job.status === "succeeded" && !job.resultClaimedAt && (
-                        <Link href="/create" onClick={() => setIsOpen(false)}>
-                          打开并应用归类
-                          <ArrowUpRight className="h-4 w-4" />
-                        </Link>
-                      )}
-                      {job.type === "english_subjective_grade" && job.status === "succeeded" && !job.resultClaimedAt && (
-                        <Link href="/tools/english-training" onClick={() => setIsOpen(false)}>
-                          打开并核对建议分
-                          <ArrowUpRight className="h-4 w-4" />
-                        </Link>
-                      )}
-                      {job.type === "economics_graph_generation" && job.status === "succeeded" && !job.resultClaimedAt && (
-                        <Link href="/create" onClick={() => setIsOpen(false)}>
-                          打开并插入曲线
-                          <ArrowUpRight className="h-4 w-4" />
-                        </Link>
-                      )}
-                      {job.type === "math3_step_grade" && job.status === "succeeded" && !job.resultClaimedAt && (
-                        <Link href="/tools/math3-self-test" onClick={() => setIsOpen(false)}>
-                          打开并写入评分
-                          <ArrowUpRight className="h-4 w-4" />
-                        </Link>
-                      )}
-                      {job.type === "ai_knowledge_quiz_generation" && job.status === "succeeded" && !job.resultClaimedAt && (
-                        <Link href="/tools/ai-content" onClick={() => setIsOpen(false)}>
-                          打开并审核快测
-                          <ArrowUpRight className="h-4 w-4" />
-                        </Link>
                       )}
                       {!isClientJobActive(job) && !(job.status === "succeeded" && !job.resultClaimedAt) && (
                         <button type="button" onClick={() => dismissJob(job.id)}>移出历史</button>
@@ -1293,6 +1273,7 @@ export function JobCenterProvider({ children }: { children: ReactNode }) {
           </aside>
         </div>
       )}
+      {resultJob && <JobResultDialog key={resultJob.id} job={resultJob} onClose={() => setResultJobId(null)} onLoad={loadJobResult} />}
     </JobCenterContext.Provider>
   );
 }

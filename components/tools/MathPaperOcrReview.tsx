@@ -182,7 +182,8 @@ export function MathPaperOcrReview() {
         const nextPapers = Array.isArray(payload.papers) ? payload.papers as MathPaperSummary[] : [];
         setCoreMode(mode);
         setPapers(nextPapers);
-        setPaperId((current) => current || nextPapers[0]?.id || "");
+        const requestedPaper = new URLSearchParams(window.location.search).get("paper");
+        setPaperId((current) => current || nextPapers.find((paper) => paper.id === requestedPaper)?.id || nextPapers[0]?.id || "");
       } catch {
         if (!cancelled) setCoreMode("local");
       }
@@ -204,6 +205,9 @@ export function MathPaperOcrReview() {
         });
         const payload = await readResponse(response);
         if (cancelled) return;
+        const requestedConfirmation = new URLSearchParams(window.location.search).get("confirmation");
+        const matchingRound = requestedConfirmation ? ([1, 2, 3] as const).find((candidate) => restoreSharedRoundState(payload.state, candidate).confirmationId === requestedConfirmation) : undefined;
+        if (matchingRound && matchingRound !== round) { setRound(matchingRound); return; }
         const restored = restoreSharedRoundState(payload.state, round);
         setAttemptId(restored.attemptId);
         setConfirmationId(restored.confirmationId);
@@ -328,7 +332,9 @@ export function MathPaperOcrReview() {
   }, [jobs]);
 
   useEffect(() => {
-    const stored = readJsonStorage<unknown>(MATH_PAPER_OCR_SESSION_KEY, []);
+    const requestedId = new URLSearchParams(window.location.search).get("ocrJob");
+    const requestedKey = requestedId ? `${MATH_PAPER_OCR_SESSION_KEY}:${encodeURIComponent(requestedId)}` : MATH_PAPER_OCR_SESSION_KEY;
+    const stored = readJsonStorage<unknown>(requestedKey, readJsonStorage<unknown>(MATH_PAPER_OCR_SESSION_KEY, []));
     let cancelled = false;
     void (async () => {
       await Promise.resolve();
@@ -339,6 +345,12 @@ export function MathPaperOcrReview() {
           sourceOcrJobId: typeof asRecord(stored).sourceOcrJobId === "string" ? String(asRecord(stored).sourceOcrJobId) : null,
           pages: Array.isArray(asRecord(stored).pages) ? asRecord(stored).pages as unknown[] : [],
         };
+      // An explicit result link must not be blocked by another local OCR session.
+      if (requestedId && requestedId !== storedSession.sourceOcrJobId) {
+        setSourceOcrJobId(null);
+        hydratedRef.current = true;
+        return;
+      }
       setSourceOcrJobId(storedSession.sourceOcrJobId);
       if (storedSession.pages.length > 0) {
         setPages(storedSession.pages.flatMap((value): LocalOcrPage[] => {
@@ -365,7 +377,9 @@ export function MathPaperOcrReview() {
   useEffect(() => {
     pagesRef.current = pages;
     if (hydratedRef.current) {
-      writeJsonStorage(MATH_PAPER_OCR_SESSION_KEY, {
+      const requestedId = new URLSearchParams(window.location.search).get("ocrJob");
+      const storageKey = requestedId ? `${MATH_PAPER_OCR_SESSION_KEY}:${encodeURIComponent(requestedId)}` : MATH_PAPER_OCR_SESSION_KEY;
+      writeJsonStorage(storageKey, {
         sourceOcrJobId,
         pages: pages.map((page) => Object.fromEntries(
           Object.entries(page).filter(([key]) => key !== "file" && key !== "previewUrl"),

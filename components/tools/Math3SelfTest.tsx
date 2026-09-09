@@ -259,7 +259,8 @@ export function Math3SelfTest() {
         const data = await math3SelfTestsApi.getAll();
         if (cancelled) return;
         setTests(data);
-        setActiveTest((current) => current ?? getPreferredActiveTest(data));
+        const requestedTest = new URLSearchParams(window.location.search).get("test");
+        setActiveTest((current) => current ?? data.find((test) => test.id === requestedTest) ?? getPreferredActiveTest(data));
       } catch (error) {
         if (cancelled) return;
         const message = error instanceof Error ? error.message : "未知错误";

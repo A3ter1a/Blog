@@ -2,24 +2,33 @@
 
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Check, RefreshCw, ChevronDown, ChevronUp, CheckCircle2 } from 'lucide-react';
+import { ArrowUpRight, Check, RefreshCw, ChevronDown, ChevronUp, CheckCircle2 } from 'lucide-react';
 import type { Problem, ProblemType } from '@/lib/types';
 import { problemTypeMap, difficultyMap } from '@/lib/types';
 import { MarkdownContent } from '@/components/ui/MarkdownContent';
 import { collapsibleMotion, uiMotion } from '@/lib/motion';
 
-interface AIExtractionResultProps {
+type AIExtractionResultProps = {
   extractedProblems: Partial<Problem>[];
+} & ({
+  onContinue: () => void;
+} | {
   onAcceptAll: (acceptedIndices?: Set<number>) => void;
   onAcceptOne: (index: number) => void;
   onRetry: () => void;
-}
+});
 
-export function AIExtractionResult({ extractedProblems, onAcceptAll, onAcceptOne, onRetry }: AIExtractionResultProps) {
+export function AIExtractionResult(props: AIExtractionResultProps) {
+  const { extractedProblems } = props;
+  const previewOnly = "onContinue" in props;
+  const onAcceptAll = "onAcceptAll" in props ? props.onAcceptAll : undefined;
+  const onAcceptOne = "onAcceptOne" in props ? props.onAcceptOne : undefined;
+  const onRetry = "onRetry" in props ? props.onRetry : undefined;
   const [expandedIndex, setExpandedIndex] = useState<number | null>(0);
   const [acceptedIndices, setAcceptedIndices] = useState<Set<number>>(new Set());
 
   const handleAcceptOne = (index: number) => {
+    if (!onAcceptOne) return;
     onAcceptOne(index);
     setAcceptedIndices(prev => new Set(prev).add(index));
   };
@@ -33,9 +42,9 @@ export function AIExtractionResult({ extractedProblems, onAcceptAll, onAcceptOne
         <span className="text-xs font-medium text-on-surface-variant">
           共识别 {extractedProblems.length} 道题目
         </span>
-        {!allAccepted && (
+        {!previewOnly && !allAccepted && (
           <button
-            onClick={() => onAcceptAll(acceptedIndices)}
+            onClick={() => onAcceptAll?.(acceptedIndices)}
             className="text-xs font-medium text-primary hover:underline"
           >
             全部采纳
@@ -59,15 +68,22 @@ export function AIExtractionResult({ extractedProblems, onAcceptAll, onAcceptOne
             isExpanded={expandedIndex === index}
             isAccepted={acceptedIndices.has(index)}
             onToggle={() => setExpandedIndex(expandedIndex === index ? null : index)}
-            onAccept={() => handleAcceptOne(index)}
+            onAccept={previewOnly ? undefined : () => handleAcceptOne(index)}
           />
         ))}
       </div>
 
       {/* Bottom actions */}
-      <div className="flex gap-2 pt-2">
+      {"onContinue" in props ? (
+        <div className="flex gap-2 pt-2">
+          <button type="button" onClick={props.onContinue} className="motion-ui motion-interactive flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl editorial-gradient text-on-primary text-sm font-medium hover:opacity-90">
+            <ArrowUpRight className="w-4 h-4" />
+            继续领取
+          </button>
+        </div>
+      ) : <div className="flex gap-2 pt-2">
         <button
-          onClick={() => onAcceptAll(acceptedIndices)}
+          onClick={() => onAcceptAll?.(acceptedIndices)}
           disabled={allAccepted || extractedProblems.length === 0}
           className="motion-ui motion-interactive flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl editorial-gradient text-on-primary text-sm font-medium hover:opacity-90 disabled:opacity-40"
         >
@@ -81,7 +97,7 @@ export function AIExtractionResult({ extractedProblems, onAcceptAll, onAcceptOne
         >
           <RefreshCw className="w-4 h-4" />
         </button>
-      </div>
+      </div>}
     </div>
   );
 }
@@ -99,7 +115,7 @@ function ProblemCard({
   isExpanded: boolean;
   isAccepted: boolean;
   onToggle: () => void;
-  onAccept: () => void;
+  onAccept?: () => void;
 }) {
   const confidence = problem.aiResult?.confidence ?? 0.5;
   const confidencePct = Math.round(confidence * 100);
@@ -140,7 +156,7 @@ function ProblemCard({
               </span>
             )}
           </div>
-          <div className="text-sm text-on-surface line-clamp-2 leading-snug">
+          <div className={`text-sm text-on-surface leading-snug ${isExpanded ? "" : "line-clamp-2"}`}>
             <MarkdownContent content={problem.question || '(无题目内容)'} compact />
           </div>
         </div>
@@ -200,7 +216,7 @@ function ProblemCard({
               )}
 
               {/* Accept single button */}
-              {!isAccepted && (
+              {!isAccepted && onAccept && (
                 <button
                   onClick={(e) => { e.stopPropagation(); onAccept(); }}
                   className="motion-ui motion-interactive flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary/10 text-primary text-xs font-medium hover:bg-primary/20"

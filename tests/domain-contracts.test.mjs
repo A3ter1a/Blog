@@ -1218,7 +1218,7 @@ test("Qwen 题库 OCR 只对模型或配额类错误切换候选模型", async (
   assert.equal(cancelledAttempts.length, 1, "取消后不能继续尝试备用 OCR 模型");
 });
 
-test("DeepSeek 题目分析覆盖多题、JSON 修复、空结果补救与 OCR 低置信度兜底", async () => {
+test("DeepSeek 题目分析按一图一题合并小问，并覆盖 JSON 修复、空结果补救与 OCR 兜底", async () => {
   const multi = await analyzeProblemOcrText({
     apiKey: "test-key",
     model: "deepseek-v4-flash",
@@ -1231,8 +1231,11 @@ test("DeepSeek 题目分析覆盖多题、JSON 修复、空结果补救与 OCR �
     ] }),
     tokensUsed: 20,
   }));
-  assert.equal(multi.problems.length, 2);
-  assert.equal(multi.problems[0].options?.length, 2);
+  assert.equal(multi.problems.length, 1);
+  assert.match(multi.problems[0].question, /选择题 A.1 B.2/);
+  assert.match(multi.problems[0].answer, /B/);
+  assert.match(multi.problems[0].answer, /1\/2/);
+  assert.match(multi.warning, /小问/);
   assert.equal(multi.extractionMode, "primary");
 
   let repairCall = 0;

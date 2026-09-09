@@ -229,6 +229,21 @@ export function AiContentWorkspace() {
     }
   };
 
+  const openedProposalLinkRef = useRef(false);
+  useEffect(() => {
+    if (loading || openedProposalLinkRef.current) return;
+    const requestedId = new URLSearchParams(window.location.search).get("proposal");
+    const proposal = proposals.find((item) => item.id === requestedId);
+    if (!proposal) return;
+    const timer = window.setTimeout(() => {
+      openedProposalLinkRef.current = true;
+      void selectProposal(proposal);
+    }, 0);
+    return () => window.clearTimeout(timer);
+    // Open the requested proposal once; subsequent edits must not re-open it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, proposals]);
+
   const requestProposal = async (url: string, method: "POST" | "PATCH", body: Record<string, unknown>) => {
     const response = await fetchWithAuth(url, {
       method,

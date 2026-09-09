@@ -68,7 +68,7 @@ function isPayloadTooLargeResponse(response: Response) {
 }
 
 export function DocumentOcrDialog({ isOpen, onClose, onInsert }: DocumentOcrDialogProps) {
-  const { jobs, createDocumentOcrJob, loadJobResult, claimJobResult } = useJobCenter();
+  const { jobs, requestedJobId, createDocumentOcrJob, loadJobResult, claimJobResult } = useJobCenter();
   const [sourceMode, setSourceMode] = useState<SourceMode>("upload");
   const [file, setFile] = useState<File | null>(null);
   const [fileUrl, setFileUrl] = useState("");
@@ -88,7 +88,7 @@ export function DocumentOcrDialog({ isOpen, onClose, onInsert }: DocumentOcrDial
       job.type === "document_ocr"
       && (job.status === "queued" || job.status === "running" || (job.status === "succeeded" && !job.resultClaimedAt))
     ));
-  const effectiveTaskId = taskId || resumableJob?.id || "";
+  const effectiveTaskId = taskId || requestedJobId || resumableJob?.id || "";
   const currentJob = jobs.find((job) => job.id === effectiveTaskId);
   const visibleStage: OcrStage = currentJob
     ? currentJob.status === "succeeded"

@@ -117,6 +117,7 @@ function CreateEditorPage() {
   const toast = useToast();
   const {
     jobs,
+    requestedJobId,
     createMarkdownReviewJob,
     loadJobResult,
     claimJobResult,
@@ -203,7 +204,23 @@ function CreateEditorPage() {
     applyDraft,
     resetDraft,
   });
-  const taskTargetId = isEditMode && editingId ? `note:${editingId}` : draftTaskTargetId;
+  const requestedJob = jobs.find((job) => job.id === requestedJobId);
+  const taskTargetId = isEditMode && editingId ? `note:${editingId}` : requestedJob?.targetId || draftTaskTargetId;
+  const openedResultRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!routeReady || isLoadingExistingNote || !requestedJob || openedResultRef.current === requestedJob.id) return;
+    const timer = window.setTimeout(() => {
+      openedResultRef.current = requestedJob.id;
+      if (!isEditMode && isTaskTargetId(requestedJob.targetId)) setDraftTaskTargetId(requestedJob.targetId!);
+      if ((requestedJob.type === "problem_ocr" || requestedJob.type === "math3_auto_classify") && !isEditMode) setNoteType("problem");
+      if (requestedJob.type === "document_ocr") setShowDocumentOcrDialog(true);
+      if (requestedJob.type === "economics_graph_generation") {
+        if (!isEditMode) { setSubject("economics"); setNoteType("note"); }
+        setShowEconomicsGraphComposer(true);
+      }
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [isEditMode, isLoadingExistingNote, requestedJob, routeReady]);
   const hasActiveMarkdownReviewJob = useMemo(
     () => jobs.some((job) => job.type === "markdown_review" && job.targetId === taskTargetId && isClientJobActive(job)),
     [jobs, taskTargetId],
