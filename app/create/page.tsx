@@ -772,6 +772,7 @@ function CreateEditorPage() {
                 </button>
               </div>
               <ProblemEditor
+                title={title}
                 problems={problems}
                 onChange={handleProblemsChange}
                 noteId={isEditMode ? editingId : undefined}

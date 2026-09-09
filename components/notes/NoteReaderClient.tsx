@@ -19,6 +19,7 @@ import { getProblemValidationIssues, normalizeProblem } from "@/lib/problem-util
 import { Playlist } from "@/components/video/Playlist";
 import { VideoPlayer } from "@/components/video/VideoPlayer";
 import { ProblemCard } from "@/components/problems/ProblemCard";
+import { ProblemExportButton } from "@/components/problems/ProblemExportButton";
 import { ProblemList } from "@/components/problems/ProblemList";
 import { ChapterFilter } from "@/components/chapters/ChapterFilter";
 import { ProblemReferenceContent } from "@/components/problems/ProblemReferenceContent";
@@ -1110,6 +1111,7 @@ export function NoteReaderClient({
 
             {isProblem && allProblems.length > 0 && (
               <div className="compact-meta-row mt-4 border-t border-outline-variant/10 pt-4">
+                <ProblemExportButton problems={allProblems} title={note.title} />
                 <span>当前 {filteredProblems.length} 题</span>
                 <span>{selectedChapter?.name ?? "全部章节"}</span>
                 {unassignedProblemCount > 0 && <span>未归章节 {unassignedProblemCount} 题</span>}

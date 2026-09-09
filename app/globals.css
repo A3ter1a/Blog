@@ -1756,30 +1756,6 @@ html[data-theme="dark"] {
   margin-bottom: 0.65em;
 }
 
-.problem-card-preview {
-  display: -webkit-box;
-  overflow: hidden;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 3;
-}
-
-.problem-card-preview p,
-.problem-card-preview ul,
-.problem-card-preview ol,
-.problem-card-preview blockquote,
-.problem-card-preview pre {
-  display: inline;
-  margin: 0;
-  padding: 0;
-}
-
-.problem-card-preview .katex-display {
-  display: inline-block;
-  max-width: 100%;
-  margin: 0 0.2em;
-  vertical-align: middle;
-}
-
 /* Ambient Shadow Classes */
 .shadow-ambient {
   box-shadow: var(--shadow-ambient);

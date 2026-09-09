@@ -8,8 +8,10 @@ import type { Chapter, Difficulty, Problem, ProblemType, Subject } from "@/lib/t
 import { chaptersApi } from "@/lib/chapters-api";
 import { ChapterSelector } from "@/components/chapters/ChapterSelector";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { ProblemExportButton } from "./ProblemExportButton";
+import { ProblemQuestionPreview } from "./ProblemQuestionPreview";
+import { toggleProblemRange } from "@/lib/problem-export";
 import { ProblemPreview } from "./ProblemPreview";
-import { MarkdownContent } from "@/components/ui/MarkdownContent";
 import { useJobCenter } from "@/components/jobs/JobCenter";
 import { OCRUploader } from "@/components/ai-assistant/OCRUploader";
 import type { ChapterContextItem } from "@/hooks/useAIScan";
@@ -29,6 +31,7 @@ import { scheduleDeferredClientWork } from "@/lib/deferred-client-work";
 import { collapsibleMotion, dialogMotion, uiMotion } from "@/lib/motion";
 
 interface ProblemEditorProps {
+  title?: string;
   problems: Problem[];
   onChange: (problems: Problem[]) => void;
   noteId?: string;
@@ -48,6 +51,7 @@ const createEmptyProblemDraft = (): Partial<Problem> => ({
 });
 
 export function ProblemEditor({
+  title = "数学题集",
   problems,
   onChange,
   noteId,
@@ -71,6 +75,7 @@ export function ProblemEditor({
   const [showOrganizeTools, setShowOrganizeTools] = useState(false);
   const [newProblem, setNewProblem] = useState<Partial<Problem>>(createEmptyProblemDraft());
   const [newProblemError, setNewProblemError] = useState<string | null>(null);
+  const selectionAnchor = useRef<string | null>(null);
   const [selectedProblemIds, setSelectedProblemIds] = useState<string[]>([]);
   const [bulkSelectEditorChapterId, setBulkSelectEditorChapterId] = useState<string | undefined>();
   const [selectedEditorChapterId, setSelectedEditorChapterId] = useState<string | undefined>();
@@ -213,10 +218,10 @@ export function ProblemEditor({
   const allVisibleProblemsSelected = visibleProblemIds.length > 0
     && visibleProblemIds.every((id) => selectedProblemIdSet.has(id));
 
-  const toggleProblemSelection = (id: string) => {
-    setSelectedProblemIds((current) =>
-      current.includes(id) ? current.filter((item) => item !== id) : [...current, id]
-    );
+  const toggleProblemSelection = (id: string, shift = false) => {
+    const anchor = selectionAnchor.current;
+    setSelectedProblemIds(current => toggleProblemRange(current, visibleProblemIds, id, anchor, shift));
+    selectionAnchor.current = id;
   };
 
   const toggleAllProblemSelection = () => {
@@ -291,27 +296,23 @@ export function ProblemEditor({
     [editorChapters],
   );
   const newProblemOptions = newProblem.type === "choice" ? ensureChoiceOptions(newProblem.options) : [];
-  const editorModeLabel = showOrganizeTools ? "批量编辑" : showAddForm ? "新增题目" : "浏览题目";
   const math3ClassifyLabel = math3ClassifyProgress
     ? `归类 ${math3ClassifyProgress.completed}/${math3ClassifyProgress.total}`
     : "AI 归入大纲";
 
   return (
-    <div className={`space-y-4 ${selectedProblemIdsInList.length > 0 ? "pb-28" : ""}`}>
+    <div className={`space-y-4 ${selectedProblemIdsInList.length > 0 ? "pb-40 sm:pb-28" : ""}`}>
       {/* Toolbar */}
       <div className="surface-toolbar p-3">
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div>
             <div className="flex flex-wrap items-center gap-2">
               <h3 className="text-sm font-semibold text-on-surface">题集编辑</h3>
-              <span className="tag-chip tag-chip-primary px-2 py-0.5 text-xs">{editorModeLabel}</span>
               <span className="tag-chip px-2 py-0.5 text-xs">{problems.length} 题</span>
-              {selectedProblemIdsInList.length > 0 && (
-                <span className="tag-chip tag-chip-primary px-2 py-0.5 text-xs">{selectedProblemIdsInList.length} 已选</span>
-              )}
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            <ProblemExportButton problems={problems} title={title} draft />
             {problems.length > 0 && (
               <button
                 type="button"
@@ -323,7 +324,7 @@ export function ProblemEditor({
                 className={`control-button px-3 text-xs ${showOrganizeTools ? "control-button-selected" : ""}`}
               >
                 <SlidersHorizontal className="h-3.5 w-3.5" />
-                批量编辑
+                调整顺序
                 {showOrganizeTools ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
               </button>
             )}
@@ -379,35 +380,24 @@ export function ProblemEditor({
         )}
       </div>
 
-      <AnimatePresence>
-        {showOrganizeTools && problems.length > 0 && (
-          <motion.div
-            variants={collapsibleMotion}
-            initial="initial"
-            animate="animate"
-            exit="exit"
-            transition={{ duration: uiMotion.duration.reveal, ease: uiMotion.ease.emphasized }}
-            className="overflow-hidden"
-          >
-            <ProblemOrganizerPanel
-              totalCount={problems.length}
-              visibleCount={visibleProblems.length}
-              selectedCount={selectedProblemIdsInList.length}
-              allVisibleSelected={allVisibleProblemsSelected}
-              noteId={noteId}
-              chapters={editorChapters}
-              isLoadingChapters={isLoadingEditorChapters}
-              selectedChapterId={bulkSelectEditorChapterId}
-              selectedChapterProblemCount={bulkSelectEditorChapterProblemIds.length}
-              unassignedChapterCount={unassignedEditorChapterProblemIds.length}
-              onToggleVisible={toggleAllProblemSelection}
-              onChangeChapter={setBulkSelectEditorChapterId}
-              onSelectChapter={selectProblemsByEditorChapter}
-              onSelectUnassignedChapter={selectProblemsWithoutEditorChapter}
-            />
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {problems.length > 0 && <div className="flex flex-wrap items-center gap-2">
+        <label className="flex min-h-11 cursor-pointer items-center gap-2 px-2 text-sm">
+          <input type="checkbox" checked={allVisibleProblemsSelected}
+            ref={element => { if (element) element.indeterminate = selectedProblemIdsInList.length > 0 && !allVisibleProblemsSelected; }}
+            onChange={toggleAllProblemSelection} className="h-4 w-4 accent-primary" />
+          全选题集 · {problems.length} 题
+        </label>
+        <details className="relative basis-full sm:basis-auto">
+          <summary className="control-button min-h-11 cursor-pointer px-3 text-xs">按章节选择</summary>
+          <div className="surface-panel absolute left-0 top-full z-20 mt-2 w-64 space-y-2 p-3 shadow-elevated">
+            <ChapterSelector noteId={noteId} chapters={editorChapters} isLoading={isLoadingEditorChapters}
+              value={bulkSelectEditorChapterId} onChange={setBulkSelectEditorChapterId} className="w-full" />
+            <button type="button" onClick={selectProblemsByEditorChapter} disabled={!bulkSelectEditorChapterId || !bulkSelectEditorChapterProblemIds.length} className="control-button min-h-11 w-full text-xs">选择该章节 · {bulkSelectEditorChapterProblemIds.length} 题</button>
+            <button type="button" onClick={selectProblemsWithoutEditorChapter} disabled={!unassignedEditorChapterProblemIds.length} className="control-button min-h-11 w-full text-xs">选择未分章节 · {unassignedEditorChapterProblemIds.length} 题</button>
+          </div>
+        </details>
+        <span className="hidden text-xs text-on-surface-variant sm:inline">Shift + 勾选可连续选题</span>
+      </div>}
 
       {/* Existing Problems (drag-and-drop) */}
       {problems.length > 0 && (
@@ -428,9 +418,8 @@ export function ProblemEditor({
                     chapters={editorChapters}
                     isLoadingChapters={isLoadingEditorChapters}
                     selected={selectedProblemIdSet.has(problem.id)}
-                    showSelectionTools={showOrganizeTools || selectedProblemIdSet.size > 0}
                     organizeMode={showOrganizeTools}
-                    onToggleSelect={() => toggleProblemSelection(problem.id)}
+                    onToggleSelect={(shift) => toggleProblemSelection(problem.id, shift)}
                     onRemove={() => handleRemove(problem.id)}
                     onDuplicate={() => handleDuplicate(problem)}
                     onUpdate={(updates) => handleUpdate(problem.id, updates)}
@@ -637,6 +626,7 @@ export function ProblemEditor({
       />
 
       <BulkProblemActionBar
+        exportAction={<ProblemExportButton problems={problems} title={title} initialSelectedIds={selectedProblemIdsInList} draft label="导出所选" />}
         isOpen={selectedProblemIdsInList.length > 0}
         selectedCount={selectedProblemIdsInList.length}
         totalCount={problems.length}
@@ -686,110 +676,8 @@ function EditableProblemItem({
   );
 }
 
-function ProblemOrganizerPanel({
-  totalCount,
-  visibleCount,
-  selectedCount,
-  allVisibleSelected,
-  noteId,
-  chapters,
-  isLoadingChapters,
-  selectedChapterId,
-  selectedChapterProblemCount,
-  unassignedChapterCount,
-  onToggleVisible,
-  onChangeChapter,
-  onSelectChapter,
-  onSelectUnassignedChapter,
-}: {
-  totalCount: number;
-  visibleCount: number;
-  selectedCount: number;
-  allVisibleSelected: boolean;
-  noteId?: string;
-  chapters: Chapter[];
-  isLoadingChapters: boolean;
-  selectedChapterId?: string;
-  selectedChapterProblemCount: number;
-  unassignedChapterCount: number;
-  onToggleVisible: () => void;
-  onChangeChapter: (chapterId: string | undefined) => void;
-  onSelectChapter: () => void;
-  onSelectUnassignedChapter: () => void;
-}) {
-  return (
-    <section className="surface-panel p-3">
-      <div className="mb-3 flex flex-col gap-3 border-b border-outline-variant/10 pb-3 lg:flex-row lg:items-center lg:justify-between">
-        <div className="min-w-0">
-          <div className="inline-flex items-center gap-2 text-sm font-semibold text-on-surface">
-            <SlidersHorizontal className="h-4 w-4 text-primary" />
-            批量编辑
-          </div>
-          <p className="mt-1 text-xs leading-5 text-on-surface-variant">
-            先勾选题目；选中后，页面底部会出现批量修改栏。
-          </p>
-          <div className="compact-meta-row mt-2">
-            <span>已选 {selectedCount}</span>
-            <span>显示 {visibleCount}/{totalCount}</span>
-          </div>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={onToggleVisible}
-            disabled={visibleCount === 0}
-            className="control-button px-3 text-xs"
-          >
-            {allVisibleSelected ? "取消当前显示" : "选择当前显示"} · {visibleCount}/{totalCount}
-          </button>
-          <button
-            type="button"
-            onClick={onSelectUnassignedChapter}
-            disabled={unassignedChapterCount === 0}
-            className="control-button px-3 text-xs"
-          >
-            选择未分题集章节 · {unassignedChapterCount}
-          </button>
-        </div>
-      </div>
-
-      <div className="grid gap-3">
-        <div className="surface-muted p-2">
-          <div className="mb-2 flex items-center gap-2 text-xs font-semibold text-on-surface-variant">
-            <CheckSquare className="h-3.5 w-3.5" />
-            按题集章节选题
-          </div>
-          <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_auto]">
-            <ChapterSelector
-              noteId={noteId}
-              chapters={chapters}
-              isLoading={isLoadingChapters}
-              value={selectedChapterId}
-              onChange={onChangeChapter}
-              className="w-full"
-            />
-            <button
-              type="button"
-              onClick={onSelectChapter}
-              disabled={!selectedChapterId || selectedChapterProblemCount === 0}
-              className="control-button px-3 text-xs"
-            >
-              <FolderTree className="h-3.5 w-3.5" />
-              选择该章节 · {selectedChapterProblemCount}
-            </button>
-          </div>
-          <div className="mt-2 text-xs text-on-surface-variant">
-            未分题集章节 {unassignedChapterCount} 题
-          </div>
-        </div>
-
-      </div>
-    </section>
-  );
-}
-
 function BulkProblemActionBar({
+  exportAction,
   isOpen,
   selectedCount,
   totalCount,
@@ -806,6 +694,7 @@ function BulkProblemActionBar({
   onClassifySelectedMath3,
   onRemoveSelected,
 }: {
+  exportAction: ReactNode;
   isOpen: boolean;
   selectedCount: number;
   totalCount: number;
@@ -845,9 +734,9 @@ function BulkProblemActionBar({
           transition={uiMotion.spring.gentle}
           className="fixed inset-x-0 bottom-4 z-50 px-3 sm:px-6 pointer-events-none"
         >
-          <div className="command-bar pointer-events-auto mx-auto max-w-5xl p-2.5">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <div className="command-bar pointer-events-auto mx-auto max-h-[60dvh] max-w-5xl overflow-y-auto p-2.5">
+            <div className="grid grid-cols-2 items-center gap-2 sm:flex sm:flex-wrap sm:justify-between">
+              <div className="contents sm:flex sm:min-w-0 sm:flex-wrap sm:items-center sm:gap-2">
                 <div className="flex items-center gap-2 rounded-lg bg-primary/[0.08] px-3 py-2 text-sm font-semibold text-on-surface">
                   <CheckSquare className="h-4 w-4 text-primary" />
                   已选 {selectedCount} / {totalCount} 道
@@ -855,23 +744,28 @@ function BulkProblemActionBar({
                 <button
                   type="button"
                   onClick={onClearSelection}
-                  className="control-button h-9 min-h-0 px-3 text-xs"
+                  className="control-button min-h-11 px-3 text-xs"
                 >
                   <X className="h-3.5 w-3.5" />
-                  取消勾选
+                  取消选择
                 </button>
                 <button
                   type="button"
                   onClick={() => setShowBulkDetails((value) => !value)}
-                  className={`control-button h-9 min-h-0 px-3 text-xs ${showBulkDetails ? "control-button-selected" : ""}`}
+                  className={`control-button min-h-11 px-3 text-xs ${showBulkDetails ? "control-button-selected" : ""}`}
                 >
                   <SlidersHorizontal className="h-3.5 w-3.5" />
-                  批量归类
+                  归类与更多
                   {showBulkDetails ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
                 </button>
               </div>
 
-              <div className="flex shrink-0 items-center justify-end gap-2">
+              <div className="flex items-center justify-end gap-2 [&>button]:w-full sm:shrink-0 sm:[&>button]:w-auto">
+                {exportAction}
+              </div>
+            </div>
+
+            {showBulkDetails && <div className="mt-2 flex justify-end">
                 <button
                   type="button"
                   onClick={onRemoveSelected}
@@ -880,8 +774,7 @@ function BulkProblemActionBar({
                   <Trash2 className="h-3.5 w-3.5" />
                   删除
                 </button>
-              </div>
-            </div>
+              </div>}
 
             <AnimatePresence>
               {showBulkDetails && (
@@ -950,7 +843,6 @@ function ProblemCard({
   chapters,
   isLoadingChapters,
   selected,
-  showSelectionTools,
   organizeMode,
   onToggleSelect,
   onRemove,
@@ -964,9 +856,8 @@ function ProblemCard({
   chapters: Chapter[];
   isLoadingChapters: boolean;
   selected: boolean;
-  showSelectionTools: boolean;
   organizeMode: boolean;
-  onToggleSelect: () => void;
+  onToggleSelect: (shift: boolean) => void;
   onRemove: () => void;
   onDuplicate: () => void;
   onUpdate: (updates: Partial<Problem>) => void;
@@ -991,18 +882,19 @@ function ProblemCard({
     <div className={`surface-card group overflow-hidden ${
       selected ? "border-primary/45 bg-primary/[0.045] ring-1 ring-primary/15" : ""
     }`}>
-      <div className="grid grid-cols-[auto_minmax(0,1fr)] gap-3 p-3 sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:p-4">
+      <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 p-3 sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:p-4">
         <div className="flex items-start gap-2 sm:block">
-          {showSelectionTools && (
+          {(
             <label
-              className="flex h-8 w-8 items-center justify-center rounded-lg text-on-surface-variant transition-colors hover:bg-surface-container-low"
+              className="flex h-11 w-11 cursor-pointer items-center justify-center rounded-lg text-on-surface-variant transition-colors hover:bg-surface-container-low"
               onClick={(event) => event.stopPropagation()}
               title={selected ? "取消选择题目" : "选择题目"}
             >
               <input
                 type="checkbox"
                 checked={selected}
-                onChange={onToggleSelect}
+                onClick={event => onToggleSelect(event.shiftKey)}
+                onChange={() => {}}
                 className="h-4 w-4 rounded border-outline-variant text-primary focus:ring-primary/30"
                 aria-label={`选择第 ${index + 1} 题`}
               />
@@ -1024,19 +916,9 @@ function ProblemCard({
           </div>
         </div>
 
-        <div
-          role="button"
-          tabIndex={0}
-          onClick={() => setExpanded(!expanded)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" || e.key === " ") {
-              e.preventDefault();
-              setExpanded(!expanded);
-            }
-          }}
-          className="min-w-0 rounded-lg px-1 py-0.5 transition-colors hover:bg-surface-container-low/70"
-        >
-          <div className="mb-2 flex min-w-0 flex-wrap items-center gap-1.5">
+        <div className="col-span-2 row-start-2 min-w-0 sm:col-span-1 sm:row-start-auto">
+          <ProblemQuestionPreview problem={problem} />
+          <div className="mt-3 flex min-w-0 flex-wrap items-center gap-1.5">
             <span className="tag-chip tag-chip-primary px-2 py-0.5 text-xs font-medium">
               {problemTypeMap[problem.type]}
             </span>
@@ -1060,15 +942,10 @@ function ProblemCard({
             )}
           </div>
 
-          <MarkdownContent
-            content={problem.question || "(无题目内容)"}
-            compact
-            className="problem-card-preview text-sm font-semibold leading-6 text-on-surface sm:text-[15px]"
-          />
 
         </div>
 
-        <div className="col-span-2 flex items-center justify-end gap-1 border-t border-outline-variant/10 pt-2 sm:col-span-1 sm:block sm:border-t-0 sm:pt-0">
+        <div className="col-start-2 row-start-1 flex items-start justify-end gap-2 sm:col-start-auto sm:row-start-auto sm:block">
           {(organizeMode || expanded) && (
             <>
               <button
@@ -1092,11 +969,12 @@ function ProblemCard({
           <button
             type="button"
             onClick={() => setExpanded(!expanded)}
-            className="control-button h-8 min-h-0 w-8 p-0 sm:mt-2"
-            title={expanded ? "收起编辑" : "展开编辑"}
-            aria-label={expanded ? "收起编辑" : "展开编辑"}
+            className="control-button min-h-11 px-3 text-xs sm:mt-2"
+            title={expanded ? "收起编辑" : "编辑"}
+            aria-expanded={expanded}
+            aria-label={expanded ? `收起第 ${index + 1} 题编辑` : `编辑第 ${index + 1} 题`}
           >
-            {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+            {expanded ? "收起编辑" : "编辑"}
           </button>
         </div>
       </div>
