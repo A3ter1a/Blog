@@ -1,6 +1,6 @@
 import { getSupabase } from "./supabase";
 import { buildAuthHeaders } from "./fetch-with-auth";
-import { normalizeEnglishQuestionOptions } from "./english-training";
+import { ENGLISH_TRAINING_YEARS, normalizeEnglishQuestionOptions } from "./english-training";
 import type { EnglishPassageRoundLedger } from "./english-round-history";
 import type { EnglishTrainingCommandAction, EnglishTrainingPersistenceMode } from "./english-training-core";
 import {
@@ -166,12 +166,14 @@ export const englishTrainingApi = {
     const { data: paperRows, error: paperError } = await supabase
       .from("english_papers")
       .select(ENGLISH_PAPER_FIELDS)
+      .in("year", ENGLISH_TRAINING_YEARS)
       .order("year", { ascending: false });
     if (paperError) throw paperError;
 
     const { data: passageRows, error: passageError } = await supabase
       .from("english_passages")
       .select(ENGLISH_PASSAGE_FIELDS)
+      .in("year", ENGLISH_TRAINING_YEARS)
       .order("year", { ascending: false })
       .order("sort_order", { ascending: true });
     if (passageError) throw passageError;

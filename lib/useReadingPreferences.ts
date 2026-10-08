@@ -5,6 +5,7 @@ import { readJsonStorage, writeJsonStorage } from "./browser-storage";
 
 export type TOCPosition = "left" | "right" | "hidden";
 export type ContentWidth = "narrow" | "comfortable" | "wide";
+export type MotionPreference = "system" | "reduced" | "full";
 
 export interface ReadingPreferences {
   fontSize: number; // 14-22

@@ -58,6 +58,14 @@ type CreateDocumentOcrJobInput = {
   ledgerJob?: unknown;
 };
 
+type CreateLocalJobInput = {
+  type: ClientJob["type"];
+  title: string;
+  targetId?: string;
+  statusText?: string;
+  progressTotal?: number;
+};
+
 type CreateMarkdownReviewJobInput = {
   markdown: string;
   model: string;
@@ -126,6 +134,7 @@ type JobCenterContextValue = {
   requestedJobId?: string | null;
   jobs: ClientJob[];
   createDocumentOcrJob: (input: CreateDocumentOcrJobInput) => ClientJob;
+  createLocalJob: (input: CreateLocalJobInput) => ClientJob;
   createMarkdownReviewJob: (input: CreateMarkdownReviewJobInput) => Promise<ClientJob>;
   createProblemOcrJob: (input: CreateProblemOcrJobInput) => Promise<ClientJob>;
   createMath3SelfTestJob: (input: CreateMath3SelfTestJobInput) => Promise<ClientJob>;
@@ -637,6 +646,31 @@ export function JobCenterProvider({ children }: { children: ReactNode }) {
     return job;
   }, []);
 
+  const createLocalJob = useCallback((input: CreateLocalJobInput) => {
+    setRequestedJobId(null);
+    const now = new Date().toISOString();
+    const progressTotal = Math.max(1, input.progressTotal ?? 1);
+    const job: ClientJob = {
+      id: createJobId(),
+      type: input.type,
+      class: "internal",
+      ledgerState: "local_only",
+      title: input.title,
+      status: "queued",
+      phase: "任务排队中",
+      statusText: input.statusText ?? "任务已保存到本机任务中心，可安全切换页面",
+      createdAt: now,
+      updatedAt: now,
+      pollCount: 0,
+      progress: 0,
+      progressCurrent: 0,
+      progressTotal,
+      targetId: input.targetId,
+    };
+    setJobs((current) => [job, ...current].slice(0, MAX_HISTORY));
+    return job;
+  }, []);
+
   const createMarkdownReviewJob = useCallback(async (input: CreateMarkdownReviewJobInput) => {
     setRequestedJobId(null);
     const response = await fetch("/api/jobs/markdown-review", {
@@ -1094,6 +1128,7 @@ export function JobCenterProvider({ children }: { children: ReactNode }) {
     jobs: consumerJobs,
     requestedJobId,
     createDocumentOcrJob,
+    createLocalJob,
     createMarkdownReviewJob,
     createProblemOcrJob,
     createMath3SelfTestJob,
@@ -1110,7 +1145,7 @@ export function JobCenterProvider({ children }: { children: ReactNode }) {
     loadJobResult,
     claimJobResult,
     dismissJob,
-  }), [cancelJob, claimJobResult, createDocumentOcrJob, createEconomicsGraphJob, createEnglishSubjectiveGradeJob, createKnowledgeQuizJob, createMarkdownReviewJob, createMath3SelfTestJob, createMath3StepGradeJob, createMathPaperGradeJob, createMathPaperOcrJob, createMath3ClassifyJob, createProblemOcrJob, dismissJob, consumerJobs, requestedJobId, loadJobResult, retryJob, updateJob]);
+  }), [cancelJob, claimJobResult, createDocumentOcrJob, createEconomicsGraphJob, createEnglishSubjectiveGradeJob, createKnowledgeQuizJob, createLocalJob, createMarkdownReviewJob, createMath3SelfTestJob, createMath3StepGradeJob, createMathPaperGradeJob, createMathPaperOcrJob, createMath3ClassifyJob, createProblemOcrJob, dismissJob, consumerJobs, requestedJobId, loadJobResult, retryJob, updateJob]);
 
   const [resultJobId, setResultJobId] = useState<string | null>(null);
   const resultJob = jobs.find((job) => job.id === resultJobId);

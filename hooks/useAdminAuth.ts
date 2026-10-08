@@ -27,6 +27,37 @@ const ADMIN_AUTH_CACHE_KEY_BASE = "asteroid-admin-auth";
 const ADMIN_AUTH_CACHE_TTL_MS = 12 * 60 * 60 * 1000;
 const ADMIN_AUTH_REVALIDATE_INTERVAL_MS = 60 * 1000;
 
+/**
+ * Local-only review switch. It requires an explicit env flag and a localhost
+ * origin, so it cannot replace authorization in a deployed environment.
+ * Server APIs keep their normal admin checks.
+ */
+function isLocalReviewMode(): boolean {
+  if (process.env.NEXT_PUBLIC_ASTEROID_REVIEW_MODE !== "1") return false;
+  if (typeof window === "undefined") return false;
+
+  return window.location.hostname === "localhost"
+    || window.location.hostname === "127.0.0.1";
+}
+
+const REVIEW_MODE_EVENT = "asteroid:review-mode-change";
+
+export function useLocalReviewMode(): boolean {
+  // Keep the server render and the first client render identical. The
+  // localhost-only review flag is intentionally enabled after hydration so it
+  // cannot make protected pages produce different HTML on the two sides.
+  const [enabled, setEnabled] = useState(false);
+
+  useEffect(() => {
+    const refresh = () => setEnabled(isLocalReviewMode());
+    refresh();
+    window.addEventListener(REVIEW_MODE_EVENT, refresh);
+    return () => window.removeEventListener(REVIEW_MODE_EVENT, refresh);
+  }, []);
+
+  return enabled;
+}
+
 let pendingAdminCheck: {
   userId: string;
   token: string;

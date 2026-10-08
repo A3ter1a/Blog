@@ -1,6 +1,18 @@
 export type EnglishPaperType = "english1";
 export type EnglishSection = "reading" | "cloze" | "new_type" | "translation" | "writing";
 export type EnglishNewTypeKind = "heading" | "insertion" | "ordering" | "statement_matching";
+
+/**
+ * 段落排序题的稳定题面：8 个段落中预给 3 个锚点，剩余 5 个位置对应 41-45（demo 使用 11-15）。
+ */
+export const ENGLISH_ORDERING_TOTAL_SLOTS = 8;
+export const ENGLISH_ORDERING_ANSWER_POSITIONS = [2, 3, 5, 6, 7] as const;
+export const ENGLISH_ORDERING_FIXED_ANSWERS = {
+  1: "F",
+  4: "H",
+  8: "C",
+} as const;
+export const ENGLISH_ORDERING_DISPLAY_ORDER = ["A", "B", "C", "D", "E", "F", "G", "H"] as const;
 export type EnglishPassageNo =
   | "text1"
   | "text2"
@@ -21,6 +33,18 @@ export interface EnglishQuestionOption {
 export interface EnglishNewTypePresentation {
   body: string;
   choices: EnglishQuestionOption[];
+}
+
+export type EnglishOrderingSlot = { position: number; label?: string; questionNo?: string };
+
+/** Read the printed chain. Fixed anchors differ between years. */
+export function getEnglishOrderingSlots(content: string): EnglishOrderingSlot[] {
+  const chain = content.match(/(?:[A-H]|(?:4[1-5]|1[1-5]))\.?(?:\s*(?:→|->)\s*(?:[A-H]|(?:4[1-5]|1[1-5]))\.?){6,7}/)?.[0];
+  if (!chain) return [];
+  return [...chain.matchAll(/[A-H]|4[1-5]|1[1-5]/g)].map((match, index) => ({
+    position: index + 1,
+    ...(/^[A-H]$/.test(match[0]) ? { label: match[0] } : { questionNo: match[0] }),
+  }));
 }
 
 export function normalizeEnglishQuestionOptions(value: unknown): EnglishQuestionOption[] {
@@ -104,7 +128,55 @@ export interface EnglishTrainingData {
   attempts: EnglishAttempt[];
 }
 
-export const ENGLISH_TRAINING_YEARS = Array.from({ length: 20 }, (_, index) => 2026 - index);
+/**
+ * English I uses one stable score map for the six-year training window.
+ * Keeping it here prevents imported rows and the review fixture from drifting
+ * apart when a source file contains an incorrect per-question score.
+ */
+export function getEnglishCanonicalQuestionScore(section: EnglishSection, passageNo: EnglishPassageNo): number {
+  if (section === "cloze") return 0.5;
+  if (section === "reading" || section === "new_type" || section === "translation") return 2;
+  if (section === "writing" && passageNo === "small_writing") return 10;
+  if (section === "writing" && passageNo === "big_writing") return 20;
+  return 0;
+}
+
+export function normalizeEnglishTrainingDataScores(data: EnglishTrainingData): EnglishTrainingData {
+  const questionsByPassageId = new Map<string, EnglishQuestion[]>();
+  for (const question of data.questions) {
+    const list = questionsByPassageId.get(question.passageId) ?? [];
+    list.push(question);
+    questionsByPassageId.set(question.passageId, list);
+  }
+
+  const passages = data.passages.map((passage) => {
+    const questions = questionsByPassageId.get(passage.id) ?? [];
+    const score = getEnglishCanonicalQuestionScore(passage.section, passage.passageNo);
+    const normalizedTotal = score > 0 && questions.length > 0
+      ? Number((questions.length * score).toFixed(1))
+      : passage.totalScore;
+    return { ...passage, totalScore: normalizedTotal };
+  });
+  const passageById = new Map(passages.map((passage) => [passage.id, passage]));
+  const questions = data.questions.map((question) => {
+    const passage = passageById.get(question.passageId);
+    return passage
+      ? { ...question, score: getEnglishCanonicalQuestionScore(passage.section, passage.passageNo) }
+      : question;
+  });
+  const passageTotalsByPaperId = new Map<string, number>();
+  for (const passage of passages) {
+    passageTotalsByPaperId.set(passage.paperId, (passageTotalsByPaperId.get(passage.paperId) ?? 0) + passage.totalScore);
+  }
+  const papers = data.papers.map((paper) => ({
+    ...paper,
+    totalScore: Number((passageTotalsByPaperId.get(paper.id) ?? paper.totalScore).toFixed(1)),
+  }));
+
+  return { ...data, papers, passages, questions };
+}
+
+export const ENGLISH_TRAINING_YEARS = Array.from({ length: 6 }, (_, index) => 2026 - index);
 
 export const englishSectionLabels: Record<EnglishSection, string> = {
   reading: "阅读",
@@ -146,7 +218,7 @@ const ENGLISH_NEW_TYPE_KIND_BY_YEAR: Partial<Record<number, EnglishNewTypeKind>>
   2019: "ordering",
   2020: "heading",
   2021: "insertion",
-  2022: "insertion",
+  2022: "statement_matching",
   2023: "ordering",
   2024: "statement_matching",
   2025: "ordering",
@@ -161,6 +233,7 @@ const ENGLISH_NEW_TYPE_KIND_BY_YEAR: Partial<Record<number, EnglishNewTypeKind>>
 export function getEnglishNewTypeKind(content: string, context = "", year?: number): EnglishNewTypeKind {
   const normalized = `${content} ${context}`.toLowerCase().replace(/\s+/g, " ");
   if (/comments on an article|statements summarizing the comments|choose the best statement .* numbered name|观点匹配/.test(normalized)) return "statement_matching";
+  if (/sentence insertion|insert the sentence|fill in each blank|choose the sentence that best fits|七选五|选句填空/.test(normalized)) return "insertion";
   if (/wrong order|reorganize (?:these )?paragraphs|paragraphs .* order|most suitable paragraphs .* coherent text|段落排序/.test(normalized)) return "ordering";
   if (/subheading|list of headings|choose a heading|most suitable heading|段落匹配标题/.test(normalized)) return "heading";
   if (typeof year === "number" && ENGLISH_NEW_TYPE_KIND_BY_YEAR[year]) return ENGLISH_NEW_TYPE_KIND_BY_YEAR[year] as EnglishNewTypeKind;
@@ -219,6 +292,7 @@ function findNewTypeChoiceRun(content: string): EnglishNewTypeChoiceMarker[] {
 
 function normalizeNewTypeChoiceText(value: string): string {
   return value
+    .replace(/(?:[A-H]|(?:4[1-5]|1[1-5]))\.?(?:\s*(?:→|->)\s*(?:[A-H]|(?:4[1-5]|1[1-5]))\.?){6,7}[\s\S]*$/, "")
     .replace(/\(\s*\)\s*-?\s*11\s*-\s*\(\s*14\s*\)/gi, "")
     .replace(/-\s*11\s*-\s*\(\s*14\s*\)/gi, "")
     .replace(/\s+/g, " ")
@@ -283,7 +357,9 @@ export function getEnglishNewTypePresentation(
   const cleaned = cleanEnglishPassageContent("new_type", content);
   const choiceRun = findNewTypeChoiceRun(cleaned);
   const parsedChoices = choiceRun.length > 0 ? parseNewTypeChoicesFromContent(cleaned, choiceRun) : [];
-  const choices = (importedChoices.length > 0 ? importedChoices : parsedChoices).map((choice) => {
+  const useImportedChoices = importedChoices.length > 0
+    && !(kind === "ordering" && importedChoices.every((choice) => /^\d+$/.test(choice.label.trim())));
+  const choices = (useImportedChoices ? importedChoices : parsedChoices).map((choice) => {
     const trimmed = kind === "heading" ? trimContaminatedHeadingChoice(choice.content).content : normalizeNewTypeChoiceText(choice.content);
     return { label: choice.label.trim(), content: trimmed };
   }).filter((choice) => choice.label && choice.content);
@@ -328,6 +404,9 @@ export function cleanEnglishPassageContent(section: EnglishSection, content: str
       .replace(/^\s*\d{2}\.\s*/i, "")
       .replace(/\s+Part\s+[AB]\s*$/i, "")
       .trim();
+  }
+  if (section === "reading" || section === "cloze") {
+    cleaned = cleaned.replace(/(^|\n)[ \t]*P(?:aragraph[ \t]*)?\d+[ \t]*/gi, "$1");
   }
 
   return cleaned

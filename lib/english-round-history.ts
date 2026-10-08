@@ -188,6 +188,7 @@ export function submitEnglishRoundRevision(
     score: number;
     maxScore: number;
     gradeOrigin: EnglishGradeOrigin;
+    grades?: EnglishRoundGrade[];
     now: string;
   },
 ): EnglishPassageRoundLedger {
@@ -204,6 +205,7 @@ export function submitEnglishRoundRevision(
     score: input.score,
     maxScore: input.maxScore,
     gradeOrigin: input.gradeOrigin,
+    ...(input.grades && input.grades.length > 0 ? { grades: input.grades } : {}),
     createdAt: input.now,
   };
 
