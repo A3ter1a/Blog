@@ -1,12 +1,28 @@
 "use client";
 
-import Link from "next/link";
+import { useEffect, useRef, useSyncExternalStore } from "react";
+import Link, { useLinkStatus } from "next/link";
+import { useAnimate, useInView } from "framer-motion";
 import { subjectMap, typeMap, type Note } from "@/lib/types";
-import { FileText, BookOpen, Calendar, Check, Clock } from "lucide-react";
+import { ArrowUpRight, FileText, BookOpen, Calendar, Check, Clock } from "lucide-react";
 import { estimateReadingTime } from "@/lib/utils";
 import { getVisibleNoteTags } from "@/lib/math3-practice";
-import { getNoteReadPath } from "@/lib/note-routes";
+import { getNoteReadPath, getSafeNotesReturnPath } from "@/lib/note-routes";
 import { CachedImage } from "@/components/ui/CachedImage";
+import { uiMotion } from "@/lib/motion";
+import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
+import { useNoteNavigationActions } from "@/components/notes/NoteNavigation";
+
+function NavigationHint() {
+  const { pending } = useLinkStatus();
+  const hydrated = useSyncExternalStore(
+    () => () => undefined,
+    () => true,
+    () => false,
+  );
+
+  return <span aria-hidden="true" className={`note-card-navigation-hint ${hydrated && pending ? "is-pending" : ""}`} />;
+}
 
 interface NoteCardProps {
   note: Note;
@@ -18,12 +34,51 @@ interface NoteCardProps {
 }
 
 export function NoteCard({ note, index, isSelected = false, onToggleSelect, selectMode = false, returnTo }: NoteCardProps) {
+  const [scope, animate] = useAnimate<HTMLElement>();
+  const inView = useInView(scope, {
+    once: true,
+    amount: 0.15,
+    // Start the reveal before the card reaches the viewport so a fast scroll
+    // does not expose a row that is still waiting for its entrance animation.
+    margin: "0px 0px 160px 0px",
+  });
+  const hasEntered = useRef(false);
+  const reducedMotion = usePrefersReducedMotion();
+  const { begin } = useNoteNavigationActions();
+  const href = getNoteReadPath(note, returnTo);
+  const [destinationPath, destinationQuery = ""] = href.split("?");
   const isProblem = note.type === "problem";
   const isEssay = note.type === "essay";
   const createdAt = note.createdAt instanceof Date ? note.createdAt : new Date(String(note.createdAt));
   const updatedAt = note.updatedAt instanceof Date ? note.updatedAt : new Date(String(note.updatedAt));
   const visibleTags = getVisibleNoteTags(note.tags);
   const hasReadableContent = !isProblem && Boolean(note.content?.trim());
+
+  useEffect(() => {
+    const card = scope.current;
+    if (!inView || !card || hasEntered.current) return;
+    hasEntered.current = true;
+    if (reducedMotion) return;
+
+    // Keep cards readable while they enter during a scroll. A fade from opacity 0
+    // makes the content look like a loading gap when the user lands mid-row, so
+    // the reveal only uses a small position/scale shift and never hides content.
+    const playback = animate(card, { y: [10, 0], scale: [0.995, 1] }, {
+      duration: uiMotion.duration.reveal,
+      ease: uiMotion.ease.emphasized,
+      delay: Math.min(index * 0.02, 0.12),
+    });
+    // Release the completed entrance transform so CSS hover feedback can take over.
+    void playback.then(() => {
+      card.style.opacity = "";
+      card.style.transform = "";
+    });
+    return () => {
+      playback.stop();
+      card.style.opacity = "";
+      card.style.transform = "";
+    };
+  }, [inView, reducedMotion, index, animate, scope]);
 
   const handleClick = (e: React.MouseEvent) => {
     if (selectMode && onToggleSelect) {
@@ -34,8 +89,9 @@ export function NoteCard({ note, index, isSelected = false, onToggleSelect, sele
 
   return (
     <article
+      ref={scope}
       onClick={handleClick}
-      className={`surface-card library-card group h-full cursor-pointer overflow-hidden ${
+      className={`surface-card library-card note-card motion-card-lift group h-full cursor-pointer overflow-hidden ${
         selectMode
           ? isSelected
             ? "border-primary/50 bg-primary/5 ring-2 ring-primary/15"
@@ -43,7 +99,25 @@ export function NoteCard({ note, index, isSelected = false, onToggleSelect, sele
           : ""
       }`}
     >
-      <Link href={getNoteReadPath(note, returnTo)} className="flex h-full flex-col" onClick={selectMode ? (e) => e.preventDefault() : undefined}>
+      <Link
+        href={href}
+        className="note-card-link relative flex h-full flex-col"
+        onClick={selectMode ? (e) => e.preventDefault() : undefined}
+        onNavigate={() => {
+          if (selectMode) return;
+          begin({
+            id: note.id,
+            title: note.title,
+            type: note.type,
+            subject: note.subject,
+            hasCover: Boolean(note.coverImage),
+            destinationPath,
+            destinationSearch: destinationQuery ? `?${destinationQuery}` : "",
+            returnTo: getSafeNotesReturnPath(returnTo),
+          });
+        }}
+      >
+        {!selectMode && <NavigationHint />}
         {/* Cover Image or Placeholder */}
         <div className="relative aspect-[16/9] overflow-hidden rounded-t-md bg-surface-container-low">
           {note.coverImage ? (
@@ -53,7 +127,7 @@ export function NoteCard({ note, index, isSelected = false, onToggleSelect, sele
                 alt={note.title}
                 loading={index < 3 ? "eager" : "lazy"}
                 decoding="async"
-                className="motion-ui h-full w-full object-cover object-center group-hover:scale-[1.03]"
+                className="note-card-cover h-full w-full object-cover object-center"
               />
             </>
           ) : (
@@ -106,7 +180,7 @@ export function NoteCard({ note, index, isSelected = false, onToggleSelect, sele
                     ? "border-primary bg-primary text-on-primary"
                     : isEssay
                     ? "border-amber-300 bg-amber-50 text-amber-950"
-                    : "border-primary/45 bg-surface-container-lowest text-primary-container"
+                    : "border-primary/45 bg-surface-container-lowest text-primary"
                 }`}
               >
                 {typeMap[note.type]}
@@ -116,7 +190,7 @@ export function NoteCard({ note, index, isSelected = false, onToggleSelect, sele
           {/* Subject Badge */}
           {!isEssay && note.subject && (
             <div className="absolute right-3 top-3">
-              <span className="inline-flex items-center rounded-lg border border-primary/35 bg-surface-container-lowest px-2.5 py-1.5 text-[13px] font-bold leading-none text-primary-container shadow-[0_8px_18px_-14px_rgba(15,23,42,0.65)]">
+              <span className="inline-flex items-center rounded-lg border border-primary/35 bg-surface-container-lowest px-2.5 py-1.5 text-[13px] font-bold leading-none text-primary shadow-[0_8px_18px_-14px_rgba(15,23,42,0.65)]">
                 {subjectMap[note.subject]}
               </span>
             </div>
@@ -125,9 +199,12 @@ export function NoteCard({ note, index, isSelected = false, onToggleSelect, sele
 
         {/* Card Content */}
         <div className="flex flex-1 flex-col p-5">
-          <h3 className="motion-ui line-clamp-2 font-headline text-lg font-bold leading-snug text-on-surface group-hover:text-primary">
-            {note.title}
-          </h3>
+          <div className="flex items-start gap-3">
+            <h3 className="note-card-title line-clamp-2 min-w-0 flex-1 font-headline text-lg font-bold leading-snug text-on-surface">
+              {note.title}
+            </h3>
+            {!selectMode && <ArrowUpRight aria-hidden="true" className="note-card-open mt-0.5 h-4 w-4 shrink-0 text-on-surface-variant" />}
+          </div>
 
           {/* Tags */}
           <div className="mt-4 flex min-h-7 flex-wrap gap-2">

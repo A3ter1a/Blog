@@ -4,25 +4,27 @@ import Link from "next/link";
 import { AnimatePresence, motion } from "framer-motion";
 import { createPortal } from "react-dom";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { AlertCircle, BookOpen, Bot, Copy, ListChecks, Loader2, MemoryStick, Quote, RefreshCw, Send, Square, Trash2, X } from "lucide-react";
+import { AlertCircle, Check, Copy, FileText, ListChecks, Loader2, MemoryStick, Quote, RefreshCw, Send, Sparkles, Square, Trash2, X } from "lucide-react";
 import { MarkdownContent } from "@/components/ui/MarkdownContent";
 import { useToast } from "@/components/ui/Toast";
 import { AI_CONFIG_STORAGE_KEY, ALLOW_CLIENT_AI_KEYS, DEFAULT_AI_CONFIG, DEFAULT_DEEPSEEK_MODEL, normalizeAIConfig } from "@/lib/ai-config";
 import { readJsonStorage } from "@/lib/browser-storage";
 import { buildAuthHeaders } from "@/lib/fetch-with-auth";
 import type { AiKnowledgeQuizItemPublic } from "@/lib/ai-knowledge-quiz-contract";
-import type { NoteQARetrievalSummary, NoteQASource } from "@/lib/note-qa";
+import type { NoteQAMode, NoteQARetrievalSummary, NoteQASource } from "@/lib/note-qa";
 import { useAdminAuth } from "@/hooks/useAdminAuth";
 import { isQuizAnswerProvided, shouldSendAssistantQuestion } from "@/lib/study-interactions";
+import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
+import { uiMotion } from "@/lib/motion";
 
 type AssistantDockProps = {
   noteId: string;
-  noteTitle: string;
   sourcePath?: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   quotedText?: string;
   onQuotedTextConsumed?: () => void;
+  renderInline?: boolean;
 };
 
 type AssistantChatMessage = {
@@ -35,6 +37,7 @@ type AssistantChatMessage = {
   sources?: NoteQASource[];
   totalChunks?: number;
   retrieval?: NoteQARetrievalSummary;
+  mode?: AssistantAnswerMode;
   complete?: boolean;
   interrupted?: boolean;
   quotedText?: string;
@@ -51,6 +54,8 @@ type AssistantQuizResult = {
   total: number;
   details: Array<{ itemId: string; correct: boolean; explanation: string; knowledgePoints: string[] }>;
 };
+
+type AssistantAnswerMode = Extract<NoteQAMode, "answer" | "outline" | "locate">;
 
 const ASSISTANT_CONVERSATION_STORAGE_PREFIX = "asteroid:note-assistant:v2";
 const LEGACY_ASSISTANT_CONVERSATION_STORAGE_PREFIX = "asteroid:note-assistant:v1";
@@ -82,6 +87,19 @@ function getLoadingPhaseLabel(phase: "indexing" | "retrieving" | "generating" | 
   if (phase === "retrieving") return "正在检索相关段落…";
   if (phase === "generating") return "正在组织回答…";
   return "正在处理…";
+}
+
+function getAnswerModeLabel(mode: AssistantAnswerMode): string {
+  if (mode === "outline") return "提纲";
+  if (mode === "locate") return "定位";
+  return "回答";
+}
+
+function getLoadingPhaseIndex(phase: "indexing" | "retrieving" | "generating" | "idle"): number {
+  if (phase === "indexing") return 0;
+  if (phase === "retrieving") return 1;
+  if (phase === "generating") return 2;
+  return -1;
 }
 
 function normalizeRetrievalSummary(value: unknown): NoteQARetrievalSummary | undefined {
@@ -119,6 +137,9 @@ function normalizeStoredMessages(value: unknown): AssistantChatMessage[] {
       sources: Array.isArray(candidate.sources) ? candidate.sources.slice(0, 12) as NoteQASource[] : undefined,
       totalChunks: typeof candidate.totalChunks === "number" ? candidate.totalChunks : undefined,
       retrieval: normalizeRetrievalSummary(candidate.retrieval),
+      mode: candidate.mode === "outline" || candidate.mode === "locate" || candidate.mode === "answer"
+        ? candidate.mode
+        : undefined,
       complete: candidate.role === "assistant" ? candidate.complete !== false : undefined,
       interrupted: candidate.role === "assistant" && candidate.complete === false,
       quotedText: typeof candidate.quotedText === "string" ? candidate.quotedText.slice(0, 1_600) : undefined,
@@ -128,26 +149,28 @@ function normalizeStoredMessages(value: unknown): AssistantChatMessage[] {
 
 /**
  * The assistant is intentionally a note-reader-only surface. The reader owns
- * the trigger and layout state; this component only renders the right drawer
+ * the trigger and layout state; this component only renders a focused card
  * once it has been opened for a concrete note.
  */
 export function AssistantDock({
   noteId,
-  noteTitle,
   sourcePath,
   open,
   onOpenChange,
   quotedText,
   onQuotedTextConsumed,
+  renderInline = false,
 }: AssistantDockProps) {
   const toast = useToast();
   const { loading: authLoading, isAdmin } = useAdminAuth();
+  const reducedMotion = usePrefersReducedMotion();
   const [question, setQuestion] = useState("");
   const [messages, setMessages] = useState<AssistantChatMessage[]>([]);
   const [loadedConversationNoteId, setLoadedConversationNoteId] = useState("");
   const [loading, setLoading] = useState(false);
   const [loadingPhase, setLoadingPhase] = useState<"indexing" | "retrieving" | "generating" | "idle">("idle");
   const [reasoning, setReasoning] = useState<"fast" | "deep">("fast");
+  const [answerMode, setAnswerMode] = useState<AssistantAnswerMode>("answer");
   const [quizSets, setQuizSets] = useState<AssistantQuizSet[]>([]);
   const [activeQuiz, setActiveQuiz] = useState<AssistantQuizSet | null>(null);
   const [showQuiz, setShowQuiz] = useState(false);
@@ -160,6 +183,7 @@ export function AssistantDock({
   const [expandedSourceMessageIds, setExpandedSourceMessageIds] = useState<Set<string>>(() => new Set());
   const [memoryProposalIds, setMemoryProposalIds] = useState<Set<string>>(() => new Set());
   const [lastError, setLastError] = useState<string | null>(null);
+  const [clearPending, setClearPending] = useState(false);
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
   const messageListRef = useRef<HTMLDivElement | null>(null);
   const drawerRef = useRef<HTMLElement | null>(null);
@@ -168,6 +192,7 @@ export function AssistantDock({
   const [failedRequest, setFailedRequest] = useState<{
     question: string;
     quote: string;
+    mode: AssistantAnswerMode;
     retryMessageId?: string;
   } | null>(null);
   const followLatestRef = useRef(true);
@@ -303,6 +328,7 @@ export function AssistantDock({
     questionOverride?: string,
     quoteOverride?: string,
     retryMessageId?: string,
+    modeOverride?: AssistantAnswerMode,
   ) => {
     const userQuestion = (questionOverride ?? question).trim()
       || ((quoteOverride ?? activeQuote) ? "请解释这段选中的内容。" : "");
@@ -311,6 +337,7 @@ export function AssistantDock({
     const previousMessages = messages;
     const retryTarget = retryMessageId ? messages.find((message) => message.id === retryMessageId) : undefined;
     const retryUserMessageId = retryTarget?.userMessageId;
+    const requestMode = modeOverride ?? retryTarget?.mode ?? answerMode;
     const displayQuestion = quoteSnapshot
       ? `> ${quoteSnapshot.replace(/\n/g, "\n> ")}\n\n${userQuestion}`
       : userQuestion;
@@ -319,6 +346,9 @@ export function AssistantDock({
       role: "user",
       content: displayQuestion,
       createdAt: new Date().toISOString(),
+      question: userQuestion,
+      quotedText: quoteSnapshot,
+      mode: requestMode,
     };
     const assistantMessageId = createMessageId();
     const incompleteMessageIds = new Set(messages
@@ -339,6 +369,7 @@ export function AssistantDock({
       createdAt: new Date().toISOString(),
       question: userQuestion,
       quotedText: quoteSnapshot,
+      mode: requestMode,
       sources: [],
       totalChunks: 0,
       userMessageId: retryUserMessageId ?? userMessage.id,
@@ -350,7 +381,7 @@ export function AssistantDock({
     setLoading(true);
     setLoadingPhase("indexing");
     setLastError(null);
-    setFailedRequest({ question: userQuestion, quote: quoteSnapshot, retryMessageId });
+    setFailedRequest({ question: userQuestion, quote: quoteSnapshot, mode: requestMode, retryMessageId });
     followLatestRef.current = true;
     setShowScrollToLatest(false);
     setMessages(retryMessageId
@@ -374,7 +405,7 @@ export function AssistantDock({
           conversation,
           noteId,
           scope: "all",
-          mode: "answer",
+          mode: requestMode,
           contextLimit: reasoning === "deep" ? 12 : 8,
           model: DEFAULT_DEEPSEEK_MODEL,
           thinking: reasoning === "deep" ? "enabled" : "disabled",
@@ -508,7 +539,7 @@ export function AssistantDock({
         setMessages((current) => current.map((message) => message.id === assistantMessageId
           ? { ...message, content: streamedAnswer, complete: false, interrupted: true }
           : message));
-        setFailedRequest({ question: userQuestion, quote: quoteSnapshot, retryMessageId: assistantMessageId });
+        setFailedRequest({ question: userQuestion, quote: quoteSnapshot, mode: requestMode, retryMessageId: assistantMessageId });
       } else {
         setMessages(previousMessages);
         setQuestion(userQuestion);
@@ -529,6 +560,17 @@ export function AssistantDock({
 
   const stopAnswer = () => {
     abortControllerRef.current?.abort();
+  };
+
+  const confirmClearConversation = () => {
+    setMessages([]);
+    setExpandedSourceMessageIds(new Set());
+    setMemoryProposalIds(new Set());
+    setFailedRequest(null);
+    setLastError(null);
+    setActiveQuote("");
+    setQuestion("");
+    setClearPending(false);
   };
 
   const copyAnswer = async (content: string) => {
@@ -601,42 +643,48 @@ export function AssistantDock({
     }
   };
 
-  const suggestedQuestions = ["概括本篇主线", "指出最容易混淆的概念", "按考试思路整理重点"];
+  const answerModes: Array<{ value: AssistantAnswerMode; label: string; description: string }> = [
+    { value: "answer", label: "回答", description: "直接解释问题并保留必要推导" },
+    { value: "outline", label: "提纲", description: "整理概念、易错点和复习顺序" },
+    { value: "locate", label: "定位", description: "指出相关内容在笔记中的位置" },
+  ];
+  const loadingPhaseIndex = getLoadingPhaseIndex(loadingPhase);
 
-  if (authLoading || !isAdmin || !noteId || !open) return null;
-  if (!portalReady) return null;
+  if (authLoading || !isAdmin || !noteId) return null;
+  if (!portalReady && !renderInline) return null;
 
   const dock = (
-    <AnimatePresence initial={false}>
+    <AnimatePresence>
       {open && (
         <motion.div
           key="assistant-dock-overlay"
-          className="assistant-dock-overlay"
-          initial={{ opacity: 0 }}
+          className={`assistant-dock-overlay ${renderInline ? "assistant-dock-overlay--directory" : "assistant-dock-overlay--dock"}`}
+          initial={reducedMotion ? false : { opacity: 0 }}
           animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: 0.2, ease: "easeOut" }}
+          exit={reducedMotion ? { opacity: 0 } : { opacity: 0 }}
+          transition={{ duration: reducedMotion ? 0 : uiMotion.duration.standard, ease: uiMotion.ease.standard }}
         >
           <button type="button" className="assistant-dock-scrim" aria-label="关闭笔记助手" onClick={() => onOpenChange(false)} />
           <motion.aside
             id="assistant-dock"
             ref={drawerRef}
-            className="assistant-dock-panel"
+            className={`assistant-dock-panel ${renderInline ? "assistant-dock-panel--directory" : "assistant-dock-panel--dock"}`}
             role="dialog"
             aria-modal="true"
-            aria-labelledby="assistant-dock-title"
-            initial={{ x: "100%" }}
-            animate={{ x: 0 }}
-            exit={{ x: "100%" }}
-            transition={{ duration: 0.26, ease: [0.22, 1, 0.36, 1] }}
+            aria-label="笔记助手"
+            initial={reducedMotion ? false : renderInline ? { opacity: 0, x: 18, scale: 0.985 } : { opacity: 0, x: 72, scale: 0.96 }}
+            animate={{ opacity: 1, x: 0, scale: 1 }}
+            exit={reducedMotion ? { opacity: 0 } : renderInline ? { opacity: 0, x: 18, scale: 0.985 } : { opacity: 0, x: 48, scale: 0.98 }}
+            transition={reducedMotion ? { duration: 0 } : { duration: uiMotion.duration.reveal, ease: uiMotion.ease.emphasized }}
           >
       <header className="assistant-dock-header">
-        <div className="flex min-w-0 items-start gap-3">
-          <span className="assistant-dock-mark"><Bot className="h-5 w-5" /></span>
-          <div className="min-w-0 flex-1">
-            <div id="assistant-dock-title" className="font-headline text-lg font-bold text-on-surface">问助手</div>
-            <p className="mt-0.5 truncate text-xs text-on-surface-variant">{noteTitle}</p>
+        <div className="assistant-dock-heading">
+          <div className="assistant-dock-mark" aria-hidden="true">
+            <Sparkles className="h-4 w-4" />
           </div>
+          <strong className="assistant-dock-title">助手</strong>
+        </div>
+        <div className="flex min-w-0 items-center justify-end gap-1">
           {messages.length > 0 && (
             <button
               type="button"
@@ -644,9 +692,7 @@ export function AssistantDock({
               aria-label="清空当前笔记的助手对话"
               title="清空对话"
               disabled={loading}
-              onClick={() => {
-                if (window.confirm("清空当前笔记的助手对话吗？此操作不会删除笔记。")) setMessages([]);
-              }}
+              onClick={() => setClearPending(true)}
             >
               <Trash2 className="h-4 w-4" />
             </button>
@@ -661,15 +707,32 @@ export function AssistantDock({
             <X className="h-4 w-4" />
           </button>
         </div>
-        <div className="assistant-dock-toolbar" aria-label="回答方式">
-          <span className="assistant-model-badge" title="当前笔记助手使用 DeepSeek V4 Flash 正式模型">V4 Flash</span>
-          <button type="button" aria-pressed={reasoning === "fast"} onClick={() => setReasoning("fast")} className={reasoning === "fast" ? "is-active" : ""}>快速</button>
-          <button type="button" aria-pressed={reasoning === "deep"} onClick={() => setReasoning("deep")} className={reasoning === "deep" ? "is-active" : ""}>深度</button>
-          {quizSets.length > 0 && <button type="button" disabled={loading} onClick={() => startQuiz(activeQuiz ?? quizSets[0])} className={showQuiz ? "is-active ml-auto" : "ml-auto"}><ListChecks className="h-4 w-4" />快测</button>}
-        </div>
       </header>
 
       <div className="assistant-dock-body">
+        <AnimatePresence initial={false}>
+          {clearPending && (
+            <motion.div
+              className="assistant-clear-confirm"
+              role="alertdialog"
+              aria-label="确认清空助手对话"
+              initial={reducedMotion ? { opacity: 0 } : { opacity: 0, y: -6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={reducedMotion ? { opacity: 0 } : { opacity: 0, y: -6 }}
+              transition={{ duration: reducedMotion ? 0 : uiMotion.duration.micro, ease: uiMotion.ease.standard }}
+            >
+              <div className="min-w-0">
+                <strong>清空当前对话？</strong>
+                <p>只会移除本篇笔记的本地问答记录。</p>
+              </div>
+              <div className="assistant-clear-actions">
+                <button type="button" onClick={() => setClearPending(false)}>保留</button>
+                <button type="button" className="is-danger" onClick={confirmClearConversation}><Check className="h-3.5 w-3.5" />清空</button>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         {showQuiz && activeQuiz ? (
             <section className="space-y-4">
               <div className="flex items-start justify-between gap-3"><div><p className="text-xs font-semibold uppercase tracking-[0.14em] text-primary">知识点快测</p><h3 className="mt-1 font-headline text-base font-semibold text-on-surface">{activeQuiz.quiz.title}</h3><p className="mt-1 text-xs text-on-surface-variant">先独立作答，提交后显示解析。返回问答会保留本次作答。</p></div><button type="button" disabled={quizLoading} className="control-button min-h-11 shrink-0 px-3 text-xs" onClick={() => setShowQuiz(false)}>返回问答</button></div>
@@ -703,11 +766,26 @@ export function AssistantDock({
               }}
             >
               {messages.map((message) => (
-                <article key={message.id} className={`assistant-message ${message.role}`}>
+                <motion.article
+                  key={message.id}
+                  layout={!reducedMotion}
+                  initial={reducedMotion ? false : { opacity: 0, y: 6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: reducedMotion ? 0 : uiMotion.duration.fast, ease: uiMotion.ease.standard }}
+                  className={`assistant-message ${message.role}`}
+                >
                   <span className="assistant-message-role">{message.role === "assistant" ? "助手" : "你"}</span>
                   <div className="assistant-message-bubble">
                     {message.content
-                      ? <MarkdownContent content={message.content} className="text-sm leading-7 text-on-surface" />
+                      ? <>
+                        {message.role === "user" && message.quotedText && (
+                          <blockquote className="assistant-message-quote">
+                            <Quote className="h-3.5 w-3.5 shrink-0" />
+                            <span>{message.quotedText}</span>
+                          </blockquote>
+                        )}
+                        <MarkdownContent content={message.role === "user" && message.question ? message.question : message.content} className="text-sm leading-7 text-on-surface" />
+                      </>
                       : <div className="assistant-message-placeholder"><Loader2 className="h-4 w-4 animate-spin" />正在生成回答…</div>}
                   </div>
                   {message.role === "assistant" && message.interrupted && (
@@ -746,80 +824,125 @@ export function AssistantDock({
                           return next;
                         })}>{expanded ? "收起" : "展开全部"}</button>}
                       </div>
-                      {sources.map((source) => (
-                        <Link key={source.id} href={source.href} className="assistant-source-card">
-                          <div className="min-w-0">
-                            <strong>[{source.id}] {source.sourceLabel}</strong>
-                            <span>{source.noteTitle}</span>
-                            <small>{source.excerpt}</small>
-                          </div>
-                          <span aria-hidden="true">跳转</span>
-                        </Link>
-                      ))}
+                      <div className="assistant-source-cards">
+                        <AnimatePresence initial={false}>
+                          {sources.map((source) => (
+                            <motion.div
+                              key={source.id}
+                              layout={!reducedMotion}
+                              initial={reducedMotion ? { opacity: 0 } : { opacity: 0, y: 4 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              exit={reducedMotion ? { opacity: 0 } : { opacity: 0, y: -4 }}
+                              transition={{ duration: reducedMotion ? 0 : uiMotion.duration.fast, ease: uiMotion.ease.standard }}
+                            >
+                              <Link href={source.href} className="assistant-source-card">
+                                <div className="min-w-0">
+                                  <strong>[{source.id}] {source.sourceLabel}</strong>
+                                  <span>{source.noteTitle}</span>
+                                  <small>{source.excerpt}</small>
+                                </div>
+                                <span aria-hidden="true">跳转</span>
+                              </Link>
+                            </motion.div>
+                          ))}
+                        </AnimatePresence>
+                      </div>
                     </div>;
                   })()}
-                </article>
+                </motion.article>
               ))}
-              {loading && <div className="assistant-thinking" role="status"><Loader2 className="h-4 w-4 animate-spin" />{getLoadingPhaseLabel(loadingPhase)}</div>}
+              {loading && <div className="assistant-phase-rail" role="status" aria-live="polite">
+                <div className="assistant-phase-steps">
+                  {["准备", "检索", "组织"].map((label, index) => (
+                    <span key={label} className={loadingPhaseIndex >= index ? "is-active" : ""}>
+                      <span className="assistant-phase-dot" aria-hidden="true">{loadingPhaseIndex > index ? <Check className="h-3 w-3" /> : index + 1}</span>
+                      {label}
+                    </span>
+                  ))}
+                </div>
+                <span className="assistant-phase-label"><Loader2 className="h-3.5 w-3.5" />{getLoadingPhaseLabel(loadingPhase)}</span>
+              </div>}
               {showScrollToLatest && <button type="button" className="assistant-scroll-latest" onClick={() => {
                 followLatestRef.current = true;
                 setShowScrollToLatest(false);
                 messageListRef.current?.scrollTo({ top: messageListRef.current.scrollHeight, behavior: "smooth" });
               }}>回到最新回答</button>}
             </div>
-          ) : (
-            <div className="assistant-empty-state">
-              <BookOpen className="h-7 w-7" />
-              <div>
-                <strong>从这篇笔记开始问</strong>
-                <p>我会先检索当前笔记，再用可点击的依据回答；你也可以先选中文字。</p>
-              </div>
-              <div className="assistant-suggestion-list">
-                {suggestedQuestions.map((suggestion) => (
-                  <button type="button" key={suggestion} onClick={() => { setQuestion(suggestion); composerRef.current?.focus(); }}>{suggestion}</button>
-                ))}
-              </div>
-            </div>
-          )}
+          ) : <div className="assistant-message-list assistant-message-list--empty" aria-label="尚无对话" />}
       </div>
 
       {!showQuiz && (
         <footer className="assistant-composer">
+          <div className="assistant-dock-toolbar" aria-label="回答方式">
+            <div className="assistant-mode-group" role="tablist" aria-label="回答模式">
+              {answerModes.map((mode) => (
+                <button
+                  key={mode.value}
+                  type="button"
+                  role="tab"
+                  aria-selected={answerMode === mode.value}
+                  title={mode.description}
+                  onClick={() => setAnswerMode(mode.value)}
+                  className={answerMode === mode.value ? "is-active" : ""}
+                >
+                  {mode.value === "answer" ? <Sparkles className="h-3.5 w-3.5" /> : mode.value === "outline" ? <ListChecks className="h-3.5 w-3.5" /> : <FileText className="h-3.5 w-3.5" />}
+                  {mode.label}
+                </button>
+              ))}
+            </div>
+            <div className="assistant-reasoning-group" role="group" aria-label="回答速度">
+              <span>速度</span>
+              <button type="button" aria-pressed={reasoning === "fast"} onClick={() => setReasoning("fast")} className={reasoning === "fast" ? "is-active" : ""}>快</button>
+              <button type="button" aria-pressed={reasoning === "deep"} onClick={() => setReasoning("deep")} className={reasoning === "deep" ? "is-active" : ""}>深</button>
+            </div>
+            {quizSets.length > 0 && <button type="button" disabled={loading} onClick={() => startQuiz(activeQuiz ?? quizSets[0])} className={showQuiz ? "is-active assistant-quiz-button" : "assistant-quiz-button"}><ListChecks className="h-4 w-4" />快测</button>}
+          </div>
           {lastError && (
             <div className="assistant-error-card" role="alert">
               <AlertCircle className="h-4 w-4 shrink-0" />
               <p>{lastError}</p>
               <div className="assistant-error-actions">
                 {failedRequest && <button type="button" onClick={() => {
-                  void ask(failedRequest.question, failedRequest.quote, failedRequest.retryMessageId);
+                  void ask(failedRequest.question, failedRequest.quote, failedRequest.retryMessageId, failedRequest.mode);
                 }}>重试</button>}
                 <button type="button" aria-label="关闭错误提示" onClick={() => setLastError(null)}><X className="h-3.5 w-3.5" /></button>
               </div>
             </div>
           )}
-          {activeQuote && (
-            <div className="assistant-quote-card">
-              <Quote className="h-4 w-4" />
-              <p>{activeQuote}</p>
-              <button type="button" onClick={() => setActiveQuote("")} disabled={loading} aria-label="移除引用"><X className="h-3.5 w-3.5" /></button>
-            </div>
-          )}
-          <label htmlFor="assistant-question" className="sr-only">询问当前笔记</label>
-          <textarea id="assistant-question" ref={composerRef} value={question} disabled={loading || !conversationReady} onChange={(event) => setQuestion(event.target.value)} onKeyDown={(event) => {
-            if (shouldSendAssistantQuestion(event.nativeEvent)) {
-              event.preventDefault();
-              void ask();
-            }
-          }} rows={2} className="field-control w-full resize-none px-3 py-2.5 text-sm" placeholder={!conversationReady ? "正在恢复本篇对话…" : activeQuote ? "围绕选中内容提问（留空可直接解释）" : "问当前笔记…"} />
-          <div className="assistant-composer-actions">
-            <span>{!conversationReady ? "正在恢复本篇对话…" : loading ? "回答生成中，可随时停止" : "Enter 发送 · Shift+Enter 换行"}</span>
-            {loading ? (
-              <button type="button" onClick={stopAnswer} className="control-button h-10 px-4 text-sm" aria-label="停止生成回答"><Square className="h-3.5 w-3.5" />停止</button>
-            ) : (
-              <button type="button" onClick={() => void ask()} disabled={!conversationReady || (!question.trim() && !activeQuote)} className="control-button control-button-primary h-10 px-4 text-sm">
-                <Send className="h-4 w-4" />发送
-              </button>
+          <AnimatePresence initial={false}>
+            {activeQuote && (
+              <motion.div
+                className="assistant-quote-card"
+                initial={reducedMotion ? { opacity: 0 } : { opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={reducedMotion ? { opacity: 0 } : { opacity: 0, y: 6 }}
+                transition={{ duration: reducedMotion ? 0 : uiMotion.duration.fast, ease: uiMotion.ease.standard }}
+              >
+                <Quote className="h-4 w-4" />
+                <p><span>本次引用</span>{activeQuote}</p>
+                <button type="button" onClick={() => setActiveQuote("")} disabled={loading} aria-label="移除引用"><X className="h-3.5 w-3.5" /></button>
+              </motion.div>
             )}
+          </AnimatePresence>
+          <div className="assistant-composer-entry">
+            <label htmlFor="assistant-question" className="sr-only">询问当前笔记</label>
+            <textarea id="assistant-question" ref={composerRef} value={question} disabled={!conversationReady} onChange={(event) => setQuestion(event.target.value)} onKeyDown={(event) => {
+              if (loading) return;
+              if (shouldSendAssistantQuestion(event.nativeEvent)) {
+                event.preventDefault();
+                void ask();
+              }
+            }} rows={2} className="field-control w-full resize-none px-3 py-2.5 text-sm" placeholder={!conversationReady ? "正在恢复本篇对话…" : activeQuote ? "围绕选中内容提问（留空可直接解释）" : `以${getAnswerModeLabel(answerMode)}的方式询问当前笔记…`} />
+            <div className="assistant-composer-actions">
+              <span aria-live="polite">{!conversationReady ? "正在恢复本篇对话…" : loading ? "回答生成中" : ""}</span>
+              {loading ? (
+                <button type="button" onClick={stopAnswer} className="control-button h-10 px-4 text-sm" aria-label="停止生成回答"><Square className="h-3.5 w-3.5" /></button>
+              ) : (
+                <button type="button" onClick={() => void ask()} disabled={!conversationReady || (!question.trim() && !activeQuote)} className="control-button control-button-primary h-10 px-4 text-sm" aria-label="发送">
+                  <Send className="h-4 w-4" />
+                </button>
+              )}
+            </div>
           </div>
         </footer>
       )}
@@ -829,5 +952,5 @@ export function AssistantDock({
     </AnimatePresence>
   );
 
-  return createPortal(dock, document.body);
+  return renderInline ? dock : createPortal(dock, document.body);
 }

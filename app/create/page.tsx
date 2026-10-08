@@ -1,11 +1,11 @@
 "use client";
 
-import { useState, useRef, useCallback, useEffect, useMemo } from "react";
+import { Suspense, useState, useRef, useCallback, useEffect, useMemo } from "react";
 import { motion } from "framer-motion";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import type { Editor } from "@tiptap/react";
-import { Save, RotateCcw, X, Image as ImageIcon, FolderTree, Columns, Maximize2, Eye, Loader2, ChevronDown, ChevronUp, SlidersHorizontal, Video as VideoIcon, Target, LineChart } from "lucide-react";
+import { Save, RotateCcw, X, Image as ImageIcon, FolderTree, Columns, Maximize2, Eye, Loader2, ChevronDown, SlidersHorizontal, Video as VideoIcon, Target, LineChart, ArrowLeft, AlertTriangle, CheckCircle2, Keyboard } from "lucide-react";
 import { Subject, subjectMap, NoteType, typeMap, Video, Problem } from "@/lib/types";
 import { useToast } from "@/components/ui/Toast";
 import type { RichTextEditorRef } from "@/components/editor/RichTextEditor";
@@ -35,10 +35,13 @@ import { splitMath3PracticeTags } from "@/lib/math3-practice";
 import { getNoteReadPath } from "@/lib/note-routes";
 import { AdminGate } from "@/components/auth/AdminGate";
 import { ProblemReferencePicker } from "@/components/problems/ProblemReferencePicker";
+import { AnimatedDisclosure } from "@/components/ui/AnimatedDisclosure";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { useCoverUpload } from "@/hooks/useCoverUpload";
 import { useNoteSave } from "@/hooks/useNoteSave";
+import { useLocalReviewMode } from "@/hooks/useAdminAuth";
 import { type ImportDraft, type NoteEditorDraft, useNoteEditorRoute } from "@/hooks/useNoteEditorRoute";
-import { collapsibleMotion, surfaceMotion, uiMotion } from "@/lib/motion";
+import { surfaceMotion, uiMotion } from "@/lib/motion";
 
 const CREATE_TASK_TARGET_STORAGE_KEY = "asteroid:create-task-target:v1";
 
@@ -83,6 +86,28 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
+function readRecoverableEditorDraft(value: unknown): NoteEditorDraft | null {
+  if (!isRecord(value)) return null;
+  if (value.noteType !== "note" && value.noteType !== "problem" && value.noteType !== "essay") return null;
+  if (value.subject !== "math" && value.subject !== "english" && value.subject !== "politics" && value.subject !== "economics") return null;
+  if (typeof value.title !== "string" || typeof value.tagInput !== "string" || typeof value.content !== "string" || typeof value.coverImage !== "string") return null;
+  if (!Array.isArray(value.videos) || !Array.isArray(value.problems)) return null;
+  return {
+    noteType: value.noteType,
+    title: value.title,
+    subject: value.subject,
+    tagInput: value.tagInput,
+    content: value.content,
+    videos: value.videos as Video[],
+    problems: value.problems as Problem[],
+    coverImage: value.coverImage,
+  };
+}
+
+function hasRecoverableEditorContent(draft: NoteEditorDraft): boolean {
+  return Boolean(draft.title.trim() || draft.tagInput.trim() || draft.content.trim() || draft.coverImage || draft.videos.length || draft.problems.length);
+}
+
 function getPendingImportDraft(): ImportDraft | null {
   if (typeof window === "undefined") return null;
 
@@ -114,7 +139,9 @@ function getPendingImportDraft(): ImportDraft | null {
 
 function CreateEditorPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const toast = useToast();
+  const isReviewMode = useLocalReviewMode();
   const {
     jobs,
     requestedJobId,
@@ -158,6 +185,17 @@ function CreateEditorPage() {
   const pendingMath3ClassificationJobsRef = useRef(new Set<string>());
   const [showEconomicsGraphComposer, setShowEconomicsGraphComposer] = useState(false);
   const [viewMode, setViewMode] = useState<"split" | "editor" | "preview">("editor");
+  const [pendingTypeChange, setPendingTypeChange] = useState<NoteType | null>(null);
+  const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [draftState, setDraftState] = useState<"clean" | "dirty" | "error">("clean");
+  const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
+  const baselineFingerprintRef = useRef<string | null>(null);
+  const draftPersistTimerRef = useRef<number | null>(null);
+  const saveInFlightRef = useRef(false);
+  const [draftRecoveryReady, setDraftRecoveryReady] = useState(false);
+  const [recoverableDraft, setRecoverableDraft] = useState<NoteEditorDraft | null>(null);
+  const handleSaveRef = useRef<() => Promise<void>>(async () => undefined);
   const editorRef = useRef<RichTextEditorRef>(null);
   const [toolbarEditor, setToolbarEditor] = useState<Editor | null>(null);
   const editorScrollRef = useRef<HTMLDivElement>(null);
@@ -165,6 +203,30 @@ function CreateEditorPage() {
   const isSyncingScroll = useRef(false);
   const handledMarkdownReviewJobsRef = useRef(new Set<string>());
   const contentStats = useMemo(() => getMarkdownTextStats(content), [content]);
+  const saveShortcutLabel = typeof navigator !== "undefined" && navigator.platform.toLowerCase().includes("mac")
+    ? "⌘ S"
+    : "Ctrl + S";
+  const returnPath = useMemo(() => {
+    const candidate = searchParams.get("from");
+    return candidate && candidate.startsWith("/") && !candidate.startsWith("//") && !/[\\\u0000-\u0020]/.test(candidate)
+      ? candidate
+      : "/notes";
+  }, [searchParams]);
+  const editorDraftStorageKey = useMemo(() => {
+    const editId = searchParams.get("edit");
+    return editId ? `asteroid:editor-draft:v2:${editId}` : "asteroid:editor-draft:v2:new";
+  }, [searchParams]);
+  const restoredDraftRef = useRef(false);
+  const draftFingerprint = useMemo(() => JSON.stringify({
+    noteType,
+    title,
+    subject,
+    tagInput,
+    content,
+    videos,
+    problems,
+    coverImage,
+  }), [content, coverImage, noteType, problems, subject, tagInput, title, videos]);
 
   const applyDraft = useCallback((draft: NoteEditorDraft) => {
     setNoteType(draft.noteType);
@@ -187,6 +249,7 @@ function CreateEditorPage() {
     setVideos([]);
     setProblems([]);
     setHasProblemChanges(false);
+    setPendingTypeChange(null);
     setCoverImageUrl("");
   }, [setCoverImageUrl]);
 
@@ -284,6 +347,72 @@ function CreateEditorPage() {
     });
   }, [jobs, loadJobResult, taskTargetId, toast, updateJob]);
 
+  useEffect(() => {
+    if (!routeReady || isLoadingExistingNote || loadError || restoredDraftRef.current) return;
+    const stored = readJsonStorage<unknown>(editorDraftStorageKey, null);
+    const recovered = searchParams.get("import") ? null : readRecoverableEditorDraft(isRecord(stored) && isRecord(stored.draft) ? stored.draft : stored);
+    const timer = window.setTimeout(() => {
+      restoredDraftRef.current = true;
+      setDraftRecoveryReady(true);
+      if (!recovered || (!isEditMode && !hasRecoverableEditorContent(recovered))) return;
+      if (JSON.stringify(recovered) === draftFingerprint) {
+        removeStorage(editorDraftStorageKey);
+        return;
+      }
+      if (isEditMode) {
+        // Always keep the current server version visible until the user chooses
+        // to restore a local edit. Legacy drafts lack version information.
+        setRecoverableDraft(recovered);
+      } else {
+        applyDraft(recovered);
+        setDraftState("dirty");
+        toast.info("已恢复上次未保存的编辑草稿，确认内容后再保存");
+      }
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [applyDraft, draftFingerprint, editorDraftStorageKey, isEditMode, isLoadingExistingNote, loadError, routeReady, searchParams, toast]);
+
+  useEffect(() => {
+    if (!routeReady || isLoadingExistingNote || loadError) return;
+    if (baselineFingerprintRef.current === null) {
+      baselineFingerprintRef.current = draftFingerprint;
+    }
+    const hasChanges = baselineFingerprintRef.current !== draftFingerprint || (!isEditMode && hasRecoverableEditorContent({ noteType, title, subject, tagInput, content, videos, problems, coverImage }));
+    setDraftState(hasChanges ? "dirty" : "clean");
+  }, [content, coverImage, draftFingerprint, isEditMode, isLoadingExistingNote, loadError, noteType, problems, routeReady, subject, tagInput, title, videos]);
+
+  const persistCurrentDraft = useCallback(() => {
+    if (!draftRecoveryReady || recoverableDraft || loadError || !routeReady || isLoadingExistingNote) return;
+    const hasChanges = baselineFingerprintRef.current !== draftFingerprint || (!isEditMode && hasRecoverableEditorContent({ noteType, title, subject, tagInput, content, videos, problems, coverImage }));
+    if (!hasChanges) {
+      removeStorage(editorDraftStorageKey);
+      return;
+    }
+    writeJsonStorage(editorDraftStorageKey, {
+      draft: { noteType, title, subject, tagInput, content, videos, problems, coverImage },
+      baseContentVersion: editingContentVersion,
+    });
+  }, [content, coverImage, draftFingerprint, draftRecoveryReady, editingContentVersion, editorDraftStorageKey, isEditMode, isLoadingExistingNote, loadError, noteType, problems, recoverableDraft, routeReady, subject, tagInput, title, videos]);
+
+  useEffect(() => {
+    draftPersistTimerRef.current = window.setTimeout(persistCurrentDraft, 650);
+    return () => {
+      if (draftPersistTimerRef.current !== null) window.clearTimeout(draftPersistTimerRef.current);
+      draftPersistTimerRef.current = null;
+    };
+  }, [persistCurrentDraft]);
+
+  useEffect(() => {
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (draftState === "clean") return;
+      persistCurrentDraft();
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [draftState, persistCurrentDraft]);
+
   // Synchronize scroll between editor and preview panels
   const syncScroll = useCallback((source: HTMLDivElement, target: HTMLDivElement) => {
     if (isSyncingScroll.current) return;
@@ -330,8 +459,26 @@ function CreateEditorPage() {
     setChapterRefreshKey((key) => key + 1);
   }, []);
 
-  const handleSave = async () => {
-    const result = await saveNote({
+  const handleSave = useCallback(async () => {
+    if (saveInFlightRef.current || isSaving || !routeReady || isLoadingExistingNote || loadError) return;
+    if (recoverableDraft) {
+      toast.info("请先选择恢复本机草稿或继续使用当前内容，再保存");
+      return;
+    }
+    saveInFlightRef.current = true;
+    try {
+    if (isReviewMode) {
+      // The review build intentionally has no remote write path. Preserve the
+      // same local draft used by recovery so the editor remains testable.
+      persistCurrentDraft();
+      baselineFingerprintRef.current = draftFingerprint;
+      setLastSavedAt(new Date());
+      setDraftState("clean");
+      toast.success("审查模式已保存本机草稿，正式环境再同步 Supabase");
+      return;
+    }
+
+      const result = await saveNote({
       isEditMode,
       editingId,
       editingContentVersion,
@@ -344,9 +491,17 @@ function CreateEditorPage() {
       problems,
       coverImage,
       isUploadingCover,
-    });
+      });
 
-    if (!result) return;
+    if (!result) {
+      setDraftState("error");
+      return;
+    }
+    baselineFingerprintRef.current = draftFingerprint;
+    if (draftPersistTimerRef.current !== null) window.clearTimeout(draftPersistTimerRef.current);
+    removeStorage(editorDraftStorageKey);
+    setLastSavedAt(new Date());
+    setDraftState("clean");
     for (const jobId of pendingMath3ClassificationJobsRef.current) claimJobResult(jobId);
     pendingMath3ClassificationJobsRef.current.clear();
     if (!isEditMode) removeStorage(CREATE_TASK_TARGET_STORAGE_KEY);
@@ -355,16 +510,116 @@ function CreateEditorPage() {
       id: result.id,
       isPublished: isEditMode ? editingIsPublished : false,
     }));
+    } finally {
+      saveInFlightRef.current = false;
+    }
+  }, [
+    claimJobResult,
+    content,
+    coverImage,
+    draftFingerprint,
+    editingContentVersion,
+    editingId,
+    editingIsPublished,
+    editorDraftStorageKey,
+    isEditMode,
+    isLoadingExistingNote,
+    isReviewMode,
+    isSaving,
+    isUploadingCover,
+    loadError,
+    noteType,
+    persistCurrentDraft,
+    problems,
+    recoverableDraft,
+    router,
+    routeReady,
+    saveNote,
+    subject,
+    tagInput,
+    title,
+    toast,
+    videos,
+  ]);
+
+  useEffect(() => {
+    handleSaveRef.current = handleSave;
+  }, [handleSave]);
+
+  useEffect(() => {
+    const handleShortcut = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== "s") return;
+      event.preventDefault();
+      if (event.repeat) return;
+      void handleSaveRef.current();
+    };
+    window.addEventListener("keydown", handleShortcut);
+    return () => window.removeEventListener("keydown", handleShortcut);
+  }, []);
+
+  const handleBack = () => {
+    if (draftState !== "clean") {
+      persistCurrentDraft();
+      setShowLeaveConfirm(true);
+      return;
+    }
+    persistCurrentDraft();
+    router.push(returnPath);
   };
 
-  const handleClear = () => {
+  const confirmLeave = () => {
+    setShowLeaveConfirm(false);
+    persistCurrentDraft();
+    router.push(returnPath);
+  };
+
+  const handleTypeChange = (nextType: NoteType) => {
+    if (nextType === noteType) return;
+    const hasCurrentContent = hasRecoverableEditorContent({
+      noteType,
+      title,
+      subject,
+      tagInput,
+      content,
+      videos,
+      problems,
+      coverImage,
+    });
+    if (!hasCurrentContent) {
+      setNoteType(nextType);
+      setPendingTypeChange(null);
+      return;
+    }
+    setPendingTypeChange(nextType);
+  };
+
+  const confirmTypeChange = () => {
+    if (!pendingTypeChange) return;
+    setNoteType(pendingTypeChange);
+    setPendingTypeChange(null);
+  };
+
+  const clearEditorDraft = () => {
     if (isSaving) return;
+    if (draftPersistTimerRef.current !== null) window.clearTimeout(draftPersistTimerRef.current);
+    setRecoverableDraft(null);
     resetDraft();
+    removeStorage(editorDraftStorageKey);
     const nextTargetId = createDraftTaskTargetId();
     writeJsonStorage(CREATE_TASK_TARGET_STORAGE_KEY, nextTargetId);
     setDraftTaskTargetId(nextTargetId);
     pendingMath3ClassificationJobsRef.current.clear();
     setHasProblemChanges(true);
+  };
+
+  const handleClear = () => {
+    if (isSaving) return;
+    const hasContent = hasRecoverableEditorContent({ noteType, title, subject, tagInput, content, videos, problems, coverImage });
+    if (hasContent) {
+      setShowClearConfirm(true);
+      return;
+    }
+    clearEditorDraft();
   };
 
   // Editor toolbar handlers - only complex operations remain
@@ -526,11 +781,12 @@ function CreateEditorPage() {
             <p className="text-sm text-on-surface-variant">{loadError}</p>
             <button
               type="button"
-              onClick={() => router.push("/notes")}
+              onClick={() => router.push(returnPath)}
               className="control-button px-4 py-2 text-sm"
             >
               返回笔记列表
             </button>
+            <button type="button" onClick={() => window.location.reload()} className="control-button control-button-primary ml-2 min-h-11 px-4 text-sm">重新加载</button>
           </div>
         </main>
     );
@@ -548,13 +804,33 @@ function CreateEditorPage() {
           className="command-bar sticky top-20 z-30 mb-5 p-3"
         >
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="min-w-0">
-              <p className="text-xs font-medium text-on-surface-variant">
-                {isEditMode ? "正在编辑" : "新建内容"} · {typeMap[noteType]}
-              </p>
-              <h1 className="truncate font-headline text-2xl font-bold text-on-surface">
-                {title.trim() || `${isEditMode ? "未命名" : "创建新"}${typeMap[noteType]}`}
-              </h1>
+            <div className="flex min-w-0 items-start gap-3">
+              <button
+                type="button"
+                onClick={handleBack}
+                className="control-button mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center p-0"
+                aria-label="返回笔记列表"
+                title="返回笔记列表"
+              >
+                <ArrowLeft className="h-4 w-4" />
+              </button>
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2 text-xs font-medium text-on-surface-variant">
+                  <span>{isEditMode ? "正在编辑" : "新建内容"} · {typeMap[noteType]}</span>
+                  <span className="text-outline-variant">/</span>
+                  <span aria-live="polite" className={`inline-flex items-center gap-1 ${draftState === "dirty" ? "text-amber-700" : draftState === "error" ? "text-red-600" : "text-emerald-700"}`}>
+                    {draftState === "dirty" ? <AlertTriangle className="h-3.5 w-3.5" /> : draftState === "error" ? <AlertTriangle className="h-3.5 w-3.5" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
+                    {draftState === "dirty" ? "有未保存修改" : draftState === "error" ? "保存失败，可重试" : lastSavedAt ? `已保存 ${lastSavedAt.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}` : "草稿已就绪"}
+                  </span>
+                </div>
+                <h1 className="truncate font-headline text-2xl font-bold text-on-surface">
+                  {title.trim() || `${isEditMode ? "未命名" : "创建新"}${typeMap[noteType]}`}
+                </h1>
+                <p className="mt-1 hidden items-center gap-1 text-xs text-on-surface-variant/65 sm:flex">
+                  <Keyboard className="h-3.5 w-3.5" />
+                  {saveShortcutLabel} 保存 · 返回会保留当前上下文
+                </p>
+              </div>
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <button
@@ -577,6 +853,17 @@ function CreateEditorPage() {
           </div>
         </motion.div>
 
+        {recoverableDraft && (
+          <section role="status" className="surface-panel mb-5 space-y-3 border-amber-500/30 p-4">
+            <p className="text-sm font-semibold text-on-surface">发现本机未保存的草稿</p>
+            <p className="text-sm leading-6 text-on-surface-variant">当前显示的是已保存版本。确认后可恢复本机草稿，避免旧草稿自动覆盖最新内容。</p>
+            <div className="flex flex-wrap gap-2">
+              <button type="button" className="control-button control-button-primary min-h-11 px-4 text-sm" onClick={() => { applyDraft(recoverableDraft); setHasProblemChanges(true); setRecoverableDraft(null); }}>恢复本机草稿</button>
+              <button type="button" className="control-button min-h-11 px-4 text-sm" onClick={() => { removeStorage(editorDraftStorageKey); setRecoverableDraft(null); }}>继续使用已保存版本</button>
+            </div>
+          </section>
+        )}
+
         {/* Type Selector */}
         <motion.div
           variants={surfaceMotion}
@@ -591,7 +878,9 @@ function CreateEditorPage() {
               {(["note", "problem", "essay"] as NoteType[]).map((type) => (
                 <button
                   key={type}
-                  onClick={() => setNoteType(type)}
+                  type="button"
+                  onClick={() => handleTypeChange(type)}
+                  aria-pressed={noteType === type}
                   className={`control-button h-9 min-h-0 px-4 text-sm ${
                     noteType === type ? "control-button-primary" : ""
                   }`}
@@ -601,6 +890,37 @@ function CreateEditorPage() {
               ))}
             </div>
           </div>
+          {pendingTypeChange && (
+            <motion.div
+              initial={{ opacity: 0, y: -6 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="mt-2 flex flex-col gap-3 rounded-lg border border-primary/15 bg-primary/5 px-3 py-3 text-sm text-on-surface-variant sm:flex-row sm:items-center sm:justify-between"
+              role="status"
+            >
+              <div className="flex items-start gap-2">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+                <p>
+                  切换为「{typeMap[pendingTypeChange]}」后，当前内容会按新类型保存。
+                </p>
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setPendingTypeChange(null)}
+                  className="control-button h-9 min-h-0 px-3 text-xs"
+                >
+                  取消
+                </button>
+                <button
+                  type="button"
+                  onClick={confirmTypeChange}
+                  className="control-button control-button-primary h-9 min-h-0 px-3 text-xs"
+                >
+                  继续切换
+                </button>
+              </div>
+            </motion.div>
+          )}
         </motion.div>
 
         {/* Title Input */}
@@ -611,10 +931,11 @@ function CreateEditorPage() {
           transition={{ delay: 0.06, duration: uiMotion.duration.page, ease: uiMotion.ease.emphasized }}
           className="mb-4"
         >
-          <label className="mb-2 block text-sm font-medium text-on-surface-variant">
+          <label htmlFor="note-title" className="mb-2 block text-sm font-medium text-on-surface-variant">
             标题
           </label>
           <input
+            id="note-title"
             type="text"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
@@ -635,6 +956,8 @@ function CreateEditorPage() {
             type="button"
             onClick={() => setShowMetaSection((value) => !value)}
             className="foldout-trigger px-3"
+            aria-expanded={showMetaSection}
+            aria-controls="create-metadata-panel"
           >
             <span className="inline-flex items-center gap-2">
               <SlidersHorizontal className="h-4 w-4" />
@@ -644,12 +967,16 @@ function CreateEditorPage() {
               {!isEssay && <span>{subjectMap[subject]}</span>}
               {tagInput.trim() && <span>{tagInput.split(/[,，]/).filter((tag) => tag.trim()).length} 个标签</span>}
               {coverImage && <span>有封面</span>}
-              {showMetaSection ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+              <ChevronDown className="motion-chevron h-4 w-4" />
             </span>
           </button>
 
-          {showMetaSection && (
-            <div className="mt-2 space-y-4 border-t border-outline-variant/10 p-3">
+          <AnimatedDisclosure
+            open={showMetaSection}
+            id="create-metadata-panel"
+            className="mt-2 border-t border-outline-variant/10"
+          >
+            <div className="space-y-4 p-3">
               <div className="grid gap-4 md:grid-cols-2">
                 {!isEssay && (
                   <div>
@@ -746,7 +1073,7 @@ function CreateEditorPage() {
                 )}
               </div>
             </div>
-          )}
+          </AnimatedDisclosure>
         </motion.section>
 
         {/* Content Editor / Problem Editor */}
@@ -794,20 +1121,24 @@ function CreateEditorPage() {
                     type="button"
                     onClick={() => setShowProblemReferencePicker((value) => !value)}
                     className={`control-button h-9 min-h-0 px-3 text-xs ${showProblemReferencePicker ? "control-button-selected" : ""}`}
+                    aria-expanded={showProblemReferencePicker}
+                    aria-controls="create-problem-reference-picker"
                   >
                     <Target className="h-3.5 w-3.5" />
                     题目引用
-                    {showProblemReferencePicker ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                    <ChevronDown className="motion-chevron h-3.5 w-3.5" />
                   </button>
                   {isEconomicsNote && (
                     <button
                       type="button"
                       onClick={() => setShowEconomicsGraphComposer((value) => !value)}
                       className={`control-button h-9 min-h-0 px-3 text-xs ${showEconomicsGraphComposer ? "control-button-selected" : ""}`}
+                      aria-expanded={showEconomicsGraphComposer}
+                      aria-controls="create-economics-graph-composer"
                     >
                       <LineChart className="h-3.5 w-3.5" />
                       曲线卡片
-                      {showEconomicsGraphComposer ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                      <ChevronDown className="motion-chevron h-3.5 w-3.5" />
                     </button>
                   )}
                   {/* Mode Toggle */}
@@ -849,20 +1180,24 @@ function CreateEditorPage() {
                 </div>
               </div>
 
-              <ProblemReferencePicker
-                isOpen={showProblemReferencePicker}
-                onInsert={handleInsertProblemReference}
-              />
+              <AnimatedDisclosure open={showProblemReferencePicker} id="create-problem-reference-picker">
+                <ProblemReferencePicker
+                  isOpen={true}
+                  onInsert={handleInsertProblemReference}
+                />
+              </AnimatedDisclosure>
 
-              {isEconomicsNote && showEconomicsGraphComposer && (
-                <EconomicsGraphComposer onInsert={handleInsertEconomicsGraphMarkdown} targetId={taskTargetId} />
+              {isEconomicsNote && (
+                <AnimatedDisclosure open={showEconomicsGraphComposer} id="create-economics-graph-composer">
+                  <EconomicsGraphComposer onInsert={handleInsertEconomicsGraphMarkdown} targetId={taskTargetId} />
+                </AnimatedDisclosure>
               )}
 
               {viewMode === "split" && (
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                   {/* Editor Panel */}
                   <div
-                    className="flex min-h-[640px] flex-col overflow-visible rounded-lg border border-outline-variant/20 bg-surface-container-low lg:h-[calc(100vh-260px)] lg:min-h-[560px]"
+                    className="flex min-h-[320px] flex-col overflow-visible rounded-lg border border-outline-variant/20 bg-surface-container-low lg:h-auto lg:min-h-[320px]"
                   >
                     {editorReady && (
                       <div className="sticky top-0 z-20 shrink-0 rounded-t-lg border-b border-outline-variant/20 bg-surface-container-low/95 backdrop-blur-md">
@@ -889,10 +1224,11 @@ function CreateEditorPage() {
                         content={content}
                         onChange={setContent}
                         onImageUpload={handlePastedEditorImageUpload}
-                        onReady={(editor) => {
+                      onReady={(editor) => {
                           setEditorReady(true);
                           setToolbarEditor(editor);
                         }}
+                        density="compact"
                         placeholder={isEssay ? "记录你的想法..." : "在此输入内容，支持 Markdown 语法..."}
                       />
                       {/* Character Count */}
@@ -908,7 +1244,7 @@ function CreateEditorPage() {
 
                   {/* Preview Panel */}
                   <div
-                    className="flex min-h-[640px] flex-col overflow-hidden rounded-lg border border-outline-variant/20 bg-surface-container-low lg:h-[calc(100vh-260px)] lg:min-h-[560px]"
+                    className="flex min-h-[320px] flex-col overflow-hidden rounded-lg border border-outline-variant/20 bg-surface-container-low lg:h-auto lg:min-h-[320px]"
                   >
                     {/* Preview Header */}
                     <div className="shrink-0 border-b border-outline-variant/20 px-4 py-2 flex items-center" style={{ minHeight: '48px' }}>
@@ -938,7 +1274,7 @@ function CreateEditorPage() {
 
               {viewMode === "editor" && (
                 <div
-                  className="flex min-h-[720px] flex-col overflow-visible rounded-lg border border-outline-variant/20 bg-surface-container-low lg:h-[calc(100vh-260px)] lg:min-h-[600px]"
+                    className="flex min-h-[320px] flex-col overflow-visible rounded-lg border border-outline-variant/20 bg-surface-container-low lg:h-auto lg:min-h-[320px]"
                 >
                   {editorReady && (
                     <div className="sticky top-0 z-20 shrink-0 rounded-t-lg border-b border-outline-variant/20 bg-surface-container-low/95 backdrop-blur-md">
@@ -964,10 +1300,11 @@ function CreateEditorPage() {
                       onChange={setContent}
                       onImageUpload={handlePastedEditorImageUpload}
                       onReady={(editor) => {
-                        setEditorReady(true);
-                        setToolbarEditor(editor);
-                      }}
-                      placeholder={isEssay ? "记录你的想法..." : "在此输入内容，支持 Markdown 语法..."}
+                          setEditorReady(true);
+                          setToolbarEditor(editor);
+                        }}
+                        density="compact"
+                        placeholder={isEssay ? "记录你的想法..." : "在此输入内容，支持 Markdown 语法..."}
                     />
                     <div className="flex justify-between items-center px-6 pb-3 text-xs text-on-surface-variant/60">
                       <span>
@@ -1007,6 +1344,8 @@ function CreateEditorPage() {
               type="button"
               onClick={() => setShowVideoSection((value) => !value)}
               className="foldout-trigger px-3"
+              aria-expanded={showVideoSection}
+              aria-controls="create-video-panel"
             >
               <span className="inline-flex items-center gap-2">
                 <VideoIcon className="h-4 w-4" />
@@ -1014,25 +1353,21 @@ function CreateEditorPage() {
               </span>
               <span className="compact-meta-row justify-end">
                 {videos.length > 0 && <span>{videos.length} 个视频</span>}
-                {showVideoSection ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                <ChevronDown className="motion-chevron h-4 w-4" />
               </span>
             </button>
 
-            {showVideoSection && (
-              <motion.div
-                variants={collapsibleMotion}
-                initial="initial"
-                animate="animate"
-                transition={{ duration: uiMotion.duration.reveal, ease: uiMotion.ease.emphasized }}
-                className="mt-2 border-t border-outline-variant/10 p-3 overscroll-contain"
-              >
+            <AnimatedDisclosure
+              open={showVideoSection}
+              id="create-video-panel"
+              className="mt-2 border-t border-outline-variant/10 p-3 overscroll-contain"
+            >
                 <Playlist
                   videos={videos}
                   onChange={setVideos}
                   editable={true}
                 />
-              </motion.div>
-            )}
+            </AnimatedDisclosure>
           </motion.div>
         )}
 
@@ -1062,6 +1397,26 @@ function CreateEditorPage() {
         }}
         onApply={handleApplyMarkdownReviewProposal}
       />
+      <ConfirmDialog
+        isOpen={showLeaveConfirm}
+        title="离开编辑页"
+        description="当前有未保存修改，离开前已保留本机草稿。下次返回创建页时可以继续恢复。"
+        confirmLabel="离开并保留草稿"
+        tone="primary"
+        onClose={() => setShowLeaveConfirm(false)}
+        onConfirm={confirmLeave}
+      />
+      <ConfirmDialog
+        isOpen={showClearConfirm}
+        title="清空当前内容"
+        description="这会清空当前编辑器里的内容，并重新开始一份草稿；已经保存到服务器的文章不会被删除。"
+        confirmLabel="清空内容"
+        onClose={() => setShowClearConfirm(false)}
+        onConfirm={() => {
+          setShowClearConfirm(false);
+          clearEditorDraft();
+        }}
+      />
     </main>
   );
 }
@@ -1069,7 +1424,15 @@ function CreateEditorPage() {
 export default function CreatePage() {
   return (
     <AdminGate>
-      <CreateEditorPage />
+      <Suspense fallback={<EditorModuleFallback label="正在准备编辑器..." />}>
+        <CreateEditorRoute />
+      </Suspense>
     </AdminGate>
   );
+}
+
+function CreateEditorRoute() {
+  const searchParams = useSearchParams();
+  const routeKey = `${searchParams.get("edit") ?? "new"}:${searchParams.get("import") ?? ""}`;
+  return <CreateEditorPage key={routeKey} />;
 }

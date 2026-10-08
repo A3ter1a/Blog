@@ -1,5 +1,5 @@
-import { PageLoadingSkeleton } from "@/components/ui/PageLoadingSkeleton";
+import { NotesDirectoryLoading } from "@/components/notes/NotesLoading";
 
 export default function NotesLoading() {
-  return <PageLoadingSkeleton title="正在加载笔记" />;
+  return <NotesDirectoryLoading />;
 }

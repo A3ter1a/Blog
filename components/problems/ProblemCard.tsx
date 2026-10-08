@@ -22,6 +22,9 @@ interface ProblemCardProps {
   canMark?: boolean;
   markDisabledTitle?: string;
   onToggleMarked?: () => void;
+  selectionMode?: boolean;
+  isSelected?: boolean;
+  onToggleSelect?: () => void;
 }
 
 type ProblemEditData = {
@@ -61,6 +64,9 @@ export function ProblemCard({
   canMark = false,
   markDisabledTitle = "登录管理员后可以标记题目",
   onToggleMarked,
+  selectionMode = false,
+  isSelected = false,
+  onToggleSelect,
 }: ProblemCardProps) {
   const [showAnswer, setShowAnswer] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
@@ -340,8 +346,20 @@ export function ProblemCard({
           </div>
         </div>
 
-        {(showMarkControl || onUpdate) && !isEditing && (
+        {(selectionMode || showMarkControl || onUpdate) && !isEditing && (
           <div className="flex flex-shrink-0 items-center gap-1.5">
+            {selectionMode && onToggleSelect && (
+              <label className="inline-flex h-9 w-9 cursor-pointer items-center justify-center rounded-lg border border-outline-variant/20 text-on-surface-variant transition-colors hover:border-primary/35 hover:text-primary has-[:checked]:border-primary/40 has-[:checked]:bg-primary/10 has-[:checked]:text-primary">
+                <input
+                  type="checkbox"
+                  checked={isSelected}
+                  onChange={onToggleSelect}
+                  aria-label={`选择第 ${index + 1} 题`}
+                  className="sr-only"
+                />
+                <Check className={`h-4 w-4 ${isSelected ? "opacity-100" : "opacity-25"}`} />
+              </label>
+            )}
             {showMarkControl && (
               <button
                 type="button"

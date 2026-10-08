@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { ChevronDown } from "lucide-react";
 import { useClickOutside } from "@/hooks/useClickOutside";
 import { dropdownMotion, uiMotion } from "@/lib/motion";
+import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
 
 interface SelectOption {
   value: string;
@@ -20,6 +21,7 @@ interface CustomSelectProps {
 }
 
 export function CustomSelect({ options, value, onChange, placeholder = "请选择", className = "" }: CustomSelectProps) {
+  const reducedMotion = usePrefersReducedMotion();
   const [isOpen, setIsOpen] = useState(false);
   const [focusedIndex, setFocusedIndex] = useState(-1);
   const containerRef = useClickOutside<HTMLDivElement>(() => setIsOpen(false), isOpen);
@@ -77,7 +79,7 @@ export function CustomSelect({ options, value, onChange, placeholder = "请选�
         </span>
         <motion.div
           animate={{ rotate: isOpen ? 180 : 0 }}
-          transition={{ duration: uiMotion.duration.fast, ease: uiMotion.ease.standard }}
+          transition={{ duration: reducedMotion ? 0 : uiMotion.duration.standard, ease: uiMotion.ease.emphasized }}
         >
           <ChevronDown className="w-4 h-4 text-on-surface-variant" />
         </motion.div>
@@ -91,7 +93,7 @@ export function CustomSelect({ options, value, onChange, placeholder = "请选�
             initial="initial"
             animate="animate"
             exit="exit"
-            transition={{ duration: uiMotion.duration.fast, ease: uiMotion.ease.emphasized }}
+            transition={{ duration: reducedMotion ? 0 : uiMotion.duration.standard, ease: uiMotion.ease.emphasized }}
             id={listboxId}
             role="listbox"
             className="absolute top-full left-0 right-0 mt-1 bg-surface-container-low rounded-lg shadow-elevated border border-outline-variant/10 overflow-hidden z-50"

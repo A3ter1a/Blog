@@ -3,7 +3,7 @@ import { createNoIndexMetadata } from "@/lib/site-metadata";
 
 export const metadata = createNoIndexMetadata({
   title: "数学训练",
-  description: "集中进入数学三自测、错题复盘、知识目录和 PDF 做题本。",
+  description: "按章节查找知识点，进入数学三计时自测；管理员还可复盘、导出做题本和核对 OCR。",
   path: "/tools/math-training",
 });
 

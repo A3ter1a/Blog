@@ -1016,6 +1016,33 @@ test("消息中心接入真实 AI 待审核提案并提供精确审核入口", (
   assert.match(reviewEntry, /AI 内容审核/);
 });
 
+test("消息中心隔离实验台固定覆盖八类验收状态", () => {
+  const center = readFileSync(resolve("components/jobs/JobCenter.tsx"), "utf8");
+  const lab = readFileSync(resolve("app/ui-lab/message-center/page.tsx"), "utf8");
+
+  for (const marker of [
+    "fixture-queued",
+    "fixture-running",
+    "fixture-failed",
+    "fixture-unclaimed",
+    "fixture-claimed",
+    "JobCenterFixtureState",
+    'state === "empty"',
+    'state === "loading"',
+    'fixtureState === "sync-error"',
+    "usePrefersReducedMotion",
+    "useDialogFocus",
+    "aria-modal=\"true\"",
+  ]) assert.match(center, new RegExp(marker.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")), marker);
+  assert.match(center, /const motionDuration = reducedMotion \? 0 : 0\.24/);
+  assert.match(center, /const overlayTransition = \{ duration: reducedMotion \? 0 : 0\.18/);
+  assert.match(center, /const drawerTransition = reducedMotion/);
+
+  for (const state of ["state=loading", "state=empty", "state=sync-error"]) {
+    assert.match(lab, new RegExp(state), state);
+  }
+});
+
 test("数学三试卷生成登记为可恢复、可取消的持久任务", () => {
   const component = readFileSync(resolve("components/tools/Math3SelfTest.tsx"), "utf8");
   const center = readFileSync(resolve("components/jobs/JobCenter.tsx"), "utf8");
@@ -1522,7 +1549,7 @@ test("模型路由按任务分层且不虚构未接入供应商", () => {
     provider: "deepseek", model: "deepseek-v4-pro", reason: "复杂推理与经济学串联优先质量",
   });
   assert.equal(resolveAIProviderRoute("vision_ocr").provider, "qwen");
-  assert.equal(resolveAIProviderRoute("fast_retrieval").model, "deepseek-v4-flash");
+  assert.equal(resolveAIProviderRoute("fast_retrieval").model, "deepseek-flash");
 });
 
 test("RAG 同 checksum 不重建，变更时只创建下一 source version", () => {
@@ -1615,6 +1642,14 @@ test("管理员运行时真源是 admin_users 而不是环境邮箱名单", () =
   assert.equal(auth.includes("createAuthenticatedServerClient(req)"), true);
   assert.equal(auth.includes("ADMIN_EMAILS"), false);
   assert.equal(auth.includes("isServerAdminEmail"), false);
+});
+
+test("Windows 开发服务会继承已启用的系统代理访问 Supabase", () => {
+  const launcher = readFileSync(resolve("scripts/next-runtime-env.mjs"), "utf8");
+  assert.match(launcher, /ProxyEnable/);
+  assert.match(launcher, /ProxyServer/);
+  assert.match(launcher, /NODE_USE_ENV_PROXY/);
+  assert.match(readFileSync(resolve("scripts/run-next-start.mjs"), "utf8"), /createNextRuntimeEnv/);
 });
 
 test("WP1-C 迁移保持存量 notes 且延期数学来源", () => {
@@ -1778,7 +1813,10 @@ test("英语主观题 AI 建议会被限幅且必须经 user_final 才能进入�
 test("学习助手入口只对已确认管理员渲染", () => {
   const dock = readFileSync(resolve("components/ai-assistant/AssistantDock.tsx"), "utf8");
   assert.equal(dock.includes("useAdminAuth()"), true);
-  assert.equal(dock.includes("if (authLoading || !isAdmin || !noteId || !open) return null"), true);
+  // Keep the auth and note gates, but allow `open=false` to reach
+  // AnimatePresence so the assistant can finish its exit transition.
+  assert.equal(dock.includes("if (authLoading || !isAdmin || !noteId) return null"), true);
+  assert.equal(dock.includes("<AnimatePresence>"), true);
 });
 
 test("管理员缓存不参与首帧渲染，避免登录导航产生水合分叉", () => {
@@ -1927,7 +1965,7 @@ test("登录页和 Supabase client 强制执行管理员与学科会话隔离", 
 test("设置页为管理员和 AI 学科账号提供本地退出并清空客户端状态", () => {
   const settings = readFileSync(resolve("components/layout/SettingsPanel.tsx"), "utf8");
   const login = readFileSync(resolve("app/login/page.tsx"), "utf8");
-  assert.match(settings, /const \{ loading: authLoading, user, isAdmin \} = useAdminAuth\(\)/);
+  assert.match(settings, /const \{ loading: authLoading, user, isAdmin(?:, retryable: authRetryable)? \} = useAdminAuth\(\)/);
   assert.match(settings, /auth\.signOut\(\{ scope: "local" \}\)/);
   assert.match(settings, /clearActiveAiAccountSlot\(\)/);
   assert.match(settings, /window\.location\.href = "\/"/);
@@ -2374,6 +2412,35 @@ test("WP4 笔记库与工具入口使用连续索引而非重复悬浮卡片", (
   assert.equal(toolHub.includes("catalog-row"), true);
   assert.equal(css.includes(".catalog-row"), true);
   assert.equal(css.includes(".library-card"), true);
+});
+
+test("笔记卡片滚动入场不隐藏可见内容", () => {
+  const noteCard = readFileSync(resolve("components/notes/NoteCard.tsx"), "utf8");
+  const css = readFileSync(resolve("app/globals.css"), "utf8");
+
+  assert.equal(noteCard.includes("opacity: [0, 1]"), false);
+  assert.equal(noteCard.includes("animate(card, { y: [10, 0], scale: [0.995, 1] }"), true);
+  assert.equal(css.includes(".library-card {\n  content-visibility: auto"), false);
+  assert.equal(css.includes("contain-intrinsic-size: 22rem"), false);
+});
+
+test("动效尊重 reduced-motion 且笔记性能探针从 observer 读取长任务", () => {
+  const css = readFileSync(resolve("app/globals.css"), "utf8");
+  const motionHook = readFileSync(resolve("hooks/usePrefersReducedMotion.ts"), "utf8");
+  const pageTransition = readFileSync(resolve("components/layout/PageTransition.tsx"), "utf8");
+  const jobCenter = readFileSync(resolve("components/jobs/JobCenter.tsx"), "utf8");
+  const perfProbe = readFileSync(resolve("components/performance/NotesPerfProbe.tsx"), "utf8");
+
+  assert.match(css, /@media \(prefers-reduced-motion: reduce\)/);
+  assert.match(css, /animation-duration: 1ms !important/);
+  assert.match(css, /transition-duration: 1ms !important/);
+  assert.match(motionHook, /useSyncExternalStore/);
+  assert.match(motionHook, /\(\) => true/);
+  assert.match(pageTransition, /usePrefersReducedMotion/);
+  assert.match(jobCenter, /usePrefersReducedMotion/);
+  assert.match(perfProbe, /observeMetric\("longtask", \(entry\) =>/);
+  assert.match(perfProbe, /longTaskDurations\.push\(entry\.duration\)/);
+  assert.equal(perfProbe.includes('performance.getEntriesByType("longtask")'), false);
 });
 
 test("笔记目录按人工与 AI 来源原位切换且缓存严格隔离", () => {

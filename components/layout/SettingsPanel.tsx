@@ -4,22 +4,23 @@ import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Upload, Type, ListTree, Eye, AlignLeft, XCircle, RotateCcw, Columns3, MonitorCog, Sun, Moon, UserRound, LogOut, Loader2 } from "lucide-react";
+import { X, Upload, Download, Type, ListTree, Eye, AlignLeft, XCircle, RotateCcw, Columns3, MonitorCog, Sun, Moon, UserRound, LogOut, Loader2, SlidersHorizontal } from "lucide-react";
 import type { Profile } from "@/lib/types";
 import { DEFAULT_PROFILE } from "@/lib/profile";
 import { getSupabase, profileApi } from "@/lib/supabase";
-import { useReadingPreferences, TOCPosition, ContentWidth } from "@/lib/useReadingPreferences";
+import { useReadingPreferences, TOCPosition, ContentWidth, MotionPreference } from "@/lib/useReadingPreferences";
 import { ParsedNote, detectFormat, importFromJSON, importFromMarkdown, importFromObsidian } from "@/lib/import";
 import { ImportPreview } from "@/components/export/ImportPreview";
 import { ProfileEditor } from "@/components/settings/ProfileEditor";
 import { AISettings } from "@/components/settings/AISettings";
-import { useAdminAuth } from "@/hooks/useAdminAuth";
+import { recheckAdminAuth, useAdminAuth, useLocalReviewMode } from "@/hooks/useAdminAuth";
 import { useToast } from "@/components/ui/Toast";
 import { collapsibleMotion, overlayMotion, uiMotion } from "@/lib/motion";
 import { setThemePreference, useThemePreference } from "@/components/layout/ThemeController";
 import type { ThemePreference } from "@/lib/theme-contract";
 import { useAiAccountSlot } from "@/hooks/useAiAccountSlot";
 import { useDialogFocus } from "@/hooks/useDialogFocus";
+import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
 import {
   AI_ACCOUNT_SLOT_CONFIG,
   clearActiveAiAccountSlot,
@@ -36,9 +37,11 @@ interface SettingsPanelProps {
 const MAX_IMPORT_FILE_BYTES = 10 * 1024 * 1024;
 
 export function SettingsPanel({ isOpen, onClose, mode = "all" }: SettingsPanelProps) {
-  const { preferences, updatePreference, resetPreferences } = useReadingPreferences();
+  const reducedMotion = usePrefersReducedMotion();
+  const { preferences, updatePreference, resetPreferences, importPreferences } = useReadingPreferences();
   const themePreference = useThemePreference();
-  const { loading: authLoading, user, isAdmin } = useAdminAuth();
+  const { loading: authLoading, user, isAdmin, retryable: authRetryable } = useAdminAuth();
+  const isReviewMode = useLocalReviewMode();
   const accountSlot = useAiAccountSlot();
   const toast = useToast();
   const [portalRoot] = useState<HTMLElement | null>(() => (
@@ -53,6 +56,7 @@ export function SettingsPanel({ isOpen, onClose, mode = "all" }: SettingsPanelPr
   const [isSigningOut, setIsSigningOut] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const readingPreferencesInputRef = useRef<HTMLInputElement>(null);
 
   useDialogFocus({
     isOpen,
@@ -154,6 +158,40 @@ export function SettingsPanel({ isOpen, onClose, mode = "all" }: SettingsPanelPr
     e.target.value = '';
   };
 
+  const handleResetReadingPreferences = () => {
+    resetPreferences();
+    toast.success("阅读设置已恢复默认值");
+  };
+
+  const handleExportReadingPreferences = () => {
+    const blob = new Blob([JSON.stringify(preferences, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = "asteroid-reading-preferences.json";
+    anchor.click();
+    URL.revokeObjectURL(url);
+    toast.success("阅读设置已导出到本机");
+  };
+
+  const handleImportReadingPreferences = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    if (file.size > 128 * 1024) {
+      toast.error("设置文件过大，请选择有效的阅读设置 JSON");
+      return;
+    }
+
+    try {
+      const imported = JSON.parse(await file.text());
+      importPreferences(imported);
+      toast.success("阅读设置已导入并立即生效");
+    } catch {
+      toast.error("设置文件无法解析，请选择导出的 JSON 文件");
+    }
+  };
+
   const panel = (
     <AnimatePresence>
       {isOpen && (
@@ -171,10 +209,10 @@ export function SettingsPanel({ isOpen, onClose, mode = "all" }: SettingsPanelPr
 
           {/* Settings Panel */}
           <motion.div
-            initial={{ x: "100%" }}
+            initial={reducedMotion ? false : { x: "100%" }}
             animate={{ x: 0 }}
-            exit={{ x: "100%" }}
-            transition={uiMotion.spring.panel}
+            exit={{ x: reducedMotion ? 0 : "100%" }}
+            transition={reducedMotion ? { duration: 0 } : uiMotion.spring.panel}
             className="fixed inset-y-0 right-0 z-[110] flex h-dvh w-full max-w-md flex-col bg-surface-container-lowest shadow-elevated"
             ref={panelRef}
             role="dialog"
@@ -196,14 +234,19 @@ export function SettingsPanel({ isOpen, onClose, mode = "all" }: SettingsPanelPr
             </div>
 
             {/* Content */}
-            <div className="flex-1 overflow-y-auto p-6 space-y-8">
-              {mode === "all" && <section aria-labelledby="settings-account-title">
-                <h3 id="settings-account-title" className="mb-4 flex items-center gap-2 text-sm font-medium text-on-surface-variant">
+            <div className="flex-1 overflow-y-auto p-5 pb-8 sm:p-6 sm:pb-10">
+              {mode === "all" && <section id="settings-account-section" aria-labelledby="settings-account-title" className="mb-9 scroll-mt-4">
+                <h3 id="settings-account-title" className="mb-5 flex items-center gap-2 text-sm font-medium text-on-surface-variant">
                   <UserRound className="h-4 w-4" />
                   账号
                 </h3>
 
-                {authLoading ? (
+                {isReviewMode ? (
+                  <div className="rounded-xl border border-primary/20 bg-primary/5 p-4 text-sm leading-6 text-on-surface-variant">
+                    <p className="font-medium text-on-surface">本地审查模式</p>
+                    <p className="mt-1 leading-6">页面交互和本机草稿可以直接审查；保存、上传等服务器操作会在正式 Supabase 会话中启用。</p>
+                  </div>
+                ) : authLoading ? (
                   <div className="flex items-center gap-3 rounded-xl bg-surface-container-low p-4 text-sm text-on-surface-variant" aria-live="polite">
                     <Loader2 className="h-4 w-4 animate-spin text-primary" />
                     正在检查登录状态...
@@ -221,8 +264,17 @@ export function SettingsPanel({ isOpen, onClose, mode = "all" }: SettingsPanelPr
                             ? (isExpectedAiAccountEmail(accountSlot, user.email)
                               ? `${AI_ACCOUNT_SLOT_CONFIG[accountSlot].label}专属会话，只能编辑自己的内容并提交审核。`
                               : "当前账号与本窗口的学科会话槽不一致，请退出后从正确入口登录。")
-                            : (isAdmin ? "管理员账号，可维护博客内容与设置。" : "当前默认会话不是管理员账号。")}
+                            : (isAdmin ? "管理员账号，可维护博客内容与设置。" : authRetryable ? "已登录，管理员权限服务暂时不可用，可稍后重新检查。" : "当前默认会话不是管理员账号。")}
                         </p>
+                        {authRetryable && !accountSlot && (
+                          <button
+                            type="button"
+                            onClick={recheckAdminAuth}
+                            className="control-button motion-ui motion-interactive mt-3 min-h-10 px-3 text-xs"
+                          >
+                            重新检查管理员权限
+                          </button>
+                        )}
                       </div>
                     </div>
                     <button
@@ -255,13 +307,13 @@ export function SettingsPanel({ isOpen, onClose, mode = "all" }: SettingsPanelPr
               </section>}
 
               {/* Reading Preferences */}
-              <section>
-                <h3 className="text-sm font-medium text-on-surface-variant mb-4 flex items-center gap-2">
+              <section id="settings-reading-section" className="mt-2 scroll-mt-4">
+                <h3 className="mb-5 flex items-center gap-2 text-sm font-medium text-on-surface-variant">
                   <Eye className="w-4 h-4" />
                   阅读体验
                 </h3>
 
-                <div className="space-y-4">
+                <div className="space-y-5">
                   {/* Font Size */}
                   <div>
                     <div className="flex items-center justify-between mb-2">
@@ -335,6 +387,7 @@ export function SettingsPanel({ isOpen, onClose, mode = "all" }: SettingsPanelPr
                         <button
                           key={option.value}
                           onClick={() => updatePreference("contentWidth", option.value)}
+                          aria-pressed={preferences.contentWidth === option.value}
                           className={`motion-ui motion-interactive min-h-11 rounded-lg px-3 py-2 text-sm font-medium ${
                             preferences.contentWidth === option.value
                               ? "bg-primary text-on-primary"
@@ -362,6 +415,7 @@ export function SettingsPanel({ isOpen, onClose, mode = "all" }: SettingsPanelPr
                         <button
                           key={option.value}
                           onClick={() => updatePreference("tocPosition", option.value)}
+                          aria-pressed={preferences.tocPosition === option.value}
                           className={`motion-ui motion-interactive min-h-11 rounded-lg px-3 py-2 text-sm font-medium ${
                             preferences.tocPosition === option.value
                               ? "bg-primary text-on-primary"
@@ -381,6 +435,10 @@ export function SettingsPanel({ isOpen, onClose, mode = "all" }: SettingsPanelPr
                       <span className="text-sm font-medium text-on-surface">阅读进度条</span>
                     </div>
                     <button
+                      type="button"
+                      role="switch"
+                      aria-label="阅读进度条"
+                      aria-checked={preferences.showProgressBar}
                       onClick={() => updatePreference("showProgressBar", !preferences.showProgressBar)}
                       className={`motion-ui motion-interactive w-full flex items-center justify-between px-4 py-3 rounded-xl ${
                         preferences.showProgressBar
@@ -392,14 +450,15 @@ export function SettingsPanel({ isOpen, onClose, mode = "all" }: SettingsPanelPr
                         {preferences.showProgressBar ? "已开启" : "已关闭"}
                       </span>
                       <div
+                        aria-hidden="true"
+                        data-switch-checked={preferences.showProgressBar}
+                        data-switch-size="compact"
                         className={`motion-ui w-10 h-6 rounded-full flex items-center ${
                           preferences.showProgressBar ? "bg-primary" : "bg-surface-container-highest"
                         }`}
                       >
                         <div
-                          className={`motion-ui w-4 h-4 rounded-full bg-on-primary mx-1 ${
-                            preferences.showProgressBar ? "ml-5" : "ml-1"
-                          }`}
+                          className="motion-switch-thumb ml-1 h-4 w-4 rounded-full bg-on-primary"
                         />
                       </div>
                     </button>
@@ -407,12 +466,31 @@ export function SettingsPanel({ isOpen, onClose, mode = "all" }: SettingsPanelPr
 
                   <button
                     type="button"
-                    onClick={resetPreferences}
+                    onClick={handleResetReadingPreferences}
                     className="motion-ui motion-interactive flex w-full items-center justify-center gap-2 rounded-xl border border-outline-variant/20 bg-surface-container-low px-4 py-3 text-sm font-medium text-on-surface-variant hover:border-primary/20 hover:bg-primary/5 hover:text-primary"
                   >
                     <RotateCcw className="h-4 w-4" />
                     恢复阅读默认值
                   </button>
+
+                  <div className="rounded-xl border border-outline-variant/15 bg-surface-container-low p-4">
+                    <div className="flex items-start gap-3">
+                      <SlidersHorizontal className="mt-0.5 h-4 w-4 shrink-0 text-on-surface-variant" />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium text-on-surface">迁移阅读设置</p>
+                        <p className="mt-1 text-xs leading-5 text-on-surface-variant/75">在不同设备之间带走字号、行距、正文宽度和目录位置。文件只在你选择后读入本机。</p>
+                        <div className="mt-3 grid grid-cols-2 gap-2">
+                          <button type="button" onClick={handleExportReadingPreferences} className="motion-ui motion-interactive inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-surface-container-high px-3 text-sm font-medium text-on-surface-variant hover:bg-surface-container-highest hover:text-on-surface">
+                            <Download className="h-4 w-4" />导出设置
+                          </button>
+                          <button type="button" onClick={() => readingPreferencesInputRef.current?.click()} className="motion-ui motion-interactive inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-primary px-3 text-sm font-medium text-on-primary hover:bg-primary/90">
+                            <Upload className="h-4 w-4" />导入设置
+                          </button>
+                        </div>
+                        <input ref={readingPreferencesInputRef} type="file" accept="application/json,.json" onChange={handleImportReadingPreferences} className="hidden" />
+                      </div>
+                    </div>
+                  </div>
 
                   <div className="rounded-xl border border-outline-variant/15 bg-surface-container-low p-4">
                     <div className="flex items-start gap-3">
@@ -431,8 +509,8 @@ export function SettingsPanel({ isOpen, onClose, mode = "all" }: SettingsPanelPr
                             onClick={() => updatePreference("showRoleplay", !preferences.showRoleplay)}
                             className="motion-ui motion-interactive relative flex h-11 w-12 shrink-0 items-center justify-center rounded-full"
                           >
-                            <span className={`motion-ui flex h-6 w-11 items-center rounded-full ${preferences.showRoleplay ? "bg-primary" : "bg-surface-container-highest"}`}>
-                              <span className={`motion-ui h-4 w-4 rounded-full bg-on-primary ${preferences.showRoleplay ? "ml-6" : "ml-1"}`} />
+                            <span aria-hidden="true" data-switch-checked={preferences.showRoleplay} className={`motion-ui flex h-6 w-11 items-center rounded-full ${preferences.showRoleplay ? "bg-primary" : "bg-surface-container-highest"}`}>
+                              <span className="motion-switch-thumb ml-1 h-4 w-4 rounded-full bg-on-primary" />
                             </span>
                           </button>
                         </div>
@@ -443,8 +521,8 @@ export function SettingsPanel({ isOpen, onClose, mode = "all" }: SettingsPanelPr
                 </div>
               </section>
 
-              {mode === "all" && <section>
-                <h3 className="mb-4 flex items-center gap-2 text-sm font-medium text-on-surface-variant">
+              {mode === "all" && <section id="settings-display-section" className="mt-10 scroll-mt-4">
+                <h3 className="mb-5 flex items-center gap-2 text-sm font-medium text-on-surface-variant">
                   <MonitorCog className="h-4 w-4" />
                   显示主题
                 </h3>
@@ -458,7 +536,8 @@ export function SettingsPanel({ isOpen, onClose, mode = "all" }: SettingsPanelPr
                       key={option.value}
                       type="button"
                       onClick={() => setThemePreference(option.value)}
-                      className={`flex min-h-16 flex-col items-center justify-center gap-1 border-r border-outline-variant/20 px-2 text-xs last:border-r-0 ${
+                      aria-pressed={themePreference === option.value}
+                      className={`motion-ui motion-interactive flex min-h-16 flex-col items-center justify-center gap-1 border-r border-outline-variant/20 px-2 text-xs last:border-r-0 ${
                         themePreference === option.value ? "bg-primary text-on-primary" : "text-on-surface-variant hover:bg-surface-container-low"
                       }`}
                     >
@@ -467,13 +546,43 @@ export function SettingsPanel({ isOpen, onClose, mode = "all" }: SettingsPanelPr
                     </button>
                   ))}
                 </div>
-                <p className="mt-3 text-xs leading-5 text-on-surface-variant/70">
+                <p className="mt-4 text-xs leading-5 text-on-surface-variant/70">
                   跟随日光会按北京当天的日出与日落时间自动切换，不读取定位权限。
                 </p>
+
+                <div className="mt-10 border-t border-outline-variant/15 pt-7">
+                  <div className="mb-4 flex items-center justify-between gap-3">
+                    <h4 className="text-sm font-medium text-on-surface">界面动效</h4>
+                    <span className="text-xs text-on-surface-variant/70">
+                      {preferences.motionPreference === "system" ? "跟随系统" : preferences.motionPreference === "reduced" ? "减少动效" : "完整动效"}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2" role="group" aria-label="界面动效">
+                    {([
+                      { value: "system", label: "跟随系统" },
+                      { value: "reduced", label: "减少动效" },
+                      { value: "full", label: "完整动效" },
+                    ] as { value: MotionPreference; label: string }[]).map((option) => (
+                      <button
+                        key={option.value}
+                        type="button"
+                        onClick={() => updatePreference("motionPreference", option.value)}
+                        aria-pressed={preferences.motionPreference === option.value}
+                        className={`motion-ui motion-interactive min-h-11 rounded-lg px-2 py-2 text-xs font-medium ${
+                          preferences.motionPreference === option.value
+                            ? "bg-primary text-on-primary"
+                            : "bg-surface-container-high text-on-surface-variant hover:bg-surface-container-highest"
+                        }`}
+                      >
+                        {option.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </section>}
 
               {mode === "all" && isAdmin && (
-                <>
+                <div id="settings-manage-section" className="mt-10 scroll-mt-4 space-y-10">
                   {/* Profile */}
                   <section>
                     <ProfileEditor profile={profile} onSave={handleSaveProfile} />
@@ -527,7 +636,7 @@ export function SettingsPanel({ isOpen, onClose, mode = "all" }: SettingsPanelPr
                   </AnimatePresence>
                 </div>
                   </section>
-                </>
+                </div>
               )}
             </div>
           </motion.div>

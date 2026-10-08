@@ -42,7 +42,7 @@ export async function callDeepSeek(
   model: string,
   messages: { role: string; content: string }[],
   options?: DeepSeekRequestOptions,
-): Promise<{ content: string; tokensUsed: number; finishReason?: string }> {
+): Promise<{ content: string; tokensUsed: number; finishReason?: string; model?: string }> {
   const body: Record<string, unknown> = {
     model,
     messages,
@@ -73,7 +73,12 @@ export async function callDeepSeek(
   const tokensUsed = data.usage?.total_tokens || 0;
 
   const finishReason = data.choices?.[0]?.finish_reason;
-  return { content, tokensUsed, ...(typeof finishReason === "string" ? { finishReason } : {}) };
+  return {
+    content,
+    tokensUsed,
+    ...(typeof finishReason === "string" ? { finishReason } : {}),
+    ...(typeof data.model === "string" ? { model: data.model } : {}),
+  };
 }
 
 /**

@@ -35,6 +35,7 @@ export function Navbar() {
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const mobileMenuRef = useRef<HTMLDivElement>(null);
   const mobileMenuCloseRef = useRef<HTMLButtonElement>(null);
+  const scrollFrameRef = useRef<number | null>(null);
   const isReaderRoute = /^\/notes\/(?:private\/)?[^/]+$/.test(pathname);
 
   useDialogFocus({
@@ -47,11 +48,26 @@ export function Navbar() {
   const visibleNavItems = navItems.filter((item) => isAdmin || !item.adminOnly);
 
   useEffect(() => {
-    const handleScroll = () => {
-      setScrolled(window.scrollY > 20);
+    const updateScrolledState = () => {
+      scrollFrameRef.current = null;
+      const nextScrolled = window.scrollY > 20;
+      setScrolled((current) => (current === nextScrolled ? current : nextScrolled));
     };
-    window.addEventListener("scroll", handleScroll);
-    return () => window.removeEventListener("scroll", handleScroll);
+
+    const handleScroll = () => {
+      if (scrollFrameRef.current !== null) return;
+      scrollFrameRef.current = window.requestAnimationFrame(updateScrolledState);
+    };
+
+    updateScrolledState();
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => {
+      window.removeEventListener("scroll", handleScroll);
+      if (scrollFrameRef.current !== null) {
+        window.cancelAnimationFrame(scrollFrameRef.current);
+        scrollFrameRef.current = null;
+      }
+    };
   }, []);
 
   useEffect(() => {

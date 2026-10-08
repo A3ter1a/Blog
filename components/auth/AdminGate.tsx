@@ -1,9 +1,11 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Loader2, LockKeyhole } from "lucide-react";
-import { useAdminAuth } from "@/hooks/useAdminAuth";
+import { recheckAdminAuth, useAdminAuth, useLocalReviewMode } from "@/hooks/useAdminAuth";
+import { getLoginReturnPath } from "@/lib/login-return";
 
 type AdminGateProps = {
   children: React.ReactNode;
@@ -11,7 +13,19 @@ type AdminGateProps = {
 
 export function AdminGate({ children }: AdminGateProps) {
   const pathname = usePathname();
-  const { loading, user, isAdmin } = useAdminAuth();
+  const reviewMode = useLocalReviewMode();
+  const { loading, user, isAdmin, error, retryable } = useAdminAuth();
+  const [returnPath, setReturnPath] = useState(() => getLoginReturnPath(pathname));
+  const retrying = loading && Boolean(user);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setReturnPath(getLoginReturnPath(`${pathname}${window.location.search}`));
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [pathname]);
+
+  if (reviewMode) return <>{children}</>;
 
   if (loading) {
     return (
@@ -36,7 +50,7 @@ export function AdminGate({ children }: AdminGateProps) {
             登录你的博客账号后即可继续，并保存个人学习记录或管理资料。
           </p>
           <Link
-            href={`/login?next=${encodeURIComponent(pathname)}`}
+            href={`/login?next=${encodeURIComponent(returnPath)}`}
             className="control-button control-button-primary min-h-11 px-5 py-2.5 text-sm"
           >
             登录后继续当前任务
@@ -53,16 +67,39 @@ export function AdminGate({ children }: AdminGateProps) {
           <div className="w-12 h-12 mx-auto rounded-full bg-red-50 flex items-center justify-center text-red-600">
             <LockKeyhole className="w-6 h-6" />
           </div>
-          <h1 className="text-xl font-bold text-on-surface font-headline">没有管理员权限</h1>
+          <h1 className="text-xl font-bold text-on-surface font-headline">
+            {retryable ? "管理员权限暂时无法确认" : "没有管理员权限"}
+          </h1>
           <p className="text-sm text-on-surface-variant">
-            当前账号不能创建、编辑或删除博客数据。
+            {retryable
+              ? (error ?? "管理员权限服务暂时不可用，请稍后重试。")
+              : "当前账号不能创建、编辑或删除博客数据。"}
           </p>
-          <Link
-            href="/"
-            className="control-button min-h-11 px-5 py-2.5 text-sm"
-          >
-            返回首页
-          </Link>
+          <div className="flex flex-wrap justify-center gap-2">
+            {retryable ? (
+              <button
+                type="button"
+                onClick={() => {
+                  recheckAdminAuth();
+                }}
+                disabled={retrying}
+                aria-busy={retrying}
+                className="control-button control-button-primary min-h-11 px-5 py-2.5 text-sm"
+              >
+                {retrying ? "正在重新检查…" : "重新检查管理员权限"}
+              </button>
+            ) : (
+              <Link
+                href={`/login?next=${encodeURIComponent(returnPath)}`}
+                className="control-button control-button-primary min-h-11 px-5 py-2.5 text-sm"
+              >
+                切换管理员账号
+              </Link>
+            )}
+            <Link href="/" className="control-button min-h-11 px-5 py-2.5 text-sm">
+              返回首页
+            </Link>
+          </div>
         </div>
       </main>
     );

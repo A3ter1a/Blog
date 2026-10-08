@@ -12,7 +12,7 @@ const RichTextEditorLazy = lazy(async () => {
 export const LazyRichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props, ref) => (
   <Suspense
     fallback={
-      <div className="flex min-h-[400px] items-center justify-center gap-2 p-6 text-sm text-on-surface-variant">
+      <div className={`flex items-center justify-center gap-2 p-6 text-sm text-on-surface-variant ${props.density === "compact" ? "min-h-[220px]" : "min-h-[280px]"}`}>
         <Loader2 className="h-4 w-4 animate-spin text-primary" />
         <span>正在加载正文编辑器...</span>
       </div>

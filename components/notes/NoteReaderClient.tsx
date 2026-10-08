@@ -4,7 +4,8 @@ import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
-import { AlertTriangle, ArrowLeft, Calendar, Tag, Edit2, Trash2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, BookOpen, BookMarked, ListTree, Loader2, Clock, Layers, MessageCircle, PanelLeftClose, PanelLeftOpen, Settings2, SlidersHorizontal } from "lucide-react";
+import { AnimatePresence, motion } from "framer-motion";
+import { AlertTriangle, ArrowLeft, Calendar, Tag, Edit2, Trash2, ChevronDown, ChevronLeft, ChevronRight, BookOpen, BookMarked, ListTree, ListChecks, Loader2, Clock, Layers, MessageCircle, PanelLeftClose, PanelLeftOpen, Settings2, SlidersHorizontal } from "lucide-react";
 import { notesApi } from "@/lib/supabase";
 import type { PublicAiProfile } from "@/lib/ai-profile";
 import { chaptersApi } from "@/lib/chapters-api";
@@ -24,11 +25,13 @@ import { ProblemList } from "@/components/problems/ProblemList";
 import { ChapterFilter } from "@/components/chapters/ChapterFilter";
 import { ProblemReferenceContent } from "@/components/problems/ProblemReferenceContent";
 import { TableOfContents } from "@/components/ui/TableOfContents";
-import { useReadingPreferences } from "@/lib/useReadingPreferences";
+import { getReadingWidthClass, useReadingPreferences } from "@/lib/useReadingPreferences";
 import { ReadingProgress } from "@/components/ui/ReadingProgress";
 import { CachedImage } from "@/components/ui/CachedImage";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
-import { PageLoadingSkeleton } from "@/components/ui/PageLoadingSkeleton";
+import { AnimatedDisclosure } from "@/components/ui/AnimatedDisclosure";
+import { NoteReaderLoading } from "@/components/notes/NotesLoading";
+import { useCompleteNoteNavigation } from "@/components/notes/NoteNavigation";
 import { useAdminAuth } from "@/hooks/useAdminAuth";
 import { useToast } from "@/components/ui/Toast";
 import { detectBookletSourceDrift, extractBookletSourceManifest, type BookletProblemSnapshot } from "@/lib/booklet-contract";
@@ -52,6 +55,8 @@ import { extractTocItems } from "@/lib/markdown";
 import { ReaderTocDrawer } from "@/components/notes/ReaderTocDrawer";
 import { useReadingPosition } from "@/hooks/useReadingPosition";
 import { useTabletLandscape } from "@/hooks/useTabletLandscape";
+import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
+import { uiMotion } from "@/lib/motion";
 
 function ReaderPanelLoading() {
   return (
@@ -175,15 +180,19 @@ export function NoteReaderClient({
   const [visibleProblemStarts, setVisibleProblemStarts] = useState<Record<string, number>>({});
   const [bookletDriftCount, setBookletDriftCount] = useState<number | null>(null);
   const [assistantOpen, setAssistantOpen] = useState(false);
+  const [assistantLayoutMode, setAssistantLayoutMode] = useState<"dock" | "directory">("dock");
   // Mount on first use, then preserve conversation state and exit animations.
   const [assistantLoadedNoteId, setAssistantLoadedNoteId] = useState<string | null>(null);
   const [assistantQuotedText, setAssistantQuotedText] = useState("");
+  const [problemSelectionMode, setProblemSelectionMode] = useState(false);
+  const [selectedProblemIds, setSelectedProblemIds] = useState<Set<string>>(() => new Set());
   const [readerDirectoriesHidden, setReaderDirectoriesHidden] = useState(false);
   const [tocDrawerOpen, setTocDrawerOpen] = useState(false);
   const [readerSettingsOpen, setReaderSettingsOpen] = useState(false);
   const [readerSettingsLoaded, setReaderSettingsLoaded] = useState(false);
   const [toolbarVisible, setToolbarVisible] = useState(true);
   const isTabletLandscape = useTabletLandscape();
+  const reducedMotion = usePrefersReducedMotion();
   const displayContent = useMemo(
     () => stripRedundantLeadingMarkdownTitle(note?.content ?? "", note?.title ?? ""),
     [note?.content, note?.title],
@@ -195,6 +204,8 @@ export function NoteReaderClient({
   const skipInitialChapterFetchRef = useRef(initialChaptersLoaded);
   const lastHashScrollRef = useRef("");
   const latestNoteLoadRef = useRef(0);
+  const assistantSelectionRef = useRef("");
+  const assistantClosingTimerRef = useRef<number | null>(null);
 
   useReadingPosition({
     noteId,
@@ -273,8 +284,10 @@ export function NoteReaderClient({
       setProblemGroupExpansion({});
        setVisibleProblemCounts({});
        setVisibleProblemStarts({});
-        setAssistantOpen(false);
-        setAssistantQuotedText("");
+      setAssistantOpen(false);
+      setAssistantQuotedText("");
+      setProblemSelectionMode(false);
+      setSelectedProblemIds(new Set());
         setReaderDirectoriesHidden(false);
         setTocDrawerOpen(false);
         setReaderSettingsOpen(false);
@@ -745,16 +758,41 @@ export function NoteReaderClient({
     }
   };
 
+  const directoryVisibleForAssistant = Boolean(
+    note
+      && !isTabletLandscape
+      && !readerDirectoriesHidden
+      && (note.type === "problem" ? showProblemTools : preferences.tocPosition !== "hidden"),
+  );
+
   const handleAssistantOpenChange = useCallback((nextOpen: boolean) => {
-    setAssistantOpen(nextOpen);
+    if (assistantClosingTimerRef.current !== null) {
+      window.clearTimeout(assistantClosingTimerRef.current);
+      assistantClosingTimerRef.current = null;
+    }
     if (nextOpen) {
       setAssistantLoadedNoteId(noteId);
-      if (!assistantOpen) readerDirectoriesBeforeAssistantRef.current = readerDirectoriesHidden;
-      setReaderDirectoriesHidden(true);
+      if (!assistantOpen) {
+        readerDirectoriesBeforeAssistantRef.current = readerDirectoriesHidden;
+        setAssistantLayoutMode(directoryVisibleForAssistant ? "directory" : "dock");
+        if (directoryVisibleForAssistant) setReaderDirectoriesHidden(true);
+      }
+      setAssistantOpen(true);
       return;
     }
+    setAssistantOpen(false);
     setReaderDirectoriesHidden(readerDirectoriesBeforeAssistantRef.current);
-  }, [assistantOpen, noteId, readerDirectoriesHidden]);
+    if (assistantLayoutMode === "directory") {
+      assistantClosingTimerRef.current = window.setTimeout(() => {
+        setAssistantLoadedNoteId(null);
+        assistantClosingTimerRef.current = null;
+      }, reducedMotion ? 0 : uiMotion.duration.reveal * 1000 + 40);
+    }
+  }, [assistantLayoutMode, assistantOpen, directoryVisibleForAssistant, noteId, readerDirectoriesHidden, reducedMotion]);
+
+  useEffect(() => () => {
+    if (assistantClosingTimerRef.current !== null) window.clearTimeout(assistantClosingTimerRef.current);
+  }, []);
 
   const captureAssistantSelection = useCallback(() => {
     const selection = window.getSelection();
@@ -762,24 +800,66 @@ export function NoteReaderClient({
     const anchorElement = selection?.anchorNode instanceof Element
       ? selection.anchorNode
       : selection?.anchorNode?.parentElement;
-    if (!selectedText || !anchorElement?.closest("[data-note-reader-content]")) {
-      setAssistantQuotedText("");
-      return;
+    if (selectedText && anchorElement?.closest("[data-note-reader-content]")) {
+      assistantSelectionRef.current = selectedText.slice(0, 1_600);
     }
-    setAssistantQuotedText(selectedText.slice(0, 1_600));
+    setAssistantQuotedText(assistantSelectionRef.current);
+  }, []);
+
+  useEffect(() => {
+    const handleSelectionChange = () => {
+      const selection = window.getSelection();
+      const selectedText = selection?.toString().replace(/\s+/g, " ").trim() ?? "";
+      const anchorElement = selection?.anchorNode instanceof Element
+        ? selection.anchorNode
+        : selection?.anchorNode?.parentElement;
+      if (selectedText && anchorElement?.closest("[data-note-reader-content]")) {
+        assistantSelectionRef.current = selectedText.slice(0, 1_600);
+      }
+    };
+    document.addEventListener("selectionchange", handleSelectionChange);
+    return () => document.removeEventListener("selectionchange", handleSelectionChange);
   }, []);
 
   const handleAssistantQuotedTextConsumed = useCallback(() => {
     setAssistantQuotedText("");
+    assistantSelectionRef.current = "";
   }, []);
+
+  const selectedProblems = useMemo(
+    () => allProblems.filter((problem) => selectedProblemIds.has(problem.id)),
+    [allProblems, selectedProblemIds],
+  );
+  const toggleProblemSelection = useCallback((problemId: string) => {
+    setSelectedProblemIds((current) => {
+      const next = new Set(current);
+      if (next.has(problemId)) next.delete(problemId); else next.add(problemId);
+      return next;
+    });
+  }, []);
+  const askSelectedProblems = useCallback(() => {
+    if (selectedProblems.length === 0) {
+      toast.info("先选择至少一道题");
+      return;
+    }
+    const quote = selectedProblems
+      .map((problem) => `第 ${allProblems.indexOf(problem) + 1} 题：${problem.question}`)
+      .join("\n\n")
+      .slice(0, 1_600);
+    assistantSelectionRef.current = quote;
+    setAssistantQuotedText(quote);
+    handleAssistantOpenChange(true);
+  }, [allProblems, handleAssistantOpenChange, selectedProblems, toast]);
 
   const handleRetryLoadNote = () => {
     setLoadError(null);
     setRetryToken((value) => value + 1);
   };
 
+  useCompleteNoteNavigation(noteId, !loading);
+
   if (loading) {
-    return <PageLoadingSkeleton title="正在加载笔记正文" variant="reader" />;
+    return <NoteReaderLoading backHref={backHref} />;
   }
 
   if (!note && loadError) {
@@ -817,14 +897,19 @@ export function NoteReaderClient({
   const enableEconomicsGraphs = note.subject === "economics" && !isProblem;
   const tabletArticleReader = isTabletLandscape && !isProblem;
   const showReaderSidebar = !tabletArticleReader && !readerDirectoriesHidden && (isProblem ? showProblemTools : preferences.tocPosition !== "hidden");
-  const readerWidthClass = preferences.contentWidth === "narrow"
-    ? "mx-auto max-w-[42rem]"
-    : preferences.contentWidth === "wide"
-      ? "mx-auto max-w-[56rem]"
-      : "mx-auto max-w-[45rem]";
+  const assistantDirectorySlotVisible = assistantLoadedNoteId === note.id && assistantLayoutMode === "directory";
+  const assistantDockOpen = assistantOpen && assistantLayoutMode === "dock";
+  const readerWidthClass = getReadingWidthClass(preferences.contentWidth);
   const readerFontSize = tabletArticleReader && preferences.fontSize === 16 ? 18 : preferences.fontSize;
   const readerLineHeight = tabletArticleReader && preferences.lineHeight === 1.72 ? 1.85 : preferences.lineHeight;
-  const contentColumnClass = showReaderSidebar ? "min-w-0 lg:col-span-9" : "min-w-0 lg:col-span-12";
+  const contentColumnClass = assistantDirectorySlotVisible
+    ? "min-w-0 lg:col-span-8 2xl:col-span-9"
+    : showReaderSidebar
+      ? "min-w-0 lg:col-span-9"
+      : "min-w-0 lg:col-span-12";
+  const readerLayoutTransition = reducedMotion
+    ? { duration: 0 }
+    : { duration: uiMotion.duration.reveal, ease: uiMotion.ease.emphasized };
   const contentOrderClass = !isProblem && preferences.tocPosition === "left" ? "lg:order-last" : "";
   const sidebarOrderClass = !isProblem && preferences.tocPosition === "left" ? "lg:order-first" : "";
   const markDisabledTitle = practiceStatusLoadState === "loading"
@@ -845,7 +930,7 @@ export function NoteReaderClient({
   };
 
   return (
-    <main className={`page-template-reader min-h-screen pb-20 pt-20 ${assistantOpen ? "note-reader-assistant-open" : ""} ${tabletArticleReader ? "is-tablet-landscape-reader" : ""}`} data-page-template="reader" data-assistant-open={assistantOpen || undefined}>
+    <main className={`page-template-reader min-h-screen pb-20 pt-20 ${assistantOpen ? "note-reader-assistant-open" : ""} ${tabletArticleReader ? "is-tablet-landscape-reader" : ""}`} data-page-template="reader" data-assistant-open={assistantOpen || undefined} data-assistant-layout={assistantOpen ? assistantLayoutMode : undefined}>
       {/* Reading Progress Bar */}
       {preferences.showProgressBar && <ReadingProgress />}
 
@@ -869,19 +954,6 @@ export function NoteReaderClient({
             <ArrowLeft className="h-4 w-4" />
             返回
           </Link>
-
-          {readerDirectoriesHidden && !assistantOpen && (
-            <button
-              type="button"
-              onClick={() => setReaderDirectoriesHidden(false)}
-              className="note-reader-directory-reveal"
-              title="显示目录栏"
-              aria-label="显示目录栏"
-            >
-              <PanelLeftOpen className="h-4 w-4" />
-              <span>目录</span>
-            </button>
-          )}
 
           <div className="flex flex-wrap items-center justify-end gap-2">
             {!isProblem && hasArticleToc && (
@@ -910,6 +982,18 @@ export function NoteReaderClient({
               </button>
             )}
             <div className="reader-toolbar__desktop-actions">
+              {readerDirectoriesHidden && !assistantOpen && (
+                <button
+                  type="button"
+                  onClick={() => setReaderDirectoriesHidden(false)}
+                  className="note-reader-directory-reveal"
+                  title="显示目录栏"
+                  aria-label="显示目录栏"
+                >
+                  <PanelLeftOpen className="h-4 w-4" />
+                  <span>目录</span>
+                </button>
+              )}
               {isAdmin && (
               <button
                 type="button"
@@ -986,7 +1070,7 @@ export function NoteReaderClient({
       {/* Cover Image (Collapsible) */}
       {note.coverImage && (
         <div className="page-frame page-frame--wide mb-6">
-          {isCoverExpanded && (
+          <AnimatedDisclosure open={isCoverExpanded} id="reader-cover">
             <div className="overflow-hidden rounded-2xl shadow-elevated">
               <CachedImage
                 src={note.coverImage}
@@ -994,23 +1078,15 @@ export function NoteReaderClient({
                 className="w-full object-cover max-h-[480px]"
               />
             </div>
-          )}
+          </AnimatedDisclosure>
           <button
             onClick={() => setIsCoverExpanded(!isCoverExpanded)}
             className="motion-ui motion-interactive mt-2 flex min-h-11 items-center gap-1 rounded-lg px-3 text-xs text-on-surface-variant hover:bg-primary/10 hover:text-primary"
             aria-expanded={isCoverExpanded}
+            aria-controls="reader-cover"
           >
-            {isCoverExpanded ? (
-              <>
-                <ChevronUp className="w-3 h-3" />
-                收起封面
-              </>
-            ) : (
-              <>
-                <ChevronDown className="w-3 h-3" />
-                展开封面
-              </>
-            )}
+            <ChevronDown className="motion-chevron h-3 w-3" />
+            {isCoverExpanded ? "收起封面" : "展开封面"}
           </button>
         </div>
       )}
@@ -1028,12 +1104,13 @@ export function NoteReaderClient({
       )}
 
       {/* Main Layout: Content + Sidebar */}
-      <div className="page-frame page-frame--wide grid grid-cols-1 gap-6 lg:grid-cols-12 lg:gap-8">
+      <motion.div layout transition={readerLayoutTransition} className={`reader-main-grid page-frame page-frame--wide grid grid-cols-1 gap-6 lg:grid-cols-12 lg:gap-8 ${assistantDockOpen ? "reader-main-grid--assistant-dock" : ""}`}>
         {/* Article Content */}
-        <div className={`${contentColumnClass} ${contentOrderClass}`}>
+        <motion.div layout transition={readerLayoutTransition} className={`${contentColumnClass} ${contentOrderClass}`} data-reader-article-column>
           {/* Article Header */}
           <header
-            className={`surface-panel reader-title-block p-6 sm:p-8 ${isProblem ? "" : readerWidthClass}`}
+            className={`surface-panel reader-title-block notes-reader-title-block p-6 sm:p-8 ${isProblem ? "" : readerWidthClass}`}
+            data-note-ready="true"
           >
             <div className="mb-4 flex flex-wrap items-center gap-2">
               <span
@@ -1157,6 +1234,29 @@ export function NoteReaderClient({
                   </div>
                 )}
 
+                <div className="mb-6 flex flex-wrap items-center gap-2 rounded-xl border border-outline-variant/15 bg-surface-container-lowest/55 px-3 py-2.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setProblemSelectionMode((current) => !current);
+                      if (problemSelectionMode) setSelectedProblemIds(new Set());
+                    }}
+                    className={`control-button min-h-10 gap-2 px-3 text-sm ${problemSelectionMode ? "control-button-selected" : ""}`}
+                    aria-pressed={problemSelectionMode}
+                  >
+                    <ListChecks className="h-4 w-4" />
+                    {problemSelectionMode ? "取消选择" : "选择题目"}
+                  </button>
+                  {problemSelectionMode && (
+                    <span className="text-sm text-on-surface-variant">已选 {selectedProblems.length} 题</span>
+                  )}
+                  {problemSelectionMode && selectedProblems.length > 0 && (
+                    <button type="button" onClick={askSelectedProblems} className="control-button control-button-primary ml-auto min-h-10 gap-2 px-3 text-sm">
+                      <MessageCircle className="h-4 w-4" />问选中题
+                    </button>
+                  )}
+                </div>
+
                 {/* Problem Cards - grouped by chapter or flat */}
                 {chapterGroups && !selectedChapterId ? (
                   <div className="space-y-10">
@@ -1179,7 +1279,7 @@ export function NoteReaderClient({
                           <button
                             type="button"
                             onClick={() => toggleProblemGroup(groupKey, isExpanded)}
-                            className="flex w-full items-center gap-3 px-4 py-4 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+                            className="motion-ui motion-disclosure-trigger flex w-full items-center gap-3 rounded-t-xl px-4 py-4 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
                             aria-expanded={isExpanded}
                             aria-controls={`problem-group-${groupKey}`}
                           >
@@ -1190,14 +1290,10 @@ export function NoteReaderClient({
                             <span className="text-xs font-semibold text-on-surface-variant">
                               {group.problems.length} 题
                             </span>
-                            {isExpanded ? (
-                              <ChevronUp className="h-4 w-4 shrink-0 text-on-surface-variant" />
-                            ) : (
-                              <ChevronDown className="h-4 w-4 shrink-0 text-on-surface-variant" />
-                            )}
+                            <ChevronDown className="motion-chevron h-4 w-4 shrink-0 text-on-surface-variant" />
                           </button>
-                          {isExpanded ? (
-                            <div id={`problem-group-${groupKey}`} className="space-y-6 border-t border-outline-variant/10 px-4 py-5">
+                          <AnimatedDisclosure open={isExpanded} id={`problem-group-${groupKey}`}>
+                            <div className="space-y-6 border-t border-outline-variant/10 px-4 py-5">
                               {visibleStart > 0 && (
                                 <button
                                   type="button"
@@ -1214,6 +1310,9 @@ export function NoteReaderClient({
                                   index={allProblems.indexOf(problem)}
                                   noteId={note?.id}
                                   onUpdate={isAdmin ? handleUpdateProblem : undefined}
+                                  selectionMode={problemSelectionMode}
+                                  isSelected={selectedProblemIds.has(problem.id)}
+                                  onToggleSelect={() => toggleProblemSelection(problem.id)}
                                   {...getProblemPracticeProps(problem)}
                                 />
                               ))}
@@ -1227,7 +1326,7 @@ export function NoteReaderClient({
                                 </button>
                               )}
                             </div>
-                          ) : null}
+                          </AnimatedDisclosure>
                         </section>
                       );
                     })}
@@ -1251,6 +1350,9 @@ export function NoteReaderClient({
                           index={allProblems.indexOf(problem)}
                           noteId={note?.id}
                           onUpdate={isAdmin ? handleUpdateProblem : undefined}
+                          selectionMode={problemSelectionMode}
+                          isSelected={selectedProblemIds.has(problem.id)}
+                          onToggleSelect={() => toggleProblemSelection(problem.id)}
                           {...getProblemPracticeProps(problem)}
                         />
                       ))}
@@ -1299,10 +1401,23 @@ export function NoteReaderClient({
               </>
             )}
           </article>
-        </div>
+        </motion.div>
 
         {/* Sidebar: Video Player + TOC (hidden when TOC is hidden) */}
-        {showReaderSidebar && (
+        {assistantDirectorySlotVisible ? (
+          <aside className={`reader-assistant-directory-slot min-w-0 lg:col-span-4 2xl:col-span-3 lg:min-w-[360px] ${sidebarOrderClass}`}>
+            <AssistantDock
+              key={`${note.id}-directory`}
+              noteId={note.id}
+              sourcePath={getNoteReadPath(note)}
+              open={assistantOpen}
+              onOpenChange={handleAssistantOpenChange}
+              quotedText={assistantQuotedText}
+              onQuotedTextConsumed={handleAssistantQuotedTextConsumed}
+              renderInline
+            />
+          </aside>
+        ) : showReaderSidebar ? (
           <aside className={`min-w-0 space-y-4 lg:col-span-3 lg:min-w-[280px] ${sidebarOrderClass}`}>
               {note.videos && note.videos.length > 0 && (
                 <section className="surface-panel p-4 overscroll-contain lg:sticky lg:top-28">
@@ -1343,8 +1458,8 @@ export function NoteReaderClient({
                 )}
               </section>
           </aside>
-        )}
-      </div>
+        ) : null}
+      </motion.div>
 
       {collectionNavigation && !isProblem && (
         <nav className={`reader-collection-nav ${readerWidthClass}`} aria-label="合集文章导航">
@@ -1374,10 +1489,9 @@ export function NoteReaderClient({
       <ReaderTocDrawer open={tocDrawerOpen && !isProblem && hasArticleToc} content={displayContent} onClose={() => setTocDrawerOpen(false)} />
       {readerSettingsLoaded && <SettingsPanel isOpen={readerSettingsOpen} onClose={() => setReaderSettingsOpen(false)} mode="reading" />}
 
-      {assistantLoadedNoteId === note.id && <AssistantDock
+      {assistantLoadedNoteId === note.id && assistantLayoutMode === "dock" && <AssistantDock
         key={note.id}
         noteId={note.id}
-        noteTitle={note.title}
         sourcePath={getNoteReadPath(note)}
         open={assistantOpen}
         onOpenChange={handleAssistantOpenChange}
@@ -1386,13 +1500,19 @@ export function NoteReaderClient({
       />}
 
       {/* Immersive Reading Mode */}
-      {isImmersiveMode && (
-          <div
-            className="fixed inset-0 z-[100] bg-surface-container-lowest overflow-y-auto"
+      <AnimatePresence>
+        {isImmersiveMode && (
+          <motion.div
+            className="immersive-reading-surface fixed inset-0 z-[100] overflow-y-auto bg-surface-container-lowest"
             role="dialog"
             aria-modal="true"
             aria-labelledby="immersive-note-title"
             tabIndex={-1}
+            data-immersive-mode="open"
+            initial={reducedMotion ? false : { opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={reducedMotion ? { opacity: 0 } : { opacity: 0 }}
+            transition={{ duration: reducedMotion ? 0 : uiMotion.duration.standard, ease: uiMotion.ease.standard }}
             onKeyDown={(event) => {
               if (event.key !== "Escape") return;
               event.preventDefault();
@@ -1402,8 +1522,11 @@ export function NoteReaderClient({
             onClick={() => setIsImmersiveMode(false)}
           >
             {/* Immersive Header */}
-            <div
-              className="sticky top-0 bg-surface-container-lowest/80 backdrop-blur-xl border-b border-outline-variant/10 z-10"
+            <motion.div
+              className="immersive-reading-header sticky top-0 z-10 border-b border-outline-variant/10 bg-surface-container-lowest/80 backdrop-blur-xl"
+              initial={reducedMotion ? false : { opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: reducedMotion ? 0 : uiMotion.duration.standard, delay: reducedMotion ? 0 : 0.04, ease: uiMotion.ease.standard }}
             >
               <div className="max-w-3xl mx-auto px-6 py-4 flex items-center justify-between">
                 <button
@@ -1429,12 +1552,15 @@ export function NoteReaderClient({
                   )}
                 </div>
               </div>
-            </div>
+            </motion.div>
 
             {/* Immersive Content */}
-            <div
-              className={`${readerWidthClass} px-6 py-12`}
+            <motion.div
+              className={`immersive-reading-content ${readerWidthClass} px-6 py-12`}
               onClick={(e) => e.stopPropagation()}
+              initial={reducedMotion ? false : { opacity: 0, y: 18 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: reducedMotion ? 0 : uiMotion.duration.reveal, delay: reducedMotion ? 0 : 0.08, ease: uiMotion.ease.emphasized }}
             >
               {/* Title */}
               <h1
@@ -1500,6 +1626,9 @@ export function NoteReaderClient({
                         index={allProblems.indexOf(problem)}
                         noteId={note?.id}
                         onUpdate={isAdmin ? handleUpdateProblem : undefined}
+                        selectionMode={problemSelectionMode}
+                        isSelected={selectedProblemIds.has(problem.id)}
+                        onToggleSelect={() => toggleProblemSelection(problem.id)}
                         {...getProblemPracticeProps(problem)}
                       />
                     ))}
@@ -1521,9 +1650,10 @@ export function NoteReaderClient({
 
               {/* Bottom spacer */}
               <div className="h-32" />
-            </div>
-          </div>
-      )}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </main>
   );
 }

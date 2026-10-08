@@ -4,15 +4,17 @@ import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import type { User } from "@supabase/supabase-js";
 import { getSupabase } from "@/lib/supabase";
-import { getCachedAuthSession } from "@/lib/fetch-with-auth";
+import { getCachedAuthSession, getFreshAuthSession } from "@/lib/fetch-with-auth";
 import { readJsonStorage, removeStorage, writeJsonStorage } from "@/lib/browser-storage";
 import { getActiveAiAccountSlot, getAuthCacheKey } from "@/lib/auth-session-slot";
+import { resolveAdminAuthCheck, type AdminAuthCheckResult } from "@/lib/auth-error";
 
 type AdminAuthState = {
   loading: boolean;
   user: User | null;
   isAdmin: boolean;
   error: string | null;
+  retryable: boolean;
 };
 
 type CachedAdminAuth = {
@@ -26,6 +28,7 @@ type CachedAdminAuth = {
 const ADMIN_AUTH_CACHE_KEY_BASE = "asteroid-admin-auth";
 const ADMIN_AUTH_CACHE_TTL_MS = 12 * 60 * 60 * 1000;
 const ADMIN_AUTH_REVALIDATE_INTERVAL_MS = 60 * 1000;
+const ADMIN_AUTH_RECHECK_EVENT = "asteroid:admin-auth-recheck";
 
 /**
  * Local-only review switch. It requires an explicit env flag and a localhost
@@ -58,13 +61,17 @@ export function useLocalReviewMode(): boolean {
   return enabled;
 }
 
+export function recheckAdminAuth(): void {
+  window.dispatchEvent(new Event(ADMIN_AUTH_RECHECK_EVENT));
+}
+
 let pendingAdminCheck: {
   userId: string;
   token: string;
-  promise: Promise<boolean>;
+  promise: Promise<AdminAuthCheckResult>;
 } | null = null;
 
-async function checkAdminOnServer(user: User, token: string): Promise<boolean> {
+async function checkAdminOnServer(user: User, token: string): Promise<AdminAuthCheckResult> {
   if (
     pendingAdminCheck
     && pendingAdminCheck.userId === user.id
@@ -78,7 +85,12 @@ async function checkAdminOnServer(user: User, token: string): Promise<boolean> {
       Authorization: `Bearer ${token}`,
     },
     cache: "no-store",
-  }).then((res) => res.ok);
+    signal: AbortSignal.timeout(15000),
+  }).then(async (res) => ({
+    ok: res.ok,
+    status: res.status,
+    payload: await res.json().catch(() => null),
+  }));
 
   pendingAdminCheck = { userId: user.id, token, promise };
 
@@ -157,14 +169,34 @@ function writeCachedAdminAuth(user: User, isAdmin: boolean): void {
 export function useAdminAuth(): AdminAuthState {
   const pathname = usePathname();
   const isUiLabPath = pathname.startsWith("/ui-lab/");
+  const isReviewMode = useLocalReviewMode();
   const [state, setState] = useState<AdminAuthState>({
     loading: true,
     user: null,
     isAdmin: false,
     error: null,
+    retryable: false,
   });
 
   useEffect(() => {
+    if (!isReviewMode) return;
+
+    // Review mode is a local UI-only session. Keep protected server routes
+    // unchanged, but let client gates render the page without a remote login.
+    const timer = window.setTimeout(() => {
+      setState({
+        loading: false,
+        user: null,
+        isAdmin: true,
+        error: null,
+        retryable: false,
+      });
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [isReviewMode]);
+
+  useEffect(() => {
+    if (isReviewMode) return;
     if (isUiLabPath) return;
 
     const aiAccountSlot = getActiveAiAccountSlot();
@@ -181,16 +213,26 @@ export function useAdminAuth(): AdminAuthState {
       fallbackIsAdmin?: boolean,
     ) {
       try {
-        const isAdmin = await checkAdminOnServer(user, token);
+        const result = await checkAdminOnServer(user, token);
 
         if (!mounted || latestCheckId !== checkId) return;
 
-        writeCachedAdminAuth(user, isAdmin);
+        const resolution = resolveAdminAuthCheck(result, fallbackIsAdmin);
+        if (resolution.cache === "positive") {
+          writeCachedAdminAuth(user, true);
+        } else if (resolution.cache === "clear") {
+          writeCachedAdminAuth(user, false);
+        }
+
+        // A transient server/network failure must not turn a previously valid
+        // administrator into a permanent 403. Keep a positive cached state
+        // while exposing a retryable error to the caller.
         setState({
           loading: false,
           user,
-          isAdmin,
-          error: isAdmin ? null : errorMessage,
+          isAdmin: resolution.isAdmin,
+          error: resolution.error,
+          retryable: resolution.retryable,
         });
       } catch (error) {
         if (!mounted || latestCheckId !== checkId) return;
@@ -200,11 +242,12 @@ export function useAdminAuth(): AdminAuthState {
           user,
           isAdmin: fallbackIsAdmin ?? false,
           error: error instanceof Error ? error.message : errorMessage,
+          retryable: true,
         });
       }
     }
 
-    function resolveAdminState(user: User | null, token: string | null, errorMessage?: string | null) {
+    function resolveAdminState(user: User | null, token: string | null, errorMessage?: string | null, forceCheck = false) {
       latestCheckId += 1;
       const checkId = latestCheckId;
 
@@ -216,6 +259,7 @@ export function useAdminAuth(): AdminAuthState {
           user,
           isAdmin: false,
           error: errorMessage ?? null,
+          retryable: false,
         });
         return;
       }
@@ -231,6 +275,7 @@ export function useAdminAuth(): AdminAuthState {
           user,
           isAdmin: false,
           error: errorMessage ?? null,
+          retryable: false,
         });
         return;
       }
@@ -242,9 +287,10 @@ export function useAdminAuth(): AdminAuthState {
           user,
           isAdmin: cached.isAdmin,
           error: errorMessage ?? null,
+          retryable: false,
         });
 
-        if (Date.now() - cached.checkedAt >= ADMIN_AUTH_REVALIDATE_INTERVAL_MS) {
+        if (forceCheck || Date.now() - cached.checkedAt >= ADMIN_AUTH_REVALIDATE_INTERVAL_MS) {
           void verifyAdminState(user, token, errorMessage ?? null, checkId, cached.isAdmin);
         }
         return;
@@ -256,11 +302,22 @@ export function useAdminAuth(): AdminAuthState {
           user,
           isAdmin: false,
           error: errorMessage ?? null,
+          retryable: false,
         });
       }
 
       void verifyAdminState(user, token, errorMessage ?? null, checkId);
     }
+
+    const handleRecheck = () => {
+      void getFreshAuthSession().then((session) => {
+        resolveAdminState(session?.user ?? null, session?.access_token ?? null, null, true);
+      }).catch(() => {
+        if (!mounted) return;
+        setState((current) => ({ ...current, loading: false, error: "暂时无法读取登录会话，请稍后重试。", retryable: true }));
+      });
+    };
+    window.addEventListener(ADMIN_AUTH_RECHECK_EVENT, handleRecheck);
 
     try {
       const supabase = getSupabase();
@@ -294,16 +351,28 @@ export function useAdminAuth(): AdminAuthState {
           user: null,
           isAdmin: false,
           error: message,
+          retryable: false,
         });
       }, 0);
     }
 
     return () => {
       mounted = false;
+      window.removeEventListener(ADMIN_AUTH_RECHECK_EVENT, handleRecheck);
       if (errorTimer !== undefined) window.clearTimeout(errorTimer);
       unsubscribe?.();
     };
-  }, [isUiLabPath]);
+  }, [isReviewMode, isUiLabPath]);
+
+  if (isReviewMode) {
+    return {
+      loading: false,
+      user: null,
+      isAdmin: true,
+      error: null,
+      retryable: false,
+    };
+  }
 
   return isUiLabPath ? { ...state, loading: false } : state;
 }

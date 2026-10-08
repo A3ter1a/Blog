@@ -5,6 +5,7 @@ import {
   Bookmark,
   BookOpen,
   Check,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Eye,
@@ -21,6 +22,7 @@ import {
 } from "lucide-react";
 import { MarkdownContent } from "@/components/ui/MarkdownContent";
 import { AnswerReveal } from "@/components/problems/AnswerReveal";
+import { AnimatedDisclosure } from "@/components/ui/AnimatedDisclosure";
 import { useToast } from "@/components/ui/Toast";
 import { useAdminAuth } from "@/hooks/useAdminAuth";
 import {
@@ -348,10 +350,12 @@ export function PracticeSession({
                 type="button"
                 onClick={() => setShowPracticeTools((value) => !value)}
                 className={`control-button h-9 px-3 text-xs ${showPracticeTools ? "control-button-selected" : ""}`}
+                aria-expanded={showPracticeTools}
+                aria-controls="practice-tools"
               >
                 <SlidersHorizontal className="h-3.5 w-3.5" />
                 练习设置
-                {showPracticeTools ? <ChevronLeft className="h-3.5 w-3.5 rotate-90" /> : <ChevronRight className="h-3.5 w-3.5 rotate-90" />}
+                <ChevronDown className="motion-chevron h-3.5 w-3.5" />
               </button>
             )}
             {onClose && (
@@ -370,7 +374,7 @@ export function PracticeSession({
       </div>
 
       <div className={`grid gap-5 p-4 lg:p-5 ${showPracticeTools ? "lg:grid-cols-[300px_1fr]" : ""}`}>
-        {showPracticeTools && (
+        <AnimatedDisclosure open={showPracticeTools} id="practice-tools" className="min-w-0">
         <aside className="space-y-4 lg:sticky lg:top-24 lg:self-start">
           {stats.total > 0 && (
             <div className="rounded-lg bg-surface-container-low p-4">
@@ -534,7 +538,7 @@ export function PracticeSession({
             </div>
           )}
         </aside>
-        )}
+        </AnimatedDisclosure>
 
         <div className="min-h-[520px] rounded-lg bg-surface-container-low p-3 sm:p-5">
           {isLoading ? (

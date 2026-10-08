@@ -14,21 +14,30 @@ export interface ReadingPreferences {
   tocPosition: TOCPosition;
   showProgressBar: boolean;
   showRoleplay: boolean;
+  motionPreference: MotionPreference;
 }
 
-const DEFAULT_PREFERENCES: ReadingPreferences = {
-  fontSize: 16,
-  lineHeight: 1.72,
+export const DEFAULT_READING_PREFERENCES: ReadingPreferences = {
+  fontSize: 18,
+  lineHeight: 1.78,
   contentWidth: "comfortable",
   tocPosition: "right",
   showProgressBar: true,
   showRoleplay: true,
+  motionPreference: "system",
+};
+
+const LEGACY_DEFAULT_PREFERENCES = {
+  fontSize: 16,
+  lineHeight: 1.72,
+  contentWidth: "comfortable" as const,
 };
 
 const STORAGE_KEY = "reading-preferences";
 const CHANGE_EVENT = "asteroid-reading-preferences-change";
 const TOC_POSITIONS: TOCPosition[] = ["left", "right", "hidden"];
 const CONTENT_WIDTHS: ContentWidth[] = ["narrow", "comfortable", "wide"];
+const MOTION_PREFERENCES: MotionPreference[] = ["system", "reduced", "full"];
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -38,16 +47,19 @@ function normalizePreferences(value: unknown): ReadingPreferences {
   const parsed = isRecord(value) ? value : {};
   const tocPosition = typeof parsed.tocPosition === "string" && TOC_POSITIONS.includes(parsed.tocPosition as TOCPosition)
     ? parsed.tocPosition as TOCPosition
-    : DEFAULT_PREFERENCES.tocPosition;
+    : DEFAULT_READING_PREFERENCES.tocPosition;
   const contentWidth = typeof parsed.contentWidth === "string" && CONTENT_WIDTHS.includes(parsed.contentWidth as ContentWidth)
     ? parsed.contentWidth as ContentWidth
-    : DEFAULT_PREFERENCES.contentWidth;
+    : DEFAULT_READING_PREFERENCES.contentWidth;
+  const motionPreference = typeof parsed.motionPreference === "string" && MOTION_PREFERENCES.includes(parsed.motionPreference as MotionPreference)
+    ? parsed.motionPreference as MotionPreference
+    : DEFAULT_READING_PREFERENCES.motionPreference;
   const fontSize = typeof parsed.fontSize === "number" && Number.isFinite(parsed.fontSize)
     ? Math.min(22, Math.max(14, Math.round(parsed.fontSize)))
-    : DEFAULT_PREFERENCES.fontSize;
+    : DEFAULT_READING_PREFERENCES.fontSize;
   const lineHeight = typeof parsed.lineHeight === "number" && Number.isFinite(parsed.lineHeight)
     ? Math.min(2, Math.max(1.5, Number(parsed.lineHeight.toFixed(2))))
-    : DEFAULT_PREFERENCES.lineHeight;
+    : DEFAULT_READING_PREFERENCES.lineHeight;
 
   return {
     fontSize,
@@ -56,15 +68,40 @@ function normalizePreferences(value: unknown): ReadingPreferences {
     tocPosition,
     showProgressBar: typeof parsed.showProgressBar === "boolean"
       ? parsed.showProgressBar
-      : DEFAULT_PREFERENCES.showProgressBar,
+      : DEFAULT_READING_PREFERENCES.showProgressBar,
     showRoleplay: typeof parsed.showRoleplay === "boolean"
       ? parsed.showRoleplay
-      : DEFAULT_PREFERENCES.showRoleplay,
+      : DEFAULT_READING_PREFERENCES.showRoleplay,
+    motionPreference,
   };
 }
 
 function readPreferences(): ReadingPreferences {
-  return readJsonStorage(STORAGE_KEY, DEFAULT_PREFERENCES, normalizePreferences);
+  const preferences = readJsonStorage(STORAGE_KEY, DEFAULT_READING_PREFERENCES, normalizePreferences);
+
+  // Upgrade the old first-run preset while preserving deliberate choices such
+  // as the TOC position, progress bar, and roleplay display.
+  if (
+    preferences.fontSize === LEGACY_DEFAULT_PREFERENCES.fontSize
+    && preferences.lineHeight === LEGACY_DEFAULT_PREFERENCES.lineHeight
+    && preferences.contentWidth === LEGACY_DEFAULT_PREFERENCES.contentWidth
+  ) {
+    return {
+      ...preferences,
+      fontSize: DEFAULT_READING_PREFERENCES.fontSize,
+      lineHeight: DEFAULT_READING_PREFERENCES.lineHeight,
+    };
+  }
+
+  return preferences;
+}
+
+export function getReadingWidthClass(contentWidth: ContentWidth): string {
+  return contentWidth === "narrow"
+    ? "mx-auto max-w-[44rem]"
+    : contentWidth === "wide"
+      ? "mx-auto max-w-[68rem]"
+      : "mx-auto max-w-[60rem]";
 }
 
 function writePreferences(preferences: ReadingPreferences): void {
@@ -73,7 +110,7 @@ function writePreferences(preferences: ReadingPreferences): void {
 }
 
 export function useReadingPreferences() {
-  const [preferences, setPreferences] = useState<ReadingPreferences>(DEFAULT_PREFERENCES);
+  const [preferences, setPreferences] = useState<ReadingPreferences>(DEFAULT_READING_PREFERENCES);
   const [isLoaded, setIsLoaded] = useState(false);
 
   useEffect(() => {
@@ -114,15 +151,24 @@ export function useReadingPreferences() {
   }, []);
 
   const resetPreferences = useCallback(() => {
-    setPreferences(DEFAULT_PREFERENCES);
+    setPreferences(DEFAULT_READING_PREFERENCES);
     setIsLoaded(true);
-    writePreferences(DEFAULT_PREFERENCES);
+    writePreferences(DEFAULT_READING_PREFERENCES);
+  }, []);
+
+  const importPreferences = useCallback((value: unknown) => {
+    const imported = normalizePreferences(value);
+    setPreferences(imported);
+    setIsLoaded(true);
+    writePreferences(imported);
+    return imported;
   }, []);
 
   return {
     preferences,
     updatePreference,
     resetPreferences,
+    importPreferences,
     isLoaded,
   };
 }

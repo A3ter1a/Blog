@@ -11,6 +11,7 @@ import { normalizeMarkdownForWrite, normalizeProblemForWrite } from "@/lib/conte
 import { normalizeProblemReferenceMarkup } from "@/lib/problem-references";
 import { getProblemsValidationIssues, normalizeProblem } from "@/lib/problem-utils";
 import { notesApi } from "@/lib/supabase";
+import { getNoteSaveFailure } from "@/lib/note-save-error";
 import type { NoteType, Problem, Subject, Video } from "@/lib/types";
 import { clearNotesListCache } from "@/lib/notes-list-cache";
 
@@ -113,7 +114,8 @@ export function useNoteSave(): UseNoteSaveResult {
       return { id: newNote.id };
     } catch (error: unknown) {
       console.error("Failed to save note:", error);
-      toast.error(`保存失败：${error instanceof Error ? error.message : "未知错误"}`);
+      const failure = getNoteSaveFailure(error);
+      toast[failure.tone](failure.message);
       return null;
     } finally {
       setIsSaving(false);

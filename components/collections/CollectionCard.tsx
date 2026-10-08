@@ -16,7 +16,7 @@ export function CollectionCard({
   onOpen?: () => void;
   isExpanded?: boolean;
 }) {
-  const className = "surface-card group flex min-h-[13.5rem] flex-col overflow-hidden text-left";
+  const className = "surface-card motion-card-lift group flex min-h-[13.5rem] flex-col overflow-hidden text-left";
   const content = (
     <>
       <div className="relative flex h-28 items-end overflow-hidden bg-surface-container-low px-5 pb-4">

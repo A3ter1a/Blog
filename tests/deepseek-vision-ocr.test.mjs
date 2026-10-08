@@ -6,13 +6,13 @@ import { recognizeProblemImage } from '../lib/problem-ocr-service.ts';
 test('DeepSeek Vision OCR sends official multimodal payload', async()=>{
  const old=globalThis.fetch; let body;
  globalThis.fetch=async(_url,init)=>{body=JSON.parse(init.body);return new Response(JSON.stringify({choices:[{message:{content:'1. 求导数'},finish_reason:'stop'}],usage:{total_tokens:12}}),{headers:{'Content-Type':'application/json'}})};
- try { const result=await callDeepSeekVision('sk-test','aGVsbG8=','只提取文字','image/png'); assert.equal(result.text,'1. 求导数'); assert.equal(body.model,'deepseek-v4-flash-vision-exp'); assert.equal(body.messages[0].content[1].type,'image_url'); assert.equal(body.messages[0].content[1].image_url.detail,'original'); assert.deepEqual(body.thinking,{type:'disabled'}); } finally { globalThis.fetch=old; }
+ try { const result=await callDeepSeekVision('sk-test','aGVsbG8=','只提取文字','image/png'); assert.equal(result.text,'1. 求导数'); assert.equal(body.model,'deepseek-flash'); assert.equal(body.messages[0].content[1].type,'image_url'); assert.equal(body.messages[0].content[1].image_url.detail,'original'); assert.deepEqual(body.thinking,{type:'disabled'}); } finally { globalThis.fetch=old; }
 });
 
 test('problem OCR prefers DeepSeek Vision when configured', async()=>{
  let qwenCalls=0, deepseekCalls=0;
- const result=await recognizeProblemImage({apiKey:'sk-test',model:'deepseek-v4-flash-vision-exp',imageBase64:'aGVsbG8=',mimeType:'image/jpeg',provider:'deepseek'},async()=>{qwenCalls++;return {text:''};},async()=>{deepseekCalls++;return {text:'1. 求导数',tokensUsed:3};});
- assert.equal(result.model,'deepseek-v4-flash-vision-exp'); assert.equal(result.text,'1. 求导数'); assert.equal(deepseekCalls,1); assert.equal(qwenCalls,0);
+ const result=await recognizeProblemImage({apiKey:'sk-test',model:'deepseek-flash',imageBase64:'aGVsbG8=',mimeType:'image/jpeg',provider:'deepseek'},async()=>{qwenCalls++;return {text:''};},async()=>{deepseekCalls++;return {text:'1. 求导数',tokensUsed:3};});
+ assert.equal(result.model,'deepseek-flash'); assert.equal(result.text,'1. 求导数'); assert.equal(deepseekCalls,1); assert.equal(qwenCalls,0);
 });
 
 import { readFileSync } from 'node:fs';

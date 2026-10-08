@@ -45,6 +45,7 @@ export function TagFilter({
             type="button"
             key={type.value}
             onClick={() => onTypeChange(type.value)}
+            aria-pressed={selectedType === type.value}
             className={`control-button min-h-11 px-3 text-sm ${
               selectedType === type.value
                 ? "control-button-primary"
@@ -66,6 +67,7 @@ export function TagFilter({
                 <button
                   type="button"
                   onClick={() => onSortOrderChange("desc")}
+                  aria-pressed={sortOrder === "desc"}
                   className={`control-button min-h-11 px-3 text-sm ${
                     sortOrder === "desc"
                       ? "control-button-selected"
@@ -77,6 +79,7 @@ export function TagFilter({
                 <button
                   type="button"
                   onClick={() => onSortOrderChange("asc")}
+                  aria-pressed={sortOrder === "asc"}
                   className={`control-button min-h-11 px-3 text-sm ${
                     sortOrder === "asc"
                       ? "control-button-selected"
@@ -95,6 +98,7 @@ export function TagFilter({
                     type="button"
                     key={subject.value}
                     onClick={() => onSubjectChange(subject.value)}
+                    aria-pressed={selectedSubject === subject.value}
                     className={`control-button min-h-11 px-3 text-sm ${
                       selectedSubject === subject.value
                         ? "control-button-selected"

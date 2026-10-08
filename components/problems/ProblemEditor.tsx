@@ -8,6 +8,7 @@ import type { Chapter, Difficulty, Problem, ProblemType, Subject } from "@/lib/t
 import { chaptersApi } from "@/lib/chapters-api";
 import { ChapterSelector } from "@/components/chapters/ChapterSelector";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { AnimatedDisclosure } from "@/components/ui/AnimatedDisclosure";
 import { ProblemExportButton } from "./ProblemExportButton";
 import { ProblemQuestionPreview } from "./ProblemQuestionPreview";
 import { toggleProblemRange } from "@/lib/problem-export";
@@ -28,7 +29,7 @@ import {
 } from "@/lib/problem-utils";
 import { useToast } from "@/components/ui/Toast";
 import { scheduleDeferredClientWork } from "@/lib/deferred-client-work";
-import { collapsibleMotion, dialogMotion, uiMotion } from "@/lib/motion";
+import { dialogMotion, uiMotion } from "@/lib/motion";
 
 interface ProblemEditorProps {
   title?: string;
@@ -433,16 +434,7 @@ export function ProblemEditor({
       )}
 
       {/* Add Form */}
-      <AnimatePresence>
-        {showAddForm && (
-          <motion.div
-            variants={collapsibleMotion}
-            initial="initial"
-            animate="animate"
-            exit="exit"
-            transition={{ duration: uiMotion.duration.reveal, ease: uiMotion.ease.emphasized }}
-            className="surface-panel space-y-3 overflow-hidden p-4"
-          >
+      <AnimatedDisclosure open={showAddForm} id="problem-editor-add-form" className="surface-panel space-y-3 p-4">
             {/* Chapter Selector */}
             <div>
               <label className="text-xs text-on-surface-variant/60 mb-1 block">章节分类</label>
@@ -598,9 +590,7 @@ export function ProblemEditor({
                 添加题目
               </button>
             </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      </AnimatedDisclosure>
 
       {/* Add Button */}
       {!showAddForm && problems.length === 0 && (
@@ -753,10 +743,12 @@ function BulkProblemActionBar({
                   type="button"
                   onClick={() => setShowBulkDetails((value) => !value)}
                   className={`control-button min-h-11 px-3 text-xs ${showBulkDetails ? "control-button-selected" : ""}`}
+                  aria-expanded={showBulkDetails}
+                  aria-controls="problem-editor-bulk-details"
                 >
                   <SlidersHorizontal className="h-3.5 w-3.5" />
                   归类与更多
-                  {showBulkDetails ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                  <ChevronDown className="motion-chevron h-3.5 w-3.5" />
                 </button>
               </div>
 
@@ -765,7 +757,8 @@ function BulkProblemActionBar({
               </div>
             </div>
 
-            {showBulkDetails && <div className="mt-2 flex justify-end">
+            <AnimatedDisclosure open={showBulkDetails} id="problem-editor-bulk-details" className="mt-2">
+              <div className="flex justify-end">
                 <button
                   type="button"
                   onClick={onRemoveSelected}
@@ -774,19 +767,8 @@ function BulkProblemActionBar({
                   <Trash2 className="h-3.5 w-3.5" />
                   删除
                 </button>
-              </div>}
-
-            <AnimatePresence>
-              {showBulkDetails && (
-                <motion.div
-                  variants={collapsibleMotion}
-                  initial="initial"
-                  animate="animate"
-                  exit="exit"
-                  transition={{ duration: uiMotion.duration.reveal, ease: uiMotion.ease.emphasized }}
-                  className="overflow-hidden"
-                >
-                  <div className="mt-2 grid gap-2">
+              </div>
+              <div className="mt-2 grid gap-2">
                     <div className="surface-muted grid gap-2 p-2 md:grid-cols-[auto_minmax(0,1fr)_auto] md:items-center">
                       <div className="text-xs font-semibold text-on-surface-variant">题集章节</div>
                       <ChapterSelector
@@ -824,10 +806,8 @@ function BulkProblemActionBar({
                         </button>
                       </div>
                     )}
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
+              </div>
+            </AnimatedDisclosure>
           </div>
         </motion.div>
       )}
@@ -972,6 +952,7 @@ function ProblemCard({
             className="control-button min-h-11 px-3 text-xs sm:mt-2"
             title={expanded ? "收起编辑" : "编辑"}
             aria-expanded={expanded}
+            aria-controls={`problem-editor-item-${problem.id}`}
             aria-label={expanded ? `收起第 ${index + 1} 题编辑` : `编辑第 ${index + 1} 题`}
           >
             {expanded ? "收起编辑" : "编辑"}
@@ -979,16 +960,7 @@ function ProblemCard({
         </div>
       </div>
 
-      <AnimatePresence>
-        {expanded && (
-          <motion.div
-            variants={collapsibleMotion}
-            initial="initial"
-            animate="animate"
-            exit="exit"
-            transition={{ duration: uiMotion.duration.reveal, ease: uiMotion.ease.emphasized }}
-            className="px-4 pb-4 space-y-2 overflow-hidden"
-          >
+      <AnimatedDisclosure open={expanded} id={`problem-editor-item-${problem.id}`} className="px-4 pb-4 space-y-2">
             <div className="grid gap-3 pt-2 md:grid-cols-[1fr_220px]">
               <div>
                 <label className="text-xs text-on-surface-variant/60 mb-1 block">章节分类</label>
@@ -1106,9 +1078,7 @@ function ProblemCard({
               />
             </div>
 
-          </motion.div>
-        )}
-      </AnimatePresence>
+      </AnimatedDisclosure>
     </div>
   );
 }

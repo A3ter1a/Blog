@@ -29,6 +29,7 @@ export interface RichTextEditorProps {
   placeholder?: string;
   onImageUpload?: (file: File) => Promise<string>;
   onReady?: (editor: Editor) => void;
+  density?: "default" | "compact";
 }
 
 export interface RichTextEditorRef {
@@ -208,7 +209,7 @@ async function insertUploadedImages(
 }
 
 export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>(
-  ({ content, onChange, placeholder = "在此输入内容，支持 Markdown 语法...", onImageUpload, onReady }, ref) => {
+  ({ content, onChange, placeholder = "在此输入内容，支持 Markdown 语法...", onImageUpload, onReady, density = "default" }, ref) => {
     const isFocusedRef = useRef(false);
 
     const editor = useEditor({
@@ -355,8 +356,8 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
     return (
       <EditorContent
         editor={editor}
-        className="markdown-surface markdown-compact p-6 min-h-[400px] focus:outline-none
-          [&_.ProseMirror]:min-h-[400px] [&_.ProseMirror]:outline-none
+        className={`markdown-surface markdown-compact p-6 focus:outline-none ${density === "compact" ? "min-h-[220px] [&_.ProseMirror]:min-h-[220px]" : "min-h-[280px] [&_.ProseMirror]:min-h-[280px]"}
+          [&_.ProseMirror]:outline-none
           [&_.ProseMirror_p.is-editor-empty:first-child::before]:text-on-surface-variant/40
           [&_.ProseMirror_p.is-editor-empty:first-child::before]:content-[attr(data-placeholder)]
           [&_.ProseMirror_p.is-editor-empty:first-child::before]:float-left
@@ -377,7 +378,7 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
           [&_.ProseMirror_hr]:my-4 [&_.ProseMirror_hr]:border-0 [&_.ProseMirror_hr]:border-t [&_.ProseMirror_hr]:border-solid [&_.ProseMirror_hr]:border-black
           [&_.ProseMirror_hr[data-type=dashed]]:my-6 [&_.ProseMirror_hr[data-type=dashed]]:border-0 [&_.ProseMirror_hr[data-type=dashed]]:border-t [&_.ProseMirror_hr[data-type=dashed]]:border-dashed [&_.ProseMirror_hr[data-type=dashed]]:border-black
           [&_.ProseMirror_mark]:rounded-md [&_.ProseMirror_mark]:px-1.5 [&_.ProseMirror_mark]:py-0.5
-          [&_.ProseMirror_mark]:box-decoration-clone"
+          [&_.ProseMirror_mark]:box-decoration-clone`}
       />
     );
   }

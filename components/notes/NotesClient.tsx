@@ -8,7 +8,7 @@ import { NoteCard } from "@/components/notes/NoteCard";
 import { ExportDialog } from "@/components/export/ExportDialog";
 import { notesApi } from "@/lib/supabase";
 import { NoteType, Subject, Note, type NoteAuthorKind } from "@/lib/types";
-import { CheckSquare, Square, Download, X, Trash2, Loader2, Plus, SlidersHorizontal, ChevronDown, ChevronUp, FileText, Sparkles } from "lucide-react";
+import { CheckSquare, Square, Download, X, Trash2, Loader2, Plus, SlidersHorizontal, ChevronDown, FileText, Sparkles } from "lucide-react";
 import { useAdminAuth } from "@/hooks/useAdminAuth";
 import { useToast } from "@/components/ui/Toast";
 import { PageHeader, PageShell } from "@/components/ui/PageScaffold";
@@ -35,8 +35,16 @@ import {
 } from "@/lib/collection-detail-cache";
 import type { CollectionDetail } from "@/lib/collections-contract";
 import { subscribeSiteCache } from "@/lib/site-cache";
+import { NotesGridSkeleton } from "@/components/notes/NotesLoading";
+import { AnimatedDisclosure } from "@/components/ui/AnimatedDisclosure";
+import { NotesPerfProbe } from "@/components/performance/NotesPerfProbe";
 
 const NOTES_REQUEST_TIMEOUT_MS = 8_000;
+
+type DirectoryNotesSnapshot = {
+  notes: Note[];
+  hasMoreNotes: boolean;
+};
 
 function withNotesRequestTimeout<T>(promise: Promise<T>): Promise<T> {
   return new Promise<T>((resolve, reject) => {
@@ -127,6 +135,14 @@ export function NotesClient({
   const notesRef = useRef<Note[]>(initialNotes);
   const collectionsRef = useRef<CollectionSummary[]>(initialCollections);
   const directoryKindRef = useRef<NoteAuthorKind>(directoryKind);
+  const directoryNotesSnapshotsRef = useRef<Record<NoteAuthorKind, DirectoryNotesSnapshot>>({
+    human: initialDirectoryKind === "human"
+      ? { notes: initialNotes, hasMoreNotes: initialHasMoreNotes }
+      : { notes: [], hasMoreNotes: false },
+    ai: initialDirectoryKind === "ai"
+      ? { notes: initialNotes, hasMoreNotes: initialHasMoreNotes }
+      : { notes: [], hasMoreNotes: false },
+  });
   const expandedCollectionIdRef = useRef<string | null>(null);
   const renderedNotesScopeRef = useRef<string | null>(null);
 
@@ -224,8 +240,12 @@ export function NotesClient({
 
   useEffect(() => {
     const currentPath = `${window.location.pathname}${window.location.search}`;
-    if (currentPath !== directoryReturnPath) {
-      window.history.replaceState(null, "", directoryReturnPath);
+    const perfQuery = new URLSearchParams(window.location.search).get("perf") === "1" ? "perf=1" : "";
+    const nextPath = perfQuery
+      ? `${directoryReturnPath}${directoryReturnPath.includes("?") ? "&" : "?"}${perfQuery}`
+      : directoryReturnPath;
+    if (currentPath !== nextPath) {
+      window.history.replaceState(null, "", nextPath);
     }
   }, [directoryReturnPath]);
 
@@ -310,6 +330,12 @@ export function NotesClient({
           const nextNotes = append ? [...notesRef.current, ...pageItems] : pageItems;
           setVisibleNotes(nextNotes);
           setHasMoreNotes(nextHasMoreNotes);
+          if (!query && selectedType === "all" && selectedSubject === "all" && sortOrder === "desc") {
+            directoryNotesSnapshotsRef.current[directoryKind] = {
+              notes: nextNotes,
+              hasMoreNotes: nextHasMoreNotes,
+            };
+          }
           writeNotesCache(cacheKey, nextNotes, nextHasMoreNotes);
         }
         renderedNotesScopeRef.current = notesScopeKey;
@@ -366,6 +392,12 @@ export function NotesClient({
       if (cached) {
         setVisibleNotes(cached.notes);
         setHasMoreNotes(cached.hasMoreNotes);
+        if (!searchQuery.trim() && selectedType === "all" && selectedSubject === "all" && sortOrder === "desc") {
+          directoryNotesSnapshotsRef.current[directoryKind] = {
+            notes: cached.notes,
+            hasMoreNotes: cached.hasMoreNotes,
+          };
+        }
         setLoading(false);
         renderedNotesScopeRef.current = notesScopeKey;
         if (!forceRefresh && cached.expiresAt > Date.now()) {
@@ -420,6 +452,12 @@ export function NotesClient({
             return { ...note, coverImage };
         });
         setVisibleNotes(nextNotes);
+        if (!searchQuery.trim() && selectedType === "all" && selectedSubject === "all" && sortOrder === "desc") {
+          directoryNotesSnapshotsRef.current[directoryKind] = {
+            notes: nextNotes,
+            hasMoreNotes,
+          };
+        }
         const cacheKey = getNotesCacheKey(
           searchQuery,
           directoryKind,
@@ -486,6 +524,28 @@ export function NotesClient({
 
   const handleDirectoryChange = (nextKind: NoteAuthorKind) => {
     if (nextKind === directoryKind) return;
+    const canRestoreSnapshot = !searchQuery.trim()
+      && selectedType === "all"
+      && selectedSubject === "all"
+      && sortOrder === "desc";
+    if (canRestoreSnapshot) {
+      directoryNotesSnapshotsRef.current[directoryKind] = {
+        notes: notesRef.current,
+        hasMoreNotes,
+      };
+    }
+    const nextSnapshot = directoryNotesSnapshotsRef.current[nextKind];
+    const nextCanReadUnpublishedNotes = isAdmin || (
+      nextKind === "ai"
+      && !authLoading
+      && Boolean(user)
+      && Boolean(getActiveAiAccountSlot())
+    );
+    const nextAccountScope = nextCanReadUnpublishedNotes
+      ? nextKind === "ai"
+        ? getActiveAiAccountSlot() ?? "admin"
+        : "admin"
+      : "public";
     directoryKindRef.current = nextKind;
     // Invalidate any request started for the previous directory before React
     // commits the new tab. This closes the small window where a fast human
@@ -498,10 +558,19 @@ export function NotesClient({
     // directory's cache when available, or show its loading state otherwise.
     notesRef.current = [];
     renderedNotesScopeRef.current = null;
-    setNotes([]);
-    setHasMoreNotes(false);
-    setLoading(true);
-    setIsRefreshingNotes(false);
+    if (canRestoreSnapshot && nextSnapshot.notes.length > 0) {
+      notesRef.current = nextSnapshot.notes;
+      renderedNotesScopeRef.current = `${nextKind}:${nextAccountScope}`;
+      setNotes(nextSnapshot.notes);
+      setHasMoreNotes(nextSnapshot.hasMoreNotes);
+      setLoading(false);
+      setIsRefreshingNotes(true);
+    } else {
+      setNotes([]);
+      setHasMoreNotes(false);
+      setLoading(true);
+      setIsRefreshingNotes(false);
+    }
     setLoadError(null);
     collectionsRef.current = [];
     setCollections([]);
@@ -655,11 +724,12 @@ export function NotesClient({
 
   return (
     <>
+      <NotesPerfProbe />
       <PageHeader
         width="wide"
         template="library"
         title={directoryKind === "ai" ? "AI 文章与题集" : "文章与题集"}
-        description={directoryKind === "ai" ? "阅读经过审核并已发布的 AI 学习内容。" : "搜索、阅读、整理你的学习材料。"}
+        description={directoryKind === "ai" ? "阅读经过审核并已发布的 AI 学习内容。" : undefined}
         actions={(
           <div className="flex flex-col items-stretch gap-2 lg:items-end">
             <div
@@ -782,13 +852,12 @@ export function NotesClient({
           <section className="mb-7" aria-labelledby="collections-heading">
             <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
               <div>
-                <p className="eyebrow-chip w-fit px-2.5 py-1 text-[11px]">持续整理</p>
-                <h2 id="collections-heading" className="mt-2 font-headline text-xl font-bold text-on-surface">合集</h2>
+                <h2 id="collections-heading" className="font-headline text-xl font-bold text-on-surface">合集</h2>
                 <p className="mt-1 text-sm text-on-surface-variant">合集可以逐篇追加、排序和移除，不会把内容压成一篇长文。</p>
               </div>
               <Link href="/collections" className="control-button px-3 py-2 text-xs">查看全部合集</Link>
             </div>
-            <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
+            <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
               {visibleCollections.slice(0, 6).map((collection) => (
                 <CollectionCard
                   key={collection.id}
@@ -798,7 +867,7 @@ export function NotesClient({
                 />
               ))}
             </div>
-            {directoryKind === "ai" && expandedCollectionId && (
+            <AnimatedDisclosure open={directoryKind === "ai" && Boolean(expandedCollectionId)}>
               <section className="surface-panel mt-4 overflow-hidden border-primary/20" aria-live="polite" aria-label="展开的 AI 合集">
                 <div className="flex flex-wrap items-center justify-between gap-3 border-b border-outline-variant/15 px-5 py-4">
                   <div>
@@ -825,7 +894,7 @@ export function NotesClient({
                   <p className="px-5 py-8 text-center text-sm text-on-surface-variant">这个合集暂时没有可显示的文章。</p>
                 )}
               </section>
-            )}
+            </AnimatedDisclosure>
           </section>
         )}
 
@@ -844,10 +913,11 @@ export function NotesClient({
                 onClick={() => setShowLibraryTools((value) => !value)}
                 className={`control-button min-h-11 px-3 text-xs ${shouldShowLibraryTools ? "control-button-selected" : ""}`}
                 aria-expanded={shouldShowLibraryTools}
+                aria-controls="notes-library-filters"
               >
                 <SlidersHorizontal className="h-3.5 w-3.5" />
                 筛选
-                {shouldShowLibraryTools ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                <ChevronDown className="motion-chevron h-3.5 w-3.5" />
               </button>
               {hasActiveFilters && (
                 <button
@@ -860,8 +930,7 @@ export function NotesClient({
               )}
             </div>
           </div>
-          {shouldShowLibraryTools && (
-              <div>
+          <AnimatedDisclosure open={shouldShowLibraryTools} id="notes-library-filters">
                 <div className="mt-4 border-t border-outline-variant/10 pt-4">
                   <TagFilter
                     selectedType={selectedType}
@@ -872,8 +941,7 @@ export function NotesClient({
                     onSortOrderChange={setSortOrder}
                   />
                 </div>
-              </div>
-          )}
+          </AnimatedDisclosure>
         </section>
 
         {/* Notes Grid */}
@@ -896,19 +964,8 @@ export function NotesClient({
             </div>
           )}
           {loading ? (
-            <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-3" role="status" aria-label="正在加载笔记">
-              {Array.from({ length: 6 }, (_, index) => (
-                <div key={index} className="surface-panel overflow-hidden">
-                  <div className="aspect-[16/9] animate-pulse bg-surface-container-high" />
-                  <div className="space-y-3 p-5">
-                    <div className="h-5 w-4/5 animate-pulse rounded bg-surface-container-high" />
-                    <div className="h-4 w-full animate-pulse rounded bg-surface-container-high" />
-                    <div className="h-4 w-2/3 animate-pulse rounded bg-surface-container-high" />
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : loadError ? (
+            <NotesGridSkeleton />
+          ) : loadError && filteredNotes.length === 0 ? (
             <div className="surface-panel border border-error/20 bg-error/5 px-6 py-14 text-center" role="alert">
               <p className="text-lg font-medium text-on-surface">暂时无法加载笔记</p>
               <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-on-surface-variant">请检查网络或 Supabase 配置，然后重试。若问题持续存在，可以稍后再试。</p>
@@ -951,7 +1008,7 @@ export function NotesClient({
                         <p className="eyebrow-chip w-fit px-2.5 py-1 text-[11px]">其他内容</p>
                         <h3 id="ai-ungrouped-heading" className="mt-2 font-headline text-xl font-bold text-on-surface">未归入合集</h3>
                       </div>
-                      <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-3">
+            <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
                         {aiDirectory.ungrouped.map((note, index) => (
                           <NoteCard
                             key={note.id}
@@ -972,7 +1029,7 @@ export function NotesClient({
                   )}
                 </div>
               ) : (
-                <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-3">
+                <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
                   {filteredNotes.map((note, index) => (
                     <NoteCard
                       key={note.id}

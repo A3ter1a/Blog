@@ -15,7 +15,7 @@ export function resolveAIProviderRoute(task: AITaskClass): AIProviderRoute {
   }
   return {
     provider: "deepseek",
-    model: "deepseek-v4-flash",
+    model: "deepseek-flash",
     reason: task === "batch_cleanup" ? "批处理优先成本和吞吐" : "资料定位优先速度",
   };
 }

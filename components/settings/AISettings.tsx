@@ -30,7 +30,7 @@ export function AISettings() {
   const [config, setConfig] = useState<AIConfig>(DEFAULT_AI_CONFIG);
   const [isEditing, setIsEditing] = useState(false);
   const [testing, setTesting] = useState<ConfigTestProvider | null>(null);
-  const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [testResult, setTestResult] = useState<{ success: boolean; message: string; detail?: string } | null>(null);
   const [usage, setUsage] = useState<AIUsageStats>(getUsageStats());
   const [serverConfig, setServerConfig] = useState<{
     deepseekConfigured: boolean;
@@ -114,7 +114,11 @@ export function AISettings() {
             : provider === 'qwen'
             ? 'Qwen'
             : '讲义 OCR';
-        setTestResult({ success: true, message: `${providerName} 连接成功！` });
+        const detail = [
+          typeof data.model === 'string' ? `模型 ${data.model}` : '',
+          typeof data.latencyMs === 'number' ? `${data.latencyMs} ms` : '',
+        ].filter(Boolean).join(' · ');
+        setTestResult({ success: true, message: `${providerName} 配置可用`, detail: detail || undefined });
         if ((provider === 'deepseek' || provider === 'deepseek-ocr') && data.tokensUsed) {
           recordDeepSeekUsage(data.tokensUsed);
           setUsage(getUsageStats());
@@ -263,7 +267,7 @@ export function AISettings() {
               ) : (
                 <Plug className="w-3.5 h-3.5" />
               )}
-              测试 DeepSeek 连接
+              检测当前模型配置
             </button>
           </div>
 
@@ -364,7 +368,10 @@ export function AISettings() {
               testResult.success ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'
             }`}>
               {testResult.success ? <Check className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
-              {testResult.message}
+              <span>
+                <span className="block">{testResult.message}</span>
+                {testResult.detail && <span className="mt-0.5 block opacity-75">{testResult.detail}</span>}
+              </span>
             </div>
           )}
         </div>

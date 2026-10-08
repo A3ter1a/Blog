@@ -2,12 +2,16 @@ import type { AIConfig } from "./types";
 
 export const AI_CONFIG_STORAGE_KEY = "ai-config";
 
-export const DEFAULT_DEEPSEEK_OCR_MODEL = "deepseek-v4-flash-vision-exp";
+export const DEFAULT_DEEPSEEK_OCR_MODEL = "deepseek-flash";
 export const DEEPSEEK_OCR_ENDPOINT = "https://api.deepseek.com/chat/completions";
 export type OcrProvider = "deepseek" | "qwen";
 export function normalizeOcrProvider(value: unknown): OcrProvider { return value === "qwen" ? "qwen" : "deepseek"; }
 
-export const DEFAULT_DEEPSEEK_MODEL = "deepseek-v4-flash";
+// DeepSeek's current V4.1 Flash API model id is `deepseek-flash`.
+// The legacy `deepseek-v4-flash` id remains accepted by the provider, but new
+// requests should use the canonical id so model routing and usage reporting
+// stay aligned with the current API.
+export const DEFAULT_DEEPSEEK_MODEL = "deepseek-flash";
 export const DEFAULT_QWEN_MODEL = "qwen3.7-plus";
 export const DEFAULT_QWEN_ENDPOINT = "https://dashscope.aliyuncs.com/compatible-mode/v1";
 
@@ -23,8 +27,9 @@ export const DEFAULT_AI_CONFIG: AIConfig = {
 };
 
 export const DEEPSEEK_MODEL_OPTIONS = [
-  { value: "deepseek-v4-flash", label: "DeepSeek V4 Flash (快速)" },
+  { value: "deepseek-flash", label: "DeepSeek V4.1 Flash (快速)" },
   { value: "deepseek-v4-pro", label: "DeepSeek V4 Pro (高级)" },
+  { value: "deepseek-v4-flash", label: "DeepSeek V4 Flash (兼容旧配置)" },
 ] as const;
 
 export const QWEN_OCR_MODEL_OPTIONS = [
@@ -57,13 +62,18 @@ function asNonEmptyString(value: unknown, fallback: string): string {
   return typeof value === "string" && value.trim() ? value.trim() : fallback;
 }
 
+function normalizeDeepSeekModel(value: unknown): string {
+  const model = asNonEmptyString(value, DEFAULT_AI_CONFIG.deepseekModel);
+  return model === "deepseek-v4-flash" ? DEFAULT_DEEPSEEK_MODEL : model;
+}
+
 export function normalizeAIConfig(value: unknown): AIConfig {
   const raw = isRecord(value) ? value : {};
 
   return {
     ocrProvider: normalizeOcrProvider(raw.ocrProvider),
     deepseekApiKey: asString(raw.deepseekApiKey, DEFAULT_AI_CONFIG.deepseekApiKey),
-    deepseekModel: asNonEmptyString(raw.deepseekModel, DEFAULT_AI_CONFIG.deepseekModel),
+    deepseekModel: normalizeDeepSeekModel(raw.deepseekModel),
     qwenApiKey: asString(raw.qwenApiKey, DEFAULT_AI_CONFIG.qwenApiKey),
     qwenModel: asNonEmptyString(raw.qwenModel, DEFAULT_AI_CONFIG.qwenModel),
     // The endpoint is intentionally not user-configurable. Keeping the stored

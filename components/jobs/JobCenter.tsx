@@ -8,17 +8,20 @@ import {
   useMemo,
   useRef,
   useState,
+  type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode,
 } from "react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
 import dynamic from "next/dynamic";
-import { AlertTriangle, ArrowUpRight, CheckCircle2, CircleX, Clock3, FileScan, Loader2, RotateCcw, ShieldCheck, X } from "lucide-react";
+import { AnimatePresence, motion } from "framer-motion";
+import { AlertTriangle, ArrowUpRight, CheckCircle2, CircleX, Clock3, FileScan, Loader2, RefreshCw, RotateCcw, ShieldCheck, X } from "lucide-react";
 import { buildAuthHeaders } from "@/lib/fetch-with-auth";
 import { selectJobResults } from "@/lib/job-result-navigation";
 import { useAdminAuth } from "@/hooks/useAdminAuth";
 import { useAiAccountSlot } from "@/hooks/useAiAccountSlot";
 import { useDialogFocus } from "@/hooks/useDialogFocus";
+import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
 import { AI_REVIEW_QUEUE_CHANGED_EVENT } from "@/lib/ai-content-contract";
 import {
   CLIENT_JOB_STORAGE_KEY,
@@ -187,10 +190,17 @@ const AUTH_RETRY_BACKOFF_MS = 30_000;
 const MAX_HISTORY = 100;
 
 type JobBucket = "pending" | "running" | "completed";
+type LedgerSyncState = "idle" | "syncing" | "error";
+type JobCenterFixtureState = "normal" | "sync-error" | "empty" | "loading";
 
 function getJobBucket(job: ClientJob): JobBucket {
   if (job.status === "running") return "running";
-  if (job.status === "queued" || job.status === "waiting_for_trigger") return "pending";
+  if (
+    job.status === "queued"
+    || job.status === "waiting_for_trigger"
+    || job.status === "failed"
+    || (job.status === "succeeded" && !job.resultClaimedAt)
+  ) return "pending";
   return "completed";
 }
 
@@ -198,6 +208,99 @@ function getJobBucketLabel(bucket: JobBucket): string {
   if (bucket === "pending") return "待处理";
   if (bucket === "running") return "进行中";
   return "已结束";
+}
+
+function getJobBucketDescription(bucket: JobBucket): string {
+  if (bucket === "pending") return "待审核、待领取或失败的任务，需要你决定下一步。";
+  if (bucket === "running") return "正在后台推进的任务会持续保留，切换页面也不会丢失。";
+  return "已领取、成功或取消的记录会保留一段时间，方便回看。";
+}
+
+function createJobCenterFixtureJobs(): ClientJob[] {
+  const base = {
+    class: "external" as const,
+    ledgerState: "local_only" as const,
+    createdAt: "2026-10-02T08:00:00.000Z",
+    updatedAt: "2026-10-02T08:12:00.000Z",
+    pollCount: 0,
+  };
+  return [
+    {
+      ...base,
+      id: "fixture-queued",
+      type: "document_ocr",
+      title: "宏观经济学 · 章节 OCR",
+      status: "queued",
+      phase: "任务排队中",
+      statusText: "任务已经登记，等待处理资源",
+      progress: 8,
+      externalTaskId: undefined,
+    },
+    {
+      ...base,
+      id: "fixture-running",
+      type: "math_paper_ocr",
+      title: "数学三真题 · 答题纸识别",
+      status: "running",
+      phase: "正在识别第 3 / 6 页",
+      statusText: "图片已安全保存，识别完成后会在这里提醒",
+      progress: 50,
+      progressCurrent: 3,
+      progressTotal: 6,
+    },
+    {
+      ...base,
+      id: "fixture-failed",
+      type: "problem_ocr",
+      title: "政治错题 · 题干识别",
+      status: "failed",
+      phase: "处理失败",
+      statusText: "第 2 张图片无法识别，原图仍保留",
+      error: "OCR 服务暂时没有返回结构化题目。",
+      externalTaskId: "fixture-external-task",
+    },
+    {
+      ...base,
+      id: "fixture-unclaimed",
+      type: "document_ocr",
+      title: "英语长难句 · 讲义 OCR",
+      status: "succeeded",
+      phase: "结果待领取",
+      statusText: "OCR 结果已准备好，打开后可以插入笔记",
+      targetId: "draft:11111111-1111-4111-8111-111111111111",
+      resultMarkdown: "## 英语长难句讲义\n\n识别到 3 处从句边界，建议回到笔记正文逐条确认。",
+    },
+    {
+      ...base,
+      id: "fixture-claimed",
+      type: "economics_graph_generation",
+      title: "供给与需求 · 图像结构",
+      status: "claimed",
+      phase: "结果已领取",
+      statusText: "已在编辑器中确认并插入正文",
+      resultClaimedAt: "2026-10-02T08:10:00.000Z",
+      resultMarkdown: "已确认的供需图像结构。",
+    },
+    {
+      ...base,
+      id: "fixture-cancelled",
+      type: "math3_self_test_generation",
+      title: "数学三 · 计时自测试卷",
+      status: "cancelled",
+      phase: "任务已取消",
+      statusText: "你已取消这项生成任务，记录仍可回看",
+    },
+  ];
+}
+
+function isJobCenterFixtureId(value: string | null | undefined): boolean {
+  return Boolean(value?.startsWith("fixture-"));
+}
+
+function getJobCenterFixtureState(isJobCenterLab: boolean): JobCenterFixtureState {
+  if (!isJobCenterLab || typeof window === "undefined") return "normal";
+  const state = new URLSearchParams(window.location.search).get("state");
+  return state === "sync-error" || state === "empty" || state === "loading" ? state : "normal";
 }
 
 function getJobStatusLabel(job: ClientJob): string {
@@ -234,8 +337,8 @@ async function fetchRemoteJobLedger(): Promise<ClientJob[]> {
   const headers = await buildAuthHeaders();
   if (!headers.has("Authorization")) return [];
   const response = await fetch("/api/jobs?limit=100", { headers, cache: "no-store" });
-  if (!response.ok) return [];
   const payload = await response.json().catch(() => ({})) as JobLedgerListResponse;
+  if (!response.ok) throw new Error(toText((payload as JobLedgerListResponse & { error?: unknown }).error) || "任务账本暂时无法同步");
   return normalizeRemoteJobRows(payload.jobs);
 }
 
@@ -290,26 +393,54 @@ export function JobCenterProvider({ children }: { children: ReactNode }) {
   const { isAdmin } = useAdminAuth();
   const aiAccountSlot = useAiAccountSlot();
   const isUiLab = pathname.startsWith("/ui-lab/");
+  const isJobCenterLab = pathname === "/ui-lab/message-center";
+  const isJobCenterVisible = !isUiLab || isJobCenterLab;
   const skipRemoteLedger = isUiLab;
+  const fixtureState = getJobCenterFixtureState(isJobCenterLab);
   const jobStorageKey = aiAccountSlot ? `${CLIENT_JOB_STORAGE_KEY}:${aiAccountSlot}` : CLIENT_JOB_STORAGE_KEY;
+  const routeRequestedJobId = typeof window === "undefined"
+    ? null
+    : new URLSearchParams(window.location.search).get("job");
   const [jobs, setJobs] = useState<ClientJob[]>([]);
   const [requestedJobId, setRequestedJobId] = useState<string | null | undefined>(undefined);
   useEffect(() => {
-    const timer = window.setTimeout(() => setRequestedJobId(new URLSearchParams(window.location.search).get("job")), 0);
+    const timer = window.setTimeout(() => setRequestedJobId(routeRequestedJobId), 0);
     return () => window.clearTimeout(timer);
-  }, [pathname]);
+  }, [pathname, routeRequestedJobId]);
   const consumerJobs = useMemo(() => selectJobResults(jobs, requestedJobId), [jobs, requestedJobId]);
   const [reviewNotices, setReviewNotices] = useState<PendingReviewNotice[]>([]);
   const [isOpen, setIsOpen] = useState(false);
   const [activeBucket, setActiveBucket] = useState<JobBucket>("pending");
+  const [isHydrating, setIsHydrating] = useState(true);
+  const [ledgerSyncState, setLedgerSyncState] = useState<LedgerSyncState>("idle");
+  const [ledgerSyncError, setLedgerSyncError] = useState("");
+  const [actionFeedback, setActionFeedback] = useState("");
+  const [fixtureModeReady, setFixtureModeReady] = useState(false);
+  const isFixtureEntryOnly = fixtureModeReady && isJobCenterLab && (fixtureState === "empty" || fixtureState === "loading");
+  const reducedMotion = usePrefersReducedMotion();
   const hydratedRef = useRef(false);
   const jobsRef = useRef<ClientJob[]>([]);
   const drawerRef = useRef<HTMLElement>(null);
   const drawerCloseRef = useRef<HTMLButtonElement>(null);
+  const fabRef = useRef<HTMLButtonElement>(null);
   const pollingRef = useRef(new Set<string>());
   const cancelledRef = useRef(new Set<string>());
   const resultLoadingRef = useRef(new Set<string>());
   const authRetryAfterRef = useRef(new Map<string, number>());
+  const feedbackTimerRef = useRef<number | null>(null);
+
+  const announceAction = useCallback((message: string) => {
+    setActionFeedback(message);
+    if (feedbackTimerRef.current !== null) window.clearTimeout(feedbackTimerRef.current);
+    feedbackTimerRef.current = window.setTimeout(() => {
+      setActionFeedback("");
+      feedbackTimerRef.current = null;
+    }, 4200);
+  }, []);
+
+  useEffect(() => () => {
+    if (feedbackTimerRef.current !== null) window.clearTimeout(feedbackTimerRef.current);
+  }, []);
 
   const refreshReviewNotices = useCallback(() => {
     if (!isAdmin || isUiLab) {
@@ -319,12 +450,62 @@ export function JobCenterProvider({ children }: { children: ReactNode }) {
     void fetchPendingReviewNotices().then(setReviewNotices).catch(() => undefined);
   }, [isAdmin, isUiLab]);
 
+  const refreshRemoteLedger = useCallback(async (options?: { manual?: boolean }) => {
+    if (skipRemoteLedger) {
+      if (isJobCenterLab && fixtureState === "sync-error" && options?.manual) {
+        setLedgerSyncState("idle");
+        setLedgerSyncError("");
+        announceAction("本地演示已恢复同步，生产任务账本未被修改。");
+      }
+      return;
+    }
+    setLedgerSyncState("syncing");
+    setLedgerSyncError("");
+    try {
+      const remoteJobs = await fetchRemoteJobLedger();
+      if (remoteJobs.length > 0) setJobs((current) => mergeClientJobLedgers(current, remoteJobs));
+      setLedgerSyncState("idle");
+    } catch (error: unknown) {
+      setLedgerSyncState("error");
+      setLedgerSyncError(error instanceof Error ? error.message : "任务账本暂时无法同步");
+    }
+  }, [announceAction, fixtureState, isJobCenterLab, skipRemoteLedger]);
+
   useEffect(() => {
     jobsRef.current = jobs;
   }, [jobs]);
 
   useEffect(() => {
     if (skipRemoteLedger) {
+      if (isJobCenterLab) {
+        if (fixtureState === "loading") {
+          const readyTimer = window.setTimeout(() => {
+            setFixtureModeReady(true);
+            setLedgerSyncState("syncing");
+          }, 0);
+          const timer = window.setTimeout(() => {
+            setJobs(createJobCenterFixtureJobs());
+            setLedgerSyncState("idle");
+            setIsHydrating(false);
+          }, 900);
+          return () => {
+            window.clearTimeout(readyTimer);
+            window.clearTimeout(timer);
+          };
+        }
+        const fixtureJobs = fixtureState === "empty" ? [] : createJobCenterFixtureJobs();
+        const timer = window.setTimeout(() => {
+          setFixtureModeReady(true);
+          setJobs(fixtureJobs);
+          if (fixtureState === "sync-error") {
+            setLedgerSyncState("error");
+            setLedgerSyncError("演示账本同步失败，本地任务记录仍保留。");
+          }
+          setIsHydrating(false);
+        }, 0);
+        hydratedRef.current = true;
+        return () => window.clearTimeout(timer);
+      }
       hydratedRef.current = true;
       return;
     }
@@ -335,8 +516,8 @@ export function JobCenterProvider({ children }: { children: ReactNode }) {
             normalizeStoredJobs(JSON.parse(localStorage.getItem(jobStorageKey) ?? "[]")),
         );
         const hydrated: ClientJob[] = stored.map((job) => (
-          job.class === "internal" && isClientJobActive(job) && !job.remoteJobId
-            ? {
+            job.class === "internal" && isClientJobActive(job) && !job.remoteJobId
+              ? {
               ...job,
               status: "failed" as const,
               phase: "需要重新开始",
@@ -344,21 +525,21 @@ export function JobCenterProvider({ children }: { children: ReactNode }) {
               error: "本地图片未上传到持久任务存储，请重新选择原图后再试。",
               updatedAt: new Date().toISOString(),
             }
-            : job
+              : job
         ));
-        setJobs(hydrated);
-        void fetchRemoteJobLedger()
-          .then((remoteJobs) => {
-            if (remoteJobs.length > 0) setJobs((current) => mergeClientJobLedgers(current, remoteJobs));
-          })
-          .catch(() => undefined);
+        // A fixture query is only used by the local interaction lab. Recreate it in memory
+        // so the existing /create result route can be verified without persisting test data.
+        const fixtureJobs = isJobCenterFixtureId(routeRequestedJobId) ? createJobCenterFixtureJobs() : [];
+        setJobs(fixtureJobs.length > 0 ? mergeClientJobLedgers(hydrated, fixtureJobs) : hydrated);
       } catch {
-        setJobs([]);
+        setJobs(isJobCenterFixtureId(routeRequestedJobId) ? createJobCenterFixtureJobs() : []);
       } finally {
         hydratedRef.current = true;
+        setIsHydrating(false);
       }
+      void refreshRemoteLedger();
     });
-  }, [jobStorageKey, skipRemoteLedger]);
+  }, [fixtureState, isJobCenterLab, jobStorageKey, requestedJobId, routeRequestedJobId, skipRemoteLedger, refreshRemoteLedger]);
 
   useEffect(() => {
     if (skipRemoteLedger) return;
@@ -376,16 +557,12 @@ export function JobCenterProvider({ children }: { children: ReactNode }) {
 
     const refresh = () => {
       authRetryAfterRef.current.clear();
-      void fetchRemoteJobLedger()
-        .then((remoteJobs) => {
-          if (remoteJobs.length > 0) setJobs((current) => mergeClientJobLedgers(current, remoteJobs));
-        })
-        .catch(() => undefined);
+      void refreshRemoteLedger();
       refreshReviewNotices();
     };
     window.addEventListener("focus", refresh);
     return () => window.removeEventListener("focus", refresh);
-  }, [skipRemoteLedger, refreshReviewNotices]);
+  }, [skipRemoteLedger, refreshRemoteLedger, refreshReviewNotices]);
 
   useEffect(() => {
     const timer = window.setTimeout(refreshReviewNotices, 0);
@@ -404,7 +581,7 @@ export function JobCenterProvider({ children }: { children: ReactNode }) {
     try {
       localStorage.setItem(
         jobStorageKey,
-        JSON.stringify(prepareClientJobsForStorage(jobs.slice(0, MAX_HISTORY))),
+        JSON.stringify(prepareClientJobsForStorage(jobs.filter((job) => !job.id.startsWith("fixture-")).slice(0, MAX_HISTORY))),
       );
     } catch {
       // 云端已同步结果不会重复塞进 localStorage；本机存储满时保留当前内存状态。
@@ -915,6 +1092,7 @@ export function JobCenterProvider({ children }: { children: ReactNode }) {
       heartbeatAt: now,
       error: undefined,
     });
+    announceAction(`已取消「${target.title}」，记录会保留在已结束中。`);
 
     void (async () => {
       try {
@@ -948,13 +1126,20 @@ export function JobCenterProvider({ children }: { children: ReactNode }) {
           statusText: "取消请求失败，任务仍保留在消息中心，可再次尝试",
           error: error instanceof Error ? error.message : "任务取消失败",
         });
+        announceAction(`「${target.title}」取消同步失败，可以再次尝试。`);
       }
     })();
-  }, [cleanupSource, jobs, updateJob]);
+  }, [announceAction, cleanupSource, jobs, updateJob]);
 
   const retryJob = useCallback((id: string) => {
     const target = jobs.find((job) => job.id === id);
-    if (!target || !canRetryClientJob(target)) return;
+    if (!target || (!canRetryClientJob(target) && !target.cleanupError)) return;
+
+    if (target.cleanupError) {
+      announceAction(`正在重试「${target.title}」的临时源图清理。`);
+      void cleanupSource(target);
+      return;
+    }
 
     if (target.class === "internal" && target.remoteJobId) {
       updateJob(id, {
@@ -963,6 +1148,7 @@ export function JobCenterProvider({ children }: { children: ReactNode }) {
         statusText: "已请求持久任务重试",
         error: undefined,
       });
+      announceAction(`已请求「${target.title}」重试，任务会回到进行中。`);
       void (async () => {
         try {
           const response = await fetch(`/api/jobs/${encodeURIComponent(target.remoteJobId ?? "")}/retry`, {
@@ -981,6 +1167,7 @@ export function JobCenterProvider({ children }: { children: ReactNode }) {
             statusText: "失败记录仍保留，可稍后再次重试",
             error: error instanceof Error ? error.message : "站内任务重试失败",
           });
+          announceAction(`「${target.title}」重试失败，错误详情仍保留。`);
         }
       })();
       return;
@@ -992,7 +1179,8 @@ export function JobCenterProvider({ children }: { children: ReactNode }) {
       statusText: "已请求重试",
       error: undefined,
     });
-  }, [jobs, updateJob]);
+    announceAction(`已请求「${target.title}」重新查询。`);
+  }, [announceAction, cleanupSource, jobs, updateJob]);
 
   const loadJobResult = useCallback(async (id: string) => {
     const target = jobs.find((job) => job.id === id);
@@ -1065,6 +1253,7 @@ export function JobCenterProvider({ children }: { children: ReactNode }) {
             : "结构化结果已恢复，仍需在目标页面确认后应用",
         error: undefined,
       });
+      announceAction("正在恢复任务结果，请稍候。");
     } catch (error: unknown) {
       updateJob(id, {
         phase: "结果恢复失败",
@@ -1074,12 +1263,17 @@ export function JobCenterProvider({ children }: { children: ReactNode }) {
     } finally {
       resultLoadingRef.current.delete(id);
     }
-  }, [jobs, updateJob]);
+  }, [announceAction, jobs, updateJob]);
 
   const claimJobResult = useCallback((id: string) => {
     const target = jobs.find((job) => job.id === id);
-    updateJob(id, { resultClaimedAt: new Date().toISOString(), phase: "结果已领取" });
-    if (!target?.remoteJobId) return;
+    if (!target) return;
+    const claimedAt = new Date().toISOString();
+    if (!target.remoteJobId) {
+      updateJob(id, { resultClaimedAt: claimedAt, phase: "结果已领取", ledgerState: "local_only" });
+      announceAction(`已领取「${target.title}」，可以继续在目标页面确认。`);
+      return;
+    }
 
     void (async () => {
       try {
@@ -1092,16 +1286,25 @@ export function JobCenterProvider({ children }: { children: ReactNode }) {
         if (!response.ok) throw new Error("任务领取状态同步失败");
         const remoteJobs = normalizeRemoteJobRows(payload.job ? [payload.job] : []);
         if (remoteJobs.length > 0) setJobs((current) => mergeClientJobLedgers(current, remoteJobs));
+        updateJob(id, { resultClaimedAt: claimedAt, phase: "结果已领取", ledgerState: "synced", error: undefined });
+        announceAction(`已领取「${target.title}」，可以继续在目标页面确认。`);
       } catch {
-        updateJob(id, { ledgerState: "sync_failed" });
+        updateJob(id, {
+          resultClaimedAt: undefined,
+          phase: "领取同步失败",
+          statusText: "结果仍待领取，跨设备状态同步失败，可再次尝试",
+          ledgerState: "sync_failed",
+        });
+        announceAction("领取状态同步失败，结果仍保留在待处理中，可以重试。");
       }
     })();
-  }, [jobs, updateJob]);
+  }, [announceAction, jobs, updateJob]);
 
   const dismissJob = useCallback((id: string) => {
     const target = jobs.find((job) => job.id === id);
     if (!target || isClientJobActive(target) || (target.status === "succeeded" && !target.resultClaimedAt)) return;
     setJobs((current) => current.filter((job) => job.id !== id));
+    announceAction(`已从消息中心移出「${target.title}」。`);
     if (!target.remoteJobId) return;
 
     void (async () => {
@@ -1120,9 +1323,10 @@ export function JobCenterProvider({ children }: { children: ReactNode }) {
           error: error instanceof Error ? error.message : "任务移出历史失败",
         };
         setJobs((current) => mergeClientJobLedgers(current, [restored]));
+        announceAction(`「${target.title}」移出失败，记录已恢复。`);
       }
     })();
-  }, [jobs]);
+  }, [announceAction, jobs]);
 
   const value = useMemo(() => ({
     jobs: consumerJobs,
@@ -1159,8 +1363,44 @@ export function JobCenterProvider({ children }: { children: ReactNode }) {
   }), [jobs, reviewNotices]);
   const displayBucket: JobBucket = activeBucket;
   const visibleJobs = jobs.filter((job) => getJobBucket(job) === displayBucket);
-  const hasMessages = jobs.length > 0 || reviewNotices.length > 0;
+  const hasMessages = jobs.length > 0 || reviewNotices.length > 0 || isFixtureEntryOnly;
   const attentionCount = activeCount + failedCount + unclaimedCount + reviewNotices.length;
+  const historyCount = bucketCounts.completed;
+  const fabLabel = attentionCount > 0
+    ? `打开消息中心，${bucketCounts.pending} 个待处理，${bucketCounts.running} 个进行中，${historyCount} 条历史记录`
+    : `打开消息中心，${historyCount} 条历史记录`;
+  const openMessageCenter = () => {
+    const nextBucket: JobBucket = isFixtureEntryOnly
+      ? "pending"
+      : attentionCount > 0
+      ? bucketCounts.pending > 0 ? "pending" : bucketCounts.running > 0 ? "running" : "completed"
+      : "completed";
+    setActiveBucket(nextBucket);
+    setIsOpen(true);
+    authRetryAfterRef.current.clear();
+    void refreshRemoteLedger();
+    refreshReviewNotices();
+  };
+
+  const bucketTabRefs = useRef<Partial<Record<JobBucket, HTMLButtonElement | null>>>({});
+  const handleBucketKeyDown = useCallback((event: ReactKeyboardEvent<HTMLButtonElement>, bucket: JobBucket) => {
+    const order: JobBucket[] = ["pending", "running", "completed"];
+    const currentIndex = order.indexOf(bucket);
+    const nextIndex = event.key === "ArrowRight" || event.key === "ArrowDown"
+      ? (currentIndex + 1) % order.length
+      : event.key === "ArrowLeft" || event.key === "ArrowUp"
+        ? (currentIndex - 1 + order.length) % order.length
+        : event.key === "Home"
+          ? 0
+          : event.key === "End"
+            ? order.length - 1
+            : -1;
+    if (nextIndex < 0) return;
+    event.preventDefault();
+    const nextBucket = order[nextIndex];
+    setActiveBucket(nextBucket);
+    window.requestAnimationFrame(() => bucketTabRefs.current[nextBucket]?.focus());
+  }, []);
 
   useDialogFocus({
     isOpen: isOpen && hasMessages,
@@ -1169,42 +1409,82 @@ export function JobCenterProvider({ children }: { children: ReactNode }) {
     initialFocusRef: drawerCloseRef,
   });
 
+  const motionDuration = reducedMotion ? 0 : 0.24;
+  const overlayTransition = { duration: reducedMotion ? 0 : 0.18, ease: [0.2, 0, 0, 1] as const };
+  const drawerTransition = reducedMotion
+    ? { duration: 0 }
+    : { duration: motionDuration, ease: [0.16, 1, 0.3, 1] as const };
+  const itemVariants = {
+    initial: reducedMotion ? { opacity: 1 } : { opacity: 0, y: 10 },
+    animate: { opacity: 1, y: 0 },
+    exit: reducedMotion ? { opacity: 0 } : { opacity: 0, y: -8 },
+  };
+
   return (
     <JobCenterContext.Provider value={value}>
       {children}
-      {!isUiLab && hasMessages && (
+      {isJobCenterVisible && hasMessages && (
         <button
           type="button"
-          className="job-center-fab"
-          onClick={() => {
-            setIsOpen(true);
-            authRetryAfterRef.current.clear();
-            if (!skipRemoteLedger) {
-              void fetchRemoteJobLedger()
-                .then((remoteJobs) => {
-                  if (remoteJobs.length > 0) setJobs((current) => mergeClientJobLedgers(current, remoteJobs));
-                })
-                .catch(() => undefined);
-            }
-            refreshReviewNotices();
-          }}
-          aria-label={`打开消息中心，${reviewNotices.length} 篇文章待审核，${activeCount} 个进行中，${failedCount} 个失败，${unclaimedCount} 个待领取`}
+          ref={fabRef}
+          className={`job-center-fab ${attentionCount > 0 ? "has-attention" : "has-history"}`}
+          onClick={openMessageCenter}
+          aria-label={fabLabel}
         >
-          {failedCount > 0 ? <AlertTriangle className="h-5 w-5" /> : activeCount > 0 ? <Loader2 className="h-5 w-5 animate-spin" /> : reviewNotices.length > 0 ? <ShieldCheck className="h-5 w-5" /> : <Clock3 className="h-5 w-5" />}
-          <span>{attentionCount}</span>
+          {failedCount > 0 ? <AlertTriangle className="h-5 w-5" /> : bucketCounts.running > 0 ? <Loader2 className="h-5 w-5 animate-spin" /> : reviewNotices.length > 0 ? <ShieldCheck className="h-5 w-5" /> : <Clock3 className="h-5 w-5" />}
+          {attentionCount > 0 ? <span>{attentionCount}</span> : <small>历史</small>}
         </button>
       )}
 
-      {!isUiLab && isOpen && hasMessages && (
-        <div className="job-center-overlay" role="presentation" onClick={() => setIsOpen(false)}>
-          <aside ref={drawerRef} className="job-center-drawer" role="dialog" aria-modal="true" aria-label="消息中心" tabIndex={-1} onClick={(event) => event.stopPropagation()}>
+      <AnimatePresence initial={false}>
+      {isJobCenterVisible && isOpen && hasMessages && (
+        <motion.div
+          key="job-center-overlay"
+          className="job-center-overlay"
+          role="presentation"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={overlayTransition}
+          onClick={() => setIsOpen(false)}
+        >
+          <motion.aside
+            ref={drawerRef}
+            className="job-center-drawer"
+            role="dialog"
+            aria-modal="true"
+            aria-label="消息中心"
+            tabIndex={-1}
+            initial={reducedMotion ? { opacity: 1 } : { opacity: 0, x: "100%" }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={reducedMotion ? { opacity: 0 } : { opacity: 0, x: "100%" }}
+            transition={drawerTransition}
+            onClick={(event) => event.stopPropagation()}
+          >
             <header className="job-center-header">
               <div>
                 <span>任务通知</span>
                 <h2>消息中心</h2>
-                <p>需要你决策、编辑或留意的事项会保留在这里。</p>
+                <p>{getJobBucketDescription(displayBucket)}</p>
+                <div className="job-center-summary" aria-label="任务概览">
+                  <span><b>{bucketCounts.pending}</b>待处理</span>
+                  <span><b>{bucketCounts.running}</b>进行中</span>
+                  <span><b>{bucketCounts.completed}</b>已结束</span>
+                </div>
               </div>
-              <button ref={drawerCloseRef} type="button" onClick={() => setIsOpen(false)} aria-label="关闭消息中心"><X className="h-5 w-5" /></button>
+              <div className="job-center-header-actions">
+                <button
+                  type="button"
+                  className="job-center-refresh"
+                  onClick={() => void refreshRemoteLedger({ manual: true })}
+                  aria-label="刷新任务记录"
+                  aria-busy={ledgerSyncState === "syncing"}
+                  title="刷新任务记录"
+                >
+                  <RefreshCw className={ledgerSyncState === "syncing" ? "h-5 w-5 animate-spin" : "h-5 w-5"} />
+                </button>
+                <button ref={drawerCloseRef} type="button" onClick={() => setIsOpen(false)} aria-label="关闭消息中心"><X className="h-5 w-5" /></button>
+              </div>
             </header>
 
             <div className="job-center-bucket-tabs" role="tablist" aria-label="消息状态分组">
@@ -1213,9 +1493,14 @@ export function JobCenterProvider({ children }: { children: ReactNode }) {
                   type="button"
                   role="tab"
                   aria-selected={displayBucket === bucket}
+                  aria-controls="job-center-panel"
+                  id={`job-center-tab-${bucket}`}
+                  tabIndex={displayBucket === bucket ? 0 : -1}
                   className={displayBucket === bucket ? "is-active" : ""}
                   key={bucket}
+                  ref={(element) => { bucketTabRefs.current[bucket] = element; }}
                   onClick={() => setActiveBucket(bucket)}
+                  onKeyDown={(event) => handleBucketKeyDown(event, bucket)}
                 >
                   {getJobBucketLabel(bucket)}
                   <span>{bucketCounts[bucket]}</span>
@@ -1223,12 +1508,35 @@ export function JobCenterProvider({ children }: { children: ReactNode }) {
               ))}
             </div>
 
-            <div className="job-center-list" role="tabpanel">
-              {visibleJobs.length === 0 && (
-                <p className="job-center-empty">暂无{getJobBucketLabel(displayBucket)}事项。已领取、失败或取消的消息保留 30 天；未领取结果持续保留。</p>
+            {(isHydrating || ledgerSyncState === "syncing") && (
+              <div className="job-center-sync" role="status">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                <span>正在同步任务记录…</span>
+              </div>
+            )}
+            {ledgerSyncState === "error" && (
+              <div className="job-center-sync job-center-sync-error" role="alert">
+                <span>{ledgerSyncError || "任务账本暂时无法同步，本机记录仍保留。"}</span>
+                <button type="button" onClick={() => void refreshRemoteLedger({ manual: true })}>重试</button>
+              </div>
+            )}
+            {actionFeedback && <p className="job-center-feedback" role="status" aria-live="polite">{actionFeedback}</p>}
+
+            <div className="job-center-list" role="tabpanel" id="job-center-panel" aria-labelledby={`job-center-tab-${displayBucket}`} aria-label={getJobBucketLabel(displayBucket)} tabIndex={0}>
+              {visibleJobs.length === 0 && !(displayBucket === "pending" && reviewNotices.length > 0) && (
+                <p className="job-center-empty">暂无{getJobBucketLabel(displayBucket)}事项。{getJobBucketDescription(displayBucket)}</p>
               )}
               {displayBucket === "pending" && reviewNotices.map((notice) => (
-                <article className="job-center-item job-center-review-item" key={`review-${notice.id}`}>
+                <motion.article
+                  className="job-center-item job-center-review-item"
+                  key={`review-${notice.id}`}
+                  layout
+                  variants={itemVariants}
+                  initial="initial"
+                  animate="animate"
+                  exit="exit"
+                  transition={{ duration: reducedMotion ? 0 : 0.18 }}
+                >
                   <div className="job-center-item-icon" data-status="review"><ShieldCheck /></div>
                   <div className="job-center-item-body">
                     <div className="job-center-item-title">
@@ -1244,10 +1552,20 @@ export function JobCenterProvider({ children }: { children: ReactNode }) {
                       </Link>
                     </div>
                   </div>
-                </article>
+                </motion.article>
               ))}
+              <AnimatePresence initial={false} mode="popLayout">
               {visibleJobs.map((job) => (
-                <article className="job-center-item" key={job.id}>
+                <motion.article
+                  className="job-center-item"
+                  key={job.id}
+                  layout
+                  variants={itemVariants}
+                  initial="initial"
+                  animate="animate"
+                  exit="exit"
+                  transition={{ duration: reducedMotion ? 0 : 0.18 }}
+                >
                   <div className="job-center-item-icon" data-status={job.status}>
                     {job.status === "succeeded" || job.status === "claimed"
                       ? <CheckCircle2 />
@@ -1285,16 +1603,22 @@ export function JobCenterProvider({ children }: { children: ReactNode }) {
                           取消任务
                         </button>
                       )}
-                      {canRetryClientJob(job) && (
+                      {(canRetryClientJob(job) || Boolean(job.cleanupError)) && (
                         <button type="button" onClick={() => retryJob(job.id)}>
                           <RotateCcw className="h-4 w-4" />
                           {job.cleanupError ? "重试临时源图清理" : job.class === "internal" ? "重试失败分块" : "重新查询"}
                         </button>
                       )}
-                      {(job.status === "succeeded" || job.status === "claimed") && (
+                      {job.status === "succeeded" || job.status === "claimed" ? (
                         <button type="button" onClick={() => { setResultJobId(job.id); setIsOpen(false); }}>
-                          {job.resultClaimedAt ? "查看成果" : "查看并领取成果"}
+                          {job.resultClaimedAt ? "查看成果" : job.ledgerState === "sync_failed" ? "重试领取状态" : "查看并领取成果"}
                           <ArrowUpRight className="h-4 w-4" />
+                        </button>
+                      ) : null}
+                      {job.ledgerState === "sync_failed" && job.status === "succeeded" && !job.resultClaimedAt && (
+                        <button type="button" onClick={() => claimJobResult(job.id)}>
+                          <RefreshCw className="h-4 w-4" />
+                          重试领取
                         </button>
                       )}
                       {!isClientJobActive(job) && !(job.status === "succeeded" && !job.resultClaimedAt) && (
@@ -1302,13 +1626,15 @@ export function JobCenterProvider({ children }: { children: ReactNode }) {
                       )}
                     </div>
                   </div>
-                </article>
+                </motion.article>
               ))}
+              </AnimatePresence>
             </div>
-          </aside>
-        </div>
+          </motion.aside>
+        </motion.div>
       )}
-      {resultJob && <JobResultDialog key={resultJob.id} job={resultJob} onClose={() => setResultJobId(null)} onLoad={loadJobResult} />}
+      </AnimatePresence>
+      {resultJob && <JobResultDialog key={resultJob.id} job={resultJob} onClose={() => { setResultJobId(null); window.requestAnimationFrame(() => fabRef.current?.focus()); }} onLoad={loadJobResult} />}
     </JobCenterContext.Provider>
   );
 }

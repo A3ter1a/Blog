@@ -4,6 +4,7 @@ import { callDeepSeek, callDeepSeekVision } from '@/lib/ai-client';
 import { requireAdminRequest, resolveAIKey } from '@/lib/server-admin-auth';
 import {
   DEFAULT_DEEPSEEK_MODEL,
+  DEFAULT_DEEPSEEK_OCR_MODEL,
   DEFAULT_QWEN_ENDPOINT,
   DEFAULT_QWEN_MODEL,
   QWEN_OCR_MODEL_OPTIONS,
@@ -76,6 +77,7 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
+    const startedAt = Date.now();
     const adminError = await requireAdminRequest(req);
     if (adminError) return adminError;
 
@@ -130,18 +132,32 @@ export async function POST(req: NextRequest) {
 
     if (provider === 'deepseek') {
       // Test DeepSeek: send a minimal chat completion
-      const { tokensUsed } = await callDeepSeek(
+      const { tokensUsed, model: effectiveModel } = await callDeepSeek(
         apiKey,
         model,
         [{ role: 'user', content: 'Hi' }],
-        { maxTokens: 5 }
+        { maxTokens: 5, signal: AbortSignal.timeout(15_000) }
       );
-      return NextResponse.json({ success: true, tokensUsed });
+      return NextResponse.json({
+        success: true,
+        provider: "deepseek",
+        model: effectiveModel || model,
+        endpoint: "https://api.deepseek.com/v1/chat/completions",
+        latencyMs: Date.now() - startedAt,
+        tokensUsed,
+      });
     }
     if (provider === 'deepseek-ocr') {
       // One tiny inline PNG verifies the multimodal endpoint without user data.
       const result = await callDeepSeekVision(apiKey, 'iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAIAAAD8GO2jAAAAJ0lEQVR4nO3NMQ0AAAwDoPoXWh1VsWMJGCA9FoFAIBAIBAKBQPAlGGDAyJeRYyAFAAAAAElFTkSuQmCC', '请用一个词描述这张图片的主要颜色。', 'image/png');
-      return NextResponse.json({ success: true, tokensUsed: result.tokensUsed });
+      return NextResponse.json({
+        success: true,
+        provider: "deepseek-ocr",
+        model: DEFAULT_DEEPSEEK_OCR_MODEL,
+        endpoint: "https://api.deepseek.com/v1/chat/completions",
+        latencyMs: Date.now() - startedAt,
+        tokensUsed: result.tokensUsed,
+      });
     }
 
     if (provider === 'qwen') {
@@ -178,7 +194,14 @@ export async function POST(req: NextRequest) {
         ...QWEN_OCR_MODEL_OPTIONS.map((option) => option.value),
         ...modelList,
       ]));
-      return NextResponse.json({ success: true, modelList: ocrModelList });
+      return NextResponse.json({
+        success: true,
+        provider: "qwen",
+        model,
+        endpoint,
+        latencyMs: Date.now() - startedAt,
+        modelList: ocrModelList,
+      });
     }
   } catch (error: unknown) {
     const message = getErrorMessage(error, '连接测试失败');

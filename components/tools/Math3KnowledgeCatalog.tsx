@@ -19,6 +19,7 @@ import {
   X,
 } from "lucide-react";
 import { PracticeSession } from "@/components/practice/PracticeSession";
+import { AnimatedDisclosure } from "@/components/ui/AnimatedDisclosure";
 import { PageHeader, PageShell } from "@/components/ui/PageScaffold";
 import {
   difficultyMeta,
@@ -789,11 +790,12 @@ function ChapterBlock({
             type="button"
             onClick={onToggleChapter}
             aria-expanded={!collapsed}
+            aria-controls={`math3-chapter-${chapter.id}`}
             className="min-w-0 flex-1 text-left"
           >
             <div>
               <div className="flex items-center gap-2">
-                <ChevronDown className={`h-4 w-4 shrink-0 text-on-surface-variant transition-transform ${collapsed ? "-rotate-90" : ""}`} />
+                <ChevronDown className="motion-chevron h-4 w-4 shrink-0 text-on-surface-variant" />
                 <h3 className="font-headline text-lg font-bold text-on-surface">{chapter.title}</h3>
               </div>
               <p className="mt-1 text-sm leading-6 text-on-surface-variant">{chapter.summary}</p>
@@ -830,7 +832,7 @@ function ChapterBlock({
         </div>
       </div>
 
-      {!collapsed && (
+      <AnimatedDisclosure open={!collapsed} id={`math3-chapter-${chapter.id}`}>
         <div className="space-y-3 p-3">
           <div>
             <ProblemSetLinkPanel
@@ -854,7 +856,7 @@ function ChapterBlock({
             ))}
           </div>
         </div>
-      )}
+      </AnimatedDisclosure>
     </article>
   );
 }

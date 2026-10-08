@@ -13,7 +13,7 @@ export function StudyTimelineDeferred() {
 function StudyTimelineSkeleton() {
   return (
     <div className="relative mx-auto w-full py-4 sm:py-6">
-      <div className="relative mx-auto w-full max-w-6xl pb-6">
+      <div className="relative mx-auto w-full max-w-none pb-6">
         <div className="absolute left-[8.333%] right-[8.333%] top-2.5 hidden h-4 animate-pulse rounded-full bg-[linear-gradient(90deg,rgba(14,165,233,0.35)_0%,rgba(14,165,233,0.35)_28%,rgba(249,115,22,0.35)_58%,rgba(225,29,72,0.35)_100%)] sm:block" />
         <div className="relative z-10 grid grid-cols-3 gap-y-5 sm:grid-cols-6 sm:gap-y-0">
           {Array.from({ length: 6 }).map((_, index) => (

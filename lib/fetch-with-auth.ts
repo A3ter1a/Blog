@@ -99,6 +99,22 @@ export function getCachedAuthSession(): Promise<Session | null> {
   return sessionPromise;
 }
 
+/**
+ * Read the session immediately after an explicit sign-in or a user-requested
+ * retry. The normal cached lookup is intentionally short-lived for page
+ * renders, but it can race Supabase's storage event directly after login.
+ */
+export async function getFreshAuthSession(): Promise<Session | null> {
+  const supabase = ensureSessionClient();
+  resetSessionCache();
+  const { data } = await supabase.auth.getSession();
+  cachedSession = {
+    session: data.session,
+    expiresAt: Date.now() + SESSION_CACHE_TTL_MS,
+  };
+  return data.session;
+}
+
 export async function buildAuthHeaders(headers?: HeadersInit): Promise<Headers> {
   const nextHeaders = new Headers(headers);
   const session = await getCachedAuthSession();

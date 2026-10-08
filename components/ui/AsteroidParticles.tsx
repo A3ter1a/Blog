@@ -67,12 +67,13 @@ export function AsteroidParticles({ className = "" }: { className?: string }) {
     const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     let animationFrame = 0;
     let timeout = 0;
+    let isVisible = true;
     let width = 0;
     let height = 0;
 
     const resize = () => {
       const rect = container.getBoundingClientRect();
-      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
 
       width = Math.max(1, rect.width);
       height = Math.max(1, rect.height);
@@ -133,7 +134,7 @@ export function AsteroidParticles({ className = "" }: { className?: string }) {
 
       context.restore();
 
-      if (!reducedMotion) {
+      if (!reducedMotion && isVisible) {
         animationFrame = window.requestAnimationFrame(draw);
       }
     };
@@ -142,18 +143,40 @@ export function AsteroidParticles({ className = "" }: { className?: string }) {
 
     const observer = new ResizeObserver(() => {
       resize();
-      draw(performance.now());
+      if (animationFrame === 0) {
+        draw(performance.now());
+      }
     });
     observer.observe(container);
 
+    const visibilityObserver = typeof IntersectionObserver === "undefined"
+      ? null
+      : new IntersectionObserver(([entry]) => {
+          isVisible = entry?.isIntersecting ?? true;
+
+          if (!isVisible) {
+            window.cancelAnimationFrame(animationFrame);
+            animationFrame = 0;
+            return;
+          }
+
+          if (animationFrame === 0) {
+            draw(performance.now());
+          }
+        }, { threshold: 0 });
+    visibilityObserver?.observe(container);
+
     timeout = window.setTimeout(() => {
-      draw(performance.now());
+      if (animationFrame === 0) {
+        draw(performance.now());
+      }
     }, 80);
 
     return () => {
       window.clearTimeout(timeout);
       window.cancelAnimationFrame(animationFrame);
       observer.disconnect();
+      visibilityObserver?.disconnect();
     };
   }, []);
 

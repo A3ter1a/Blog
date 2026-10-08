@@ -1,5 +1,5 @@
 import Link from "next/link";
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { ChevronRight, type LucideIcon } from "lucide-react";
 
 export type ToolHubCardItem = {
@@ -13,15 +13,21 @@ export type ToolHubCardItem = {
   disabledLabel?: string;
 };
 
-export function ToolHubGrid({ children }: { children: ReactNode }) {
+export function ToolHubGrid({
+  children,
+  width = "normal",
+}: {
+  children: ReactNode;
+  width?: "normal" | "wide";
+}) {
   return (
-    <section className="catalog-index mx-auto max-w-4xl">
+    <section className={`catalog-index mx-auto w-full ${width === "wide" ? "max-w-none" : "max-w-4xl"}`}>
       {children}
     </section>
   );
 }
 
-export function ToolHubCard({ item }: { item: ToolHubCardItem }) {
+export function ToolHubCard({ item, index = 0 }: { item: ToolHubCardItem; index?: number }) {
   const Icon = item.icon;
   const tone = item.tone ?? "border-primary/15 bg-primary/10 text-primary";
   const content = (
@@ -46,20 +52,23 @@ export function ToolHubCard({ item }: { item: ToolHubCardItem }) {
     </>
   );
 
-  const className = `catalog-row group flex min-h-28 items-center gap-4 p-4 text-left sm:p-5 ${
+  const motionStyle = {
+    "--motion-delay": `${Math.min(index * 70, 280)}ms`,
+  } as CSSProperties;
+  const className = `catalog-row motion-reveal group flex min-h-28 items-center gap-4 p-4 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:ring-inset sm:p-5 ${
     item.href ? "" : "opacity-60"
   }`;
 
   if (!item.href) {
     return (
-      <div className={className} aria-disabled="true">
+      <div className={className} style={motionStyle} aria-disabled="true">
         {content}
       </div>
     );
   }
 
   return (
-    <Link href={item.href} className={className}>
+    <Link href={item.href} className={className} style={motionStyle}>
       {content}
     </Link>
   );

@@ -1,5 +1,5 @@
-import { PageLoadingSkeleton } from "@/components/ui/PageLoadingSkeleton";
+import { NoteReaderLoading as NoteReaderLoadingView } from "@/components/notes/NotesLoading";
 
 export default function NoteReaderLoading() {
-  return <PageLoadingSkeleton title="正在加载笔记正文" variant="reader" />;
+  return <NoteReaderLoadingView />;
 }

@@ -64,6 +64,26 @@ function getModeInstruction(mode: NoteQAMode): string {
   return "直接回答问题，保留必要推导和来源编号。";
 }
 
+function getModePlan(mode: NoteQAMode, requestedContextLimit: number): {
+  contextLimit: number;
+  temperature: number;
+  maxTokens: number;
+} {
+  if (mode === "locate") {
+    return { contextLimit: Math.min(requestedContextLimit, 6), temperature: 0.1, maxTokens: 900 };
+  }
+
+  if (mode === "outline") {
+    return { contextLimit: Math.max(8, requestedContextLimit), temperature: 0.15, maxTokens: 1_200 };
+  }
+
+  if (mode === "quiz") {
+    return { contextLimit: Math.min(requestedContextLimit, 8), temperature: 0.35, maxTokens: 1_600 };
+  }
+
+  return { contextLimit: requestedContextLimit, temperature: 0.2, maxTokens: 1_400 };
+}
+
 function normalizeReasoningEffort(value: unknown): DeepSeekReasoningEffort | undefined {
   return value === "high" || value === "max" ? value : undefined;
 }
@@ -73,7 +93,7 @@ function normalizeThinkingMode(value: unknown): DeepSeekThinkingMode | undefined
 }
 
 type NoteQAStreamEvent =
-  | { type: "meta"; sources: NoteQASource[]; totalChunks: number; retrieval: NoteQARetrievalSummary; indexStats: unknown }
+  | { type: "meta"; mode: NoteQAMode; noteId: string; sources: NoteQASource[]; totalChunks: number; retrieval: NoteQARetrievalSummary; indexStats: unknown }
   | { type: "delta"; delta: string }
   | { type: "done"; tokensUsed: number }
   | { type: "error"; error: string };
@@ -194,6 +214,7 @@ export async function POST(req: NextRequest) {
     const subject = normalizeNoteQASubject(record.subject);
     const mode = normalizeNoteQAMode(record.mode);
     const contextLimit = normalizeNoteQAContextLimit(record.contextLimit);
+    const modePlan = getModePlan(mode, contextLimit);
     const conversation = normalizeNoteQAConversation(record.conversation);
     const stream = record.stream === true;
     const selectedText = typeof record.selectedText === "string"
@@ -243,7 +264,7 @@ export async function POST(req: NextRequest) {
     const { context, sources, totalChunks } = await searchPrivateNoteRag(supabase, {
       question: retrievalQuestion,
       noteId: noteId || undefined,
-      limit: contextLimit,
+      limit: modePlan.contextLimit,
     });
     if (!context || sources.length === 0) {
       return NextResponse.json({
@@ -280,8 +301,8 @@ ${context}`;
       { role: "user", content: userPrompt },
     ];
     const aiOptions = {
-      temperature: mode === "quiz" ? 0.35 : 0.2,
-      maxTokens: mode === "quiz" ? 1600 : 1400,
+      temperature: modePlan.temperature,
+      maxTokens: modePlan.maxTokens,
       reasoningEffort,
       thinking,
     } as const;
@@ -293,6 +314,8 @@ ${context}`;
       });
       const body = createNoteQAStream(upstream, {
         type: "meta",
+        mode,
+        noteId,
         sources,
         totalChunks,
         retrieval,
@@ -317,6 +340,8 @@ ${context}`;
 
     return NextResponse.json({
       answer: content.trim(),
+      mode,
+      noteId,
       sources,
       totalChunks,
       retrieval,

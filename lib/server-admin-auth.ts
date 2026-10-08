@@ -37,12 +37,71 @@ export type AdminRequestContextResult =
   | { ok: true; context: AdminRequestContext }
   | { ok: false; response: NextResponse };
 
+function adminErrorResponse(
+  error: string,
+  status: number,
+  code: string,
+): NextResponse {
+  const headers = status === 503 ? { "Retry-After": "2" } : undefined;
+  return NextResponse.json({ error, code, success: false }, { status, headers });
+}
+
+function getErrorStatus(error: unknown): number | null {
+  if (!error || typeof error !== "object") return null;
+  const status = (error as { status?: unknown }).status;
+  return typeof status === "number" ? status : null;
+}
+
+function isRetryableSupabaseError(error: unknown): boolean {
+  const status = getErrorStatus(error);
+  if (status === 401 || status === 403) return false;
+  if (status !== null) return status >= 500;
+  return true;
+}
+
+function isInvalidSupabaseSession(error: unknown): boolean {
+  const status = getErrorStatus(error);
+  if (status === 401) return true;
+  if (!error || typeof error !== "object") return false;
+  const code = (error as { code?: unknown }).code;
+  return code === "invalid_jwt" || code === "bad_jwt";
+}
+
+async function getUserWithTransientRetry(
+  supabase: ReturnType<typeof createAuthenticatedServerClient>,
+  token: string,
+): Promise<{ data: Awaited<ReturnType<typeof supabase.auth.getUser>>["data"]; error: unknown }> {
+  let result: Awaited<ReturnType<typeof supabase.auth.getUser>>;
+  try {
+    result = await supabase.auth.getUser(token);
+  } catch (error) {
+    if (!isRetryableSupabaseError(error)) return { data: { user: null }, error };
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    try {
+      result = await supabase.auth.getUser(token);
+    } catch (retryError) {
+      return { data: { user: null }, error: retryError };
+    }
+  }
+
+  if (result.error && isRetryableSupabaseError(result.error)) {
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    try {
+      result = await supabase.auth.getUser(token);
+    } catch (retryError) {
+      return { data: { user: null }, error: retryError };
+    }
+  }
+
+  return result;
+}
+
 export async function getAdminRequestContext(req: NextRequest): Promise<AdminRequestContextResult> {
   const token = getBearerToken(req);
   if (!token) {
     return {
       ok: false,
-      response: NextResponse.json({ error: "Admin login required", success: false }, { status: 401 }),
+      response: adminErrorResponse("Admin login required", 401, "auth_required"),
     };
   }
 
@@ -52,15 +111,28 @@ export async function getAdminRequestContext(req: NextRequest): Promise<AdminReq
   } catch {
     return {
       ok: false,
-      response: NextResponse.json({ error: "Supabase server config is missing", success: false }, { status: 500 }),
+      response: adminErrorResponse("Supabase server config is missing", 500, "server_config_missing"),
     };
   }
 
-  const { data, error } = await supabase.auth.getUser(token);
-  if (error || !data.user) {
+  const { data, error } = await getUserWithTransientRetry(supabase, token);
+  if (error) {
     return {
       ok: false,
-      response: NextResponse.json({ error: "Invalid login session", success: false }, { status: 401 }),
+      response: adminErrorResponse(
+        isInvalidSupabaseSession(error)
+          ? "Invalid login session"
+          : "Supabase auth service is temporarily unavailable",
+        isInvalidSupabaseSession(error) ? 401 : 503,
+        isInvalidSupabaseSession(error) ? "invalid_session" : "auth_unavailable",
+      ),
+    };
+  }
+
+  if (!data.user) {
+    return {
+      ok: false,
+      response: adminErrorResponse("Invalid login session", 401, "invalid_session"),
     };
   }
 
@@ -68,28 +140,36 @@ export async function getAdminRequestContext(req: NextRequest): Promise<AdminReq
   if (!email) {
     return {
       ok: false,
-      response: NextResponse.json({ error: "Admin permission required", success: false }, { status: 403 }),
+      response: adminErrorResponse("Admin permission required", 403, "admin_required"),
     };
   }
 
-  const { data: adminRow, error: adminError } = await supabase
-    .from("admin_users")
-    .select("email")
-    .ilike("email", email)
-    .limit(1)
-    .maybeSingle();
+  let adminRow: { email: string } | null = null;
+  let adminError: unknown = null;
+  try {
+    const result = await supabase
+      .from("admin_users")
+      .select("email")
+      .ilike("email", email)
+      .limit(1)
+      .maybeSingle();
+    adminRow = result.data as { email: string } | null;
+    adminError = result.error;
+  } catch (error) {
+    adminError = error;
+  }
 
   if (adminError) {
     return {
       ok: false,
-      response: NextResponse.json({ error: "Admin authority source is unavailable", success: false }, { status: 503 }),
+      response: adminErrorResponse("Admin authority source is unavailable", 503, "admin_source_unavailable"),
     };
   }
 
   if (!adminRow?.email || adminRow.email.trim().toLowerCase() !== email.toLowerCase()) {
     return {
       ok: false,
-      response: NextResponse.json({ error: "Admin permission required", success: false }, { status: 403 }),
+      response: adminErrorResponse("Admin permission required", 403, "admin_required"),
     };
   }
 

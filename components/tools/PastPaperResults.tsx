@@ -5,7 +5,9 @@ import { createElement, useEffect, useMemo, useState } from "react";
 import { ArrowLeft, CheckCircle2, History, Loader2 } from "lucide-react";
 import { PageHeader, PageShell } from "@/components/ui/PageScaffold";
 import { useToast } from "@/components/ui/Toast";
+import { useLocalReviewMode } from "@/hooks/useAdminAuth";
 import {
+  ENGLISH_TRAINING_YEARS,
   englishSectionLabels,
   type EnglishSection,
 } from "@/lib/english-training";
@@ -15,6 +17,7 @@ import {
   type EnglishResultsData,
 } from "@/lib/english-results-api";
 import { englishTrainingApi } from "@/lib/english-training-api";
+import { getEnglishReviewFixture } from "@/lib/english-review-fixture";
 import { findUnreconciledEnglishLocalHistory, type EnglishTrainingPersistenceMode } from "@/lib/english-training-core";
 import {
   ENGLISH_ROUND_HISTORY_CHANGE_EVENT,
@@ -27,7 +30,6 @@ import {
   type EnglishRoundRevision,
 } from "@/lib/english-round-history";
 
-type ResultTab = "english" | "math";
 type EnglishResultView = "type" | "paper";
 
 type EnglishEffectivePassage = {
@@ -52,10 +54,16 @@ function formatScore(value: number): string {
   return Number.isInteger(value) ? String(value) : value.toFixed(1);
 }
 
+function filterEnglishResultsWindow(data: EnglishResultsData): EnglishResultsData {
+  const allowedYears = new Set(ENGLISH_TRAINING_YEARS);
+  const passages = data.passages.filter((passage) => allowedYears.has(passage.year));
+  return { passages };
+}
+
 export function PastPaperResults() {
   const toast = useToast();
+  const reviewMode = useLocalReviewMode();
   const [data, setData] = useState<EnglishResultsData>({ passages: [] });
-  const [activeTab, setActiveTab] = useState<ResultTab>("english");
   const [englishView, setEnglishView] = useState<EnglishResultView>("type");
   const [roundLedgers, setRoundLedgers] = useState<EnglishPassageRoundLedger[]>([]);
   const [persistenceMode, setPersistenceMode] = useState<EnglishTrainingPersistenceMode>("legacy");
@@ -69,12 +77,27 @@ export function PastPaperResults() {
       setIsLoading(true);
       setLoadError(null);
       try {
+        if (reviewMode) {
+          const fixture = getEnglishReviewFixture();
+          setData(filterEnglishResultsWindow({
+            passages: fixture.passages.map((passage) => ({
+              ...passage,
+              displayTitle: `${passage.year} ${englishSectionLabels[passage.section]} ${passage.title}`,
+              questions: fixture.questions.filter((question) => question.passageId === passage.id),
+            })),
+          }));
+          setPersistenceMode("legacy");
+          setRoundLedgers(readEnglishRoundLedgers());
+          toast.info("本地审查模式已载入英语复盘示例，结果只读取本机训练状态");
+          return;
+        }
         const [results, roundHistory] = await Promise.all([
           englishResultsApi.getResultsData(),
           englishTrainingApi.getRoundHistory(),
         ]);
         if (cancelled) return;
-        setData(results);
+        const scopedResults = filterEnglishResultsWindow(results);
+        setData(scopedResults);
         setPersistenceMode(roundHistory.mode);
         const stored = readEnglishRoundLedgers();
         if (roundHistory.mode !== "legacy") {
@@ -85,7 +108,7 @@ export function PastPaperResults() {
           }
         }
         const imported = roundHistory.mode === "legacy"
-          ? results.passages.reduce((ledgers, passage) => {
+          ? scopedResults.passages.reduce((ledgers, passage) => {
             if (!passage.attempt) return ledgers;
             const attempt = passage.attempt;
             const existing = ledgers.find((ledger) => ledger.passageId === passage.id);
@@ -120,7 +143,7 @@ export function PastPaperResults() {
     return () => {
       cancelled = true;
     };
-  }, [toast]);
+  }, [reviewMode, toast]);
 
   useEffect(() => {
     if (persistenceMode !== "legacy") return;
@@ -217,31 +240,22 @@ export function PastPaperResults() {
       <PageHeader
         width="workspace"
         title="真题训练结果"
-        description="统计英语、数学真题训练的正确率、得分和丢分分布。"
+        description="在同一页查看英语与数学真题训练的进度、得分和复盘入口。"
         actions={(
-          <Link href="/tools/past-papers" className="control-button h-10 px-3 text-sm">
+          <Link href="/tools" className="control-button h-10 px-3 text-sm">
             <ArrowLeft className="h-4 w-4" />
-            返回真题中心
+            返回工具
           </Link>
         )}
         stats={[
-          { label: "已提交", value: stats.submittedTotal },
-          { label: "正确率", value: `${stats.accuracy}%`, tone: "text-green-600" },
-          { label: "得分", value: `${formatScore(stats.score)}/${formatScore(stats.maxScore)}` },
-          { label: "丢分", value: formatScore(stats.lost), tone: "text-red-600" },
+          { label: "英语已提交", value: stats.submittedTotal },
+          { label: "英语正确率", value: `${stats.accuracy}%`, tone: "text-green-600" },
+          { label: "英语得分", value: `${formatScore(stats.score)}/${formatScore(stats.maxScore)}` },
+          { label: "英语丢分", value: formatScore(stats.lost), tone: "text-red-600" },
         ]}
       />
 
       <PageShell width="workspace" topPadding="content">
-        <div className="mb-4 flex flex-wrap gap-2">
-          <TabButton active={activeTab === "english"} onClick={() => setActiveTab("english")}>
-            英语结果
-          </TabButton>
-          <TabButton active={activeTab === "math"} onClick={() => setActiveTab("math")}>
-            数学结果
-          </TabButton>
-        </div>
-
         {isLoading ? (
           <InlinePanel>
             <Loader2 className="h-5 w-5 animate-spin text-primary" />
@@ -249,18 +263,19 @@ export function PastPaperResults() {
           </InlinePanel>
         ) : loadError ? (
           <InlinePanel tone="text-red-700">{loadError}</InlinePanel>
-        ) : activeTab === "english" ? (
-          <EnglishResultPanel
-            stats={stats}
-            sectionStats={sectionStats}
-            paperStats={paperStats}
-            recentHistory={recentHistory}
-            persistenceMode={persistenceMode}
-            view={englishView}
-            onViewChange={setEnglishView}
-          />
         ) : (
-          <MathResultPlaceholder />
+          <div className="space-y-5">
+            <EnglishResultPanel
+              stats={stats}
+              sectionStats={sectionStats}
+              paperStats={paperStats}
+              recentHistory={recentHistory}
+              persistenceMode={persistenceMode}
+              view={englishView}
+              onViewChange={setEnglishView}
+            />
+            <MathResultPlaceholder />
+          </div>
         )}
       </PageShell>
     </>
@@ -346,7 +361,7 @@ function EnglishResultPanel({
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="font-headline text-xl font-bold text-on-surface">英语一结果分析</h2>
-            <p className="mt-1 text-sm text-on-surface-variant">正式统计自动采用最高已完成轮次的最新有效版本，AI 建议不会混入分数。</p>
+            <p className="mt-1 text-sm text-on-surface-variant">正式统计只采用已确认的提交结果，AI 建议不会混入分数。</p>
           </div>
           <div className="flex gap-2">
             <TabButton active={view === "type"} onClick={() => onViewChange("type")}>按题型</TabButton>
@@ -355,10 +370,8 @@ function EnglishResultPanel({
         </div>
         <p className="mt-3 rounded-lg border border-outline-variant/20 bg-surface-container-low px-3 py-2 text-xs leading-5 text-on-surface-variant">
           {persistenceMode === "legacy"
-            ? "当前三轮与纠正轨迹来自本机浏览器；旧数据库只保留最近正式结果。完成生产数据迁移前，这些历史不会冒充跨设备同步。"
-            : persistenceMode === "dual"
-              ? "当前三轮与纠正轨迹来自共享训练核；旧数据库仅保留最高已完成轮次的兼容投影。"
-              : "当前三轮与纠正轨迹来自共享训练核，并以追加式修订和正式评分作为统计真源。"}
+            ? "训练结果保存在本机浏览器；数据库只保留最近一次正式结果。"
+            : "训练结果来自共享训练核，并以正式评分作为统计真源。"}
         </p>
       </section>
 
@@ -431,7 +444,7 @@ function EnglishResultPanel({
       <section className="surface-panel p-4">
         <div className="flex items-center gap-2">
           <History className="h-4 w-4 text-primary" />
-          <h2 className="font-headline text-base font-bold text-on-surface">三轮与纠正轨迹</h2>
+          <h2 className="font-headline text-base font-bold text-on-surface">提交记录</h2>
         </div>
         {recentHistory.length === 0 ? (
           <p className="mt-4 rounded-lg border border-dashed border-outline-variant/30 px-3 py-8 text-center text-sm text-on-surface-variant">
@@ -442,14 +455,14 @@ function EnglishResultPanel({
             {recentHistory.slice(0, 12).map((item) => (
               <div key={item.passage.id} className="rounded-lg border border-outline-variant/20 bg-surface-container-lowest p-3">
                 <Link
-                  href={`/tools/english-training?passage=${encodeURIComponent(item.passage.id)}&round=${item.round}&edit=1`}
+                  href={`/tools/english-training?passage=${encodeURIComponent(item.passage.id)}&edit=1`}
                   className="block transition-colors hover:text-primary"
                 >
                   <div className="flex items-start justify-between gap-3">
                    <div className="min-w-0">
                     <div className="text-sm font-bold text-on-surface">{item.passage.displayTitle}</div>
                     <div className="mt-1 text-xs text-on-surface-variant">
-                      当前采用 R{item.round} · v{item.revision.revisionNo}
+                      当前正式记录 · v{item.revision.revisionNo}
                     </div>
                   </div>
                   <div className="text-sm font-bold text-primary">
@@ -457,24 +470,8 @@ function EnglishResultPanel({
                   </div>
                   </div>
                 </Link>
-                <div className="mt-3 space-y-2 border-t border-outline-variant/15 pt-2">
-                  {item.ledger.rounds.map((round) => (
-                    <div key={round.round} className="text-xs text-on-surface-variant">
-                      <div className="font-semibold text-on-surface">R{round.round} · {formatRoundStatus(round.status)}</div>
-                      <div className="mt-1 flex flex-wrap gap-x-2 gap-y-1">
-                        {round.revisions.length === 0 ? (
-                          <span>尚无正式提交</span>
-                        ) : round.revisions.map((revision) => (
-                          <span key={revision.id}>
-                            v{revision.revisionNo} {revision.kind === "correction" ? "纠正" : "提交"} {formatScore(revision.score)}/{formatScore(revision.maxScore)}{revision.gradeOrigin === "ai_suggested" ? "（AI建议，不计分）" : ""}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-                <Link href={`/tools/english-training?passage=${encodeURIComponent(item.passage.id)}&round=${item.round}&edit=1`} className="mt-2 inline-block text-xs font-semibold text-primary">
-                  修改当前轮
+                <Link href={`/tools/english-training?passage=${encodeURIComponent(item.passage.id)}&edit=1`} className="mt-2 inline-block text-xs font-semibold text-primary">
+                  修改答案
                 </Link>
               </div>
             ))}
@@ -484,13 +481,6 @@ function EnglishResultPanel({
       </div>
     </div>
   );
-}
-
-function formatRoundStatus(status: EnglishPassageRoundLedger["rounds"][number]["status"]): string {
-  if (status === "in_progress") return "作答中";
-  if (status === "submitted") return "已提交";
-  if (status === "sealed") return "已封存";
-  return "已放弃";
 }
 
 function MetricCard({ label, value, tone = "text-primary" }: { label: string; value: string; tone?: string }) {
@@ -536,12 +526,25 @@ function SectionDistribution({
 
 function MathResultPlaceholder() {
   return (
-    <section className="surface-panel flex min-h-[22rem] flex-col items-center justify-center gap-3 p-6 text-center">
+    <section className="surface-panel p-4 sm:p-5">
       <CheckCircle2 className="h-9 w-9 text-primary" />
-      <h2 className="font-headline text-xl font-bold text-on-surface">数学真题结果待接入</h2>
-      <p className="max-w-md text-sm leading-6 text-on-surface-variant">
-        数学真题训练接入后，这里会合并正确率、得分和丢分分布。
-      </p>
+      <div className="mt-3 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="font-headline text-xl font-bold text-on-surface">数学真题</h2>
+          <p className="mt-1 max-w-2xl text-sm leading-6 text-on-surface-variant">
+            数学训练与英语结果放在同一页；数学统计接入后会沿用这里的题型、套卷和错题复盘结构。
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Link href="/tools/math-training" className="control-button h-10 px-3 text-sm">进入数学训练</Link>
+          <Link href="/tools/review" className="control-button h-10 px-3 text-sm">查看错题</Link>
+        </div>
+      </div>
+      <div className="mt-4 grid gap-3 md:grid-cols-3">
+        <MetricCard label="已完成套卷" value="待统计" />
+        <MetricCard label="正确率" value="待统计" tone="text-on-surface-variant" />
+        <MetricCard label="错题复盘" value="从错题入口进入" tone="text-on-surface-variant" />
+      </div>
     </section>
   );
 }

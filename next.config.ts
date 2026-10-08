@@ -42,6 +42,9 @@ const nextConfig: NextConfig = {
   productionBrowserSourceMaps: false,
   // Optimize package imports
   experimental: {
+    // Use worker threads for production builds; child-process workers fail with
+    // spawn EPERM in the supported Windows development environment.
+    workerThreads: true,
     optimizePackageImports: ["lucide-react", "framer-motion"],
   },
   // Headers for embedded video playback (Bilibili & YouTube)

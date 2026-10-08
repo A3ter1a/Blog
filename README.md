@@ -106,6 +106,14 @@ npm run dev
 
 开发服务默认运行在 `http://localhost:3000`。
 
+如果浏览器能访问 Supabase，但本地服务报 `ECONNRESET`，检查浏览器是否使用了系统代理。
+Node.js 不会自动读取 Windows 系统代理。可以在不提交 Git 的 `.env.development.local` 中配置
+`HTTP_PROXY`、`HTTPS_PROXY` 和 `NO_PROXY=localhost,127.0.0.1,::1`，代理地址应使用本机已有的 HTTP 代理。
+`npm run dev` 会在创建 Next.js 进程前加载这些变量，并启用 Node.js 的环境代理支持；
+这项能力要求 Node.js 22.21+ 或 24.5+。修改代理配置后需要重启开发服务。
+没有代理配置时保持原有启动行为；设置 `NODE_USE_ENV_PROXY=0` 可以显式关闭代理支持。
+此配置仅用于开发服务，不用于生产构建或部署。
+
 ## 环境变量
 
 | 变量名 | 说明 | 必填 |

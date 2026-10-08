@@ -1,6 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { motion } from "framer-motion";
+import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
+import { uiMotion } from "@/lib/motion";
 import {
   brushStageLabels,
   studyTimelines,
@@ -98,6 +101,7 @@ type TimelineMonthSlot = {
 type PlanningAccessState = "checking" | "anonymous" | "authenticated" | "unavailable";
 
 export default function StudyTimeline() {
+  const reducedMotion = usePrefersReducedMotion();
   const subjects = studyTimelines;
   const months = useMemo(() => buildTimelineMonths(subjects), [subjects]);
   const currentMonthId = useMemo(() => resolveCurrentTimelineMonthId(months), [months]);
@@ -194,7 +198,7 @@ export default function StudyTimeline() {
 
   return (
     <div className="relative mx-auto w-full py-4 sm:py-6">
-      <div className="relative mx-auto w-full max-w-6xl pb-6">
+      <div className="relative mx-auto w-full max-w-none pb-6">
         <div className="absolute left-[8.333%] right-[8.333%] top-2.5 z-0 hidden h-4 rounded-full bg-[linear-gradient(90deg,#0284c7_0%,#0ea5e9_28%,#f59e0b_45%,#f97316_80%,#e11d48_100%)] shadow-[inset_0_1px_0_rgba(255,255,255,0.38),0_14px_34px_-20px_rgba(15,23,42,0.9)] sm:block" />
 
         <div className="relative z-10 grid grid-cols-3 gap-y-5 sm:grid-cols-6 sm:gap-y-0">
@@ -208,7 +212,7 @@ export default function StudyTimeline() {
                 <button
                   type="button"
                   onClick={() => selectMonth(month.id)}
-                  className={`motion-ui group flex min-w-0 flex-col items-center gap-3 rounded-lg px-2 pb-1 pt-0 text-center focus:outline-none focus-visible:ring-2 ${toneStyle.button} ${
+                  className={`motion-ui motion-interactive group flex min-w-0 flex-col items-center gap-3 rounded-lg px-2 pb-1 pt-0 text-center focus:outline-none focus-visible:ring-2 ${toneStyle.button} ${
                     isSelected ? `${toneStyle.active} bg-surface-container-lowest/70` : ""
                   }`}
                   aria-pressed={isSelected}
@@ -232,8 +236,13 @@ export default function StudyTimeline() {
       </div>
 
       {selectedMonth ? (
-        <div
-          className="motion-ui mx-auto w-full max-w-6xl rounded-2xl border border-primary/10 bg-surface-container-lowest/50 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.55),0_18px_48px_-34px_rgba(15,23,42,0.58)] backdrop-blur-sm sm:p-6"
+        <motion.div
+          key={selectedMonth.id}
+          data-motion-month={selectedMonth.id}
+          initial={reducedMotion ? false : { opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: reducedMotion ? 0 : uiMotion.duration.page, ease: uiMotion.ease.emphasized }}
+          className="motion-ui mx-auto w-full max-w-none rounded-2xl border border-primary/10 bg-surface-container-lowest/50 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.55),0_18px_48px_-34px_rgba(15,23,42,0.58)] backdrop-blur-sm sm:p-6"
         >
           <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
             <div>
@@ -328,7 +337,7 @@ export default function StudyTimeline() {
               );
             })}
           </div>
-        </div>
+        </motion.div>
       ) : null}
     </div>
   );

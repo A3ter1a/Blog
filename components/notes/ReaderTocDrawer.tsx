@@ -2,8 +2,11 @@
 
 import { useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
+import { AnimatePresence, motion } from "framer-motion";
 import { BookOpen, X } from "lucide-react";
 import { TableOfContents } from "@/components/ui/TableOfContents";
+import { overlayMotion, uiMotion } from "@/lib/motion";
+import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
 
 type ReaderTocDrawerProps = {
   open: boolean;
@@ -12,6 +15,7 @@ type ReaderTocDrawerProps = {
 };
 
 export function ReaderTocDrawer({ open, content, onClose }: ReaderTocDrawerProps) {
+  const reducedMotion = usePrefersReducedMotion();
   const panelRef = useRef<HTMLElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
@@ -55,12 +59,13 @@ export function ReaderTocDrawer({ open, content, onClose }: ReaderTocDrawerProps
     };
   }, [onClose, open]);
 
-  if (!open || typeof document === "undefined") return null;
+  if (typeof document === "undefined") return null;
 
   return createPortal(
-    <div className="reader-toc-drawer" data-print-hide>
-      <button type="button" className="reader-toc-drawer__backdrop" aria-label="点击背景关闭目录" onClick={onClose} />
-      <aside ref={panelRef} className="reader-toc-drawer__panel" role="dialog" aria-modal="true" aria-labelledby="reader-toc-title">
+    <AnimatePresence initial={false}>
+    {open && <motion.div key="reader-toc" className="reader-toc-drawer" data-print-hide inert={!open || undefined} aria-hidden={!open || undefined}>
+      <motion.button variants={overlayMotion} initial="initial" animate="animate" exit="exit" transition={{ duration: reducedMotion ? 0 : uiMotion.duration.fast }} type="button" className="reader-toc-drawer__backdrop" aria-label="点击背景关闭目录" onClick={onClose} />
+      <motion.aside initial={reducedMotion ? false : { x: "100%" }} animate={{ x: 0 }} exit={{ x: reducedMotion ? 0 : "100%" }} transition={reducedMotion ? { duration: 0 } : { duration: uiMotion.duration.page, ease: uiMotion.ease.standard }} ref={panelRef} className="reader-toc-drawer__panel" role="dialog" aria-modal="true" aria-labelledby="reader-toc-title">
         <header className="reader-toc-drawer__header">
           <div className="flex items-center gap-2">
             <BookOpen className="h-4 w-4 text-primary" aria-hidden="true" />
@@ -73,8 +78,9 @@ export function ReaderTocDrawer({ open, content, onClose }: ReaderTocDrawerProps
         <div className="reader-toc-drawer__content">
           <TableOfContents content={content} onNavigate={onClose} />
         </div>
-      </aside>
-    </div>,
+      </motion.aside>
+    </motion.div>}
+    </AnimatePresence>,
     document.body,
   );
 }
