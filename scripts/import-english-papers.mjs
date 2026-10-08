@@ -64,6 +64,7 @@ Options:
   --emit-sql <path>       Generate additive upsert SQL for Supabase SQL Editor.
   --emit-sql-dir <path>   Generate one additive upsert SQL file per year.
   --strict-complete       Require English I 2007-2026 with all expected passage groups.
+  --year-range <range>    Limit completeness validation to a range, such as 2021-2026.
   --allow-empty-content   Permit empty passage content for staged imports.
   --help                  Show this help.
 
@@ -80,6 +81,7 @@ function parseArgs(argv) {
     emitSql: "",
     emitSqlDir: "",
     strictComplete: false,
+    yearRange: "",
     allowEmptyContent: false,
     help: false,
   };
@@ -105,6 +107,9 @@ function parseArgs(argv) {
       index += 1;
     } else if (arg === "--strict-complete") {
       args.strictComplete = true;
+    } else if (arg === "--year-range") {
+      args.yearRange = argv[index + 1] ?? "";
+      index += 1;
     } else if (arg === "--allow-empty-content") {
       args.allowEmptyContent = true;
     } else if (arg === "--help" || arg === "-h") {
@@ -449,8 +454,8 @@ function normalizeInput(raw, options) {
     .filter(Boolean);
 
   validateDuplicates(papers, errors);
-  if (options.strictComplete) validateComplete(papers, errors);
-  else warnIfIncomplete(papers, warnings);
+  if (options.strictComplete) validateComplete(papers, errors, options);
+  else warnIfIncomplete(papers, warnings, options);
 
   if (errors.length > 0) {
     const detail = errors.slice(0, 80).map((error) => `- ${error}`).join("\n");
@@ -485,17 +490,27 @@ function validateDuplicates(papers, errors) {
   }
 }
 
-function warnIfIncomplete(papers, warnings) {
+function getCompleteYears(options) {
+  if (!options.yearRange) return COMPLETE_YEARS;
+  const match = options.yearRange.match(/^(\d{4})-(\d{4})$/);
+  if (!match || !VALID_YEARS.has(Number(match[1])) || !VALID_YEARS.has(Number(match[2])) || Number(match[1]) > Number(match[2])) {
+    throw new Error("--year-range 必须为 2007-2026 内的有效区间，例如 2021-2026");
+  }
+  return Array.from({ length: Number(match[2]) - Number(match[1]) + 1 }, (_, index) => Number(match[1]) + index);
+}
+
+function warnIfIncomplete(papers, warnings, options) {
   const years = new Set(papers.map((paper) => paper.year));
-  const missingYears = COMPLETE_YEARS.filter((year) => !years.has(year));
+  const completeYears = getCompleteYears(options);
+  const missingYears = completeYears.filter((year) => !years.has(year));
   if (missingYears.length > 0) {
-    warnings.push(`当前不是完整 2007-2026 数据，缺少年份: ${missingYears.join(", ")}`);
+    warnings.push(`当前不是完整 ${completeYears[0]}-${completeYears.at(-1)} 数据，缺少年份: ${missingYears.join(", ")}`);
   }
 }
 
-function validateComplete(papers, errors) {
+function validateComplete(papers, errors, options) {
   const byYear = new Map(papers.map((paper) => [paper.year, paper]));
-  for (const year of COMPLETE_YEARS) {
+  for (const year of getCompleteYears(options)) {
     const paper = byYear.get(year);
     if (!paper) {
       errors.push(`strict-complete: 缺少 ${year} 年试卷`);
@@ -505,6 +520,41 @@ function validateComplete(papers, errors) {
     for (const passageNo of COMPLETE_PASSAGE_NOS) {
       if (!passageNos.has(passageNo)) {
         errors.push(`strict-complete: ${year} 缺少 ${passageNo}`);
+      }
+    }
+    if (options.yearRange) {
+      const allQuestions = paper.passages.flatMap((passage) => passage.questions);
+      const numbers = new Set(allQuestions.map((question) => Number(question.questionNo)));
+      if (allQuestions.length !== 52 || Array.from({ length: 52 }, (_, index) => index + 1).some((number) => !numbers.has(number))) {
+        errors.push(`strict-complete: ${year} 必须完整覆盖 1-52 题，且每个题号只出现一次`);
+      }
+      if (paper.passages.length !== 9 || paper.passages.reduce((sum, passage) => sum + passage.totalScore, 0) !== 100 || allQuestions.reduce((sum, question) => sum + question.score, 0) !== 100) {
+        errors.push(`strict-complete: ${year} 必须为 9 个题组、总分 100`);
+      }
+      const ranges = {
+        cloze: [1, 20, 0.5], text1: [21, 25, 2], text2: [26, 30, 2],
+        text3: [31, 35, 2], text4: [36, 40, 2], new_type: [41, 45, 2],
+        translation: [46, 50, 2], small_writing: [51, 51, 10], big_writing: [52, 52, 20],
+      };
+      for (const passage of paper.passages) {
+        const range = ranges[passage.passageNo];
+        if (!range) continue;
+        const [first, last, score] = range;
+        if (passage.questions.length !== last - first + 1 || passage.questions.some((question) => Number(question.questionNo) < first || Number(question.questionNo) > last || question.score !== score)) {
+          errors.push(`strict-complete: ${year} ${passage.passageNo} 应为 ${first}-${last} 题，每题 ${score} 分`);
+        }
+        for (const question of passage.questions) {
+          const number = Number(question.questionNo);
+          if (number <= 40 && question.options.map((option) => option.label).sort().join("") !== "ABCD") {
+            errors.push(`strict-complete: ${year} 第 ${number} 题必须有独立的 A-D 四个选项`);
+          }
+          if (number >= 41 && number <= 45 && !["ABCDEFG", "ABCDEFGH"].includes(question.options.map((option) => option.label).sort().join(""))) {
+            errors.push(`strict-complete: ${year} 第 ${number} 题必须完整覆盖 A-G 或 A-H 选项`);
+          }
+          if (number <= 45 && question.options.some((option) => /\[[A-H]\]/.test(option.content) || /\d+\.\s*→/.test(option.content))) {
+            errors.push(`strict-complete: ${year} 第 ${number} 题的选项混入其他选项标签或排序链`);
+          }
+        }
       }
     }
   }
