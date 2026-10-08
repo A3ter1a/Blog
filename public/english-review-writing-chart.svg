@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 430" role="img" aria-labelledby="title desc">
+  <title id="title">Consumer acceptance of elderly-care robots and primary concerns</title>
+  <desc id="desc">A pie chart shows three acceptance levels and a bar chart shows three primary concerns.</desc>
+  <rect width="960" height="430" rx="22" fill="#f7f4ef"/>
+  <text x="480" y="38" text-anchor="middle" fill="#16344e" font-family="Georgia,serif" font-size="23" font-weight="700">Elderly-care robots</text>
+  <text x="228" y="78" text-anchor="middle" fill="#4d5962" font-family="Arial,sans-serif" font-size="16" font-weight="700">Acceptance</text>
+  <g stroke="#f7f4ef" stroke-width="2" stroke-linejoin="round">
+    <path d="M228 203 L228 110 A93 93 0 0 1 285.919 275.762 Z" fill="#16344e"/>
+    <path d="M228 203 L285.919 275.762 A93 93 0 0 1 136.540 219.852 Z" fill="#6b9dca"/>
+    <path d="M228 203 L136.540 219.852 A93 93 0 0 1 228 110 Z" fill="#c27858"/>
+  </g>
+  <g font-family="Arial,sans-serif" font-size="20" font-weight="700" text-anchor="middle" dominant-baseline="middle">
+    <text x="285.586" y="182.879" fill="#fff">39.3%</text>
+    <text x="206.617" y="260.130" fill="#14314b">32.8%</text>
+    <text x="181.121" y="163.970" fill="#fff">27.9%</text>
+  </g>
+  <g font-family="Arial,sans-serif" font-size="16" fill="#4d5962">
+    <circle cx="132" cy="325" r="7" fill="#16344e"/><text x="149" y="330">Fully accept</text>
+    <circle cx="132" cy="351" r="7" fill="#6b9dca"/><text x="149" y="356">Partially accept</text>
+    <circle cx="132" cy="377" r="7" fill="#c27858"/><text x="149" y="382">Do not accept</text>
+  </g>
+  <text x="710" y="78" text-anchor="middle" fill="#4d5962" font-family="Arial,sans-serif" font-size="16" font-weight="700">Primary concerns</text>
+  <g stroke="#d7d3cc" stroke-width="1">
+    <line x1="520" y1="120" x2="900" y2="120"/><line x1="520" y1="168" x2="900" y2="168"/><line x1="520" y1="216" x2="900" y2="216"/><line x1="520" y1="264" x2="900" y2="264"/><line x1="520" y1="312" x2="900" y2="312"/><line x1="520" y1="360" x2="900" y2="360"/>
+  </g>
+  <g fill="#66717b" font-family="Arial,sans-serif" font-size="14" text-anchor="end">
+    <text x="508" y="125">50</text><text x="508" y="173">40</text><text x="508" y="221">30</text><text x="508" y="269">20</text><text x="508" y="317">10</text><text x="508" y="365">0</text>
+  </g>
+  <line x1="520" y1="360" x2="900" y2="360" stroke="#84909a" stroke-width="2"/>
+  <rect x="562" y="137.76" width="72" height="222.24" rx="6" fill="#16344e"/><rect x="682" y="240.48" width="72" height="119.52" rx="6" fill="#6b9dca"/><rect x="802" y="308.64" width="72" height="51.36" rx="6" fill="#c27858"/>
+  <g fill="#4d5962" font-family="Arial,sans-serif" font-size="16" text-anchor="middle"><text x="598" y="390">Safety</text><text x="718" y="390">Price</text><text x="838" y="390">Convenience</text></g>
+  <g fill="#16344e" font-family="Arial,sans-serif" font-size="16" font-weight="700" text-anchor="middle"><text x="598" y="128">46.3%</text><text x="718" y="230">24.9%</text><text x="838" y="298">10.7%</text></g>
+</svg>
