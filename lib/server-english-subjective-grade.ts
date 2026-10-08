@@ -6,7 +6,7 @@ import { parseAIJson } from "./ai-json";
 import { resolveAIProviderRoute } from "./ai-provider-routing";
 import {
   buildEnglishSubjectiveGradeBreakdown,
-  normalizeEnglishSubjectiveGradeSuggestion,
+  parseEnglishSubjectiveGradeSuggestion,
   type EnglishSubjectiveGradeSuggestion,
 } from "./english-subjective-grade";
 import type { EnglishPassageRoundLedger } from "./english-round-history";
@@ -16,6 +16,7 @@ import {
   runEnglishSubjectiveSubmission,
 } from "./server-english-training-core";
 import type { Database } from "./database.types";
+import { buildEnglishSubjectiveGradingPrompt } from "./english-subjective-prompt";
 
 export type EnglishSubjectiveGradeStage = {
   phase: string;
@@ -75,42 +76,17 @@ export async function generateEnglishSubjectiveGradeSuggestion(input: {
   if (Object.keys(input.answers).some((questionId) => !questionIds.has(questionId))) {
     throw new Error("答案包含不属于当前题组的题目");
   }
-  const maxScore = questionRows.reduce((sum, question) => sum + Number(question.score ?? 0), 0);
-  if (questionRows.length === 0 || maxScore <= 0) throw new Error("当前题组缺少有效评分来源");
-
-  const answerText = questionRows.map((question) => [
-    `题号：${question.question_no}`,
-    `题目：${question.stem || passage.content || "（无）"}`,
-    `参考答案：${question.standard_answer || "（无固定答案，请按考研英语一标准评分）"}`,
-    `考生作答：${input.answers[question.id] ?? "（未作答）"}`,
-    `本题满分：${question.score}`,
-  ].join("\n")).join("\n\n");
+  const { systemPrompt, userPrompt, maxScore } = buildEnglishSubjectiveGradingPrompt(passage, questionRows, input.answers);
   const task = resolveAIProviderRoute("deep_reasoning");
-  const systemPrompt = `你是严谨的考研英语一阅卷老师，只评阅翻译或写作主观题。你的分数只是建议，用户确认前绝不能视为正式成绩。
-
-要求：
-- 严格按题目满分评分，score 在 0 到 ${maxScore} 之间，允许 0.5 分。
-- 翻译重点检查信息完整、语义准确、中文表达；写作重点检查任务完成、结构、语言准确与表达质量。
-- 明确指出优点、问题和可操作修改建议，不虚构原文中不存在的信息。
-- feedback 给出简洁总评；confidence 在 0 到 1。
-- 只返回 JSON 对象，不要 Markdown。
-
-结构：
-{"score":0,"feedback":"总评","strengths":["优点"],"issues":["问题"],"suggestions":["修改建议"],"confidence":0}`;
-  const userPrompt = `题型：${passage.section}
-年份：${passage.year}
-题组：${passage.passage_no}
-标题：${passage.title || "（无）"}
-
-${answerText}`;
-  const { content, tokensUsed } = await callDeepSeek(input.apiKey, task.model, [
+  const { content, tokensUsed, finishReason, model } = await callDeepSeek(input.apiKey, task.model, [
     { role: "system", content: systemPrompt },
     { role: "user", content: userPrompt },
   ], { temperature: 0.1, maxTokens: 2000, responseFormat: "json_object", signal: input.signal });
+  if (finishReason === "length") throw new Error("AI 评分返回不完整，请在任务中心重试。");
   return {
-    suggestion: normalizeEnglishSubjectiveGradeSuggestion(parseAIJson(content), maxScore),
+    suggestion: parseEnglishSubjectiveGradeSuggestion(parseAIJson(content), maxScore),
     tokensUsed,
-    model: task.model,
+    model: model || task.model,
   };
 }
 

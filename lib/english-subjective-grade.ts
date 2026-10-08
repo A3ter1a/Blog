@@ -57,3 +57,20 @@ export function buildEnglishSubjectiveGradeBreakdown(suggestion: EnglishSubjecti
     suggestions: suggestion.suggestions,
   };
 }
+
+/** Reject incomplete model responses instead of persisting a fabricated zero. */
+export function parseEnglishSubjectiveGradeSuggestion(
+  value: unknown,
+  maxScore: number,
+): EnglishSubjectiveGradeSuggestion {
+  if (!isRecord(value)
+    || typeof value.score !== "number"
+    || !Number.isFinite(value.score)
+    || value.score < 0
+    || value.score > maxScore
+    || typeof value.feedback !== "string"
+    || !value.feedback.trim()) {
+    throw new Error("AI 没有返回有效的分数和评语，请在任务中心重试。");
+  }
+  return normalizeEnglishSubjectiveGradeSuggestion(value, maxScore);
+}
