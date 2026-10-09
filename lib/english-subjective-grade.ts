@@ -74,3 +74,23 @@ export function parseEnglishSubjectiveGradeSuggestion(
   }
   return normalizeEnglishSubjectiveGradeSuggestion(value, maxScore);
 }
+
+export function extractEnglishSubjectiveJobSuggestion(value: unknown): EnglishSubjectiveGradeSuggestion | null {
+  if (!isRecord(value)) return null;
+  let candidate = isRecord(value.suggestion) ? value.suggestion : null;
+  if (!candidate && typeof value.revisionId === "string" && Array.isArray(value.ledgers)) {
+    for (const ledger of value.ledgers.filter(isRecord)) {
+      for (const round of (Array.isArray(ledger.rounds) ? ledger.rounds : []).filter(isRecord)) {
+        const revision = (Array.isArray(round.revisions) ? round.revisions : []).filter(isRecord)
+          .find((item) => item.id === value.revisionId);
+        const grade = (Array.isArray(revision?.grades) ? revision.grades : []).filter(isRecord)
+          .filter((item) => item.origin === "ai_suggested")
+          .sort((left, right) => Number(right.gradeSeq) - Number(left.gradeSeq))[0];
+        if (grade) candidate = { ...(isRecord(grade.breakdown) ? grade.breakdown : {}), ...grade };
+      }
+    }
+  }
+  if (!candidate || typeof candidate.maxScore !== "number" || !Number.isFinite(candidate.maxScore) || candidate.maxScore <= 0) return null;
+  try { return parseEnglishSubjectiveGradeSuggestion(candidate, candidate.maxScore); }
+  catch { return null; }
+}

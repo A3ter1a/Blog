@@ -1,5 +1,6 @@
 export const ENGLISH_ROUND_HISTORY_STORAGE_KEY = "asteroid:english-round-history:v1";
 export const ENGLISH_ROUND_HISTORY_CHANGE_EVENT = "asteroid-english-round-history-change";
+export const ENGLISH_GRADE_CONFIRMED_EVENT = "asteroid-english-grade-confirmed";
 
 export type EnglishRoundStatus = "in_progress" | "submitted" | "sealed" | "abandoned";
 export type EnglishRevisionKind = "submission" | "correction";

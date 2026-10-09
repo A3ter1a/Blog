@@ -22,11 +22,11 @@ export function AIScanDialog({ isOpen, onClose, children, title = "AI 扫描题�
   return (
     <AnimatePresence>
       {isOpen && <motion.div variants={overlayMotion} initial="initial" animate="animate" exit="exit" transition={{ duration: uiMotion.duration.fast, ease: uiMotion.ease.standard }}
-        className={`fixed inset-0 ${elevated ? "z-[140]" : "z-50"} bg-black/40 backdrop-blur-sm`}
+        className={`modal-glass-backdrop fixed inset-0 ${elevated ? "z-[140]" : "z-50"}`}
         onClick={() => { if (closeOnBackdrop) onClose(); }}>
         <motion.div ref={containerRef} role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1}
           variants={dialogMotion} initial="initial" animate="animate" exit="exit" transition={uiMotion.spring.gentle}
-          className="absolute inset-4 md:inset-auto md:top-1/2 md:left-1/2 md:-translate-x-1/2 md:-translate-y-1/2 md:w-full md:max-w-3xl md:h-auto max-h-[90vh] bg-surface-container-lowest rounded-2xl shadow-elevated flex flex-col overflow-hidden"
+          className="modal-glass-panel absolute inset-4 md:inset-auto md:top-1/2 md:left-1/2 md:-translate-x-1/2 md:-translate-y-1/2 md:w-full md:max-w-3xl md:h-auto max-h-[90vh] rounded-2xl shadow-elevated flex flex-col overflow-hidden"
           onClick={(event) => event.stopPropagation()}>
           <div className="flex items-center justify-between px-5 py-4 border-b border-outline-variant/10">
             <h2 id={titleId} className="text-lg font-bold text-on-surface font-headline flex items-center gap-2"><Scan className="w-5 h-5 text-primary" />{title}</h2>

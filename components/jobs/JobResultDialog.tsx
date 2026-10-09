@@ -7,6 +7,8 @@ import { AIExtractionResult } from "@/components/ai-assistant/AIExtractionResult
 import { MarkdownContent } from "@/components/ui/MarkdownContent";
 import { extractProblemOcrJobResult } from "@/lib/problem-ocr-contract";
 import { getJobResultDestination } from "@/lib/job-result-navigation";
+import { extractEnglishSubjectiveJobSuggestion } from "@/lib/english-subjective-grade";
+import { EnglishJobGradeReview } from "./EnglishJobGradeReview";
 import type { ClientJob } from "@/lib/job-client";
 
 export function JobResultDialog({ job, onClose, onLoad }: {
@@ -33,6 +35,8 @@ export function JobResultDialog({ job, onClose, onLoad }: {
   }, []);
   const ocr = useMemo(() => job.type === "problem_ocr" ? extractProblemOcrJobResult(job.resultPayload) : null, [job.type, job.resultPayload]);
   const destination = getJobResultDestination(job);
+  const englishSuggestion = job.type === "english_subjective_grade" ? extractEnglishSubjectiveJobSuggestion(job.resultPayload) : null;
+  const englishResult = job.resultPayload && typeof job.resultPayload === "object" && !Array.isArray(job.resultPayload) ? job.resultPayload as Record<string, unknown> : {};
   const continueReceiving = () => { if (destination) window.location.assign(destination); };
   const download = () => {
     const text = job.resultMarkdown || JSON.stringify(job.resultPayload, null, 2);
@@ -46,8 +50,8 @@ export function JobResultDialog({ job, onClose, onLoad }: {
     window.setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
   return (
-    <AIScanDialog isOpen onClose={onClose} elevated title={job.type === "problem_ocr" ? "AI 扫描题目" : job.title}>
-      <p className="text-xs text-on-surface-variant/60">{job.type === "problem_ocr" ? `${job.title} · ` : ""}查看后继续领取；关闭弹窗不会丢失结果。</p>
+    <AIScanDialog isOpen onClose={onClose} elevated title={job.type === "problem_ocr" ? "AI 扫描题目" : job.type === "english_subjective_grade" ? "英语批改结果" : job.title}>
+      {job.type !== "english_subjective_grade" && <p className="text-sm leading-6 text-on-surface-variant">{job.type === "problem_ocr" ? `${job.title} · ` : ""}关闭弹窗后，可在任务中心再次查看。</p>}
       {loading && !hasResult && <p role="status" className="flex items-center gap-2 text-sm text-on-surface-variant"><Loader2 className="h-4 w-4 animate-spin" />正在恢复任务结果…</p>}
       {!loading && !hasResult && <div role="alert" className="p-4 rounded-xl bg-red-50 border border-red-200"><p className="text-sm text-red-700">{error || job.error || "暂时无法读取成果，请重试。"}</p><button type="button" onClick={() => void restore()} className="mt-2 text-xs text-red-600 underline hover:text-red-800">重新获取结果</button></div>}
       {ocr && <>
@@ -56,8 +60,8 @@ export function JobResultDialog({ job, onClose, onLoad }: {
       </>}
       {hasResult && job.type === "problem_ocr" && !ocr && <p role="alert" className="text-sm text-red-700">题目结果格式不完整，原始任务仍保留，请重新核对任务。</p>}
       {hasResult && job.type !== "problem_ocr" && <>
-        {job.resultMarkdown ? <MarkdownContent content={job.resultMarkdown} /> : <><p className="text-sm text-on-surface-variant">{job.statusText}</p><details className="text-xs text-on-surface-variant"><summary>查看完整处理结果</summary><pre className="mt-2 whitespace-pre-wrap break-words">{JSON.stringify(job.resultPayload, null, 2)}</pre></details></>}
-        <div className="flex gap-2 pt-2"><button type="button" onClick={destination ? continueReceiving : download} className="motion-ui motion-interactive flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl editorial-gradient text-on-primary text-sm font-medium hover:opacity-90">{destination ? <ArrowUpRight className="w-4 h-4" /> : <Download className="w-4 h-4" />}{destination ? "继续领取" : "下载结果"}</button></div>
+        {englishSuggestion ? <EnglishJobGradeReview result={englishResult} suggestion={englishSuggestion} /> : job.resultMarkdown ? <MarkdownContent content={job.resultMarkdown} /> : <><p className="text-sm text-on-surface-variant">{job.statusText}</p><details className="text-xs text-on-surface-variant"><summary>查看完整处理结果</summary><pre className="mt-2 whitespace-pre-wrap break-words">{JSON.stringify(job.resultPayload, null, 2)}</pre></details></>}
+        {job.type !== "english_subjective_grade" && <div className="flex gap-2 pt-2"><button type="button" onClick={destination ? continueReceiving : download} className="control-button control-button-primary min-h-11 flex-1 px-4 py-2.5 text-sm">{destination ? <ArrowUpRight className="w-4 h-4" /> : <Download className="w-4 h-4" />}{destination ? "继续领取" : "下载结果"}</button></div>}
       </>}
     </AIScanDialog>
   );

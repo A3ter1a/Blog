@@ -291,7 +291,7 @@ export function DocumentOcrDialog({ isOpen, onClose, onInsert }: DocumentOcrDial
         animate="animate"
         exit="exit"
         transition={{ duration: uiMotion.duration.fast, ease: uiMotion.ease.standard }}
-        className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/40 p-4 backdrop-blur-sm"
+        className="modal-glass-backdrop fixed inset-0 z-50 flex items-center justify-center overflow-y-auto p-4"
         onClick={handleClose}
       >
         <motion.div
@@ -300,7 +300,7 @@ export function DocumentOcrDialog({ isOpen, onClose, onInsert }: DocumentOcrDial
           animate="animate"
           exit="exit"
           transition={uiMotion.spring.gentle}
-          className="flex max-h-[calc(100vh-2rem)] w-full max-w-4xl flex-col overflow-hidden rounded-2xl bg-surface-container-lowest shadow-elevated"
+          className="modal-glass-panel flex max-h-[calc(100vh-2rem)] w-full max-w-4xl flex-col overflow-hidden rounded-2xl shadow-elevated"
           onClick={(event) => event.stopPropagation()}
           role="dialog"
           aria-modal="true"

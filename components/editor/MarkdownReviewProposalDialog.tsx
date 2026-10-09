@@ -55,7 +55,7 @@ export function MarkdownReviewProposalDialog({
           animate="animate"
           exit="exit"
           transition={{ duration: uiMotion.duration.reveal, ease: uiMotion.ease.standard }}
-          className="fixed inset-0 z-[90] flex items-center justify-center bg-scrim/55 p-3 backdrop-blur-sm sm:p-6"
+          className="modal-glass-backdrop fixed inset-0 z-[90] flex items-center justify-center p-3 sm:p-6"
           role="presentation"
         >
           <motion.section
@@ -67,7 +67,7 @@ export function MarkdownReviewProposalDialog({
             role="dialog"
             aria-modal="true"
             aria-labelledby="markdown-review-proposal-title"
-            className="flex max-h-[92vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-outline-variant/25 bg-surface shadow-2xl"
+            className="modal-glass-panel flex max-h-[92vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-outline-variant/25 shadow-2xl"
           >
             <header className="flex items-start justify-between gap-4 border-b border-outline-variant/20 px-5 py-4 sm:px-6">
               <div>

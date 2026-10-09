@@ -141,7 +141,7 @@ export function ProblemCard({
           animate="animate"
           exit="exit"
           transition={{ duration: uiMotion.duration.fast, ease: uiMotion.ease.standard }}
-          className="fixed inset-0 z-[210] flex items-center justify-center bg-black/40 p-3 backdrop-blur-sm sm:p-6"
+          className="modal-glass-backdrop fixed inset-0 z-[210] flex items-center justify-center p-3 sm:p-6"
           onClick={handleCancel}
         >
           <motion.div
@@ -150,7 +150,7 @@ export function ProblemCard({
             animate="animate"
             exit="exit"
             transition={uiMotion.spring.panel}
-            className="flex max-h-[calc(100vh-2rem)] w-full max-w-6xl flex-col overflow-hidden rounded-xl bg-surface-container-lowest shadow-elevated"
+            className="modal-glass-panel flex max-h-[calc(100vh-2rem)] w-full max-w-6xl flex-col overflow-hidden rounded-xl shadow-elevated"
             onClick={(event) => event.stopPropagation()}
           >
             <div className="flex flex-col gap-3 border-b border-outline-variant/15 px-4 py-4 sm:px-5 lg:flex-row lg:items-center lg:justify-between">

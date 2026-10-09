@@ -71,7 +71,7 @@ export function ConfirmDialog({
           animate="animate"
           exit="exit"
           transition={{ duration: uiMotion.duration.fast, ease: uiMotion.ease.standard }}
-          className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm"
+          className="modal-glass-backdrop fixed inset-0 z-[200] flex items-center justify-center p-4"
           onClick={(event) => {
             event.stopPropagation();
             handleClose();
@@ -85,7 +85,7 @@ export function ConfirmDialog({
             exit="exit"
             transition={uiMotion.spring.gentle}
             onClick={(event) => event.stopPropagation()}
-            className="w-full max-w-sm rounded-xl border border-outline-variant/15 bg-surface-container-lowest p-6 shadow-elevated"
+            className="modal-glass-panel w-full max-w-sm rounded-xl border border-outline-variant/15 p-6 shadow-elevated"
             role="dialog"
             aria-modal="true"
             aria-labelledby={titleId}

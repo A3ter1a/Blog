@@ -1,7 +1,7 @@
 import { getSupabase } from "./supabase";
 import { buildAuthHeaders } from "./fetch-with-auth";
 import { ENGLISH_TRAINING_YEARS, normalizeEnglishQuestionOptions } from "./english-training";
-import type { EnglishPassageRoundLedger } from "./english-round-history";
+import { ENGLISH_GRADE_CONFIRMED_EVENT, type EnglishPassageRoundLedger } from "./english-round-history";
 import type { EnglishTrainingCommandAction, EnglishTrainingPersistenceMode } from "./english-training-core";
 import {
   buildEnglishSubjectiveGradeBreakdown,
@@ -346,7 +346,7 @@ export const englishTrainingApi = {
     feedback,
     suggestion,
   }: {
-    passage: EnglishPassage;
+    passage: Pick<EnglishPassage, "id">;
     revisionId: string;
     score: number;
     feedback: string;
@@ -369,6 +369,8 @@ export const englishTrainingApi = {
         },
       }),
     });
-    return readRoundHistoryResponse(response, "英语主观题终分确认失败");
+    const result = await readRoundHistoryResponse(response, "英语主观题终分确认失败");
+    if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent(ENGLISH_GRADE_CONFIRMED_EVENT, { detail: result }));
+    return result;
   },
 };

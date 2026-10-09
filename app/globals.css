@@ -5306,9 +5306,6 @@ html[data-theme="dark"] .toast-card[data-type="success"] {
   display: grid;
   place-items: center;
   padding: clamp(0.75rem, 3vw, 2rem);
-  background: rgb(16 31 43 / 28%);
-  backdrop-filter: blur(14px) saturate(115%);
-  -webkit-backdrop-filter: blur(14px) saturate(115%);
 }
 
 .english-subjective-review-scrim {
@@ -8183,4 +8180,68 @@ html[data-theme="dark"] .toast-card[data-type="success"] {
 
 .ui-lab-comment-card .ui-lab-outline-button {
   min-height: 2.35rem;
+}
+
+/* Shared material for centered dialogs, including OCR and grading results. */
+.modal-glass-backdrop {
+  background: rgb(12 23 32 / 30%);
+  -webkit-backdrop-filter: blur(8px) saturate(110%);
+  backdrop-filter: blur(8px) saturate(110%);
+}
+
+.modal-glass-panel {
+  background: var(--color-surface-container-lowest);
+  border: 1px solid color-mix(in srgb, var(--color-outline-variant) 35%, transparent);
+  box-shadow: 0 1.25rem 4rem rgb(0 0 0 / 20%), inset 0 1px 0 rgb(255 255 255 / 9%);
+}
+
+@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .modal-glass-panel {
+    background: color-mix(in srgb, var(--color-surface-container-lowest) 90%, transparent);
+    -webkit-backdrop-filter: blur(16px) saturate(115%);
+    backdrop-filter: blur(16px) saturate(115%);
+  }
+}
+
+.modal-glass-panel .english-subjective-grade-content {
+  background: transparent;
+}
+
+.english-grading-feedback {
+  display: grid;
+  gap: 1.25rem;
+  line-height: 1.75;
+}
+
+.english-grading-group {
+  padding: 1.15rem 1.25rem;
+}
+
+.english-grading-points {
+  list-style: disc outside;
+  margin: 0.8rem 0 0 0.35rem;
+  padding-inline-start: 1.4rem;
+}
+
+.english-grading-points > li {
+  padding-inline-start: 0.2rem;
+}
+
+.english-grading-points > li + li {
+  margin-top: 0.65rem;
+}
+
+.english-grading-confirm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid color-mix(in srgb, var(--color-outline-variant) 30%, transparent);
+}
+
+@media (max-width: 640px) {
+  .english-grading-group { padding: 1rem; }
+  .english-grading-confirm > button { flex: 1 0 100%; }
 }

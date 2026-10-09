@@ -1265,9 +1265,10 @@ export function JobCenterProvider({ children }: { children: ReactNode }) {
     }
   }, [announceAction, jobs, updateJob]);
 
+  const resultClaimingRef = useRef(new Set<string>());
   const claimJobResult = useCallback((id: string) => {
     const target = jobs.find((job) => job.id === id);
-    if (!target) return;
+    if (!target || target.resultClaimedAt || target.status === "claimed" || resultClaimingRef.current.has(id)) return;
     const claimedAt = new Date().toISOString();
     if (!target.remoteJobId) {
       updateJob(id, { resultClaimedAt: claimedAt, phase: "结果已领取", ledgerState: "local_only" });
@@ -1275,6 +1276,8 @@ export function JobCenterProvider({ children }: { children: ReactNode }) {
       return;
     }
 
+    resultClaimingRef.current.add(id);
+    updateJob(id, { resultClaimedAt: claimedAt, phase: "正在同步领取状态" });
     void (async () => {
       try {
         const response = await fetch(`/api/jobs/${encodeURIComponent(target.remoteJobId ?? "")}/claim`, {
@@ -1296,6 +1299,8 @@ export function JobCenterProvider({ children }: { children: ReactNode }) {
           ledgerState: "sync_failed",
         });
         announceAction("领取状态同步失败，结果仍保留在待处理中，可以重试。");
+      } finally {
+        resultClaimingRef.current.delete(id);
       }
     })();
   }, [announceAction, jobs, updateJob]);

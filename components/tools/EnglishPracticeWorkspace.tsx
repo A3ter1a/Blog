@@ -7,6 +7,7 @@ import { ArrowLeft, Check, ClipboardCheck, Loader2, PenLine, RotateCcw, Save, X 
 import type { EnglishAttemptAnswerInput } from "@/lib/english-training-api";
 import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
 import { MarkdownContent } from "@/components/ui/MarkdownContent";
+import { EnglishGradingFeedback } from "@/components/jobs/EnglishGradingFeedback";
 import { useToast } from "@/components/ui/Toast";
 import { dialogMotion, dropdownMotion, uiMotion } from "@/lib/motion";
 import { parseEnglishManualScore } from "@/lib/english-scoring";
@@ -1512,7 +1513,7 @@ export function EnglishPracticeWorkspace({
             onClick={() => setSubjectiveReviewOpen(true)}
             className="control-button h-10 px-3 text-sm"
           >
-            <Check className="h-4 w-4" />查看批改
+            <Check className="h-4 w-4" />批改建议
           </button>}
           <div className="english-practice-action-group" aria-label="题组操作" aria-busy={busy}>
             {subjectiveBusy === "confirm" && <span role="status" className="inline-flex items-center gap-2 text-sm text-on-surface-variant"><Loader2 className="h-4 w-4 animate-spin" />确认评分中…</span>}
@@ -1543,7 +1544,7 @@ export function EnglishPracticeWorkspace({
       {typeof document !== "undefined" && suggestion && !editingSubmitted && createPortal(
         <AnimatePresence initial={false}>
           {subjectiveReviewOpen && (
-            <EnglishFeedbackOverlay key="english-subjective-review-overlay" className="english-subjective-review-overlay">
+            <EnglishFeedbackOverlay key="english-subjective-review-overlay" className="english-subjective-review-overlay modal-glass-backdrop">
               <button
                 type="button"
                 className="english-subjective-review-scrim"
@@ -1555,7 +1556,7 @@ export function EnglishPracticeWorkspace({
                 role="dialog"
                 aria-modal="true"
                 aria-labelledby="english-subjective-review-title"
-                className="english-subjective-review-dialog"
+                className="english-subjective-review-dialog modal-glass-panel"
                 variants={dialogMotion}
                 initial={reducedMotion ? false : "initial"}
                 animate="animate"
@@ -1584,10 +1585,7 @@ export function EnglishPracticeWorkspace({
                   finalGrade={finalGrade}
                   busy={busy}
                   confirming={subjectiveBusy === "confirm"}
-                  onConfirm={(...args) => {
-                    onConfirmSubjectiveGrade(...args);
-                    setSubjectiveReviewOpen(false);
-                  }}
+                  onConfirm={onConfirmSubjectiveGrade}
                 />
               </motion.div>
             </EnglishFeedbackOverlay>
@@ -1764,10 +1762,6 @@ export function EnglishPracticeWorkspace({
   );
 }
 
-function SuggestionList({ title, items }: { title: string; items: string[] }) {
-  return <div className="rounded-lg border border-outline-variant/20 bg-surface-container-lowest p-3"><div className="font-semibold text-on-surface">{title}</div>{items.length > 0 ? <ul className="mt-1 list-disc space-y-1 pl-4">{items.map((item, index) => <li key={`${title}-${index}`}>{item}</li>)}</ul> : <p className="mt-1">暂无</p>}</div>;
-}
-
 function SubjectiveGradeReview({ revisionId, suggestion, finalGrade, busy, confirming, onConfirm }: {
   revisionId: string;
   suggestion: EnglishSubjectiveGradeSuggestion;
@@ -1776,22 +1770,7 @@ function SubjectiveGradeReview({ revisionId, suggestion, finalGrade, busy, confi
   confirming: boolean;
   onConfirm: (revisionId: string, score: number, feedback: string, suggestion: EnglishSubjectiveGradeSuggestion) => void;
 }) {
-  const [reviewScore, setReviewScore] = useState(String(finalGrade?.score ?? suggestion.score));
-  const [reviewFeedback, setReviewFeedback] = useState(finalGrade?.feedback ?? suggestion.feedback);
-  const numericScore = Number(reviewScore);
-
-  return <section className="english-subjective-grade-content">
-    <div className="flex flex-wrap items-start justify-between gap-3">
-      <div><h3 className="font-headline text-base font-bold text-on-surface">{finalGrade ? "终分已确认，可继续修订" : "AI 建议待你确认"}</h3><p className="mt-1 text-xs leading-5 text-on-surface-variant">AI 分数不进入统计。只有你点击确认后，user_final 才是正式成绩。</p></div>
-      <span className="text-xs text-on-surface-variant">建议置信度 {Math.round(suggestion.confidence * 100)}%</span>
-    </div>
-    <div className="mt-4 grid gap-3 md:grid-cols-[10rem_minmax(0,1fr)]">
-      <label className="text-xs font-semibold text-on-surface-variant">最终分<input type="number" min={0} max={suggestion.maxScore} step={0.5} value={reviewScore} onChange={(event) => setReviewScore(event.target.value)} className="field-control mt-1 w-full px-3 py-2 text-sm" /></label>
-      <label className="text-xs font-semibold text-on-surface-variant">确认反馈<textarea rows={3} value={reviewFeedback} onChange={(event) => setReviewFeedback(event.target.value)} className="field-control mt-1 w-full resize-y px-3 py-2 text-sm" /></label>
-    </div>
-    <div className="mt-3 grid gap-2 text-xs leading-5 text-on-surface-variant md:grid-cols-3"><SuggestionList title="做得较好" items={suggestion.strengths} /><SuggestionList title="需要修正" items={suggestion.issues} /><SuggestionList title="修改建议" items={suggestion.suggestions} /></div>
-    <div className="mt-4 flex justify-end"><button type="button" disabled={busy || !revisionId || !reviewFeedback.trim() || !Number.isFinite(numericScore) || numericScore < 0 || numericScore > suggestion.maxScore} onClick={() => onConfirm(revisionId, numericScore, reviewFeedback.trim(), suggestion)} className="control-button control-button-primary h-10 px-4 text-sm">{confirming ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}{finalGrade ? "更新正式终分" : "确认正式终分"}</button></div>
-  </section>;
+  return <section className="english-subjective-grade-content"><EnglishGradingFeedback suggestion={suggestion} finalGrade={finalGrade} confirming={confirming} verifying={busy && !confirming} onConfirm={revisionId ? (score, feedback) => onConfirm(revisionId, score, feedback, suggestion) : undefined} /></section>;
 }
 
 function QuestionBlock({ passage, question, value, savedAnswer, submitted, readOnly, objective, directScoreMode, onChange, onScoreChange, onReset }: {

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { AnimatePresence, motion, useIsPresent } from "framer-motion";
 import {
   ArrowLeft,
@@ -43,6 +43,7 @@ import {
 import { mapEnglishImportToTrainingData, type EnglishPaperImport } from "@/lib/english-import-data";
 import {
   createEmptyEnglishLedger,
+  ENGLISH_GRADE_CONFIRMED_EVENT,
   getEffectiveEnglishRoundResult,
   getEnglishRound,
   getLatestEnglishRoundRevision,
@@ -239,6 +240,18 @@ function EnglishTrainingWorkspace({ userId, reviewMode }: { userId: string | nul
   const [saving, setSaving] = useState<"save" | "submit" | null>(null);
   const [subjectiveBusy, setSubjectiveBusy] = useState<"suggest" | "confirm" | null>(null);
   const [routeApplied, setRouteApplied] = useState(false);
+  const restoredSubjectiveJobIds = useRef(new Set<string>());
+
+  useEffect(() => {
+    const onConfirmed = (event: Event) => {
+      const result = (event as CustomEvent<{ mode: EnglishTrainingPersistenceMode; ledgers: EnglishPassageRoundLedger[] }>).detail;
+      if (!result || !Array.isArray(result.ledgers)) return;
+      setPersistenceMode(result.mode);
+      setRoundLedgers((current) => result.ledgers.reduce((next, ledger) => upsertEnglishRoundLedger(next, ledger), current));
+    };
+    window.addEventListener(ENGLISH_GRADE_CONFIRMED_EVENT, onConfirmed);
+    return () => window.removeEventListener(ENGLISH_GRADE_CONFIRMED_EVENT, onConfirmed);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -401,6 +414,7 @@ function EnglishTrainingWorkspace({ userId, reviewMode }: { userId: string | nul
       job.type === "english_subjective_grade"
       && job.status === "succeeded"
       && !job.resultClaimedAt
+      && !restoredSubjectiveJobIds.current.has(job.id)
     ));
     if (!completedJob) return;
     if (!completedJob.resultPayload) {
@@ -418,7 +432,8 @@ function EnglishTrainingWorkspace({ userId, reviewMode }: { userId: string | nul
     let cancelled = false;
     void (async () => {
       await Promise.resolve();
-      if (cancelled) return;
+      if (cancelled || restoredSubjectiveJobIds.current.has(completedJob.id)) return;
+      restoredSubjectiveJobIds.current.add(completedJob.id);
       setPersistenceMode(result.mode === "dual" ? "dual" : "shared");
       setRoundLedgers((current) => upsertEnglishRoundLedger(current, serverLedger));
       setDraftAnswersByPassageId((current) => {

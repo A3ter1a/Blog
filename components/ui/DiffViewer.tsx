@@ -84,7 +84,7 @@ export function DiffViewer({ isOpen, onClose, original, polished, onApply }: Dif
         animate="animate"
         exit="exit"
         transition={{ duration: uiMotion.duration.fast, ease: uiMotion.ease.standard }}
-        className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
+        className="modal-glass-backdrop fixed inset-0 z-50 flex items-center justify-center p-4"
         onClick={onClose}
       >
         <motion.div
@@ -94,7 +94,7 @@ export function DiffViewer({ isOpen, onClose, original, polished, onApply }: Dif
           exit="exit"
           transition={uiMotion.spring.panel}
           onClick={(e) => e.stopPropagation()}
-          className="bg-surface-container-lowest rounded-2xl shadow-elevated w-full max-w-5xl max-h-[90vh] flex flex-col overflow-hidden"
+          className="modal-glass-panel rounded-2xl shadow-elevated w-full max-w-5xl max-h-[90vh] flex flex-col overflow-hidden"
         >
           {/* Header */}
           <div className="flex items-center justify-between px-6 py-4 border-b border-outline-variant/10">

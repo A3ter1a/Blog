@@ -1,7 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { buildEnglishSubjectiveGradingPrompt } from "../lib/english-subjective-prompt.ts";
-import { parseEnglishSubjectiveGradeSuggestion } from "../lib/english-subjective-grade.ts";
+import { extractEnglishSubjectiveJobSuggestion, parseEnglishSubjectiveGradeSuggestion } from "../lib/english-subjective-grade.ts";
+import { readFileSync } from "node:fs";
+import { createRequire } from "node:module";
+import ts from "typescript";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { getLatestEnglishRoundRevision } from "../lib/english-round-history.ts";
 
 function writingPrompt(year, href = `/english-papers/${year}-writing.jpg`) {
   return buildEnglishSubjectiveGradingPrompt({
@@ -89,4 +95,157 @@ test("客观题和没有合法总分的题组不能进入主观评阅", () => {
   assert.throws(() => buildEnglishSubjectiveGradingPrompt({
     year: 2025, section: "writing", passage_no: "small_writing", title: null, content: "Task",
   }, [], {}), /缺少有效评分来源/);
+});
+
+test("任务结果直接恢复分数、总评和所有修改建议", () => {
+  const result = extractEnglishSubjectiveJobSuggestion({ suggestion: {
+    score: 2.5, maxScore: 20, feedback: "字数不足，缺少图表解读。",
+    issues: ["缺少解读"], suggestions: ["补充分析与评论"],
+  } });
+  assert.equal(result.score, 2.5);
+  assert.deepEqual(result.suggestions, ["补充分析与评论"]);
+});
+
+test("幂等恢复任务只展示对应作答版本的 AI 建议", () => {
+  const result = extractEnglishSubjectiveJobSuggestion({ revisionId: "target", ledgers: [{ rounds: [{ revisions: [
+    { id: "other", grades: [{ origin: "ai_suggested", score: 19, maxScore: 20, feedback: "其他版本" }] },
+    { id: "target", grades: [
+      { origin: "user_final", score: 9, maxScore: 20, feedback: "正式成绩" },
+      { origin: "ai_suggested", gradeSeq: 1, score: 2.5, maxScore: 20, feedback: "实际评语", breakdown: { suggestions: ["实际建议"] } },
+    ] },
+  ] }] }] });
+  assert.equal(result.score, 2.5);
+  assert.equal(result.feedback, "实际评语");
+  assert.deepEqual(result.suggestions, ["实际建议"]);
+  assert.equal(extractEnglishSubjectiveJobSuggestion({ revisionId: "missing", ledgers: [] }), null);
+});
+
+test("残缺的任务结果不伪造分数或修改建议", () => {
+  for (const value of [null, {}, { suggestion: {} }, { suggestion: { score: 99, maxScore: 20, feedback: "无效" } }]) {
+    assert.equal(extractEnglishSubjectiveJobSuggestion(value), null);
+  }
+});
+
+test("结果组件将批改建议直接渲染为可读正文", () => {
+  const compiled = ts.transpileModule(readFileSync("components/jobs/EnglishGradingFeedback.tsx", "utf8"), {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX },
+  }).outputText;
+  const uiModule = { exports: {} };
+  new Function("require", "module", "exports", compiled)(createRequire(import.meta.url), uiModule, uiModule.exports);
+  const html = renderToStaticMarkup(createElement(uiModule.exports.EnglishGradingFeedback, { suggestion: {
+    score: 2.5, maxScore: 20, feedback: "总评正文", strengths: [], issues: ["具体问题"],
+    suggestions: ["第一条完整修改建议", "第二条完整修改建议"], confidence: 0.8,
+  } }));
+  for (const text of ["2.5", "总评正文", "具体问题", "修改建议", "第一条完整修改建议", "第二条完整修改建议"]) assert.ok(html.includes(text));
+  assert.ok(!html.includes("<details"));
+  assert.ok(!html.includes("暂无"));
+  const confirmed = renderToStaticMarkup(createElement(uiModule.exports.EnglishGradingFeedback, { suggestion: {
+    score: 2.5, maxScore: 20, feedback: "AI 总评", strengths: [], issues: [], suggestions: [], confidence: 0.8,
+  }, finalGrade: { score: 3, feedback: "已保存的反馈" }, onConfirm: () => { throw new Error("已确认结果不应再提交"); } }));
+  assert.ok(confirmed.includes("已确认，已计入正式成绩"));
+  assert.ok(confirmed.includes("已保存的反馈"));
+  assert.ok(!confirmed.includes("确认正式终分"));
+});
+
+function compileCallback(source, names, values, async = false) {
+  const compiled = ts.transpileModule(`export ${async ? "async " : ""}function callback() { ${source} }`, {
+    compilerOptions: { module: ts.ModuleKind.CommonJS },
+  }).outputText;
+  const callbackModule = { exports: {} };
+  new Function("exports", ...names, compiled)(callbackModule.exports, ...values);
+  return callbackModule.exports.callback;
+}
+
+test("领取请求延迟及 effect 重放不会重复恢复、提示或记录用量", async () => {
+  const file = readFileSync("components/tools/EnglishTraining.tsx", "utf8");
+  const start = file.indexOf("    const completedJob = jobs.find");
+  const end = file.indexOf("  }, [claimJobResult, jobs", start);
+  assert.ok(start > 0 && end > start);
+  const count = { restored: 0, claimed: 0, notices: 0, usage: 0 };
+  const names = ["jobs", "restoredSubjectiveJobIds", "loadJobResult", "setPersistenceMode", "setRoundLedgers", "upsertEnglishRoundLedger", "setDraftAnswersByPassageId", "setEditingSubmittedRoundKey", "recordDeepSeekUsage", "claimJobResult", "toast"];
+  const run = compileCallback(file.slice(start, end), names, [
+    [{ id: "job1", type: "english_subjective_grade", status: "succeeded", resultPayload: { passageId: "p1", round: 1, mode: "dual", tokensUsed: 100, ledgers: [{ passageId: "p1" }] } }],
+    { current: new Set() }, () => {}, () => {}, () => { count.restored++; }, () => {}, () => {}, () => {},
+    () => { count.usage++; }, () => { count.claimed++; }, { success: () => { count.notices++; } },
+  ]);
+  // StrictMode cleanup followed by repeated renders while server acknowledgement is delayed.
+  run()?.();
+  for (let i = 0; i < 20; i++) { run(); await Promise.resolve(); }
+  assert.deepEqual(count, { restored: 1, claimed: 1, notices: 1, usage: 1 });
+});
+
+test("单个结果弹窗直接确认，只保存一次并在原地更新状态", async () => {
+  const file = readFileSync("components/jobs/EnglishJobGradeReview.tsx", "utf8");
+  const start = file.indexOf("    if (pending.current", file.indexOf("const confirm = async"));
+  const end = file.indexOf("  };", start);
+  const state = [];
+  const errors = [];
+  let saves = 0;
+  let release;
+  const round = { round: 1, status: "submitted", revisions: [{ id: "r1", revisionNo: 1, grades: [{ origin: "ai_suggested" }] }] };
+  const latest = { mode: "dual", ledgers: [{ passageId: "p1", rounds: [round] }] };
+  const saved = { mode: "dual", ledgers: [{ passageId: "p1", rounds: [{ ...round, revisions: [{ ...round.revisions[0], grades: [{ origin: "user_final", score: 2.5 }] }] }] }] };
+  const run = compileCallback(file.slice(start, end), ["pending", "verifying", "canConfirm", "setConfirming", "setError", "englishTrainingApi", "passageId", "revisionId", "roundNo", "getLatestEnglishRoundRevision", "setHistory", "score", "feedback", "suggestion"], [
+    { current: false }, false, true, () => {}, (message) => errors.push(message),
+    { getRoundHistory: async () => latest, confirmSubjectiveGrade: async (input) => { saves++; assert.equal(input.score, 2.5); assert.equal(input.revisionId, "r1"); return new Promise((resolve) => { release = () => resolve(saved); }); } },
+    "p1", "r1", 1, getLatestEnglishRoundRevision, (value) => state.push(value), 2.5, "评语", { score: 2.5 },
+  ], true);
+  const first = run(); const second = run(); await Promise.resolve();
+  assert.equal(saves, 1); release(); await Promise.all([first, second]);
+  assert.equal(state.at(-1), saved);
+  assert.deepEqual(errors.filter(Boolean), []);
+  // Opening an already confirmed result never writes another confirmation.
+  round.revisions[0].grades = [{ origin: "user_final", score: 2.5 }];
+  await run(); assert.equal(saves, 1);
+  // A newer answer prevents confirmation of the old result.
+  round.revisions.push({ id: "r2", revisionNo: 2, grades: [] });
+  await run(); assert.equal(saves, 1); assert.match(errors.at(-1), /版本已更新/);
+});
+
+test("确认成功只发布题目数据更新事件，失败不更新界面", async () => {
+  const file = readFileSync("lib/english-training-api.ts", "utf8");
+  const method = file.indexOf("  async confirmSubjectiveGrade(");
+  const start = file.indexOf("    const response = await fetch", method);
+  const end = file.indexOf("\n  },\n};", start);
+  let ok = true;
+  const events = [];
+  const saved = { mode: "dual", ledgers: [{ passageId: "p1" }] };
+  const run = compileCallback(file.slice(start, end), ["passage", "revisionId", "score", "feedback", "suggestion", "fetch", "buildAuthHeaders", "crypto", "buildEnglishSubjectiveGradeBreakdown", "readRoundHistoryResponse", "window", "CustomEvent", "ENGLISH_GRADE_CONFIRMED_EVENT"], [
+    { id: "p1" }, "r1", 2.5, "评语", { score: 2.5 },
+    async (url, options) => { assert.equal(url, "/api/english/subjective"); const body = JSON.parse(options.body); assert.equal(body.action, "confirm_final"); assert.equal(body.revisionId, "r1"); return { ok }; },
+    async () => ({}), { randomUUID: () => "command1" }, () => ({}), async (response) => { if (!response.ok) throw new Error("确认失败"); return saved; },
+    { dispatchEvent: (event) => events.push(event) }, class { constructor(type, init) { this.type = type; this.detail = init.detail; } }, "grade-confirmed",
+  ], true);
+  assert.equal(await run(), saved); assert.equal(events.length, 1); assert.equal(events[0].detail, saved);
+  ok = false; await assert.rejects(run(), /确认失败/); assert.equal(events.length, 1);
+});
+
+test("同一远程任务并发领取只发一个请求，失败后可手动重试", async () => {
+  const file = readFileSync("components/jobs/JobCenter.tsx", "utf8");
+  const start = file.indexOf("    const target = jobs.find", file.indexOf("const claimJobResult ="));
+  const end = file.indexOf("  }, [announceAction, jobs, updateJob]);", start);
+  assert.ok(start > 0 && end > start);
+  let release;
+  let requests = 0;
+  const updates = [];
+  const claiming = { current: new Set() };
+  const run = compileCallback(file.slice(start, end), ["id", "jobs", "resultClaimingRef", "updateJob", "announceAction", "fetch", "buildAuthHeaders", "normalizeRemoteJobRows", "setJobs", "mergeClientJobLedgers"], [
+    "job1", [{ id: "job1", remoteJobId: "remote1", status: "succeeded", title: "测试任务" }], claiming,
+    (_id, patch) => updates.push(patch), () => {},
+    () => { requests++; return new Promise((resolve) => { release = resolve; }); },
+    async () => ({}), () => [], () => {}, () => {},
+  ]);
+  for (let i = 0; i < 20; i++) run();
+  await Promise.resolve();
+  assert.equal(requests, 1);
+  release({ ok: false, json: async () => ({}) });
+  for (let i = 0; i < 8; i++) await Promise.resolve();
+  assert.equal(claiming.current.size, 0);
+  assert.equal(updates.at(-1).ledgerState, "sync_failed");
+  assert.equal(updates.at(-1).resultClaimedAt, undefined);
+  run(); await Promise.resolve();
+  assert.equal(requests, 2);
+  release({ ok: true, json: async () => ({}) });
+  for (let i = 0; i < 8; i++) await Promise.resolve();
+  assert.equal(updates.at(-1).ledgerState, "synced");
 });
